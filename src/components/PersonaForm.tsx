@@ -12,6 +12,7 @@ import {
   saveAndInterpretPersonaAction,
   updatePersonaCriterionAction,
 } from "@/app/actions/interpretation";
+import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
 import { formatCriterionDisplay } from "@/lib/criteria/types";
 import type { PersonaActionResult } from "@/lib/persona/save";
@@ -302,11 +303,17 @@ export function PersonaForm({
             criteria={criteria}
           />
           <div className="mt-3">
-            <form action={deletePersonaAction}>
-              <input type="hidden" name="id" value={persona.id} />
-              <input type="hidden" name="productId" value={productId} />
-              <SecondaryButton type="submit">Delete persona</SecondaryButton>
-            </form>
+            <ConfirmDeleteForm
+              action={deletePersonaAction}
+              hiddenFields={{
+                id: persona.id,
+                productId,
+              }}
+              triggerLabel="Delete persona"
+              confirmTitle={`Delete Persona "${persona.name}"?`}
+              confirmBody={`This will remove this Persona and its current generated criteria.\nHistorical scoring snapshots will not be changed.\nIf scoring runs reference this Persona, it will be archived instead of permanently deleted.`}
+              confirmButtonLabel="Delete Persona"
+            />
           </div>
         </>
       ) : null}

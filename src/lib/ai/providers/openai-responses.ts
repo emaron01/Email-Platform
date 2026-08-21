@@ -72,7 +72,8 @@ function roleMode(config: AiConfig): ResponsesRoleMode {
   if (
     config.role === "scoring" ||
     config.role === "interpretation" ||
-    config.role === "contact_research"
+    config.role === "contact_research" ||
+    config.role === "product"
   ) {
     return "structured_only";
   }

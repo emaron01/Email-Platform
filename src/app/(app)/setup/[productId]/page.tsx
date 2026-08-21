@@ -8,6 +8,7 @@ import {
   upsertProductAction,
 } from "@/app/actions";
 import { interpretIcpAction } from "@/app/actions/interpretation";
+import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { PersonaForm } from "@/components/PersonaForm";
 import {
   EmptyState,
@@ -27,6 +28,7 @@ import {
   TenantError,
 } from "@/lib/tenant/getCurrentOrganization";
 import { listToCommaString } from "@/lib/utils";
+import { prisma } from "@/lib/prisma";
 
 type PageProps = {
   params: Promise<{ productId: string }>;
@@ -53,10 +55,49 @@ export default async function SetupProductPage({ params }: PageProps) {
     throw error;
   }
 
-  const [icps, personas] = await Promise.all([
+  const [icps, personas, impact] = await Promise.all([
     listIcps(product.id),
     listPersonas(product.id),
+    prisma.product.findFirst({
+      where: { id: product.id, organizationId: organization.id },
+      include: {
+        _count: {
+          select: {
+            icps: true,
+            personas: true,
+            campaigns: true,
+            scoringRuns: true,
+            sources: true,
+            evidenceBundles: true,
+            setupRuns: true,
+          },
+        },
+      },
+    }),
   ]);
+
+  const productDeleteBody = (() => {
+    const c = impact?._count;
+    if (!c) return "This will permanently delete this Product.";
+    const lines = [
+      `Delete Product "${product.name}"?`,
+      "",
+      "This will also remove:",
+      `• ${c.icps} ICP(s)`,
+      `• ${c.personas} Persona(s) and their current criteria`,
+      `• ${c.sources} product source(s)`,
+      `• ${c.evidenceBundles} evidence bundle(s)`,
+      `• ${c.setupRuns} research draft run(s)`,
+      "",
+      c.scoringRuns > 0
+        ? `Note: ${c.scoringRuns} scoring run(s) reference this Product — it will be archived instead of permanently deleted so historical snapshots remain.`
+        : "Historical scoring snapshots (if any later) would be preserved via archive rather than hard delete.",
+      c.campaigns > 0
+        ? `Blocked until ${c.campaigns} campaign(s) are removed or reassigned.`
+        : "Campaigns: none currently reference this Product.",
+    ];
+    return lines.join("\n");
+  })();
 
   const icpCriteriaMap = new Map<
     string,
@@ -87,12 +128,20 @@ export default async function SetupProductPage({ params }: PageProps) {
         title={product.name}
         description="Describe ideal customers and buyers in natural language. AI interprets structured criteria for research and scoring."
         actions={
-          <Link
-            href="/setup"
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            All products
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/setup/${product.id}/research`}
+              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              Research & Build
+            </Link>
+            <Link
+              href="/setup"
+              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              All products
+            </Link>
+          </div>
         }
       />
 
@@ -102,10 +151,17 @@ export default async function SetupProductPage({ params }: PageProps) {
           description="Edit this product’s core information."
         >
           <ProductForm product={product} />
-          <form action={deleteProductAction} className="mt-4">
-            <input type="hidden" name="id" value={product.id} />
-            <SecondaryButton type="submit">Delete product</SecondaryButton>
-          </form>
+          <div className="mt-4">
+            <ConfirmDeleteForm
+              action={deleteProductAction}
+              hiddenFields={{ id: product.id }}
+              triggerLabel="Delete product"
+              confirmTitle={`Delete Product "${product.name}"?`}
+              confirmBody={productDeleteBody}
+              confirmButtonLabel="Delete Product"
+              onSuccessNavigate="/setup"
+            />
+          </div>
         </Panel>
 
         <Panel
@@ -381,11 +437,14 @@ function IcpForm({
                 Interpret / Reinterpret ICP
               </SecondaryButton>
             </form>
-            <form action={deleteIcpAction}>
-              <input type="hidden" name="id" value={icp.id} />
-              <input type="hidden" name="productId" value={productId} />
-              <SecondaryButton type="submit">Delete ICP</SecondaryButton>
-            </form>
+            <ConfirmDeleteForm
+              action={deleteIcpAction}
+              hiddenFields={{ id: icp.id, productId }}
+              triggerLabel="Delete ICP"
+              confirmTitle={`Delete ICP "${icp.name}"?`}
+              confirmBody={`This will remove this ICP and its current generated criteria.\nHistorical scoring snapshots will not be changed.\nIf scoring runs reference this ICP, it will be archived instead of permanently deleted.`}
+              confirmButtonLabel="Delete ICP"
+            />
           </div>
         </>
       ) : null}

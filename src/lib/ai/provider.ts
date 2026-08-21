@@ -1,6 +1,7 @@
 import {
   getContactResearchAiConfig,
   getInterpretationAiConfig,
+  getProductAiConfig,
   getResearchAiConfig,
   getScoringAiConfig,
   type AiConfig,
@@ -42,6 +43,10 @@ const interpretationCache: { key: string; provider: AiProvider | null } = {
   provider: null,
 };
 const contactResearchCache: { key: string; provider: AiProvider | null } = {
+  key: "",
+  provider: null,
+};
+const productCache: { key: string; provider: AiProvider | null } = {
   key: "",
   provider: null,
 };
@@ -102,6 +107,19 @@ export function getContactResearchAiProvider(): AiProvider {
   return provider;
 }
 
+/** Product AI only — never uses Research/Scoring/Interpretation configuration. */
+export function getProductAiProvider(): AiProvider {
+  const config = getProductAiConfig();
+  const key = cacheKey(config);
+  if (productCache.key === key && productCache.provider) {
+    return productCache.provider;
+  }
+  const provider = createAiProvider(config);
+  productCache.key = key;
+  productCache.provider = provider;
+  return provider;
+}
+
 /** Test helper to clear provider caches. */
 export function clearAiProviderCache(): void {
   researchCache.key = "";
@@ -112,4 +130,6 @@ export function clearAiProviderCache(): void {
   interpretationCache.provider = null;
   contactResearchCache.key = "";
   contactResearchCache.provider = null;
+  productCache.key = "";
+  productCache.provider = null;
 }

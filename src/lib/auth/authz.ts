@@ -26,6 +26,11 @@ export function canManageOrganizationPolicy(role: MembershipRole): boolean {
   return role === "OWNER" || role === "ADMIN";
 }
 
+/** Destructive Product / ICP / Persona delete or archive. */
+export function canDeleteSetupEntities(role: MembershipRole): boolean {
+  return role === "OWNER" || role === "ADMIN";
+}
+
 export function canManageInvitations(role: MembershipRole): boolean {
   return role === "OWNER" || role === "ADMIN";
 }
@@ -60,6 +65,17 @@ export async function requireOrgAdmin(organizationId?: string) {
     );
   }
   assertAccountCapability(ctx.user, "CHANGE_ORG_POLICY");
+  return ctx;
+}
+
+/** OWNER/ADMIN required for Product/Persona/ICP destructive delete. */
+export async function requireSetupDeletePermission(organizationId?: string) {
+  const ctx = await getMembershipForCurrentUser(organizationId);
+  if (!canDeleteSetupEntities(ctx.membership.role)) {
+    throw new AuthorizationError(
+      "Organization administrator permission is required to delete products or personas.",
+    );
+  }
   return ctx;
 }
 

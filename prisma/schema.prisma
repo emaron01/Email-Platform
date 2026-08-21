@@ -104,6 +104,7 @@ enum UsageCategory {
   INTERPRETATION
   SCORING
   EMAIL_GENERATION
+  PRODUCT_RESEARCH
 }
 
 enum UsageOperation {
@@ -114,6 +115,11 @@ enum UsageOperation {
   PERSONA_INTERPRETATION
   CONTACT_SCORING
   EMAIL_GENERATION
+  PRODUCT_URL_RETRIEVAL
+  PRODUCT_WEB_SEARCH
+  PRODUCT_DOCUMENT_EXTRACTION
+  PRODUCT_SYNTHESIS
+  PRODUCT_SOURCE_INGEST
 }
 
 enum CriterionDataType {
@@ -227,6 +233,40 @@ enum TransactionalEmailStatus {
   COMPLAINED
 }
 
+enum ProductSourceType {
+  URL
+  PASTED_TEXT
+  UPLOADED_DOCUMENT
+  USER_NOTE
+}
+
+enum ProductSourceStatus {
+  PENDING
+  ACQUIRED
+  EXTRACTED
+  FAILED
+  DUPLICATE
+  ARCHIVED
+}
+
+enum ProductSetupStatus {
+  NOT_STARTED
+  ACQUIRING
+  SYNTHESIZING
+  NEEDS_REVIEW
+  APPROVED
+  PARTIAL
+  FAILED
+}
+
+enum ProductApprovalStatus {
+  NOT_STARTED
+  DRAFT
+  NEEDS_REVIEW
+  APPROVED
+  SUPERSEDED
+}
+
 model Organization {
   id        String             @id @default(cuid())
   name      String
@@ -263,6 +303,10 @@ model Organization {
   billingProfile               OrganizationBillingProfile?
   transactionalEmailEvents     TransactionalEmailEvent[]
   activeForUsers               User[]                     @relation("ActiveOrganization")
+  productSources               ProductSource[]
+  productSourceBlobs           ProductSourceBlob[]
+  productEvidenceBundles       ProductEvidenceBundle[]
+  productSetupRuns             ProductSetupRun[]
 
   @@index([status])
   @@index([createdAt])
@@ -355,6 +399,10 @@ model ResearchPolicy {
   maxSearchQueriesPerContact  Int      @default(2)
   maxSourcesPerContact        Int      @default(6)
   contactResearchFreshnessDays Int     @default(90)
+  /// Product URL/web source reacquisition freshness. Default written at create: 120.
+  productSourceResearchFreshnessDays Int @default(120)
+  maxSearchQueriesPerProduct  Int      @default(3)
+  maxSourcesPerProduct        Int      @default(12)
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 
@@ -470,6 +518,21 @@ model Product {
   valueProposition  String?
   averageOrderValue Decimal? @db.Decimal(12, 2)
   websiteUrl        String?
+  /// Assisted-setup approval. Downstream scoring uses APPROVED authoritative fields.
+  approvalStatus    ProductApprovalStatus @default(NOT_STARTED)
+  setupStatus       ProductSetupStatus    @default(NOT_STARTED)
+  approvedAt        DateTime?
+  approvedByUserId  String?
+  approvedEvidenceBundleId String?
+  approvedSetupRunId       String?
+  /// Extended approved product profile (problems, capabilities, etc.).
+  profileJson       Json?
+  /// Approved product messaging guidance (not scoring evidence).
+  messagingJson     Json?
+  /// Field paths the user edited — protected from silent overwrite.
+  manuallyEditedFields Json?
+  /// Soft-archive: hidden from setup UI; preserves ScoringRun FK history.
+  archivedAt        DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -478,10 +541,14 @@ model Product {
   personas     Persona[]
   campaigns    Campaign[]
   scoringRuns  ScoringRun[]
+  sources      ProductSource[]
+  evidenceBundles ProductEvidenceBundle[]
+  setupRuns    ProductSetupRun[]
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
   @@index([organizationId, name])
+  @@index([organizationId, archivedAt])
 }
 
 model Offer {
@@ -524,6 +591,8 @@ model Icp {
   interpretationVersion       Int       @default(1)
   interpretationPromptVersion String?
   lastInterpretedAt           DateTime?
+  /// Soft-archive: hidden from setup UI; preserves ScoringRun FK history.
+  archivedAt           DateTime?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -538,6 +607,7 @@ model Icp {
   @@index([organizationId, name])
   @@index([productId])
   @@index([organizationId, productId])
+  @@index([organizationId, archivedAt])
 }
 
 /// Tenant-owned structured ICP criterion (AI-interpreted and/or manually edited).
@@ -593,6 +663,19 @@ model Persona {
   interpretationVersion       Int       @default(1)
   interpretationPromptVersion String?
   lastInterpretedAt           DateTime?
+  approvalStatus   ProductApprovalStatus @default(NOT_STARTED)
+  approvedAt       DateTime?
+  approvedByUserId String?
+  approvedEvidenceBundleId String?
+  approvedSetupRunId       String?
+  manuallyEditedFields Json?
+  /// Links to a suggested persona key from a setup run (optional).
+  suggestionKey    String?
+  whyThisPersonaMatters String?
+  /// Persona-specific messaging (not scoring evidence).
+  personaMessagingJson Json?
+  /// Soft-archive: hidden from setup UI; preserves ScoringRun FK history.
+  archivedAt       DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -607,6 +690,112 @@ model Persona {
   @@index([organizationId, name])
   @@index([productId])
   @@index([organizationId, productId])
+  @@index([organizationId, archivedAt])
+}
+
+/// Tenant-owned product source material (URL, paste, upload, note).
+model ProductSource {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  productId          String
+  sourceType         ProductSourceType
+  displayName        String
+  originalUrl        String?
+  normalizedUrlKey   String?
+  filename           String?
+  mimeType           String?
+  byteSize           Int?
+  acquisitionMethod  String
+  createdByUserId    String?
+  createdAt          DateTime            @default(now())
+  retrievedAt        DateTime?
+  contentHash        String
+  status             ProductSourceStatus @default(PENDING)
+  errorSafe          String?
+  extractedText      String?
+  freshnessExpiresAt DateTime?
+  metadataJson       Json?
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  blob         ProductSourceBlob?
+
+  @@unique([organizationId, productId, contentHash])
+  @@index([organizationId])
+  @@index([productId])
+  @@index([organizationId, productId])
+  @@index([organizationId, contentHash])
+  @@index([organizationId, normalizedUrlKey])
+}
+
+/// Durable binary storage for uploaded product materials (Postgres, not ephemeral disk).
+model ProductSourceBlob {
+  id             String   @id @default(cuid())
+  organizationId String
+  sourceId       String   @unique
+  bytes          Bytes
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source       ProductSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+/// Versioned product evidence bundle — reusable acquisition asset.
+model ProductEvidenceBundle {
+  id                      String            @id @default(cuid())
+  organizationId          String
+  productId               String
+  version                 Int
+  parentBundleId          String?
+  correlationId           String
+  status                  ProductSetupStatus @default(ACQUIRING)
+  createdByUserId         String?
+  createdAt               DateTime           @default(now())
+  normalizedEvidenceJson  Json?
+  sourceIdsJson           Json
+  urlResearchPerformed    Boolean            @default(false)
+  webSearchQueriesUsed    Int                @default(0)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  setupRuns    ProductSetupRun[]
+
+  @@unique([organizationId, productId, version])
+  @@index([organizationId])
+  @@index([productId])
+  @@index([organizationId, productId])
+}
+
+/// One synthesis workflow over an evidence bundle (Product + Personas drafts).
+model ProductSetupRun {
+  id                     String            @id @default(cuid())
+  organizationId         String
+  productId              String
+  evidenceBundleId       String
+  correlationId          String
+  status                 ProductSetupStatus @default(SYNTHESIZING)
+  productDraftJson       Json?
+  messagingDraftJson     Json?
+  suggestedPersonasJson  Json?
+  personaDraftsJson      Json?
+  synthesisPromptVersion String?
+  aiProvider             String?
+  aiModel                String?
+  errorSafe              String?
+  createdByUserId        String?
+  createdAt              DateTime          @default(now())
+  completedAt            DateTime?
+
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product        Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  evidenceBundle ProductEvidenceBundle @relation(fields: [evidenceBundleId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([productId])
+  @@index([evidenceBundleId])
+  @@index([correlationId])
 }
 
 /// Tenant-owned structured Persona criterion (role/responsibility oriented).

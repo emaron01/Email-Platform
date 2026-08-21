@@ -30,7 +30,8 @@ export type AiRole =
   | "research"
   | "scoring"
   | "interpretation"
-  | "contact_research";
+  | "contact_research"
+  | "product";
 
 export type AiConfig = {
   role: AiRole;
@@ -92,6 +93,15 @@ const ROLE_ENV: Record<AiRole, RoleEnv> = {
     maxRetries: "CONTACT_RESEARCH_AI_MAX_RETRIES",
     temperature: "CONTACT_RESEARCH_AI_TEMPERATURE",
   },
+  product: {
+    provider: "PRODUCT_AI_PROVIDER",
+    model: "PRODUCT_AI_MODEL",
+    modelUrl: "PRODUCT_AI_MODEL_URL",
+    apiKey: "PRODUCT_AI_API_KEY",
+    timeoutMs: "PRODUCT_AI_TIMEOUT_MS",
+    maxRetries: "PRODUCT_AI_MAX_RETRIES",
+    temperature: "PRODUCT_AI_TEMPERATURE",
+  },
 };
 
 function notConfiguredMessage(role: AiRole): string {
@@ -104,6 +114,8 @@ function notConfiguredMessage(role: AiRole): string {
       return "ICP and persona interpretation is not configured.";
     case "contact_research":
       return "Contact role research is not configured.";
+    case "product":
+      return "Product research & assisted setup AI is not configured.";
   }
 }
 
@@ -155,7 +167,8 @@ function parseProvider(
       role === "research" ||
       role === "scoring" ||
       role === "interpretation" ||
-      role === "contact_research"
+      role === "contact_research" ||
+      role === "product"
     ) {
       return "openai-responses";
     }
@@ -242,6 +255,20 @@ export function isInterpretationAiConfigured(): boolean {
 export function isContactResearchAiConfigured(): boolean {
   try {
     getContactResearchAiConfig();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Fail closed for Product AI. Never reads Research/Scoring/Interpretation vars. */
+export function getProductAiConfig(): AiConfig {
+  return getAiConfigForRole("product");
+}
+
+export function isProductAiConfigured(): boolean {
+  try {
+    getProductAiConfig();
     return true;
   } catch {
     return false;

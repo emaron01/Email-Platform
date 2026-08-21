@@ -3,13 +3,13 @@ import {
   deleteProductAction,
   upsertProductAction,
 } from "@/app/actions";
+import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import {
   EmptyState,
   Field,
   PageHeader,
   Panel,
   PrimaryButton,
-  SecondaryButton,
   TenantMissing,
 } from "@/components/ui";
 import { listProductsWithCounts } from "@/lib/tenant/data";
@@ -67,15 +67,26 @@ export default async function SetupPage() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Link
+                      href={`/setup/${product.id}/research`}
+                      className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Research
+                    </Link>
+                    <Link
                       href={`/setup/${product.id}`}
                       className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
                     >
                       Manage
                     </Link>
-                    <form action={deleteProductAction}>
-                      <input type="hidden" name="id" value={product.id} />
-                      <SecondaryButton type="submit">Delete</SecondaryButton>
-                    </form>
+                    <ConfirmDeleteForm
+                      action={deleteProductAction}
+                      hiddenFields={{ id: product.id }}
+                      triggerLabel="Delete"
+                      confirmTitle={`Delete Product "${product.name}"?`}
+                      confirmBody={`This will remove this Product and its ICPs (${product._count.icps}), Personas (${product._count.personas}), and product research sources/drafts.\nCampaigns (${product._count.campaigns}) must be removed first if any exist.\nHistorical scoring snapshots will not be destroyed — the Product may be archived instead if scoring runs reference it.`}
+                      confirmButtonLabel="Delete Product"
+                      onSuccessNavigate="/setup"
+                    />
                   </div>
                 </div>
               ))}
@@ -83,7 +94,18 @@ export default async function SetupPage() {
           )}
         </Panel>
 
-        <Panel title="Add Product" description="Products are organization-scoped and reusable across campaigns.">
+        <Panel
+          title="Add Product"
+          description="Start with a name. Optionally research & build from URLs, notes, paste, or uploads."
+        >
+          <div className="mb-4">
+            <Link
+              href="/setup/new"
+              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white"
+            >
+              Assisted Product Setup
+            </Link>
+          </div>
           <form action={upsertProductAction} className="grid gap-4 md:grid-cols-2">
             <input type="hidden" name="id" value="" />
             <Field label="Product Name" name="name" required />

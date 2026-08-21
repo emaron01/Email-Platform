@@ -40,7 +40,7 @@ export type ProductWithCounts = Product & {
 export async function listProducts(): Promise<Product[]> {
   const organizationId = await orgId();
   return prisma.product.findMany({
-    where: { organizationId },
+    where: { organizationId, archivedAt: null },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -48,7 +48,7 @@ export async function listProducts(): Promise<Product[]> {
 export async function listProductsWithCounts(): Promise<ProductWithCounts[]> {
   const organizationId = await orgId();
   return prisma.product.findMany({
-    where: { organizationId },
+    where: { organizationId, archivedAt: null },
     include: {
       _count: {
         select: {
@@ -65,7 +65,7 @@ export async function listProductsWithCounts(): Promise<ProductWithCounts[]> {
 export async function getProduct(id: string): Promise<Product> {
   const organizationId = await orgId();
   const product = await prisma.product.findFirst({
-    where: { id, organizationId },
+    where: { id, organizationId, archivedAt: null },
   });
   if (!product) notFound("Product");
   return product;
@@ -100,41 +100,100 @@ export async function updateProduct(
   });
 }
 
-export async function deleteProduct(id: string): Promise<void> {
+export async function deleteProduct(id: string): Promise<{
+  mode: "deleted" | "archived";
+  message: string;
+}> {
   const organizationId = await orgId();
   const existing = await prisma.product.findFirst({
-    where: { id, organizationId },
+    where: { id, organizationId, archivedAt: null },
     include: {
       _count: {
-        select: { icps: true, personas: true, campaigns: true },
+        select: {
+          icps: true,
+          personas: true,
+          campaigns: true,
+          scoringRuns: true,
+          sources: true,
+          evidenceBundles: true,
+          setupRuns: true,
+        },
       },
     },
   });
   if (!existing) notFound("Product");
 
-  const blockers: string[] = [];
   if (existing._count.campaigns > 0) {
-    blockers.push(`${existing._count.campaigns} campaign(s)`);
-  }
-  if (existing._count.icps > 0) {
-    blockers.push(`${existing._count.icps} ICP(s)`);
-  }
-  if (existing._count.personas > 0) {
-    blockers.push(`${existing._count.personas} persona(s)`);
-  }
-  if (blockers.length > 0) {
     throw new TenantError(
-      `Cannot delete this product because it is referenced by ${blockers.join(", ")}. Remove those first.`,
+      `Product could not be deleted because it is still referenced by ${existing._count.campaigns} campaign(s). Remove or reassign those campaigns first.`,
     );
   }
 
-  await prisma.product.delete({ where: { id } });
+  // Historical scoring snapshots must remain — soft-archive when ScoringRuns exist.
+  if (existing._count.scoringRuns > 0) {
+    const now = new Date();
+    await prisma.$transaction([
+      prisma.product.update({
+        where: { id: existing.id },
+        data: { archivedAt: now },
+      }),
+      prisma.persona.updateMany({
+        where: { organizationId, productId: existing.id, archivedAt: null },
+        data: { archivedAt: now },
+      }),
+      prisma.icp.updateMany({
+        where: { organizationId, productId: existing.id, archivedAt: null },
+        data: { archivedAt: now },
+      }),
+    ]);
+    return {
+      mode: "archived",
+      message: `Product archived because ${existing._count.scoringRuns} scoring run(s) reference it. Historical scoring snapshots were preserved. The product no longer appears in setup.`,
+    };
+  }
+
+  // Hard delete live setup graph in FK-safe order (no ScoringRun/Campaign refs).
+  await prisma.$transaction(async (tx) => {
+    await tx.productSetupRun.deleteMany({
+      where: { organizationId, productId: existing.id },
+    });
+    await tx.productEvidenceBundle.deleteMany({
+      where: { organizationId, productId: existing.id },
+    });
+    await tx.productSource.deleteMany({
+      where: { organizationId, productId: existing.id },
+    });
+    await tx.personaCriterion.deleteMany({
+      where: {
+        organizationId,
+        persona: { productId: existing.id },
+      },
+    });
+    await tx.persona.deleteMany({
+      where: { organizationId, productId: existing.id },
+    });
+    await tx.icpCriterion.deleteMany({
+      where: {
+        organizationId,
+        icp: { productId: existing.id },
+      },
+    });
+    await tx.icp.deleteMany({
+      where: { organizationId, productId: existing.id },
+    });
+    await tx.product.delete({ where: { id: existing.id } });
+  });
+
+  return {
+    mode: "deleted",
+    message: "Product deleted.",
+  };
 }
 
 async function requireProductInOrg(productId: string): Promise<Product> {
   const organizationId = await orgId();
   const product = await prisma.product.findFirst({
-    where: { id: productId, organizationId },
+    where: { id: productId, organizationId, archivedAt: null },
   });
   if (!product) {
     throw new TenantError("Product does not belong to the active organization.");
@@ -162,6 +221,7 @@ export async function listIcps(productId?: string): Promise<Icp[]> {
   return prisma.icp.findMany({
     where: {
       organizationId,
+      archivedAt: null,
       ...(productId ? { productId } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -219,21 +279,38 @@ export async function updateIcp(
   });
 }
 
-export async function deleteIcp(id: string): Promise<void> {
+export async function deleteIcp(id: string): Promise<{
+  mode: "deleted" | "archived";
+  message: string;
+}> {
   const organizationId = await orgId();
   const existing = await prisma.icp.findFirst({
-    where: { id, organizationId },
-    include: { _count: { select: { campaigns: true } } },
+    where: { id, organizationId, archivedAt: null },
+    include: {
+      _count: { select: { campaigns: true, scoringRuns: true } },
+    },
   });
   if (!existing) notFound("ICP");
 
   if (existing._count.campaigns > 0) {
     throw new TenantError(
-      `Cannot delete this ICP because it is used by ${existing._count.campaigns} campaign(s).`,
+      `ICP could not be deleted because it is still referenced by ${existing._count.campaigns} campaign(s).`,
     );
   }
 
-  await prisma.icp.delete({ where: { id } });
+  if (existing._count.scoringRuns > 0) {
+    await prisma.icp.update({
+      where: { id: existing.id },
+      data: { archivedAt: new Date() },
+    });
+    return {
+      mode: "archived",
+      message: `ICP archived because ${existing._count.scoringRuns} scoring run(s) reference it. Historical snapshots were preserved.`,
+    };
+  }
+
+  await prisma.icp.delete({ where: { id: existing.id } });
+  return { mode: "deleted", message: "ICP deleted." };
 }
 
 // --- Personas ---
@@ -246,6 +323,7 @@ export async function listPersonas(productId?: string): Promise<Persona[]> {
   return prisma.persona.findMany({
     where: {
       organizationId,
+      archivedAt: null,
       ...(productId ? { productId } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -255,7 +333,7 @@ export async function listPersonas(productId?: string): Promise<Persona[]> {
 export async function getPersona(id: string): Promise<Persona> {
   const organizationId = await orgId();
   const persona = await prisma.persona.findFirst({
-    where: { id, organizationId },
+    where: { id, organizationId, archivedAt: null },
   });
   if (!persona) notFound("Persona");
   return persona;
@@ -302,21 +380,45 @@ export async function updatePersona(
   });
 }
 
-export async function deletePersona(id: string): Promise<void> {
+export async function deletePersona(id: string): Promise<{
+  mode: "deleted" | "archived";
+  message: string;
+}> {
   const organizationId = await orgId();
   const existing = await prisma.persona.findFirst({
-    where: { id, organizationId },
-    include: { _count: { select: { campaigns: true } } },
+    where: { id, organizationId, archivedAt: null },
+    include: {
+      _count: {
+        select: { campaigns: true, scoringRuns: true, criteria: true },
+      },
+    },
   });
   if (!existing) notFound("Persona");
 
   if (existing._count.campaigns > 0) {
     throw new TenantError(
-      `Cannot delete this persona because it is used by ${existing._count.campaigns} campaign(s).`,
+      `Persona could not be deleted because it is still referenced by ${existing._count.campaigns} campaign(s). Remove or reassign those campaigns first.`,
     );
   }
 
-  await prisma.persona.delete({ where: { id } });
+  // ScoringRun.personaId is Restrict — preserve immutable history via soft-archive.
+  if (existing._count.scoringRuns > 0) {
+    await prisma.persona.update({
+      where: { id: existing.id },
+      data: { archivedAt: new Date() },
+    });
+    return {
+      mode: "archived",
+      message: `Persona archived because ${existing._count.scoringRuns} scoring run(s) reference it. Historical scoring snapshots were not changed. The persona no longer appears in setup.`,
+    };
+  }
+
+  // Hard delete: PersonaCriterion cascades; no ScoringRun/Campaign refs.
+  await prisma.persona.delete({ where: { id: existing.id } });
+  return {
+    mode: "deleted",
+    message: "Persona deleted.",
+  };
 }
 
 // --- Contact lists ---

@@ -24,6 +24,11 @@ import {
   toSafePersonaActionError,
   type PersonaActionResult,
 } from "@/lib/persona/save";
+import {
+  toSafeCrudDeleteError,
+  type CrudDeleteResult,
+} from "@/lib/tenant/crud-delete";
+import { requireSetupDeletePermission } from "@/lib/auth/authz";
 
 function requiredString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -70,14 +75,32 @@ export async function upsertProductAction(formData: FormData): Promise<void> {
   }
 }
 
-export async function deleteProductAction(formData: FormData): Promise<void> {
+export async function deleteProductAction(
+  _prev: CrudDeleteResult | null,
+  formData: FormData,
+): Promise<CrudDeleteResult> {
   try {
+    await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
     if (!id) throw new TenantError("Product id is required.");
-    await deleteProduct(id);
+    const confirmed = requiredString(formData, "confirm") === "1";
+    if (!confirmed) {
+      return {
+        ok: false,
+        message: "Confirm deletion before continuing.",
+      };
+    }
+    const result = await deleteProduct(id);
     revalidateSetup();
+    return {
+      ok: true,
+      message: result.message,
+      mode: result.mode,
+      productId: id,
+    };
   } catch (error) {
     logActionError("Failed to delete product.", error);
+    return { ok: false, message: toSafeCrudDeleteError(error) };
   }
 }
 
@@ -128,15 +151,24 @@ export async function upsertIcpAction(formData: FormData): Promise<void> {
   }
 }
 
-export async function deleteIcpAction(formData: FormData): Promise<void> {
+export async function deleteIcpAction(
+  _prev: CrudDeleteResult | null,
+  formData: FormData,
+): Promise<CrudDeleteResult> {
   try {
+    await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
     const productId = requiredString(formData, "productId");
     if (!id) throw new TenantError("ICP id is required.");
-    await deleteIcp(id);
+    if (requiredString(formData, "confirm") !== "1") {
+      return { ok: false, message: "Confirm deletion before continuing." };
+    }
+    const result = await deleteIcp(id);
     revalidateSetup(productId || undefined);
+    return { ok: true, message: result.message, mode: result.mode };
   } catch (error) {
     logActionError("Failed to delete ICP.", error);
+    return { ok: false, message: toSafeCrudDeleteError(error) };
   }
 }
 
@@ -167,15 +199,30 @@ export async function upsertPersonaAction(
   }
 }
 
-export async function deletePersonaAction(formData: FormData): Promise<void> {
+export async function deletePersonaAction(
+  _prev: CrudDeleteResult | null,
+  formData: FormData,
+): Promise<CrudDeleteResult> {
   try {
+    await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
     const productId = requiredString(formData, "productId");
     if (!id) throw new TenantError("Persona id is required.");
-    await deletePersona(id);
+    if (requiredString(formData, "confirm") !== "1") {
+      return { ok: false, message: "Confirm deletion before continuing." };
+    }
+    const result = await deletePersona(id);
     revalidateSetup(productId || undefined);
+    return {
+      ok: true,
+      message: result.message,
+      mode: result.mode,
+      personaId: id,
+      productId: productId || undefined,
+    };
   } catch (error) {
     logActionError("Failed to delete persona.", error);
+    return { ok: false, message: toSafeCrudDeleteError(error) };
   }
 }
 

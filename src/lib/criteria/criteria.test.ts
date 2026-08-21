@@ -148,6 +148,7 @@ describe("criteria evaluate + merge (unit)", () => {
       interpretationVersion: 1,
       interpretationPromptVersion: null,
       lastInterpretedAt: null,
+        archivedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     } as never);
@@ -259,6 +260,7 @@ describe("scoring snapshots include criteria", () => {
         interpretationVersion: 2,
         interpretationPromptVersion: "1",
         lastInterpretedAt: null,
+        archivedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       } as never,
