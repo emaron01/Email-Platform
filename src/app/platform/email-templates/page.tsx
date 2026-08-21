@@ -36,7 +36,7 @@ export default async function PlatformEmailTemplatesPage({
   const allowlist = TEMPLATE_VARIABLE_ALLOWLIST[selected];
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
           Transactional email templates

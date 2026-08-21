@@ -10,10 +10,15 @@ import { prisma } from "@/lib/prisma";
 import { assertRateLimit } from "@/lib/auth/rate-limit";
 
 export async function logoutAction(): Promise<void> {
+  // Capture actor before Better Auth invalidates the session cookie.
   const user = await requireCurrentUser().catch(() => null);
+
+  // Authoritative session termination — Better Auth clears/invalidates cookies.
+  // Do not delete cookies manually.
   await auth.api.signOut({
     headers: await headers(),
   });
+
   if (user) {
     await recordAdminAuditEvent({
       action: "LOGOUT",

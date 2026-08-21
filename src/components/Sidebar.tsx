@@ -3,18 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import type { SidebarNavItem } from "@/lib/auth/user-menu";
 
-const navItems = [
-  { href: "/", label: "Dashboard" },
-  { href: "/setup", label: "Setup" },
-  { href: "/lists", label: "Lists" },
-  { href: "/contacts", label: "Contacts" },
-  { href: "/campaigns", label: "Campaigns" },
-  { href: "/settings", label: "Settings" },
-  { href: "/settings/account", label: "Account" },
-] as const;
-
-export function Sidebar() {
+export function Sidebar({ items }: { items: SidebarNavItem[] }) {
   const pathname = usePathname();
 
   return (
@@ -27,8 +18,8 @@ export function Sidebar() {
           Email Platform
         </h1>
       </div>
-      <nav className="flex flex-1 flex-col gap-0.5 p-3">
-        {navItems.map((item) => {
+      <nav className="flex flex-1 flex-col gap-0.5 p-3" data-testid="app-sidebar">
+        {items.map((item) => {
           const active =
             item.href === "/"
               ? pathname === "/"
@@ -38,6 +29,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              data-testid={`sidebar-${item.href}`}
               className={cn(
                 "rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 active
