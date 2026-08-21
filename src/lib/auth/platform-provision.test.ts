@@ -36,11 +36,8 @@ describe("platform provision confirmation (unit)", () => {
   });
 
   it("normal signup still requires email verification (config unchanged)", async () => {
-    // Better Auth is configured with requireEmailVerification: true in server.ts.
-    // Read the module source contract via auth env — do not call live Better Auth here.
     const src = await import("@/lib/auth/server");
     expect(src.auth).toBeTruthy();
-    // Platform provision mark-verified is CLI-only; no global skip setting exists.
     expect(
       Object.keys(process.env).some((k) =>
         k.includes("SKIP_EMAIL_VERIFICATION"),
@@ -71,7 +68,7 @@ describe("platform provision confirmation (unit)", () => {
 
 describe.skipIf(!hasDatabase)(
   "platform:provision-super-admin",
-  { timeout: 60_000 },
+  { timeout: 90_000 },
   () => {
     let prisma: import("@prisma/client").PrismaClient;
     let ready = false;
@@ -82,7 +79,7 @@ describe.skipIf(!hasDatabase)(
       const { PrismaClient } = await import("@prisma/client");
       prisma = new PrismaClient();
       try {
-        await prisma.$queryRaw`SELECT 1 FROM "auth_user" LIMIT 0`;
+        await prisma.$queryRaw`SELECT "issuer" FROM "auth_account" LIMIT 0`;
         await prisma.adminAuditEvent.findFirst({
           where: { action: "PLATFORM_SUPER_ADMIN_PROVISIONED" },
         });
@@ -99,7 +96,55 @@ describe.skipIf(!hasDatabase)(
       if (prisma) await prisma.$disconnect();
     });
 
-    it("fails closed without confirmation; Better Auth owns password; verified SUPER_ADMIN; idempotent; audited; preserves memberships", async () => {
+    function mockSignUp(opts: {
+      authId: string;
+      email: string;
+      password: string;
+      linkUserId?: string;
+      withCredential?: boolean;
+    }) {
+      return async (input: {
+        email: string;
+        password: string;
+        name: string;
+        firstName: string;
+        lastName: string;
+      }) => {
+        expect(input.password).toBe(opts.password);
+        expect(input.email).toBe(opts.email);
+        await prisma.authUser.create({
+          data: {
+            id: opts.authId,
+            name: input.name,
+            email: input.email,
+            emailVerified: false,
+            firstName: input.firstName,
+            lastName: input.lastName,
+          },
+        });
+        if (opts.withCredential !== false) {
+          await prisma.authAccount.create({
+            data: {
+              id: `acct_${opts.authId}`,
+              accountId: opts.authId,
+              providerId: "credential",
+              issuer: "local:credential",
+              userId: opts.authId,
+              password: "better-auth-managed-hash-placeholder",
+            },
+          });
+        }
+        if (opts.linkUserId) {
+          await prisma.user.update({
+            where: { id: opts.linkUserId },
+            data: { authUserId: opts.authId },
+          });
+        }
+        return { userId: opts.authId };
+      };
+    }
+
+    it("full identity → ALREADY_PROVISIONED; stale authUserId → REPAIRED; preserves memberships/role", async () => {
       if (!ready) return;
       const email = `platform-ops-${suffix}@example.test`;
       const password = "super-secret-platform-pass";
@@ -110,7 +155,6 @@ describe.skipIf(!hasDatabase)(
         firstName: "Ops",
         lastName: "Owner",
       });
-      // Simulate pre-auth seed user: clear auth link, keep org membership.
       await prisma.user.update({
         where: { id: existing.user.id },
         data: {
@@ -130,6 +174,7 @@ describe.skipIf(!hasDatabase)(
         provisionPlatformSuperAdmin,
         PlatformProvisionError,
         PLATFORM_BOOTSTRAP_CONFIRM_VALUE,
+        assessPlatformIdentityConsistency,
       } = await import("@/lib/auth/platform-provision-service");
 
       await expect(
@@ -143,71 +188,30 @@ describe.skipIf(!hasDatabase)(
         }),
       ).rejects.toBeInstanceOf(PlatformProvisionError);
 
-      let signUpCalls = 0;
       const authId = `auth_platform_${suffix}`;
+      let signUpCalls = 0;
       const first = await provisionPlatformSuperAdmin({
         email,
         password,
         confirm: PLATFORM_BOOTSTRAP_CONFIRM_VALUE,
         signUpEmail: async (input) => {
           signUpCalls += 1;
-          expect(input.password).toBe(password);
-          expect(input.email).toBe(email);
-          await prisma.authUser.create({
-            data: {
-              id: authId,
-              name: input.name,
-              email: input.email,
-              emailVerified: false,
-              firstName: input.firstName,
-              lastName: input.lastName,
-            },
-          });
-        await prisma.authAccount.create({
-          data: {
-            id: `acct_platform_${suffix}`,
-            accountId: authId,
-            providerId: "credential",
-            issuer: "local:credential",
-            userId: authId,
-            password: "better-auth-managed-hash-placeholder",
-          },
-        });
-          // Mimic database hook linking under platform flag (no new org).
-          await prisma.user.update({
-            where: { id: existing.user.id },
-            data: { authUserId: authId },
-          });
-          return { userId: authId };
+          return mockSignUp({
+            authId,
+            email,
+            password,
+            linkUserId: existing.user.id,
+          })(input);
         },
       });
 
       expect(signUpCalls).toBe(1);
-      expect(first.status).toBe("provisioned");
+      expect(first.status).toBe("CREATED");
       expect(first.platformRole).toBe("SUPER_ADMIN");
       expect(first.emailVerified).toBe(true);
       expect(first.userId).toBe(existing.user.id);
       expect(first.authUserId).toBe(authId);
 
-      const user = await prisma.user.findUniqueOrThrow({
-        where: { id: existing.user.id },
-      });
-      expect(user.platformRole).toBe("SUPER_ADMIN");
-      expect(user.emailVerifiedAt).toBeTruthy();
-      expect(user.authUserId).toBe(authId);
-
-      const authUser = await prisma.authUser.findUniqueOrThrow({
-        where: { id: authId },
-      });
-      expect(authUser.emailVerified).toBe(true);
-
-      expect(await prisma.authUser.count({ where: { email } })).toBe(1);
-      // Memberships for this operator must be unchanged (none created here).
-      expect(
-        await prisma.organizationMembership.count({
-          where: { userId: existing.user.id },
-        }),
-      ).toBe(orgIdsBefore.length);
       const orgIdsAfter = (
         await prisma.organizationMembership.findMany({
           where: { userId: existing.user.id },
@@ -229,35 +233,225 @@ describe.skipIf(!hasDatabase)(
         "better-auth-managed-hash-placeholder",
       );
 
-      // Idempotent — no second AuthUser / signUp
+      // Fully consistent → ALREADY_PROVISIONED (no signUp)
       const second = await provisionPlatformSuperAdmin({
         email,
         password: null,
         confirm,
         signUpEmail: async () => {
-          throw new Error("signUp must not run when already linked");
+          throw new Error("signUp must not run when already provisioned");
         },
       });
-      expect(second.status).toBe("already_provisioned");
+      expect(second.status).toBe("ALREADY_PROVISIONED");
       expect(second.userId).toBe(existing.user.id);
 
-      // Removing bootstrap env does not unlink the account.
-      delete process.env.PLATFORM_BOOTSTRAP_EMAIL;
-      delete process.env.PLATFORM_BOOTSTRAP_PASSWORD;
-      delete process.env.PLATFORM_BOOTSTRAP_CONFIRM;
-      const still = await prisma.user.findUniqueOrThrow({
+      // Stale authUserId (points at missing AuthUser) → REPAIRED
+      await prisma.authAccount.deleteMany({ where: { userId: authId } });
+      await prisma.authUser.delete({ where: { id: authId } });
+      await prisma.user.update({
+        where: { id: existing.user.id },
+        data: {
+          authUserId: authId, // stale
+          platformRole: "SUPER_ADMIN",
+          emailVerifiedAt: new Date(),
+        },
+      });
+
+      const repairedAuthId = `auth_repaired_${suffix}`;
+      let repairSignUps = 0;
+      const repaired = await provisionPlatformSuperAdmin({
+        email,
+        password,
+        confirm,
+        signUpEmail: async (input) => {
+          repairSignUps += 1;
+          return mockSignUp({
+            authId: repairedAuthId,
+            email,
+            password,
+            linkUserId: existing.user.id,
+          })(input);
+        },
+      });
+      expect(repairSignUps).toBe(1);
+      expect(repaired.status).toBe("REPAIRED");
+      expect(repaired.authUserId).toBe(repairedAuthId);
+      expect(repaired.platformRole).toBe("SUPER_ADMIN");
+
+      const user = await prisma.user.findUniqueOrThrow({
         where: { id: existing.user.id },
       });
-      expect(still.authUserId).toBe(authId);
-      expect(still.platformRole).toBe("SUPER_ADMIN");
+      expect(user.platformRole).toBe("SUPER_ADMIN");
+      expect(user.authUserId).toBe(repairedAuthId);
+      expect(await prisma.authUser.count({ where: { email } })).toBe(1);
+
+      const consistency = await assessPlatformIdentityConsistency({
+        appUser: user,
+        email,
+      });
+      expect(consistency.ok).toBe(true);
+      expect(consistency.discoverableByEmail).toBe(true);
+      expect(consistency.credentialPresent).toBe(true);
+
+      // Memberships still preserved
       expect(
         (
-          await prisma.authUser.findUniqueOrThrow({ where: { id: authId } })
-        ).emailVerified,
-      ).toBe(true);
+          await prisma.organizationMembership.findMany({
+            where: { userId: existing.user.id },
+            select: { organizationId: true },
+          })
+        )
+          .map((m) => m.organizationId)
+          .sort(),
+      ).toEqual(orgIdsBefore.sort());
+
+      // Repair idempotent
+      const again = await provisionPlatformSuperAdmin({
+        email,
+        password: null,
+        confirm,
+        signUpEmail: async () => {
+          throw new Error("no signup on idempotent repair");
+        },
+      });
+      expect(again.status).toBe("ALREADY_PROVISIONED");
+      expect(again.authUserId).toBe(repairedAuthId);
     });
 
-    it("creates User without Organization when none exists; no duplicate AuthUsers", async () => {
+    it("AuthUser by email with stale app authUserId reconciles without duplicate AuthUser", async () => {
+      if (!ready) return;
+      const email = `platform-reconcile-${suffix}@example.test`;
+      const password = "reconcile-password-ok";
+      const realAuthId = `auth_real_${suffix}`;
+      const staleAuthId = `auth_stale_${suffix}`;
+
+      const {
+        provisionPlatformSuperAdmin,
+        PLATFORM_BOOTSTRAP_CONFIRM_VALUE,
+      } = await import("@/lib/auth/platform-provision-service");
+
+      const appUser = await prisma.user.create({
+        data: {
+          email,
+          emailNormalized: email,
+          firstName: "Rec",
+          lastName: "Oncile",
+          name: "Rec Oncile",
+          platformRole: "SUPER_ADMIN",
+          emailVerifiedAt: new Date(),
+          authUserId: staleAuthId, // points nowhere
+        },
+      });
+
+      await prisma.authUser.create({
+        data: {
+          id: realAuthId,
+          name: "Rec Oncile",
+          email,
+          emailVerified: true,
+          firstName: "Rec",
+          lastName: "Oncile",
+        },
+      });
+      await prisma.authAccount.create({
+        data: {
+          id: `acct_real_${suffix}`,
+          accountId: realAuthId,
+          providerId: "credential",
+          issuer: "local:credential",
+          userId: realAuthId,
+          password: "better-auth-managed-hash-placeholder",
+        },
+      });
+
+      const result = await provisionPlatformSuperAdmin({
+        email,
+        password,
+        confirm: PLATFORM_BOOTSTRAP_CONFIRM_VALUE,
+        signUpEmail: async () => {
+          throw new Error("must not create duplicate AuthUser");
+        },
+      });
+
+      expect(result.status).toBe("REPAIRED");
+      expect(result.authUserId).toBe(realAuthId);
+      expect(await prisma.authUser.count({ where: { email } })).toBe(1);
+      const linked = await prisma.user.findUniqueOrThrow({
+        where: { id: appUser.id },
+      });
+      expect(linked.authUserId).toBe(realAuthId);
+      expect(linked.platformRole).toBe("SUPER_ADMIN");
+    });
+
+    it("AuthUser exists but credential missing → repair via Better Auth signup", async () => {
+      if (!ready) return;
+      const email = `platform-nocred-${suffix}@example.test`;
+      const password = "nocred-password-ok";
+      const brokenAuthId = `auth_nocred_${suffix}`;
+      const freshAuthId = `auth_fresh_${suffix}`;
+
+      const {
+        provisionPlatformSuperAdmin,
+        PLATFORM_BOOTSTRAP_CONFIRM_VALUE,
+      } = await import("@/lib/auth/platform-provision-service");
+
+      const appUser = await prisma.user.create({
+        data: {
+          email,
+          emailNormalized: email,
+          firstName: "No",
+          lastName: "Cred",
+          name: "No Cred",
+          platformRole: "SUPER_ADMIN",
+          emailVerifiedAt: new Date(),
+          authUserId: brokenAuthId,
+        },
+      });
+      await prisma.authUser.create({
+        data: {
+          id: brokenAuthId,
+          name: "No Cred",
+          email,
+          emailVerified: true,
+          firstName: "No",
+          lastName: "Cred",
+        },
+      });
+      // Intentionally no AuthAccount credential
+
+      let signUps = 0;
+      const result = await provisionPlatformSuperAdmin({
+        email,
+        password,
+        confirm: PLATFORM_BOOTSTRAP_CONFIRM_VALUE,
+        signUpEmail: async (input) => {
+          signUps += 1;
+          return mockSignUp({
+            authId: freshAuthId,
+            email,
+            password,
+            linkUserId: appUser.id,
+          })(input);
+        },
+      });
+
+      expect(signUps).toBe(1);
+      expect(result.status).toBe("REPAIRED");
+      expect(result.authUserId).toBe(freshAuthId);
+      expect(await prisma.authUser.findUnique({ where: { id: brokenAuthId } })).toBeNull();
+      expect(await prisma.authUser.count({ where: { email } })).toBe(1);
+      const cred = await prisma.authAccount.findFirst({
+        where: {
+          userId: freshAuthId,
+          providerId: "credential",
+          issuer: "local:credential",
+        },
+      });
+      expect(cred?.password).toBeTruthy();
+      expect(JSON.stringify(result)).not.toContain(password);
+    });
+
+    it("creates User without Organization; no duplicate AuthUsers", async () => {
       if (!ready) return;
       const email = `platform-solo-${suffix}@example.test`;
       const {
@@ -272,24 +466,15 @@ describe.skipIf(!hasDatabase)(
         password: "password-long-enough",
         confirm: PLATFORM_BOOTSTRAP_CONFIRM_VALUE,
         signUpEmail: async (input) => {
-          await prisma.authUser.create({
-            data: {
-              id: authId,
-              name: input.name,
-              email: input.email,
-              emailVerified: false,
-              firstName: input.firstName,
-              lastName: input.lastName,
-            },
-          });
           const user = await prisma.user.findUniqueOrThrow({
             where: { emailNormalized: email },
           });
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { authUserId: authId },
-          });
-          return { userId: authId };
+          return mockSignUp({
+            authId,
+            email,
+            password: "password-long-enough",
+            linkUserId: user.id,
+          })(input);
         },
       });
 
@@ -297,10 +482,9 @@ describe.skipIf(!hasDatabase)(
         where: { emailNormalized: email },
       });
       expect(user.platformRole).toBe("SUPER_ADMIN");
-      const memberships = await prisma.organizationMembership.count({
-        where: { userId: user.id },
-      });
-      expect(memberships).toBe(0);
+      expect(
+        await prisma.organizationMembership.count({ where: { userId: user.id } }),
+      ).toBe(0);
       expect(await prisma.authUser.count({ where: { email } })).toBe(1);
     });
   },

@@ -7,12 +7,17 @@ import "server-only";
 
 export {
   PLATFORM_BOOTSTRAP_CONFIRM_VALUE,
+  CREDENTIAL_ISSUER,
   PlatformProvisionError,
   assertPlatformProvisionConfirmation,
+  assessPlatformIdentityConsistency,
+  findCredentialAuthAccount,
   provisionPlatformSuperAdmin,
   readPlatformProvisionEnv,
   signUpEmailViaBetterAuth,
+  type IdentityConsistency,
   type PlatformProvisionEnv,
   type PlatformProvisionResult,
+  type PlatformProvisionStatus,
   type SignUpEmailFn,
 } from "@/lib/auth/platform-provision-service";

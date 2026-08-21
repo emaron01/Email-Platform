@@ -7,12 +7,14 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "@/lib/prisma";
 import { getAuthEnv } from "@/lib/auth/config-core";
+import { getBetterAuthIpAddressOptions } from "@/lib/auth/ip-config";
 import { provisionIndividualWorkspace } from "@/lib/auth/provision-service";
 import { recordAdminAuditEvent } from "@/lib/auth/audit-service";
 import { sendTransactionalEmail } from "@/lib/transactional-email/send-service";
 import { getTransactionalEmailConfig } from "@/lib/transactional-email/config-core";
 
 const authEnv = getAuthEnv();
+const ipAddress = getBetterAuthIpAddressOptions();
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -20,6 +22,12 @@ export const auth = betterAuth({
   }),
   secret: authEnv.secret,
   baseURL: authEnv.baseUrl,
+  advanced: {
+    ipAddress: {
+      ipAddressHeaders: ipAddress.ipAddressHeaders,
+      trustedProxies: ipAddress.trustedProxies,
+    },
+  },
   user: {
     modelName: "authUser",
     additionalFields: {

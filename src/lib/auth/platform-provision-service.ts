@@ -1,16 +1,16 @@
 /**
  * Production one-time platform SUPER_ADMIN provisioning — Node-safe (no server-only).
- * Distinct from local development auth:bootstrap.
  *
- * CLI entry: scripts/platform-provision-super-admin.ts
- * Next.js entry (if needed): `@/lib/auth/platform-provision` (server-only wrapper)
+ * Verifies the *complete* Better Auth identity before ALREADY_PROVISIONED.
+ * Repairs partial/inconsistent links via Better Auth sign-up (never manual hashes).
  *
  * Env (temporary on Render):
  *   PLATFORM_BOOTSTRAP_EMAIL
  *   PLATFORM_BOOTSTRAP_PASSWORD
  *   PLATFORM_BOOTSTRAP_CONFIRM=PROVISION_INITIAL_SUPER_ADMIN
  */
-import type { User } from "@prisma/client";
+import type { AuthUser, User } from "@prisma/client";
+import { createLocalAccountIssuer } from "@better-auth/core/db";
 import { prisma } from "@/lib/prisma";
 import { normalizeEmail } from "@/lib/auth/provision-service";
 import { recordAdminAuditEvent } from "@/lib/auth/audit-service";
@@ -21,6 +21,8 @@ import {
 
 export const PLATFORM_BOOTSTRAP_CONFIRM_VALUE =
   "PROVISION_INITIAL_SUPER_ADMIN";
+
+export const CREDENTIAL_ISSUER = createLocalAccountIssuer("credential");
 
 export class PlatformProvisionError extends Error {
   constructor(message: string) {
@@ -35,8 +37,14 @@ export type PlatformProvisionEnv = {
   confirm: string | null;
 };
 
+export type PlatformProvisionStatus =
+  | "CREATED"
+  | "REPAIRED"
+  | "ALREADY_PROVISIONED"
+  | "FAILED_INCONSISTENT";
+
 export type PlatformProvisionResult = {
-  status: "provisioned" | "already_provisioned";
+  status: PlatformProvisionStatus;
   userId: string;
   authUserId: string;
   email: string;
@@ -87,6 +95,20 @@ export type SignUpEmailFn = (input: {
   lastName: string;
 }) => Promise<{ userId: string }>;
 
+export type IdentityConsistency = {
+  ok: boolean;
+  appUser: User;
+  authUser: AuthUser | null;
+  authUserId: string | null;
+  credentialPresent: boolean;
+  emailMatches: boolean;
+  authEmailVerified: boolean;
+  appEmailVerified: boolean;
+  isSuperAdmin: boolean;
+  discoverableByEmail: boolean;
+  reasons: string[];
+};
+
 async function ensureApplicationUser(email: string): Promise<User> {
   const existing = await prisma.user.findUnique({
     where: { emailNormalized: email },
@@ -108,6 +130,98 @@ async function ensureApplicationUser(email: string): Promise<User> {
   });
 }
 
+/** Better Auth 1.7.1 credential account for an AuthUser. */
+export async function findCredentialAuthAccount(authUserId: string) {
+  return prisma.authAccount.findFirst({
+    where: {
+      userId: authUserId,
+      providerId: "credential",
+      issuer: CREDENTIAL_ISSUER,
+      accountId: authUserId,
+    },
+  });
+}
+
+/**
+ * Full identity consistency check — never returns ALREADY_PROVISIONED from
+ * authUserId alone.
+ */
+export async function assessPlatformIdentityConsistency(input: {
+  appUser: User;
+  email: string;
+}): Promise<IdentityConsistency> {
+  const email = normalizeEmail(input.email);
+  const reasons: string[] = [];
+  const authUserId = input.appUser.authUserId;
+  let authUser: AuthUser | null = null;
+  let credentialPresent = false;
+  let emailMatches = false;
+  let authEmailVerified = false;
+  let discoverableByEmail = false;
+
+  if (!authUserId) {
+    reasons.push("application_user_missing_authUserId");
+  } else {
+    authUser = await prisma.authUser.findUnique({ where: { id: authUserId } });
+    if (!authUser) {
+      reasons.push(
+        `stale_authUserId_missing_AuthUser:${authUserId}`,
+      );
+    } else {
+      emailMatches = normalizeEmail(authUser.email) === email;
+      if (!emailMatches) {
+        reasons.push(
+          `auth_email_mismatch:authUserId=${authUser.id}`,
+        );
+      }
+      authEmailVerified = authUser.emailVerified === true;
+      if (!authEmailVerified) reasons.push("auth_user_not_email_verified");
+
+      const credential = await findCredentialAuthAccount(authUser.id);
+      credentialPresent = Boolean(credential?.password);
+      if (!credentialPresent) {
+        reasons.push(`missing_credential_AuthAccount:authUserId=${authUser.id}`);
+      }
+
+      const byEmail = await prisma.authUser.findUnique({ where: { email } });
+      discoverableByEmail = Boolean(byEmail && byEmail.id === authUser.id);
+      if (!discoverableByEmail) {
+        reasons.push("auth_user_not_discoverable_by_email");
+      }
+    }
+  }
+
+  const appEmailVerified = Boolean(input.appUser.emailVerifiedAt);
+  if (!appEmailVerified) reasons.push("application_user_emailVerifiedAt_unset");
+
+  const isSuperAdmin = input.appUser.platformRole === "SUPER_ADMIN";
+  if (!isSuperAdmin) reasons.push("platformRole_not_SUPER_ADMIN");
+
+  const ok =
+    Boolean(authUserId) &&
+    Boolean(authUser) &&
+    emailMatches &&
+    credentialPresent &&
+    authEmailVerified &&
+    appEmailVerified &&
+    isSuperAdmin &&
+    discoverableByEmail;
+
+  return {
+    ok,
+    appUser: input.appUser,
+    authUser,
+    authUserId,
+    credentialPresent,
+    emailMatches,
+    authEmailVerified,
+    appEmailVerified,
+    isSuperAdmin,
+    discoverableByEmail,
+    reasons,
+  };
+}
+
 async function markVerified(authUserId: string, userId: string): Promise<void> {
   await prisma.$transaction([
     prisma.authUser.update({
@@ -119,6 +233,228 @@ async function markVerified(authUserId: string, userId: string): Promise<void> {
       data: { emailVerifiedAt: new Date() },
     }),
   ]);
+}
+
+async function assertMembershipsUnchanged(
+  userId: string,
+  beforeIds: string[],
+): Promise<void> {
+  const after = await prisma.organizationMembership.findMany({
+    where: { userId },
+    select: { organizationId: true },
+    orderBy: { organizationId: "asc" },
+  });
+  const afterIds = after.map((m) => m.organizationId);
+  if (
+    beforeIds.length !== afterIds.length ||
+    beforeIds.some((id, i) => id !== afterIds[i])
+  ) {
+    throw new PlatformProvisionError(
+      "Organization memberships changed during platform provisioning. Refusing to continue.",
+    );
+  }
+  if (beforeIds.length === 0 && afterIds.length > 0) {
+    throw new PlatformProvisionError(
+      "Platform provisioning created an unexpected Organization membership.",
+    );
+  }
+}
+
+/**
+ * Remove a broken Better Auth identity so signUpEmail can recreate it.
+ * Does not write password hashes — only deletes unusable auth rows.
+ */
+async function removeBrokenAuthIdentity(
+  authUserId: string,
+  email: string,
+): Promise<void> {
+  await prisma.$transaction([
+    prisma.authSession.deleteMany({ where: { userId: authUserId } }),
+    prisma.authAccount.deleteMany({ where: { userId: authUserId } }),
+    prisma.authVerification.deleteMany({
+      where: { identifier: { in: [authUserId, email] } },
+    }),
+    prisma.authUser.delete({ where: { id: authUserId } }),
+  ]);
+}
+
+async function clearStaleAppAuthLink(userId: string): Promise<User> {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { authUserId: null },
+  });
+}
+
+async function createAuthIdentityViaBetterAuth(input: {
+  appUser: User;
+  email: string;
+  password: string;
+  signUpEmail: SignUpEmailFn;
+}): Promise<{ authUserId: string; created: boolean }> {
+  const firstName = input.appUser.firstName?.trim() || "Platform";
+  const lastName = input.appUser.lastName?.trim() || "Admin";
+  const name =
+    input.appUser.name?.trim() || `${firstName} ${lastName}`.trim();
+
+  beginPlatformSuperAdminProvisioning();
+  try {
+    const created = await input.signUpEmail({
+      email: input.email,
+      password: input.password,
+      name,
+      firstName,
+      lastName,
+    });
+    return { authUserId: created.userId, created: true };
+  } finally {
+    endPlatformSuperAdminProvisioning();
+  }
+}
+
+async function linkAppUserToAuthUser(
+  appUserId: string,
+  authUserId: string,
+): Promise<User> {
+  const conflict = await prisma.user.findUnique({
+    where: { authUserId },
+  });
+  if (conflict && conflict.id !== appUserId) {
+    throw new PlatformProvisionError(
+      `AuthUser ${authUserId} is already linked to a different application User ${conflict.id}.`,
+    );
+  }
+  return prisma.user.update({
+    where: { id: appUserId },
+    data: { authUserId },
+  });
+}
+
+async function requirePassword(
+  password: string | null,
+  purpose: string,
+): Promise<string> {
+  if (!password || password.length < 10) {
+    throw new PlatformProvisionError(
+      `PLATFORM_BOOTSTRAP_PASSWORD is required (≥10 characters) to ${purpose}.`,
+    );
+  }
+  return password;
+}
+
+/**
+ * Ensure a usable Better Auth identity exists for this application User.
+ * Returns whether a repair/create occurred (vs already fully consistent).
+ */
+async function ensureUsableAuthIdentity(input: {
+  appUser: User;
+  email: string;
+  password: string | null;
+  signUpEmail: SignUpEmailFn;
+}): Promise<{ appUser: User; authUserId: string; repaired: boolean; created: boolean }> {
+  const email = normalizeEmail(input.email);
+  let appUser = input.appUser;
+  let repaired = false;
+  let created = false;
+
+  // --- Stale authUserId → missing AuthUser ---
+  if (appUser.authUserId) {
+    const linked = await prisma.authUser.findUnique({
+      where: { id: appUser.authUserId },
+    });
+    if (!linked) {
+      appUser = await clearStaleAppAuthLink(appUser.id);
+      repaired = true;
+    } else if (normalizeEmail(linked.email) !== email) {
+      throw new PlatformProvisionError(
+        `FAILED_INCONSISTENT: linked AuthUser ${linked.id} email does not match PLATFORM_BOOTSTRAP_EMAIL (appUser=${appUser.id}).`,
+      );
+    }
+  }
+
+  // --- AuthUser by email ---
+  let authByEmail = await prisma.authUser.findUnique({ where: { email } });
+
+  if (authByEmail && appUser.authUserId && appUser.authUserId !== authByEmail.id) {
+    // Stale pointer vs email identity — reconcile to the email AuthUser after
+    // verifying credential state (no duplicate AuthUser).
+    const staleId = appUser.authUserId;
+    const stale = await prisma.authUser.findUnique({ where: { id: staleId } });
+    if (stale) {
+      throw new PlatformProvisionError(
+        `FAILED_INCONSISTENT: app User ${appUser.id} authUserId=${staleId} but AuthUser by email is ${authByEmail.id}. Refusing ambiguous dual identity.`,
+      );
+    }
+    appUser = await clearStaleAppAuthLink(appUser.id);
+    repaired = true;
+  }
+
+  if (authByEmail) {
+    const credential = await findCredentialAuthAccount(authByEmail.id);
+    if (!credential?.password) {
+      // AuthUser exists but credential unusable — remove broken identity,
+      // recreate via Better Auth (authoritative password handling).
+      const password = await requirePassword(
+        input.password,
+        "repair the missing credential AuthAccount",
+      );
+      // Unlink app users pointing at this AuthUser before delete
+      await prisma.user.updateMany({
+        where: { authUserId: authByEmail.id },
+        data: { authUserId: null },
+      });
+      await removeBrokenAuthIdentity(authByEmail.id, email);
+      authByEmail = null;
+      appUser = await prisma.user.findUniqueOrThrow({ where: { id: appUser.id } });
+      repaired = true;
+
+      const createdAuth = await createAuthIdentityViaBetterAuth({
+        appUser,
+        email,
+        password,
+        signUpEmail: input.signUpEmail,
+      });
+      created = createdAuth.created;
+      appUser = await linkAppUserToAuthUser(appUser.id, createdAuth.authUserId);
+      return { appUser, authUserId: createdAuth.authUserId, repaired, created };
+    }
+
+    // Credential OK — link if needed
+    if (appUser.authUserId !== authByEmail.id) {
+      appUser = await linkAppUserToAuthUser(appUser.id, authByEmail.id);
+      repaired = true;
+    }
+    return { appUser, authUserId: authByEmail.id, repaired, created };
+  }
+
+  // --- No AuthUser by email: create via Better Auth ---
+  if (appUser.authUserId) {
+    // Pointer without matching email AuthUser (should have been cleared above)
+    const orphan = await prisma.authUser.findUnique({
+      where: { id: appUser.authUserId },
+    });
+    if (!orphan) {
+      appUser = await clearStaleAppAuthLink(appUser.id);
+      repaired = true;
+    }
+  }
+
+  const password = await requirePassword(
+    input.password,
+    "create the Better Auth identity",
+  );
+  const createdAuth = await createAuthIdentityViaBetterAuth({
+    appUser,
+    email,
+    password,
+    signUpEmail: input.signUpEmail,
+  });
+  created = true;
+  if (repaired || appUser.authUserId) {
+    // Had prior partial state
+    repaired = repaired || Boolean(appUser.authUserId);
+  }
+  appUser = await linkAppUserToAuthUser(appUser.id, createdAuth.authUserId);
+  return { appUser, authUserId: createdAuth.authUserId, repaired, created };
 }
 
 /**
@@ -143,136 +479,50 @@ export async function provisionPlatformSuperAdmin(input: {
   });
   const membershipOrgIdsBefore = membershipBefore.map((m) => m.organizationId);
 
-  let authUserId = appUser.authUserId;
-  let createdAuth = false;
+  const prior = await assessPlatformIdentityConsistency({ appUser, email });
 
-  if (authUserId) {
-    const authUser = await prisma.authUser.findUnique({
-      where: { id: authUserId },
-    });
-    if (!authUser) {
-      throw new PlatformProvisionError(
-        `User.authUserId=${authUserId} points to a missing AuthUser. Manual repair required.`,
-      );
-    }
-    if (normalizeEmail(authUser.email) !== email) {
-      throw new PlatformProvisionError(
-        "Linked AuthUser email does not match PLATFORM_BOOTSTRAP_EMAIL.",
-      );
-    }
+  let status: PlatformProvisionStatus;
+  let authUserId: string;
+
+  if (prior.ok) {
+    status = "ALREADY_PROVISIONED";
+    authUserId = prior.authUserId!;
   } else {
-    const existingAuth = await prisma.authUser.findUnique({
-      where: { email },
+    const ensured = await ensureUsableAuthIdentity({
+      appUser,
+      email,
+      password: input.password,
+      signUpEmail: input.signUpEmail,
+    });
+    appUser = ensured.appUser;
+    authUserId = ensured.authUserId;
+
+    await markVerified(authUserId, appUser.id);
+    appUser = await prisma.user.update({
+      where: { id: appUser.id },
+      data: { platformRole: "SUPER_ADMIN" },
     });
 
-    if (existingAuth) {
-      const conflict = await prisma.user.findUnique({
-        where: { authUserId: existingAuth.id },
-      });
-      if (conflict && conflict.id !== appUser.id) {
-        throw new PlatformProvisionError(
-          `AuthUser for ${email} is already linked to a different application User.`,
-        );
-      }
-      appUser = await prisma.user.update({
-        where: { id: appUser.id },
-        data: { authUserId: existingAuth.id },
-      });
-      authUserId = existingAuth.id;
-    } else {
-      if (!input.password || input.password.length < 10) {
-        throw new PlatformProvisionError(
-          "PLATFORM_BOOTSTRAP_PASSWORD is required (≥10 characters) to create the Better Auth identity.",
-        );
-      }
-
-      beginPlatformSuperAdminProvisioning();
-      try {
-        const firstName = appUser.firstName?.trim() || "Platform";
-        const lastName = appUser.lastName?.trim() || "Admin";
-        const name =
-          appUser.name?.trim() || `${firstName} ${lastName}`.trim();
-
-        const created = await input.signUpEmail({
-          email,
-          password: input.password,
-          name,
-          firstName,
-          lastName,
-        });
-        authUserId = created.userId;
-        createdAuth = true;
-
-        const linkedByAuth = await prisma.user.findUnique({
-          where: { authUserId },
-        });
-        if (linkedByAuth && linkedByAuth.id !== appUser.id) {
-          throw new PlatformProvisionError(
-            `Better Auth linked to unexpected User ${linkedByAuth.id}; expected ${appUser.id}.`,
-          );
-        }
-
-        appUser = await prisma.user.findUniqueOrThrow({
-          where: { id: appUser.id },
-        });
-        if (!appUser.authUserId) {
-          appUser = await prisma.user.update({
-            where: { id: appUser.id },
-            data: { authUserId },
-          });
-        } else if (appUser.authUserId !== authUserId) {
-          throw new PlatformProvisionError(
-            "Application User linked to a different auth identity than expected.",
-          );
-        }
-      } finally {
-        endPlatformSuperAdminProvisioning();
-      }
+    const after = await assessPlatformIdentityConsistency({ appUser, email });
+    if (!after.ok) {
+      throw new PlatformProvisionError(
+        `FAILED_INCONSISTENT after repair: ${after.reasons.join("; ")}`,
+      );
     }
-  }
 
-  if (!authUserId) {
-    throw new PlatformProvisionError("Failed to resolve AuthUser id.");
-  }
-
-  const alreadySuper =
-    appUser.platformRole === "SUPER_ADMIN" &&
-    Boolean(appUser.emailVerifiedAt) &&
-    (
-      await prisma.authUser.findUniqueOrThrow({ where: { id: authUserId } })
-    ).emailVerified;
-
-  await markVerified(authUserId, appUser.id);
-  appUser = await prisma.user.update({
-    where: { id: appUser.id },
-    data: { platformRole: "SUPER_ADMIN" },
-  });
-
-  const membershipAfter = await prisma.organizationMembership.findMany({
-    where: { userId: appUser.id },
-    select: { organizationId: true },
-    orderBy: { organizationId: "asc" },
-  });
-  const membershipOrgIdsAfter = membershipAfter.map((m) => m.organizationId);
-  if (
-    membershipOrgIdsBefore.length !== membershipOrgIdsAfter.length ||
-    membershipOrgIdsBefore.some((id, i) => id !== membershipOrgIdsAfter[i])
-  ) {
-    throw new PlatformProvisionError(
-      "Organization memberships changed during platform provisioning. Refusing to continue.",
+    const authWasBroken = prior.reasons.some(
+      (r) =>
+        r.includes("stale") ||
+        r.includes("missing_credential") ||
+        r.includes("missing_AuthUser") ||
+        r.includes("not_discoverable") ||
+        r.includes("auth_email"),
     );
-  }
+    status =
+      ensured.repaired || authWasBroken || Boolean(prior.authUserId)
+        ? "REPAIRED"
+        : "CREATED";
 
-  // Platform operators must not gain a new tenant org solely from this CLI.
-  if (membershipOrgIdsBefore.length === 0 && membershipOrgIdsAfter.length > 0) {
-    throw new PlatformProvisionError(
-      "Platform provisioning created an unexpected Organization membership.",
-    );
-  }
-
-  const status = alreadySuper && !createdAuth ? "already_provisioned" : "provisioned";
-
-  if (status === "provisioned") {
     await recordAdminAuditEvent({
       action: "PLATFORM_SUPER_ADMIN_PROVISIONED",
       actorUserId: appUser.id,
@@ -281,24 +531,47 @@ export async function provisionPlatformSuperAdmin(input: {
       metadata: {
         via: "platform:provision-super-admin",
         email,
-        createdAuthIdentity: createdAuth,
+        outcome: status,
+        priorReasons: prior.reasons,
         // Never include password / hashes / tokens.
       },
     });
   }
 
+  await assertMembershipsUnchanged(appUser.id, membershipOrgIdsBefore);
+
+  // Final gate — never claim success without discoverable credential identity
+  const finalCheck = await assessPlatformIdentityConsistency({
+    appUser: await prisma.user.findUniqueOrThrow({ where: { id: appUser.id } }),
+    email,
+  });
+  if (!finalCheck.ok) {
+    throw new PlatformProvisionError(
+      `FAILED_INCONSISTENT: ${finalCheck.reasons.join("; ")}`,
+    );
+  }
+
+  appUser = finalCheck.appUser;
+
+  const messages: Record<PlatformProvisionStatus, string> = {
+    ALREADY_PROVISIONED:
+      "Platform SUPER_ADMIN already fully provisioned (AuthUser + credential verified). Log in at /login.",
+    CREATED:
+      "Platform SUPER_ADMIN created and email-verified. Log in at /login, then remove PLATFORM_BOOTSTRAP_* from Render.",
+    REPAIRED:
+      "Platform SUPER_ADMIN identity repaired via Better Auth. Log in at /login, then remove PLATFORM_BOOTSTRAP_* from Render.",
+    FAILED_INCONSISTENT: "Provisioning failed due to inconsistent identity state.",
+  };
+
   return {
     status,
     userId: appUser.id,
-    authUserId,
+    authUserId: finalCheck.authUserId!,
     email: appUser.email,
     platformRole: "SUPER_ADMIN",
     emailVerified: true,
     organizationId: appUser.activeOrganizationId,
-    message:
-      status === "already_provisioned"
-        ? "Platform SUPER_ADMIN already provisioned. Log in at /login."
-        : "Platform SUPER_ADMIN provisioned and email-verified. Log in at /login, then remove PLATFORM_BOOTSTRAP_* from Render.",
+    message: messages[status],
   };
 }
 
