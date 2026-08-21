@@ -145,6 +145,7 @@ describe.skipIf(!hasDatabase)(
             id: `acct_${suffix}`,
             accountId: fakeAuthId,
             providerId: "credential",
+            issuer: "local:credential",
             userId: fakeAuthId,
             password: "better-auth-managed-hash-placeholder",
           },

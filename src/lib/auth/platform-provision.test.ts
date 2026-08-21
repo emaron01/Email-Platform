@@ -163,15 +163,16 @@ describe.skipIf(!hasDatabase)(
               lastName: input.lastName,
             },
           });
-          await prisma.authAccount.create({
-            data: {
-              id: `acct_platform_${suffix}`,
-              accountId: authId,
-              providerId: "credential",
-              userId: authId,
-              password: "better-auth-managed-hash-placeholder",
-            },
-          });
+        await prisma.authAccount.create({
+          data: {
+            id: `acct_platform_${suffix}`,
+            accountId: authId,
+            providerId: "credential",
+            issuer: "local:credential",
+            userId: authId,
+            password: "better-auth-managed-hash-placeholder",
+          },
+        });
           // Mimic database hook linking under platform flag (no new org).
           await prisma.user.update({
             where: { id: existing.user.id },

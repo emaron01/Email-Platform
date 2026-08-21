@@ -310,37 +310,45 @@ export async function signUpEmailViaBetterAuth(input: {
   firstName: string;
   lastName: string;
 }): Promise<{ userId: string }> {
-  const { auth } = await import("@/lib/auth/better-auth");
-  const result = await auth.api.signUpEmail({
-    body: {
-      email: input.email,
-      password: input.password,
-      name: input.name,
-      firstName: input.firstName,
-      lastName: input.lastName,
-    },
-  });
-
-  const userId =
-    result &&
-    typeof result === "object" &&
-    "user" in result &&
-    result.user &&
-    typeof result.user === "object" &&
-    "id" in result.user
-      ? String((result.user as { id: string }).id)
-      : null;
-
-  if (!userId) {
-    const authUser = await prisma.authUser.findUnique({
-      where: { email: input.email },
+  const { formatSafeErrorForLog } = await import("@/lib/auth/safe-error");
+  try {
+    const { auth } = await import("@/lib/auth/better-auth");
+    const result = await auth.api.signUpEmail({
+      body: {
+        email: input.email,
+        password: input.password,
+        name: input.name,
+        firstName: input.firstName,
+        lastName: input.lastName,
+      },
     });
-    if (!authUser) {
-      throw new PlatformProvisionError(
-        "Better Auth signUpEmail did not return a user id and AuthUser was not found.",
-      );
+
+    const userId =
+      result &&
+      typeof result === "object" &&
+      "user" in result &&
+      result.user &&
+      typeof result.user === "object" &&
+      "id" in result.user
+        ? String((result.user as { id: string }).id)
+        : null;
+
+    if (!userId) {
+      const authUser = await prisma.authUser.findUnique({
+        where: { email: input.email },
+      });
+      if (!authUser) {
+        throw new PlatformProvisionError(
+          "Better Auth signUpEmail did not return a user id and AuthUser was not found.",
+        );
+      }
+      return { userId: authUser.id };
     }
-    return { userId: authUser.id };
+    return { userId };
+  } catch (error) {
+    if (error instanceof PlatformProvisionError) throw error;
+    throw new PlatformProvisionError(
+      `Better Auth identity creation failed: ${formatSafeErrorForLog(error)}`,
+    );
   }
-  return { userId };
 }

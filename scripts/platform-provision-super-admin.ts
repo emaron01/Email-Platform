@@ -50,10 +50,16 @@ async function main() {
     console.log("     and PLATFORM_BOOTSTRAP_CONFIRM from Render.");
   } catch (error) {
     console.error("[platform:provision-super-admin] FAILED");
+    const { formatSafeErrorForLog } = await import(
+      "../src/lib/auth/safe-error"
+    );
+    const { PlatformProvisionError } = await import(
+      "../src/lib/auth/platform-provision-service"
+    );
     if (error instanceof PlatformProvisionError) {
-      console.error(error.message);
+      console.error(formatSafeErrorForLog(error));
     } else {
-      console.error(error instanceof Error ? error.message : error);
+      console.error(formatSafeErrorForLog(error));
     }
     process.exitCode = 1;
   } finally {

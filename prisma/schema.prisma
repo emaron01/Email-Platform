@@ -1019,6 +1019,8 @@ model AuthAccount {
   id                    String    @id
   accountId             String
   providerId            String
+  /// Better Auth 1.7+ account identity scope (e.g. local:credential).
+  issuer                String
   userId                String
   user                  AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
   accessToken           String?
@@ -1031,6 +1033,7 @@ model AuthAccount {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
+  @@unique([issuer, accountId])
   @@index([userId])
   @@map("auth_account")
 }
