@@ -17,11 +17,20 @@ export function buildProductSynthesisMessages(input: {
   const system = `You are a production Product setup synthesis engine.
 Prompt version: ${PRODUCT_SYNTHESIS_PROMPT_VERSION}
 
-You receive an EVIDENCE BUNDLE about a product. Produce ONE structured response with:
+You receive an EVIDENCE BUNDLE about a product. Produce ONE structured JSON response with:
 - productDraft (factual product profile)
 - productMessagingDraft (messaging guidance — NOT scoring evidence)
-- suggestedPersonas (buyer/user/influencer roles supported by evidence)
-- personaDrafts (profiles for those suggestions, using the SAME evidence)
+- personas (array of canonical buyer/user/influencer personas supported by evidence)
+
+Each personas[] item MUST include:
+- name: concise non-empty persona/role name (required). Examples: "Chief Revenue Officer", "Sales Leadership", "Revenue Operations Leader", "IT Infrastructure Leader". Role clusters are OK; a literal job title is not required.
+- likelyTitles, function, seniority, whyThisPersonaMatters
+- responsibilities, ownershipAreas, painPoints, desiredOutcomesFromSolution
+- positiveSignals, negativeSignals, messagingNotes, confidence
+- evidenceRefs where practical
+
+Do NOT return suggestionKey (application-owned identity).
+Do NOT return separate suggestedPersonas / personaDrafts arrays — only personas[].
 
 RULES:
 1. Do NOT fabricate pricing, customers, integrations, certifications, ROI, market share, or capabilities not supported by evidence.
@@ -33,7 +42,8 @@ RULES:
 7. Do NOT score contacts. Do NOT invent numeric fit scores.
 8. Keep criteria concise and atomic — never paste multi-paragraph prose into a single criterion.
 9. Cite evidence via evidenceRefs / sourceIds where practical for major claims.
-10. Return JSON matching the schema only.`;
+10. Every persona.name must be a non-empty string after trimming.
+11. Return JSON matching the schema only.`;
 
   const user = JSON.stringify({
     productName: input.productName,

@@ -13,7 +13,7 @@ import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
 import {
   PRODUCT_SYNTHESIS_PROMPT_VERSION,
-  productSynthesisResultSchema,
+  productAiResponseSchema,
   type ProductSynthesisResult,
 } from "@/lib/product-research/contract";
 import { buildProductSynthesisMessages } from "@/lib/product-research/prompt";
@@ -23,6 +23,7 @@ import {
   logProductSynthesisFailure,
   USER_FACING_SYNTHESIS_FAILURE,
 } from "@/lib/product-research/synthesis-errors";
+import { transformProductAiResponse } from "@/lib/product-research/transform";
 
 export async function synthesizeProductSetup(input: {
   organizationId: string;
@@ -174,19 +175,14 @@ export async function synthesizeProductSetup(input: {
         primaryUrl: input.primaryUrl,
         excerpts: input.excerpts,
       }),
-      schema: productSynthesisResultSchema,
+      schema: productAiResponseSchema,
       schemaName: "product_setup_synthesis",
     });
 
     stage = "validation";
-    const result = productSynthesisResultSchema.parse(response.data);
+    const aiResult = productAiResponseSchema.parse(response.data);
     const allowedSourceIds = new Set(input.excerpts.map((e) => e.sourceId));
-    result.productDraft.evidenceRefs = (result.productDraft.evidenceRefs ?? []).map(
-      (ref) => ({
-        ...ref,
-        sourceIds: (ref.sourceIds ?? []).filter((id) => allowedSourceIds.has(id)),
-      }),
-    );
+    const result = transformProductAiResponse(aiResult, { allowedSourceIds });
 
     stage = "persist";
     await prisma.productSetupRun.update({

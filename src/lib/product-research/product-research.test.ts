@@ -14,7 +14,7 @@ import {
 } from "@/lib/product-research/extract";
 import {
   PRODUCT_SYNTHESIS_PROMPT_VERSION,
-  productSynthesisResultSchema,
+  productAiResponseSchema,
 } from "@/lib/product-research/contract";
 import { buildProductSynthesisMessages } from "@/lib/product-research/prompt";
 import { DEFAULT_RESEARCH_POLICY_VALUES } from "@/lib/usage/defaults";
@@ -84,37 +84,19 @@ describe("Upload validation", () => {
 });
 
 describe("Product synthesis contract", () => {
-  it("rejects malformed synthesis and does not score contacts", () => {
-    expect(() =>
-      productSynthesisResultSchema.parse({
-        productDraft: {},
-        productMessagingDraft: {},
-        suggestedPersonas: [],
-        personaDrafts: [],
-        contactScores: [{ score: 90 }],
-      }),
-    ).not.toThrow(); // extra keys stripped by zod object default — ensure no contactScores field required
-
-    const parsed = productSynthesisResultSchema.parse({
+  it("validates canonical AI personas without suggestionKey", () => {
+    const parsed = productAiResponseSchema.parse({
       productDraft: { description: "A tool", unknownFields: ["pricing"] },
       productMessagingDraft: { primaryPositioning: "Save time" },
-      suggestedPersonas: [
+      personas: [
         {
-          suggestionKey: "cro",
           name: "CRO",
           likelyTitles: ["CRO"],
-          department: "Sales",
+          function: "Sales",
           seniority: "C-Suite",
           confidence: "HIGH",
-        },
-      ],
-      personaDrafts: [
-        {
-          suggestionKey: "cro",
-          name: "CRO",
-          likelyTitles: ["CRO"],
           responsibilities: ["Owns forecasting"],
-          desiredOutcomesFromYourSolution: ["Reduce forecast admin"],
+          desiredOutcomesFromSolution: ["Reduce forecast admin"],
           criteria: [
             {
               name: "Owns forecasting",
@@ -125,8 +107,9 @@ describe("Product synthesis contract", () => {
       ],
     });
     expect(parsed.productDraft.unknownFields).toContain("pricing");
-    expect(parsed.suggestedPersonas).toHaveLength(1);
-    expect(PRODUCT_SYNTHESIS_PROMPT_VERSION).toBe("1");
+    expect(parsed.personas).toHaveLength(1);
+    expect(parsed.personas[0]).not.toHaveProperty("suggestionKey");
+    expect(PRODUCT_SYNTHESIS_PROMPT_VERSION).toBe("2");
   });
 
   it("prompt separates messaging from scoring and Title≠Role", () => {
@@ -146,6 +129,7 @@ describe("Product synthesis contract", () => {
     expect(messages[0]!.content).toContain("Title Match ≠ Role Match");
     expect(messages[0]!.content).toContain("Do NOT score contacts");
     expect(messages[0]!.content).toContain("NEVER campaign CTAs");
+    expect(messages[0]!.content).toContain("personas");
     expect(messages[1]!.content).toContain("domainsAbsent");
     const userPayload = JSON.parse(messages[1]!.content);
     expect(userPayload.domainsAbsent).toEqual(
