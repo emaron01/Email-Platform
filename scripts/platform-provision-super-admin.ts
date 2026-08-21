@@ -1,0 +1,64 @@
+/**
+ * Production / Render CLI: one-time platform SUPER_ADMIN provisioning.
+ *
+ *   npm run platform:provision-super-admin
+ *
+ * Required env (temporary — remove after success):
+ *   PLATFORM_BOOTSTRAP_EMAIL
+ *   PLATFORM_BOOTSTRAP_PASSWORD
+ *   PLATFORM_BOOTSTRAP_CONFIRM=PROVISION_INITIAL_SUPER_ADMIN
+ *
+ * Distinct from local `npm run auth:bootstrap` (dev linking).
+ */
+import { config } from "dotenv";
+
+config({ path: ".env.local" });
+config();
+
+async function main() {
+  const {
+    PlatformProvisionError,
+    provisionPlatformSuperAdmin,
+    readPlatformProvisionEnv,
+    signUpEmailViaBetterAuth,
+  } = await import("../src/lib/auth/platform-provision");
+
+  try {
+    const env = readPlatformProvisionEnv();
+    const result = await provisionPlatformSuperAdmin({
+      email: env.email,
+      password: env.password,
+      confirm: env.confirm,
+      signUpEmail: signUpEmailViaBetterAuth,
+    });
+
+    // Safe status only — never print password, hashes, or tokens.
+    console.log("[platform:provision-super-admin] OK");
+    console.log(`  status:         ${result.status}`);
+    console.log(`  userId:         ${result.userId}`);
+    console.log(`  authUserId:     ${result.authUserId}`);
+    console.log(`  email:          ${result.email}`);
+    console.log(`  platformRole:   ${result.platformRole}`);
+    console.log(`  emailVerified:  ${result.emailVerified}`);
+    console.log(`  organizationId: ${result.organizationId ?? "(none)"}`);
+    console.log(`  message:        ${result.message}`);
+    console.log("");
+    console.log("Next:");
+    console.log("  1. Log in at /login with PLATFORM_BOOTSTRAP_EMAIL + password.");
+    console.log("  2. Remove PLATFORM_BOOTSTRAP_EMAIL, PLATFORM_BOOTSTRAP_PASSWORD,");
+    console.log("     and PLATFORM_BOOTSTRAP_CONFIRM from Render.");
+  } catch (error) {
+    console.error("[platform:provision-super-admin] FAILED");
+    if (error instanceof PlatformProvisionError) {
+      console.error(error.message);
+    } else {
+      console.error(error instanceof Error ? error.message : error);
+    }
+    process.exitCode = 1;
+  } finally {
+    const { prisma } = await import("../src/lib/prisma");
+    await prisma.$disconnect();
+  }
+}
+
+void main();

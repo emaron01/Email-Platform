@@ -1,0 +1,1128 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum CampaignContactStatus {
+  PENDING
+  SELECTED
+  EXCLUDED
+  COMPLETED
+}
+
+enum EmailDraftStatus {
+  NOT_CREATED
+  DRAFT
+  APPROVED
+  SENT
+  SKIPPED
+}
+
+enum ContactListSource {
+  PASTE
+  UPLOAD
+}
+
+enum ScoringRunStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum ContactScoringStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum ScoreLabel {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+  DISQUALIFIED
+}
+
+enum ResearchStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  NOT_REQUIRED
+}
+
+enum CompanyResearchStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+enum ResearchConfidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ResearchMethod {
+  AUTOMATED
+  MANUAL
+  HYBRID
+}
+
+enum UsageCategory {
+  RESEARCH
+  CONTACT_RESEARCH
+  INTERPRETATION
+  SCORING
+  EMAIL_GENERATION
+}
+
+enum UsageOperation {
+  WEB_SEARCH
+  RESEARCH_SYNTHESIS
+  CONTACT_RESEARCH_SYNTHESIS
+  ICP_INTERPRETATION
+  PERSONA_INTERPRETATION
+  CONTACT_SCORING
+  EMAIL_GENERATION
+}
+
+enum CriterionDataType {
+  TEXT
+  NUMBER
+  CURRENCY
+  BOOLEAN
+  ENUM
+  MULTI_SELECT
+  DATE
+}
+
+enum CriterionOperator {
+  EQUALS
+  NOT_EQUALS
+  CONTAINS
+  IN
+  NOT_IN
+  GREATER_THAN
+  GREATER_THAN_OR_EQUAL
+  LESS_THAN
+  LESS_THAN_OR_EQUAL
+  BETWEEN
+  EXISTS
+  NOT_EXISTS
+}
+
+enum CriterionImportance {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum CriterionSource {
+  AI_INTERPRETED
+  MANUAL
+  MIGRATED_FROM_LEGACY
+}
+
+enum ContactResearchStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  PARTIAL
+  NOT_REQUIRED
+}
+
+enum UsageEventStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+  RETRY
+}
+
+enum UsageResource {
+  EMAIL_GENERATION
+  ACTIVE_RESEARCHED_COMPANY
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum PlatformRole {
+  NONE
+  SUPER_ADMIN
+  SUPPORT
+}
+
+enum AdminAuditAction {
+  USER_SIGNUP
+  EMAIL_VERIFIED
+  PASSWORD_CHANGED
+  PASSWORD_RESET_COMPLETED
+  ORGANIZATION_INVITATION_CREATED
+  ORGANIZATION_INVITATION_ACCEPTED
+  ORGANIZATION_MEMBER_ROLE_CHANGED
+  BILLING_CONTACT_CHANGED
+  TRANSACTIONAL_TEMPLATE_CHANGED
+  PLATFORM_ROLE_CHANGED
+  PLATFORM_SUPER_ADMIN_PROVISIONED
+  WORKSPACE_RENAMED
+  LOGIN_SUCCEEDED
+  LOGOUT
+  ICP_INTERPRETED
+  ICP_CRITERION_CHANGED
+  PERSONA_INTERPRETED
+  PERSONA_CRITERION_CHANGED
+}
+
+enum TransactionalEmailTemplateKey {
+  EMAIL_VERIFICATION
+  WELCOME
+  PASSWORD_RESET
+  PASSWORD_CHANGED
+  ORGANIZATION_INVITATION
+  INVITATION_ACCEPTED
+}
+
+enum TransactionalEmailStatus {
+  QUEUED
+  SENT
+  FAILED
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+}
+
+model Organization {
+  id        String             @id @default(cuid())
+  name      String
+  slug      String             @unique
+  status    OrganizationStatus @default(ACTIVE)
+  /// IANA timezone for daily quota windows (e.g. America/New_York).
+  timezone  String             @default("UTC")
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  memberships      OrganizationMembership[]
+  products         Product[]
+  offers           Offer[]
+  icps             Icp[]
+  personas         Persona[]
+  contactLists     ContactList[]
+  contacts         Contact[]
+  companies        Company[]
+  companyResearch  CompanyResearch[]
+  contactResearch  ContactResearch[]
+  icpCriteria      IcpCriterion[]
+  personaCriteria  PersonaCriterion[]
+  contactScores    ContactScore[]
+  scoringRuns      ScoringRun[]
+  campaigns        Campaign[]
+  campaignContacts CampaignContact[]
+  emailDrafts      EmailDraft[]
+  usagePolicy      OrganizationUsagePolicy?
+  researchPolicy   ResearchPolicy?
+  userUsageOverrides UserUsageOverride[]
+  usageEvents      UsageEvent[]
+  usageQuotaLedgers UsageQuotaLedger[]
+  invitations                  OrganizationInvitation[]
+  billingProfile               OrganizationBillingProfile?
+  transactionalEmailEvents     TransactionalEmailEvent[]
+  activeForUsers               User[]                     @relation("ActiveOrganization")
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model User {
+  id                   String       @id @default(cuid())
+  authUserId           String?      @unique
+  email                String       @unique
+  emailNormalized      String       @unique
+  firstName            String?
+  lastName             String?
+  name                 String?
+  emailVerifiedAt      DateTime?
+  platformRole         PlatformRole @default(NONE)
+  activeOrganizationId String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  activeOrganization           Organization?            @relation("ActiveOrganization", fields: [activeOrganizationId], references: [id], onDelete: SetNull)
+  memberships                  OrganizationMembership[]
+  usageOverrides               UserUsageOverride[]
+  usageEvents                  UsageEvent[]
+  usageQuotaLedgers            UsageQuotaLedger[]
+  invitationsSent              OrganizationInvitation[] @relation("InvitedBy")
+  companyResearchInitiated     CompanyResearch[]        @relation("ResearchInitiatedBy")
+  adminAuditEvents             AdminAuditEvent[]
+  transactionalEmailEvents     TransactionalEmailEvent[]
+
+  @@index([platformRole])
+  @@index([activeOrganizationId])
+}
+
+model OrganizationMembership {
+  id               String         @id @default(cuid())
+  organizationId   String
+  userId           String
+  role             MembershipRole @default(MEMBER)
+  isBillingContact Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([organizationId, role])
+}
+
+model OrganizationBillingProfile {
+  id               String   @id @default(cuid())
+  organizationId   String   @unique
+  billingEmail     String?
+  companyLegalName String?
+  taxId            String?
+  addressLine1     String?
+  addressLine2     String?
+  city             String?
+  region           String?
+  postalCode       String?
+  countryCode      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+/// Organization-level usage limits. Defaults are DB-backed configuration, not product constants.
+model OrganizationUsagePolicy {
+  id                           String   @id @default(cuid())
+  organizationId               String   @unique
+  activeResearchedCompanyLimit Int
+  dailyEmailGenerationLimit    Int
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+/// Organization-level research depth / freshness. Editable; not hard-coded forever.
+model ResearchPolicy {
+  id                          String   @id @default(cuid())
+  organizationId              String   @unique
+  maxSearchQueriesPerCompany  Int
+  maxSourcesPerCompany        Int
+  researchFreshnessDays       Int
+  /// Progressive contact-role research limits (criteria-aware; not hard-coded forever).
+  maxSearchQueriesPerContact  Int      @default(2)
+  maxSourcesPerContact        Int      @default(6)
+  contactResearchFreshnessDays Int     @default(90)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+/// Optional per-user overrides. Null field = inherit OrganizationUsagePolicy.
+model UserUsageOverride {
+  id                           String   @id @default(cuid())
+  organizationId               String
+  userId                       String
+  activeResearchedCompanyLimit Int?
+  dailyEmailGenerationLimit    Int?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+}
+
+/// Immutable usage/telemetry events. Authoritative for metering; do not update/delete from app UX.
+model UsageEvent {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String?
+  category       UsageCategory
+  operation      UsageOperation
+  provider       String?
+  model          String?
+  companyId      String?
+  contactId      String?
+  scoringRunId   String?
+  campaignId     String?
+  /// Links attempt/retry events for the same logical operation when used.
+  operationId    String?
+  inputTokens    Int?
+  outputTokens   Int?
+  webSearchCalls Int?
+  status         UsageEventStatus
+  retryCount     Int              @default(0)
+  durationMs     Int?
+  /// Safe structured metadata only — never API keys or secrets.
+  metadata       Json?
+  occurredAt     DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, occurredAt])
+  @@index([organizationId, userId])
+  @@index([organizationId, category])
+  @@index([organizationId, operation])
+  @@index([operationId])
+  @@index([companyId])
+  @@index([scoringRunId])
+}
+
+/// Concurrency-safe daily (or period) quota consumption ledger.
+model UsageQuotaLedger {
+  id             String        @id @default(cuid())
+  organizationId String
+  userId         String
+  resource       UsageResource
+  /// Calendar day (or period) key in the Organization timezone, e.g. 2026-08-20.
+  periodKey      String
+  consumed       Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, resource, periodKey])
+  @@index([organizationId])
+  @@index([organizationId, userId])
+  @@index([organizationId, resource, periodKey])
+}
+
+model OrganizationInvitation {
+  id              String           @id @default(cuid())
+  organizationId  String
+  email           String
+  role            MembershipRole   @default(MEMBER)
+  /// SHA-256 hash of the raw invitation token. Never store the raw token.
+  tokenHash       String           @unique
+  status          InvitationStatus @default(PENDING)
+  expiresAt       DateTime
+  invitedByUserId String
+  acceptedAt      DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("InvitedBy", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, email])
+  @@index([organizationId, status])
+  @@index([email])
+}
+
+model Product {
+  id                String   @id @default(cuid())
+  organizationId    String
+  name              String
+  description       String?
+  valueProposition  String?
+  averageOrderValue Decimal? @db.Decimal(12, 2)
+  websiteUrl        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  icps         Icp[]
+  personas     Persona[]
+  campaigns    Campaign[]
+  scoringRuns  ScoringRun[]
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, name])
+}
+
+model Offer {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  primaryCta     String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaigns    Campaign[]
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, name])
+}
+
+model Icp {
+  id                   String   @id @default(cuid())
+  organizationId       String
+  productId            String
+  name                 String
+  description          String?
+  /// Authoritative natural-language ICP definition (preserved; never overwritten by AI).
+  definition           String?
+  additionalContext    String?
+  targetIndustries     Json?
+  minEmployees         Int?
+  maxEmployees         Int?
+  minRevenue           Decimal? @db.Decimal(14, 2)
+  maxRevenue           Decimal? @db.Decimal(14, 2)
+  targetGeographies    Json?
+  requiredTechnologies Json?
+  positiveSignals      Json?
+  negativeSignals      Json?
+  notes                String?
+  interpretationVersion       Int       @default(1)
+  interpretationPromptVersion String?
+  lastInterpretedAt           DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  criteria     IcpCriterion[]
+  campaigns    Campaign[]
+  scoringRuns  ScoringRun[]
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, name])
+  @@index([productId])
+  @@index([organizationId, productId])
+}
+
+/// Tenant-owned structured ICP criterion (AI-interpreted and/or manually edited).
+model IcpCriterion {
+  id                String              @id @default(cuid())
+  organizationId    String
+  icpId             String
+  name              String
+  description       String?
+  criterionType     String
+  dataType          CriterionDataType
+  operator          CriterionOperator
+  targetValue       Json?
+  minValue          Json?
+  maxValue          Json?
+  allowedValues     Json?
+  importance        CriterionImportance @default(MEDIUM)
+  isRequired        Boolean             @default(false)
+  isDisqualifier    Boolean             @default(false)
+  researchGuidance  String?
+  source            CriterionSource     @default(AI_INTERPRETED)
+  confidence        ResearchConfidence?
+  /// When true, reinterpret must not overwrite this row without explicit user action.
+  manuallyEdited    Boolean             @default(false)
+  sortOrder         Int                 @default(0)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  icp          Icp          @relation(fields: [icpId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([icpId])
+  @@index([organizationId, icpId])
+  @@index([organizationId, icpId, sortOrder])
+}
+
+model Persona {
+  id               String   @id @default(cuid())
+  organizationId   String
+  productId        String
+  name             String
+  /// Authoritative natural-language persona / buyer-role definition (preserved).
+  definition       String?
+  additionalContext String?
+  targetTitles     Json?
+  department       String?
+  seniority        String?
+  responsibilities String?
+  painPoints       String?
+  desiredOutcomes  String?
+  messagingNotes   String?
+  interpretationVersion       Int       @default(1)
+  interpretationPromptVersion String?
+  lastInterpretedAt           DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  criteria     PersonaCriterion[]
+  campaigns    Campaign[]
+  scoringRuns  ScoringRun[]
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, name])
+  @@index([productId])
+  @@index([organizationId, productId])
+}
+
+/// Tenant-owned structured Persona criterion (role/responsibility oriented).
+model PersonaCriterion {
+  id                String              @id @default(cuid())
+  organizationId    String
+  personaId         String
+  name              String
+  description       String?
+  criterionType     String
+  dataType          CriterionDataType
+  operator          CriterionOperator
+  targetValue       Json?
+  minValue          Json?
+  maxValue          Json?
+  allowedValues     Json?
+  importance        CriterionImportance @default(MEDIUM)
+  isRequired        Boolean             @default(false)
+  isDisqualifier    Boolean             @default(false)
+  researchGuidance  String?
+  source            CriterionSource     @default(AI_INTERPRETED)
+  confidence        ResearchConfidence?
+  manuallyEdited    Boolean             @default(false)
+  sortOrder         Int                 @default(0)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  persona      Persona      @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([personaId])
+  @@index([organizationId, personaId])
+  @@index([organizationId, personaId, sortOrder])
+}
+
+model ContactList {
+  id               String            @id @default(cuid())
+  organizationId   String
+  name             String
+  sourceType       ContactListSource @default(UPLOAD)
+  originalFilename String?
+  totalContacts    Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contacts     Contact[]
+  scoringRuns  ScoringRun[]
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, sourceType])
+}
+
+model Contact {
+  id             String   @id @default(cuid())
+  organizationId String
+  contactListId  String
+  companyId      String?
+  firstName      String?
+  lastName       String?
+  email          String?
+  title          String?
+  company        String?
+  companyWebsite String?
+  industry       String?
+  employeeCount  Int?
+  revenue        Decimal? @db.Decimal(14, 2)
+  location       String?
+  linkedinUrl    String?
+  phone          String?
+  rawData        Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactList      ContactList       @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+  companyRecord    Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  scores           ContactScore[]
+  campaignContacts CampaignContact[]
+  contactResearch  ContactResearch[]
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, email])
+  @@index([organizationId, contactListId])
+  @@index([contactListId])
+  @@index([companyId])
+  @@index([organizationId, companyId])
+}
+
+model Company {
+  id              String   @id @default(cuid())
+  organizationId  String
+  name            String
+  normalizedName  String
+  website         String?
+  normalizedDomain String?
+  industry        String?
+  employeeCount   Int?
+  revenue         Decimal? @db.Decimal(14, 2)
+  location        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contacts     Contact[]
+  research     CompanyResearch[]
+
+  @@index([organizationId])
+  @@index([organizationId, normalizedName])
+  @@index([organizationId, normalizedDomain])
+  @@unique([organizationId, normalizedDomain])
+}
+
+model CompanyResearch {
+  id                   String                @id @default(cuid())
+  organizationId       String
+  companyId            String
+  status               CompanyResearchStatus @default(NOT_STARTED)
+  researchMethod       ResearchMethod        @default(AUTOMATED)
+  companySummary       String?
+  whatTheySell         String?
+  customerTypes        Json?
+  primaryMarkets       Json?
+  businessModel        String?
+  estimatedAov         String?
+  aovReasoning         String?
+  companySizeContext   String?
+  relevantTechnologies Json?
+  buyingSignals        Json?
+  riskSignals          Json?
+  researchConfidence   ResearchConfidence?
+  sourceCount          Int                   @default(0)
+  researchSources      Json?
+  researchedAt         DateTime?
+  expiresAt            DateTime?
+  /// Automated research provenance — never stores API keys.
+  aiProvider           String?
+  aiModel              String?
+  aiModelUrlIdentifier String?
+  promptVersion        String?
+  /// Safe usage metadata from research provider (no pricing calculation).
+  inputTokens          Int?
+  outputTokens         Int?
+  webSearchCallCount   Int?
+  researchDurationMs   Int?
+  /// User who initiated this research run (metering). Ownership remains Organization.
+  researchedByUserId   String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  researchedBy   User?        @relation("ResearchInitiatedBy", fields: [researchedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, companyId])
+  @@index([companyId])
+  @@index([organizationId, status])
+  @@index([expiresAt])
+  @@index([researchedByUserId])
+}
+
+/// Contact-level role research (separate from CompanyResearch). Answers "what are they responsible for?"
+model ContactResearch {
+  id                   String                 @id @default(cuid())
+  organizationId       String
+  contactId            String
+  status               ContactResearchStatus  @default(NOT_STARTED)
+  researchMethod       ResearchMethod         @default(AUTOMATED)
+  confidence           ResearchConfidence?
+  currentTitle         String?
+  roleSummary          String?
+  responsibilities     Json?
+  ownershipAreas       Json?
+  professionalSignals  Json?
+  negativeRoleSignals  Json?
+  researchSources      Json?
+  researchedAt         DateTime?
+  expiresAt            DateTime?
+  aiProvider            String?
+  aiModel              String?
+  aiModelUrlIdentifier String?
+  promptVersion        String?
+  inputTokens          Int?
+  outputTokens         Int?
+  webSearchCallCount   Int?
+  researchDurationMs   Int?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, contactId])
+  @@index([organizationId])
+  @@index([contactId])
+  @@index([organizationId, status])
+  @@index([expiresAt])
+}
+
+model ScoringRun {
+  id              String           @id @default(cuid())
+  organizationId  String
+  contactListId   String
+  productId       String
+  icpId           String
+  personaId       String
+  status          ScoringRunStatus @default(PENDING)
+  totalContacts   Int              @default(0)
+  scoredContacts  Int              @default(0)
+  productSnapshot Json
+  icpSnapshot     Json
+  personaSnapshot Json
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  completedAt     DateTime?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactList  ContactList   @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  icp          Icp           @relation(fields: [icpId], references: [id], onDelete: Restrict)
+  persona      Persona       @relation(fields: [personaId], references: [id], onDelete: Restrict)
+  scores       ContactScore[]
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status])
+  @@index([contactListId])
+  @@index([organizationId, contactListId])
+  @@index([productId])
+  @@index([icpId])
+  @@index([personaId])
+}
+
+model ContactScore {
+  id                     String               @id @default(cuid())
+  organizationId         String
+  contactId              String
+  scoringRunId           String
+  scoringStatus          ContactScoringStatus @default(PENDING)
+  overallScore           Int?
+  icpScore               Int?
+  personaScore           Int?
+  companyScore           Int?
+  productRelevanceScore  Int?
+  scoreLabel             ScoreLabel?
+  companySummary         String?
+  whatTheySell           String?
+  estimatedAov           String?
+  aovReasoning           String?
+  fitStrengths           Json?
+  fitRisks               Json?
+  disqualifiers          Json?
+  reasoning              String?
+  recommendedAction      String?
+  researchStatus         ResearchStatus       @default(NOT_STARTED)
+  researchSources        Json?
+  researchedAt           DateTime?
+  /// Provenance: which CompanyResearch version informed this score.
+  companyResearchId      String?
+  companyResearchAt      DateTime?
+  /// Provenance: which ContactResearch version informed this score.
+  contactResearchId      String?
+  contactResearchAt      DateTime?
+  /// Dynamic per-criterion assessments (auditability for criteria-driven scoring).
+  criterionAssessments   Json?
+  /// Validated structured assessment used to calculate scores (auditability).
+  assessmentData         Json?
+  aiProvider             String?
+  aiModel                String?
+  /// Sanitized model endpoint identifier — never includes API keys or credentials.
+  aiModelUrlIdentifier   String?
+  promptVersion          String?
+  scoringLogicVersion    String?
+  scoredAt               DateTime?
+  scoringError           String?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  scoringRun   ScoringRun   @relation(fields: [scoringRunId], references: [id], onDelete: Cascade)
+
+  @@unique([scoringRunId, contactId])
+  @@index([organizationId])
+  @@index([organizationId, contactId])
+  @@index([contactId])
+  @@index([scoringRunId])
+  @@index([organizationId, scoringRunId])
+  @@index([organizationId, scoreLabel])
+  @@index([organizationId, researchStatus])
+  @@index([organizationId, scoringStatus])
+}
+
+model Campaign {
+  id               String         @id @default(cuid())
+  organizationId   String
+  name             String
+  productId        String
+  icpId            String
+  personaId        String
+  /// Legacy optional link to Offer table. New campaigns use offer* fields below.
+  offerId          String?
+  offerName        String?
+  offerDescription String?
+  offerCta         String?
+  offerNotes       String?
+  status           CampaignStatus @default(DRAFT)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product           @relation(fields: [productId], references: [id])
+  icp          Icp               @relation(fields: [icpId], references: [id])
+  persona      Persona           @relation(fields: [personaId], references: [id])
+  offer        Offer?            @relation(fields: [offerId], references: [id])
+  contacts     CampaignContact[]
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status])
+  @@index([productId])
+  @@index([icpId])
+  @@index([personaId])
+  @@index([offerId])
+}
+
+model CampaignContact {
+  id             String                @id @default(cuid())
+  organizationId String
+  campaignId     String
+  contactId      String
+  selected       Boolean               @default(true)
+  status         CampaignContactStatus @default(PENDING)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  emailDrafts  EmailDraft[]
+
+  @@unique([organizationId, campaignId, contactId])
+  @@index([organizationId])
+  @@index([organizationId, campaignId])
+  @@index([campaignId])
+  @@index([contactId])
+}
+
+model EmailDraft {
+  id                String           @id @default(cuid())
+  organizationId    String
+  campaignContactId String
+  sequenceNumber    Int
+  subject           String?
+  body              String?
+  status            EmailDraftStatus @default(NOT_CREATED)
+  approvedAt        DateTime?
+  sentAt            DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaignContact CampaignContact @relation(fields: [campaignContactId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, campaignContactId, sequenceNumber])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([campaignContactId])
+  @@index([status])
+}
+
+model AuthUser {
+  id            String        @id
+  name          String
+  email         String
+  emailVerified Boolean       @default(false)
+  image         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  firstName     String        @default("")
+  lastName      String        @default("")
+  sessions      AuthSession[]
+  accounts      AuthAccount[]
+
+  @@unique([email])
+  @@map("auth_user")
+}
+
+model AuthSession {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("auth_session")
+}
+
+model AuthAccount {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  AuthUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("auth_account")
+}
+
+model AuthVerification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("auth_verification")
+}
+
+model AdminAuditEvent {
+  id             String           @id @default(cuid())
+  action         AdminAuditAction
+  actorUserId    String?
+  organizationId String?
+  targetUserId   String?
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+
+  actorUser User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([action])
+  @@index([actorUserId])
+  @@index([organizationId])
+  @@index([createdAt])
+}
+
+model TransactionalEmailTemplate {
+  id              String                        @id @default(cuid())
+  templateKey     TransactionalEmailTemplateKey @unique
+  displayName     String
+  subjectTemplate String
+  htmlTemplate    String
+  textTemplate    String
+  enabled         Boolean                       @default(true)
+  version         Int                           @default(1)
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+}
+
+model TransactionalEmailTemplateBaseline {
+  id              String                        @id @default(cuid())
+  templateKey     TransactionalEmailTemplateKey @unique
+  displayName     String
+  subjectTemplate String
+  htmlTemplate    String
+  textTemplate    String
+  createdAt       DateTime                      @default(now())
+}
+
+model TransactionalEmailEvent {
+  id                       String                        @id @default(cuid())
+  userId                   String?
+  organizationId           String?
+  templateKey              TransactionalEmailTemplateKey
+  templateVersion          Int?
+  recipientEmailNormalized String
+  provider                 String
+  providerMessageId        String?
+  status                   TransactionalEmailStatus
+  failureCategory          String?
+  retryCount               Int                           @default(0)
+  idempotencyKey           String?
+  createdAt                DateTime                      @default(now())
+  sentAt                   DateTime?
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@unique([idempotencyKey])
+  @@index([templateKey])
+  @@index([recipientEmailNormalized])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model RateLimitBucket {
+  id          String   @id @default(cuid())
+  bucketKey   String
+  windowStart DateTime
+  count       Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([bucketKey, windowStart])
+  @@index([bucketKey])
+}
+
