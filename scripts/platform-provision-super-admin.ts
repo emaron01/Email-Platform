@@ -9,6 +9,7 @@
  *   PLATFORM_BOOTSTRAP_CONFIRM=PROVISION_INITIAL_SUPER_ADMIN
  *
  * Distinct from local `npm run auth:bootstrap` (dev linking).
+ * Imports the Node-safe service only (never Next.js server-only wrappers).
  */
 import { config } from "dotenv";
 
@@ -21,7 +22,7 @@ async function main() {
     provisionPlatformSuperAdmin,
     readPlatformProvisionEnv,
     signUpEmailViaBetterAuth,
-  } = await import("../src/lib/auth/platform-provision");
+  } = await import("../src/lib/auth/platform-provision-service");
 
   try {
     const env = readPlatformProvisionEnv();

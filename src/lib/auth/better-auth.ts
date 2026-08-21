@@ -1,0 +1,225 @@
+/**
+ * Authoritative Better Auth instance — Node-safe (no server-only).
+ * Next.js entry: `@/lib/auth/server` re-exports behind server-only.
+ * CLI and app must share this single configuration.
+ */
+import { betterAuth } from "better-auth";
+import { prismaAdapter } from "better-auth/adapters/prisma";
+import { prisma } from "@/lib/prisma";
+import { getAuthEnv } from "@/lib/auth/config-core";
+import { provisionIndividualWorkspace } from "@/lib/auth/provision-service";
+import { recordAdminAuditEvent } from "@/lib/auth/audit-service";
+import { sendTransactionalEmail } from "@/lib/transactional-email/send-service";
+import { getTransactionalEmailConfig } from "@/lib/transactional-email/config-core";
+
+const authEnv = getAuthEnv();
+
+export const auth = betterAuth({
+  database: prismaAdapter(prisma, {
+    provider: "postgresql",
+  }),
+  secret: authEnv.secret,
+  baseURL: authEnv.baseUrl,
+  user: {
+    modelName: "authUser",
+    additionalFields: {
+      firstName: {
+        type: "string",
+        required: true,
+        input: true,
+      },
+      lastName: {
+        type: "string",
+        required: true,
+        input: true,
+      },
+    },
+  },
+  session: {
+    modelName: "authSession",
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24,
+    cookieCache: {
+      enabled: true,
+      maxAge: 60 * 5,
+    },
+  },
+  account: {
+    modelName: "authAccount",
+  },
+  verification: {
+    modelName: "authVerification",
+  },
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: true,
+    minPasswordLength: 10,
+    maxPasswordLength: 128,
+    sendResetPassword: async ({ user, url }) => {
+      // Never throw: forgot-password must stay neutral regardless of SMTP outcome.
+      try {
+        const appUser = await prisma.user.findUnique({
+          where: { authUserId: user.id },
+        });
+        await sendTransactionalEmail({
+          templateKey: "PASSWORD_RESET",
+          to: user.email,
+          userId: appUser?.id,
+          organizationId: appUser?.activeOrganizationId,
+          variables: {
+            firstName:
+              (user as { firstName?: string }).firstName ||
+              appUser?.firstName ||
+              "there",
+            resetUrl: url,
+            expirationTime: "1 hour",
+          },
+        });
+      } catch (error) {
+        console.error("[auth] password-reset email failed", {
+          failureCategory:
+            error instanceof Error ? error.name : "PROVIDER_ERROR",
+          message: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+        });
+      }
+    },
+    onPasswordReset: async ({ user }) => {
+      const appUser = await prisma.user.findUnique({
+        where: { authUserId: user.id },
+      });
+      if (!appUser) return;
+      await recordAdminAuditEvent({
+        action: "PASSWORD_RESET_COMPLETED",
+        actorUserId: appUser.id,
+        organizationId: appUser.activeOrganizationId,
+      });
+      const org = appUser.activeOrganizationId
+        ? await prisma.organization.findUnique({
+            where: { id: appUser.activeOrganizationId },
+          })
+        : null;
+      try {
+        await sendTransactionalEmail({
+          templateKey: "PASSWORD_CHANGED",
+          to: appUser.email,
+          userId: appUser.id,
+          organizationId: appUser.activeOrganizationId,
+          variables: {
+            firstName: appUser.firstName || "there",
+            workspaceName: org?.name || "your workspace",
+          },
+        });
+      } catch (error) {
+        console.error("[auth] password-changed email failed", {
+          message: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+        });
+      }
+    },
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      // Do not roll back a created identity if SMTP delivery fails.
+      // Account remains unverified; user can Resend Verification.
+      try {
+        const appUser = await prisma.user.findUnique({
+          where: { authUserId: user.id },
+        });
+        await sendTransactionalEmail({
+          templateKey: "EMAIL_VERIFICATION",
+          to: user.email,
+          userId: appUser?.id,
+          organizationId: appUser?.activeOrganizationId,
+          variables: {
+            firstName:
+              (user as { firstName?: string }).firstName ||
+              appUser?.firstName ||
+              "there",
+            verificationUrl: url,
+            expirationTime: "24 hours",
+          },
+        });
+      } catch (error) {
+        console.error("[auth] verification email failed", {
+          message: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+        });
+      }
+    },
+  },
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          const firstName =
+            (user as { firstName?: string }).firstName?.trim() || "User";
+          const lastName =
+            (user as { lastName?: string }).lastName?.trim() || "";
+          const provisioned = await provisionIndividualWorkspace({
+            authUserId: user.id,
+            email: user.email,
+            firstName,
+            lastName,
+          });
+
+          // Welcome is sent after verification (see session / verify hooks below)
+          // Store pending welcome via idempotency when verified.
+          void provisioned;
+        },
+      },
+      update: {
+        after: async (user) => {
+          if (!user.emailVerified) return;
+          const appUser = await prisma.user.findUnique({
+            where: { authUserId: user.id },
+          });
+          if (!appUser) return;
+          if (!appUser.emailVerifiedAt) {
+            await prisma.user.update({
+              where: { id: appUser.id },
+              data: { emailVerifiedAt: new Date() },
+            });
+            await recordAdminAuditEvent({
+              action: "EMAIL_VERIFIED",
+              actorUserId: appUser.id,
+              organizationId: appUser.activeOrganizationId,
+            });
+            const org = appUser.activeOrganizationId
+              ? await prisma.organization.findUnique({
+                  where: { id: appUser.activeOrganizationId },
+                })
+              : null;
+            try {
+              await sendTransactionalEmail({
+                templateKey: "WELCOME",
+                to: appUser.email,
+                userId: appUser.id,
+                organizationId: appUser.activeOrganizationId,
+                idempotencyKey: `welcome:${appUser.id}`,
+                variables: {
+                  firstName: appUser.firstName || "there",
+                  workspaceName: org?.name || "your workspace",
+                },
+              });
+            } catch (error) {
+              console.error("[auth] welcome email failed", {
+                message:
+                  error instanceof Error
+                    ? error.message.slice(0, 300)
+                    : "unknown",
+              });
+            }
+          }
+        },
+      },
+    },
+  },
+  trustedOrigins: [authEnv.appUrl, authEnv.baseUrl],
+});
+
+export type AuthSession = typeof auth.$Infer.Session;
+
+/** Expose support email for templates without leaking config elsewhere. */
+export function getSupportEmail(): string {
+  return getTransactionalEmailConfig().supportEmail;
+}

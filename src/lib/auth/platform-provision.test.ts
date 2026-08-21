@@ -16,7 +16,7 @@ describe("platform provision confirmation (unit)", () => {
       PLATFORM_BOOTSTRAP_CONFIRM_VALUE,
       PlatformProvisionError,
       readPlatformProvisionEnv,
-    } = await import("@/lib/auth/platform-provision");
+    } = await import("@/lib/auth/platform-provision-service");
 
     expect(() => assertPlatformProvisionConfirmation(null)).toThrow(
       PlatformProvisionError,
@@ -130,7 +130,7 @@ describe.skipIf(!hasDatabase)(
         provisionPlatformSuperAdmin,
         PlatformProvisionError,
         PLATFORM_BOOTSTRAP_CONFIRM_VALUE,
-      } = await import("@/lib/auth/platform-provision");
+      } = await import("@/lib/auth/platform-provision-service");
 
       await expect(
         provisionPlatformSuperAdmin({
@@ -262,7 +262,7 @@ describe.skipIf(!hasDatabase)(
       const {
         provisionPlatformSuperAdmin,
         PLATFORM_BOOTSTRAP_CONFIRM_VALUE,
-      } = await import("@/lib/auth/platform-provision");
+      } = await import("@/lib/auth/platform-provision-service");
 
       const authId = `auth_solo_${suffix}`;
 

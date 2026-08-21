@@ -1,7 +1,7 @@
 import {
   formatFromAddress,
   getTransactionalEmailConfig,
-} from "@/lib/transactional-email/config";
+} from "@/lib/transactional-email/config-core";
 import { ConsoleTransactionalEmailProvider } from "@/lib/transactional-email/providers/console";
 import { ResendTransactionalEmailProvider } from "@/lib/transactional-email/providers/resend";
 import { SmtpTransactionalEmailProvider } from "@/lib/transactional-email/providers/smtp";

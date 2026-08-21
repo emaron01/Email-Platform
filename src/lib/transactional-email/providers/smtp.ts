@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport";
-import type { SmtpConfig } from "@/lib/transactional-email/config";
+import type { SmtpConfig } from "@/lib/transactional-email/config-core";
 import {
   assertSafeRecipient,
   assertSafeSubject,
