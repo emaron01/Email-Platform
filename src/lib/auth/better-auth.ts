@@ -127,9 +127,11 @@ export const auth = betterAuth({
   emailVerification: {
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
+    // Align token TTL with email copy ("24 hours"). Tokens are JWTs signed with
+    // BETTER_AUTH_SECRET — rotating the secret invalidates outstanding links.
+    expiresIn: 60 * 60 * 24,
     sendVerificationEmail: async ({ user, url }) => {
-      // Do not roll back a created identity if SMTP delivery fails.
-      // Account remains unverified; user can Resend Verification.
+      // Pass Better Auth's `url` through unchanged — never reconstruct it.
       try {
         const appUser = await prisma.user.findUnique({
           where: { authUserId: user.id },

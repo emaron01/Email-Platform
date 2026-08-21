@@ -1,12 +1,28 @@
 import { PageHeader, TenantMissing } from "@/components/ui";
 import { getDashboardMetrics } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
+import { getCurrentUser } from "@/lib/auth/session";
 import { formatNumber } from "@/lib/utils";
+import { redirect } from "next/navigation";
 
 export default async function DashboardPage() {
-  const organization = await getCurrentOrganization();
+  // Invalid verification must not land here — callbackURL is /post-verify.
+  // If a stale link still hits /?error=…, send users to the verification UX.
+  // (searchParams handled via redirect from middleware is not available here
+  // for all cases; post-verify is the primary path.)
+
+  const [organization, user] = await Promise.all([
+    getCurrentOrganization(),
+    getCurrentUser(),
+  ]);
 
   if (!organization) {
+    if (user?.platformRole === "SUPER_ADMIN") {
+      redirect("/settings/account");
+    }
+    if (user) {
+      redirect("/no-workspace");
+    }
     return (
       <div>
         <PageHeader

@@ -1,18 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { Icp, Persona, Product } from "@prisma/client";
+import type { Icp, Product } from "@prisma/client";
 import {
   deleteIcpAction,
-  deletePersonaAction,
   deleteProductAction,
   upsertIcpAction,
-  upsertPersonaAction,
   upsertProductAction,
 } from "@/app/actions";
-import {
-  interpretIcpAction,
-  interpretPersonaAction,
-} from "@/app/actions/interpretation";
+import { interpretIcpAction } from "@/app/actions/interpretation";
+import { PersonaForm } from "@/components/PersonaForm";
 import {
   EmptyState,
   Field,
@@ -249,6 +245,9 @@ function CriteriaReview({
   return (
     <div className="mt-4 rounded-md bg-slate-50 p-3">
       <h5 className="text-sm font-semibold text-slate-900">{title}</h5>
+      <p className="mt-1 text-xs text-slate-500">
+        ✓ required / strong · ☆ supporting · ✗ disqualifier
+      </p>
       <ul className="mt-2 space-y-1 text-sm text-slate-700">
         {criteria.map((c, i) => (
           <li key={`${c.name}-${i}`}>
@@ -386,118 +385,6 @@ function IcpForm({
               <input type="hidden" name="id" value={icp.id} />
               <input type="hidden" name="productId" value={productId} />
               <SecondaryButton type="submit">Delete ICP</SecondaryButton>
-            </form>
-          </div>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-function PersonaForm({
-  productId,
-  persona,
-  criteria,
-}: {
-  productId: string;
-  persona?: Persona;
-  criteria: Awaited<ReturnType<typeof listPersonaCriteria>>;
-}) {
-  return (
-    <div className="rounded-md border border-slate-200 p-4">
-      <form action={upsertPersonaAction} className="grid gap-4 md:grid-cols-2">
-        <input type="hidden" name="id" value={persona?.id ?? ""} />
-        <input type="hidden" name="productId" value={productId} />
-        <Field
-          label="Persona Name"
-          name="name"
-          defaultValue={persona?.name}
-          required
-        />
-        <Field
-          label="Likely Titles (evidence)"
-          name="targetTitles"
-          defaultValue={listToCommaString(persona?.targetTitles)}
-          placeholder="VP Infrastructure, Head of Infrastructure"
-        />
-        <div className="md:col-span-2">
-          <Field
-            label="Describe the person who buys / cares"
-            name="definition"
-            defaultValue={persona?.definition ?? persona?.responsibilities}
-            as="textarea"
-            placeholder="The executive responsible for enterprise IT infrastructure..."
-          />
-        </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Additional context (optional)"
-            name="additionalContext"
-            defaultValue={persona?.additionalContext}
-            as="textarea"
-          />
-        </div>
-        <Field
-          label="Department / Function"
-          name="department"
-          defaultValue={persona?.department}
-        />
-        <Field
-          label="Seniority"
-          name="seniority"
-          defaultValue={persona?.seniority}
-        />
-        <div className="md:col-span-2">
-          <Field
-            label="Primary Responsibilities"
-            name="responsibilities"
-            defaultValue={persona?.responsibilities}
-            as="textarea"
-          />
-        </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Problems / Pain Points"
-            name="painPoints"
-            defaultValue={persona?.painPoints}
-            as="textarea"
-          />
-        </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Desired Outcomes"
-            name="desiredOutcomes"
-            defaultValue={persona?.desiredOutcomes}
-            as="textarea"
-          />
-        </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Messaging Notes"
-            name="messagingNotes"
-            defaultValue={persona?.messagingNotes}
-            as="textarea"
-          />
-        </div>
-        <div className="md:col-span-2">
-          <SubmitButton>{persona ? "Save persona" : "Add persona"}</SubmitButton>
-        </div>
-      </form>
-      {persona ? (
-        <>
-          <CriteriaReview title="AI Interpretation" criteria={criteria} />
-          <div className="mt-3 flex flex-wrap gap-2">
-            <form action={interpretPersonaAction}>
-              <input type="hidden" name="personaId" value={persona.id} />
-              <input type="hidden" name="productId" value={productId} />
-              <SecondaryButton type="submit">
-                Interpret / Reinterpret Persona
-              </SecondaryButton>
-            </form>
-            <form action={deletePersonaAction}>
-              <input type="hidden" name="id" value={persona.id} />
-              <input type="hidden" name="productId" value={productId} />
-              <SecondaryButton type="submit">Delete persona</SecondaryButton>
             </form>
           </div>
         </>

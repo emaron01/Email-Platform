@@ -39,6 +39,7 @@ export default function SignupPage() {
           name: `${firstName} ${lastName}`.trim(),
           firstName,
           lastName,
+          callbackURL: "/post-verify",
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {

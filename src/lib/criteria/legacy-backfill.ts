@@ -6,6 +6,11 @@
 import type { Icp, Persona, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { InterpretedCriterionDraft } from "@/lib/criteria/types";
+import {
+  decomposeProseIntoAtomicTargets,
+  filterLiteralTitleEvidence,
+  looksLikeCampaignCta,
+} from "@/lib/persona/decompose";
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -140,11 +145,12 @@ export function buildLegacyPersonaCriteria(
   const out: InterpretedCriterionDraft[] = [];
   let sort = 0;
 
-  const titles = asStringArray(persona.targetTitles);
+  const titles = filterLiteralTitleEvidence(asStringArray(persona.targetTitles));
   if (titles.length) {
     out.push({
       name: "Likely Titles",
-      description: "Title patterns are evidence, not definitive proof of role fit.",
+      description:
+        "Title patterns are evidence, not definitive proof of role fit.",
       criterionType: "title_pattern",
       dataType: "MULTI_SELECT",
       operator: "IN",
@@ -152,7 +158,8 @@ export function buildLegacyPersonaCriteria(
       importance: "MEDIUM",
       isRequired: false,
       isDisqualifier: false,
-      researchGuidance: "Treat titles as weak evidence; verify responsibilities.",
+      researchGuidance:
+        "Treat titles as weak evidence; verify responsibilities.",
       sortOrder: sort++,
       source: "MIGRATED_FROM_LEGACY",
     });
@@ -188,51 +195,65 @@ export function buildLegacyPersonaCriteria(
     });
   }
 
-  if (persona.responsibilities?.trim()) {
+  for (const snippet of decomposeProseIntoAtomicTargets(
+    persona.responsibilities ?? "",
+  )) {
     out.push({
-      name: "Role Responsibilities",
+      name: snippet,
       criterionType: "responsibility",
       dataType: "TEXT",
-      operator: "CONTAINS",
-      targetValue: persona.responsibilities.trim(),
+      operator: "EXISTS",
+      targetValue: snippet,
       importance: "CRITICAL",
       isRequired: true,
       isDisqualifier: false,
-      researchGuidance: "Confirm ownership / responsibilities from role evidence.",
+      researchGuidance:
+        "Confirm ownership / responsibilities from role evidence.",
       sortOrder: sort++,
       source: "MIGRATED_FROM_LEGACY",
     });
   }
 
-  if (persona.painPoints?.trim()) {
+  for (const snippet of decomposeProseIntoAtomicTargets(
+    persona.painPoints ?? "",
+  )) {
     out.push({
-      name: "Pain Relevance",
+      name: snippet,
       criterionType: "pain",
       dataType: "TEXT",
-      operator: "CONTAINS",
-      targetValue: persona.painPoints.trim(),
+      operator: "EXISTS",
+      targetValue: snippet,
       importance: "MEDIUM",
       isRequired: false,
       isDisqualifier: false,
+      researchGuidance: "Look for evidence this pain is relevant to the role.",
       sortOrder: sort++,
       source: "MIGRATED_FROM_LEGACY",
     });
   }
 
-  if (persona.desiredOutcomes?.trim()) {
+  for (const snippet of decomposeProseIntoAtomicTargets(
+    persona.desiredOutcomes ?? "",
+  )) {
+    if (looksLikeCampaignCta(snippet)) continue;
     out.push({
-      name: "Desired Outcomes",
+      name: snippet,
+      description: "Desired outcome from adopting a solution like ours.",
       criterionType: "desired_outcome",
       dataType: "TEXT",
-      operator: "CONTAINS",
-      targetValue: persona.desiredOutcomes.trim(),
+      operator: "EXISTS",
+      targetValue: snippet,
       importance: "MEDIUM",
       isRequired: false,
       isDisqualifier: false,
+      researchGuidance:
+        "Evaluate whether responsibilities/problems align with this business outcome — not whether they will take a meeting.",
       sortOrder: sort++,
       source: "MIGRATED_FROM_LEGACY",
     });
   }
+
+  // Messaging notes intentionally omitted — communication guidance, not fit criteria.
 
   return out;
 }

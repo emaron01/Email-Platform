@@ -25,7 +25,9 @@ import {
   interpretationResultSchema,
   parseInterpretedCriteria,
 } from "@/lib/interpretation/schema";
-import type { AiMessage } from "@/lib/ai/types";
+import { buildPersonaInterpretationMessages } from "@/lib/interpretation/persona-prompt";
+import { sanitizePersonaInterpretedCriteria } from "@/lib/interpretation/persona-sanitize";
+import type { PersonaAuthoritativeFields } from "@/lib/persona/save";
 
 function criterionRowToSnapshot(row: PersonaCriterion): CriterionSnapshot {
   return {
@@ -50,62 +52,35 @@ function criterionRowToSnapshot(row: PersonaCriterion): CriterionSnapshot {
   };
 }
 
-function buildPersonaInterpretationMessages(input: {
-  productName: string;
-  productDescription: string | null;
-  definition: string;
-  additionalContext: string | null;
-  existingCriteria: CriterionSnapshot[];
-}): AiMessage[] {
-  const system = `You are a production buyer-persona interpretation engine.
-Prompt version: ${PERSONA_INTERPRETATION_PROMPT_VERSION}
-
-Convert natural-language persona / buyer-role definitions into structured criteria for contact research and scoring.
-
-RULES:
-1. Distinguish title patterns (weak evidence) from responsibilities and ownership (strong evidence).
-2. Titles alone are never sufficient proof of role fit — include responsibility criteria when implied.
-3. Include researchGuidance for criteria that require contact-level evidence.
-4. Do not invent pain points or outcomes not implied by the definition.
-5. Return JSON matching the schema only.`;
-
-  const user = JSON.stringify({
-    product: {
-      name: input.productName,
-      description: input.productDescription,
-    },
-    personaDefinition: input.definition,
-    additionalContext: input.additionalContext,
-    existingCriteria: input.existingCriteria.map((c) => ({
-      name: c.name,
-      type: c.criterionType,
-      operator: c.operator,
-      manuallyEdited: c.manuallyEdited ?? false,
-    })),
-    responseSchema: {
-      criteria: [
-        {
-          name: "string",
-          description: "string|null",
-          criterionType:
-            "string slug e.g. title_pattern, responsibility, department, ownership",
-          dataType: "TEXT|NUMBER|BOOLEAN|ENUM|MULTI_SELECT|...",
-          operator: "EQUALS|CONTAINS|IN|EXISTS|...",
-          targetValue: "any|null",
-          importance: "CRITICAL|HIGH|MEDIUM|LOW",
-          isRequired: "boolean",
-          isDisqualifier: "boolean",
-          researchGuidance: "string|null",
-          sortOrder: "number",
-        },
-      ],
-    },
-  });
-
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ];
+function personaToAuthoritativeFields(
+  persona: {
+    name: string;
+    definition: string | null;
+    additionalContext: string | null;
+    targetTitles: unknown;
+    department: string | null;
+    seniority: string | null;
+    responsibilities: string | null;
+    painPoints: string | null;
+    desiredOutcomes: string | null;
+    messagingNotes: string | null;
+  },
+): PersonaAuthoritativeFields {
+  const titles = Array.isArray(persona.targetTitles)
+    ? persona.targetTitles.map(String).filter(Boolean)
+    : [];
+  return {
+    name: persona.name,
+    definition: persona.definition,
+    additionalContext: persona.additionalContext,
+    targetTitles: titles,
+    department: persona.department,
+    seniority: persona.seniority,
+    responsibilities: persona.responsibilities,
+    painPoints: persona.painPoints,
+    desiredOutcomes: persona.desiredOutcomes,
+    messagingNotes: persona.messagingNotes,
+  };
 }
 
 export async function listPersonaCriteria(
@@ -271,19 +246,20 @@ export async function interpretPersonaDefinition(input: {
     throw new TenantError("Persona not found in the active organization.");
   }
 
-  const effectiveDefinition =
-    persona.definition?.trim() ||
-    persona.responsibilities?.trim() ||
-    (() => {
-      const titles = Array.isArray(persona.targetTitles)
-        ? persona.targetTitles.map(String).filter(Boolean)
-        : [];
-      return titles.length > 0 ? `Target titles: ${titles.join(", ")}` : null;
-    })();
+  const fields = personaToAuthoritativeFields(persona);
+  const hasAuthoritativeInput =
+    Boolean(fields.definition?.trim()) ||
+    Boolean(fields.responsibilities?.trim()) ||
+    Boolean(fields.painPoints?.trim()) ||
+    Boolean(fields.desiredOutcomes?.trim()) ||
+    Boolean(fields.department?.trim()) ||
+    Boolean(fields.seniority?.trim()) ||
+    fields.targetTitles.length > 0 ||
+    Boolean(fields.additionalContext?.trim());
 
-  if (!effectiveDefinition) {
+  if (!hasAuthoritativeInput) {
     throw new TenantError(
-      "Persona requires a definition or legacy role fields before interpretation.",
+      "Persona requires a definition or role fields before interpretation.",
     );
   }
 
@@ -304,8 +280,7 @@ export async function interpretPersonaDefinition(input: {
       messages: buildPersonaInterpretationMessages({
         productName: persona.product.name,
         productDescription: persona.product.description,
-        definition: effectiveDefinition,
-        additionalContext: persona.additionalContext,
+        fields,
         existingCriteria: existingSnapshots,
       }),
       schema: interpretationResultSchema,
@@ -313,10 +288,19 @@ export async function interpretPersonaDefinition(input: {
     });
 
     const parsed = parseInterpretedCriteria(response.data);
-    const aiDrafts: InterpretedCriterionDraft[] = parsed.criteria.map((c) => ({
-      ...c,
-      source: "AI_INTERPRETED",
-    }));
+    const aiDrafts: InterpretedCriterionDraft[] =
+      sanitizePersonaInterpretedCriteria(
+        parsed.criteria.map((c) => ({
+          ...c,
+          source: "AI_INTERPRETED",
+        })),
+      );
+
+    if (aiDrafts.length === 0) {
+      throw new TenantError(
+        "Interpretation produced no usable criteria. Adjust the Persona definition and try again.",
+      );
+    }
 
     const plan = planCriterionReinterpretation({
       existing: persona.criteria.map((c) => ({

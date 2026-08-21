@@ -6,6 +6,7 @@ const PUBLIC_PATHS = [
   "/login",
   "/signup",
   "/verify-email",
+  "/post-verify",
   "/forgot-password",
   "/reset-password",
   "/invite",
@@ -46,6 +47,21 @@ export async function middleware(request: NextRequest) {
 
   if (isPublic(pathname)) {
     return NextResponse.next();
+  }
+
+  // Legacy verification failures redirected to /?error=INVALID_TOKEN — never
+  // show the Dashboard / DEV tenant fallback for those.
+  if (
+    pathname === "/" &&
+    (request.nextUrl.searchParams.get("error") === "INVALID_TOKEN" ||
+      request.nextUrl.searchParams.get("error") === "TOKEN_EXPIRED")
+  ) {
+    const dest = new URL("/verify-email", request.url);
+    dest.searchParams.set(
+      "error",
+      request.nextUrl.searchParams.get("error") || "INVALID_TOKEN",
+    );
+    return NextResponse.redirect(dest);
   }
 
   const env = getAuthEnv();

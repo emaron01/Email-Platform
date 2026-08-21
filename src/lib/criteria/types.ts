@@ -111,6 +111,6 @@ function stringifyValue(value: unknown): string {
 }
 
 export const ICP_INTERPRETATION_PROMPT_VERSION = "1";
-export const PERSONA_INTERPRETATION_PROMPT_VERSION = "1";
+export const PERSONA_INTERPRETATION_PROMPT_VERSION = "2";
 export const CONTACT_RESEARCH_PROMPT_VERSION = "1";
 export const SCORING_LOGIC_VERSION_CRITERIA = "2";

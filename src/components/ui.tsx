@@ -47,9 +47,11 @@ export function Panel({
 export function EmptyState({
   title,
   description,
+  actions,
 }: {
   title: string;
   description: string;
+  actions?: React.ReactNode;
 }) {
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
@@ -57,6 +59,11 @@ export function EmptyState({
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">
         {description}
       </p>
+      {actions ? (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-sm">
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -68,6 +75,7 @@ export function Field({
   type = "text",
   required,
   placeholder,
+  hint,
   as = "input",
   rows = 3,
 }: {
@@ -77,6 +85,7 @@ export function Field({
   type?: string;
   required?: boolean;
   placeholder?: string;
+  hint?: string;
   as?: "input" | "textarea";
   rows?: number;
 }) {
@@ -86,6 +95,11 @@ export function Field({
   return (
     <label className="block text-sm">
       <span className="font-medium text-slate-700">{label}</span>
+      {hint ? (
+        <span className="mt-0.5 block text-xs font-normal text-slate-500">
+          {hint}
+        </span>
+      ) : null}
       {as === "textarea" ? (
         <textarea
           name={name}
@@ -109,11 +123,18 @@ export function Field({
   );
 }
 
-export function SubmitButton({ children }: { children: React.ReactNode }) {
+export function SubmitButton({
+  children,
+  disabled,
+}: {
+  children: React.ReactNode;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="submit"
-      className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+      disabled={disabled}
+      className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}
     </button>
@@ -166,11 +187,43 @@ export function SecondaryButton({
   );
 }
 
+/**
+ * Fallback when a page needs a workspace but none is resolvable.
+ *
+ * DEV_ORGANIZATION_ID instructions are only shown when the explicit
+ * non-production tenant bypass is enabled — never in production.
+ */
 export function TenantMissing() {
+  const allowDevInstructions =
+    process.env.NODE_ENV !== "production" &&
+    process.env.ALLOW_DEV_TENANT_BYPASS === "true";
+
+  if (allowDevInstructions) {
+    return (
+      <EmptyState
+        title="Organization not configured"
+        description="Set DEV_ORGANIZATION_ID in .env.local to a valid Organization id. Run the database migration, then npm run db:seed, and copy the printed organization id."
+      />
+    );
+  }
+
   return (
     <EmptyState
-      title="Organization not configured"
-      description="Set DEV_ORGANIZATION_ID in .env.local to a valid Organization id. Run the database migration, then npm run db:seed, and copy the printed organization id."
+      title="No workspace is associated with this account."
+      description="You are signed in, but this account is not a member of a customer workspace. Open Account Settings, or contact support if you need access."
+      actions={
+        <>
+          <a
+            href="/settings/account"
+            className="font-medium text-slate-900 underline"
+          >
+            Account Settings
+          </a>
+          <a href="/login" className="text-slate-600 underline">
+            Switch account
+          </a>
+        </>
+      }
     />
   );
 }

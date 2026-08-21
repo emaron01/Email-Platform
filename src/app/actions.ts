@@ -19,6 +19,11 @@ import {
   toOptionalFloat,
   toOptionalInt,
 } from "@/lib/utils";
+import {
+  parsePersonaFormData,
+  toSafePersonaActionError,
+  type PersonaActionResult,
+} from "@/lib/persona/save";
 
 function requiredString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -135,36 +140,30 @@ export async function deleteIcpAction(formData: FormData): Promise<void> {
   }
 }
 
-export async function upsertPersonaAction(formData: FormData): Promise<void> {
+export async function upsertPersonaAction(
+  _prev: PersonaActionResult | null,
+  formData: FormData,
+): Promise<PersonaActionResult> {
   try {
-    const id = requiredString(formData, "id");
-    const productId = requiredString(formData, "productId");
-    const name = requiredString(formData, "name");
-    if (!productId) throw new TenantError("Product is required.");
-    if (!name) throw new TenantError("Persona name is required.");
+    const { id, productId, fields } = parsePersonaFormData(formData);
 
-    const data = {
-      name,
-      definition: requiredString(formData, "definition") || null,
-      additionalContext: requiredString(formData, "additionalContext") || null,
-      targetTitles: parseCommaList(requiredString(formData, "targetTitles")),
-      department: requiredString(formData, "department") || null,
-      seniority: requiredString(formData, "seniority") || null,
-      responsibilities: requiredString(formData, "responsibilities") || null,
-      painPoints: requiredString(formData, "painPoints") || null,
-      desiredOutcomes: requiredString(formData, "desiredOutcomes") || null,
-      messagingNotes: requiredString(formData, "messagingNotes") || null,
-    };
-
+    let personaId = id;
     if (id) {
-      await updatePersona(id, data);
+      await updatePersona(id, fields);
     } else {
-      await createPersona({ ...data, productId });
+      const created = await createPersona({ ...fields, productId });
+      personaId = created.id;
     }
 
     revalidateSetup(productId);
+    return {
+      ok: true,
+      message: "Persona saved.",
+      personaId,
+    };
   } catch (error) {
     logActionError("Failed to save persona.", error);
+    return { ok: false, message: toSafePersonaActionError(error) };
   }
 }
 
