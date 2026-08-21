@@ -93,10 +93,45 @@ function roleLabel(config: AiConfig): string {
       return "Interpretation";
     case "contact_research":
       return "Contact research";
+    case "product":
+      return "Product";
     default:
       return "AI";
   }
 }
+
+/**
+ * GPT-5 / reasoning models reject non-default temperature on Responses.
+ * Omit the field entirely rather than sending env defaults (e.g. 0.2).
+ */
+export function responsesModelOmitsTemperature(model: string): boolean {
+  const m = model.trim().toLowerCase();
+  return (
+    m.startsWith("gpt-5") ||
+    m.startsWith("o1") ||
+    m.startsWith("o3") ||
+    m.startsWith("o4") ||
+    /^o[0-9]/.test(m)
+  );
+}
+
+function parseOpenAiErrorBody(safeBody: string): {
+  code: string | null;
+  type: string | null;
+} {
+  try {
+    const parsed = JSON.parse(safeBody) as {
+      error?: { code?: string; type?: string };
+    };
+    return {
+      code: typeof parsed.error?.code === "string" ? parsed.error.code : null,
+      type: typeof parsed.error?.type === "string" ? parsed.error.type : null,
+    };
+  } catch {
+    return { code: null, type: null };
+  }
+}
+
 
 /**
  * OpenAI Responses API adapter.
@@ -131,6 +166,8 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
           content: message.content,
         }));
 
+        const includeTemperature = !responsesModelOmitsTemperature(config.model);
+
         const body =
           mode === "research_web_search"
             ? {
@@ -141,14 +178,18 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
                 tool_choice: "required" as const,
                 include: ["web_search_call.action.sources"],
                 store: false,
-                temperature: config.temperature,
+                ...(includeTemperature
+                  ? { temperature: config.temperature }
+                  : {}),
                 text: { format: { type: "json_object" } },
               }
             : {
                 model: config.model,
                 input,
                 store: false,
-                temperature: config.temperature,
+                ...(includeTemperature
+                  ? { temperature: config.temperature }
+                  : {}),
                 text: { format: { type: "json_object" } },
               };
 
@@ -174,6 +215,7 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
             mode === "research_web_search" &&
             response.status === 400 &&
             /web_search|tool|not support/i.test(safeBody);
+          const { code, type } = parseOpenAiErrorBody(safeBody);
 
           throw new AiProviderError(
             unsupportedTool
@@ -182,6 +224,8 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
             {
               retryable: unsupportedTool ? false : retryable,
               status: response.status,
+              providerCode: code,
+              providerType: type,
             },
           );
         }
@@ -221,7 +265,22 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
         const validated = request.schema.safeParse(dataJson);
         if (!validated.success) {
           throw new AiValidationError(
-            `${label} structured output failed validation: ${validated.error.message}`,
+            `${label} structured output failed validation.`,
+            {
+              issues: validated.error.issues.slice(0, 30).map((issue) => ({
+                path: issue.path.join(".") || "(root)",
+                code: issue.code,
+                expected:
+                  "expected" in issue && issue.expected != null
+                    ? String(issue.expected).slice(0, 80)
+                    : undefined,
+              })),
+              usage: {
+                ...parsed.usage,
+                webSearchCalls:
+                  mode === "research_web_search" ? parsed.webSearchCalls : 0,
+              },
+            },
           );
         }
 

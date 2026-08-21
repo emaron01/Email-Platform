@@ -295,3 +295,76 @@ export function getAiConfigPublicSummary(config: AiConfig): {
     temperature: config.temperature,
   };
 }
+
+/**
+ * Product AI config diagnostic for SUPER_ADMIN / development.
+ * Never returns API keys. Reports which PRODUCT_AI_* vars are present.
+ */
+export function getProductAiConfigDiagnostic(): {
+  configured: boolean;
+  provider: string | null;
+  model: string | null;
+  endpointHostPath: string | null;
+  timeoutMs: number | null;
+  maxRetries: number | null;
+  temperature: number | null;
+  missingEnv: string[];
+  presentEnv: string[];
+} {
+  const env = ROLE_ENV.product;
+  const keys = [
+    env.provider,
+    env.model,
+    env.modelUrl,
+    env.apiKey,
+    env.timeoutMs,
+    env.maxRetries,
+    env.temperature,
+  ] as const;
+
+  const presentEnv: string[] = [];
+  const missingEnv: string[] = [];
+  for (const key of keys) {
+    const val = process.env[key]?.trim();
+    // Optional knobs (timeout/retries/temperature) are not required for configured=true
+    if (
+      key === env.timeoutMs ||
+      key === env.maxRetries ||
+      key === env.temperature
+    ) {
+      if (val) presentEnv.push(key);
+      continue;
+    }
+    if (val) presentEnv.push(key);
+    else missingEnv.push(key);
+  }
+
+  try {
+    const config = getProductAiConfig();
+    return {
+      configured: true,
+      provider: config.provider,
+      model: config.model,
+      endpointHostPath: config.modelUrlIdentifier,
+      timeoutMs: config.timeoutMs,
+      maxRetries: config.maxRetries,
+      temperature: config.temperature,
+      missingEnv,
+      presentEnv,
+    };
+  } catch {
+    return {
+      configured: false,
+      provider: process.env[env.provider]?.trim() || null,
+      model: process.env[env.model]?.trim() || null,
+      endpointHostPath: process.env[env.modelUrl]?.trim()
+        ? sanitizeModelUrlIdentifier(process.env[env.modelUrl]!)
+        : null,
+      timeoutMs: null,
+      maxRetries: null,
+      temperature: null,
+      missingEnv,
+      presentEnv,
+    };
+  }
+}

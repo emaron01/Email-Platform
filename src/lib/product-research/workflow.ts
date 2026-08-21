@@ -72,7 +72,7 @@ export async function researchAndBuildProduct(input: {
       status: "FAILED",
       message:
         synth.errorSafe ||
-        "Evidence was saved, but AI synthesis failed. You can retry synthesis without re-fetching URLs.",
+        "Evidence was saved, but AI synthesis failed. You can Retry Synthesis without re-fetching URLs or running web search.",
       sourceCount: acquired.excerpts.length,
       suggestedPersonaCount: 0,
     };

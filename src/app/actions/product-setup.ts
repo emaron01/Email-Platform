@@ -200,12 +200,41 @@ export async function retryProductSynthesisAction(
       ok: result.status !== "FAILED",
       message:
         result.status === "FAILED"
-          ? result.errorSafe || "Synthesis failed."
+          ? result.errorSafe ||
+            "Product synthesis could not be completed. Acquired evidence was preserved."
           : "Synthesis complete — review the Product draft.",
       productId,
       setupRunId: result.setupRunId,
       evidenceBundleId,
       status: result.status,
+    };
+  } catch (error) {
+    return { ok: false, message: safeError(error) };
+  }
+}
+
+/**
+ * SUPER_ADMIN or development-only Product AI config diagnostic.
+ * Never returns API keys.
+ */
+export async function getProductAiConfigDiagnosticAction(): Promise<{
+  ok: boolean;
+  message: string;
+  diagnostic?: ReturnType<
+    typeof import("@/lib/ai/config").getProductAiConfigDiagnostic
+  >;
+}> {
+  try {
+    const user = await requireCurrentUser();
+    const isDev = process.env.NODE_ENV === "development";
+    if (user.platformRole !== "SUPER_ADMIN" && !isDev) {
+      return { ok: false, message: "Not authorized." };
+    }
+    const { getProductAiConfigDiagnostic } = await import("@/lib/ai/config");
+    return {
+      ok: true,
+      message: "Product AI configuration diagnostic.",
+      diagnostic: getProductAiConfigDiagnostic(),
     };
   } catch (error) {
     return { ok: false, message: safeError(error) };

@@ -45,31 +45,40 @@ export default async function ProductResearchPage({ params }: PageProps) {
     throw error;
   }
 
-  const [latestRun, latestBundle, urlStale, sourceCount] = await Promise.all([
-    prisma.productSetupRun.findFirst({
-      where: {
+  const [latestRun, latestFailedRun, latestBundle, urlStale, sourceCount] =
+    await Promise.all([
+      prisma.productSetupRun.findFirst({
+        where: {
+          organizationId: organization.id,
+          productId: product.id,
+          status: { in: ["NEEDS_REVIEW", "PARTIAL", "APPROVED"] },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.productSetupRun.findFirst({
+        where: {
+          organizationId: organization.id,
+          productId: product.id,
+          status: "FAILED",
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.productEvidenceBundle.findFirst({
+        where: { organizationId: organization.id, productId: product.id },
+        orderBy: { version: "desc" },
+      }),
+      productUrlResearchIsStale({
         organizationId: organization.id,
         productId: product.id,
-        status: { in: ["NEEDS_REVIEW", "PARTIAL", "APPROVED"] },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.productEvidenceBundle.findFirst({
-      where: { organizationId: organization.id, productId: product.id },
-      orderBy: { version: "desc" },
-    }),
-    productUrlResearchIsStale({
-      organizationId: organization.id,
-      productId: product.id,
-    }),
-    prisma.productSource.count({
-      where: {
-        organizationId: organization.id,
-        productId: product.id,
-        status: { in: ["ACQUIRED", "EXTRACTED"] },
-      },
-    }),
-  ]);
+      }),
+      prisma.productSource.count({
+        where: {
+          organizationId: organization.id,
+          productId: product.id,
+          status: { in: ["ACQUIRED", "EXTRACTED"] },
+        },
+      }),
+    ]);
 
   const draft = (latestRun?.productDraftJson as ProductDraft | null) ?? null;
   const messaging =
@@ -78,6 +87,11 @@ export default async function ProductResearchPage({ params }: PageProps) {
     (latestRun?.suggestedPersonasJson as SuggestedPersona[] | null) ?? [];
   const personaDrafts =
     (latestRun?.personaDraftsJson as PersonaDraft[] | null) ?? [];
+
+  const showSynthesisFailure =
+    !draft &&
+    Boolean(latestBundle) &&
+    (product.setupStatus === "FAILED" || Boolean(latestFailedRun));
 
   return (
     <div className="space-y-8">
@@ -93,6 +107,25 @@ export default async function ProductResearchPage({ params }: PageProps) {
           </Link>
         }
       />
+
+      {showSynthesisFailure ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+        >
+          <p className="font-medium">Product synthesis could not be completed.</p>
+          <p className="mt-1">
+            Acquired evidence was preserved. Use{" "}
+            <strong>Retry Synthesis</strong> below — this reuses the evidence
+            bundle and does not re-fetch URLs or run web search.
+          </p>
+          {latestFailedRun?.errorSafe ? (
+            <p className="mt-2 text-xs text-amber-800/80">
+              {latestFailedRun.errorSafe}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white p-5">
         <AssistedProductIntake

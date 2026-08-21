@@ -63,7 +63,8 @@ export function AssistedProductIntake({
   );
 
   useEffect(() => {
-    if (state?.ok && state.productId) {
+    // Navigate to research page when evidence was preserved (success or synthesis failure).
+    if (state?.productId && state.evidenceBundleId) {
       router.push(`/setup/${state.productId}/research`);
       router.refresh();
     }
@@ -186,9 +187,7 @@ export function AssistedProductIntake({
             value={latestEvidenceBundleId}
           />
           <SecondaryButton type="submit" disabled={retryPending}>
-            {retryPending
-              ? "Retrying synthesis…"
-              : "Retry AI synthesis (reuse evidence)"}
+            {retryPending ? "Retrying synthesis…" : "Retry Synthesis"}
           </SecondaryButton>
           <Status result={retry} />
         </form>
