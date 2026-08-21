@@ -33,6 +33,29 @@ export type AiRole =
   | "contact_research"
   | "product";
 
+/**
+ * OpenAI Responses `reasoning.effort` values.
+ * Exact support is model-dependent; invalid values fail closed at config time.
+ */
+export type AiReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
+
+export const AI_REASONING_EFFORT_VALUES: readonly AiReasoningEffort[] = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
 export type AiConfig = {
   role: AiRole;
   provider: AiProviderKind;
@@ -44,6 +67,11 @@ export type AiConfig = {
   timeoutMs: number;
   maxRetries: number;
   temperature: number;
+  /**
+   * When set, openai-responses includes `reasoning: { effort }`.
+   * Product AI only today; other roles leave this null (request unchanged).
+   */
+  reasoningEffort: AiReasoningEffort | null;
 };
 
 type RoleEnv = {
@@ -54,6 +82,8 @@ type RoleEnv = {
   timeoutMs: string;
   maxRetries: string;
   temperature: string;
+  /** Product AI only. */
+  reasoningEffort?: string;
 };
 
 const ROLE_ENV: Record<AiRole, RoleEnv> = {
@@ -101,6 +131,7 @@ const ROLE_ENV: Record<AiRole, RoleEnv> = {
     timeoutMs: "PRODUCT_AI_TIMEOUT_MS",
     maxRetries: "PRODUCT_AI_MAX_RETRIES",
     temperature: "PRODUCT_AI_TEMPERATURE",
+    reasoningEffort: "PRODUCT_AI_REASONING_EFFORT",
   },
 };
 
@@ -178,6 +209,21 @@ function parseProvider(
   );
 }
 
+function readOptionalReasoningEffort(
+  role: AiRole,
+  name: string,
+  fallback: AiReasoningEffort,
+): AiReasoningEffort {
+  const raw = process.env[name]?.trim().toLowerCase();
+  const value = (raw || fallback) as string;
+  if (!(AI_REASONING_EFFORT_VALUES as readonly string[]).includes(value)) {
+    throw new AiConfigError(
+      `${notConfiguredMessage(role)} Invalid ${name} "${raw || fallback}". Supported: ${AI_REASONING_EFFORT_VALUES.join(", ")}.`,
+    );
+  }
+  return value as AiReasoningEffort;
+}
+
 function getAiConfigForRole(role: AiRole): AiConfig {
   const env = ROLE_ENV[role];
   const provider = parseProvider(
@@ -202,6 +248,11 @@ function getAiConfigForRole(role: AiRole): AiConfig {
       min: 0,
       max: 2,
     }),
+    // Product synthesis defaults to low effort; other roles do not send reasoning.
+    reasoningEffort:
+      role === "product" && env.reasoningEffort
+        ? readOptionalReasoningEffort(role, env.reasoningEffort, "low")
+        : null,
   };
 }
 
@@ -284,6 +335,7 @@ export function getAiConfigPublicSummary(config: AiConfig): {
   timeoutMs: number;
   maxRetries: number;
   temperature: number;
+  reasoningEffort: AiReasoningEffort | null;
 } {
   return {
     role: config.role,
@@ -293,6 +345,7 @@ export function getAiConfigPublicSummary(config: AiConfig): {
     timeoutMs: config.timeoutMs,
     maxRetries: config.maxRetries,
     temperature: config.temperature,
+    reasoningEffort: config.reasoningEffort,
   };
 }
 
@@ -308,6 +361,7 @@ export function getProductAiConfigDiagnostic(): {
   timeoutMs: number | null;
   maxRetries: number | null;
   temperature: number | null;
+  reasoningEffort: AiReasoningEffort | null;
   missingEnv: string[];
   presentEnv: string[];
 } {
@@ -320,17 +374,19 @@ export function getProductAiConfigDiagnostic(): {
     env.timeoutMs,
     env.maxRetries,
     env.temperature,
-  ] as const;
+    env.reasoningEffort,
+  ].filter((k): k is string => Boolean(k));
 
   const presentEnv: string[] = [];
   const missingEnv: string[] = [];
   for (const key of keys) {
     const val = process.env[key]?.trim();
-    // Optional knobs (timeout/retries/temperature) are not required for configured=true
+    // Optional knobs are not required for configured=true
     if (
       key === env.timeoutMs ||
       key === env.maxRetries ||
-      key === env.temperature
+      key === env.temperature ||
+      key === env.reasoningEffort
     ) {
       if (val) presentEnv.push(key);
       continue;
@@ -349,6 +405,7 @@ export function getProductAiConfigDiagnostic(): {
       timeoutMs: config.timeoutMs,
       maxRetries: config.maxRetries,
       temperature: config.temperature,
+      reasoningEffort: config.reasoningEffort,
       missingEnv,
       presentEnv,
     };
@@ -363,6 +420,7 @@ export function getProductAiConfigDiagnostic(): {
       timeoutMs: null,
       maxRetries: null,
       temperature: null,
+      reasoningEffort: null,
       missingEnv,
       presentEnv,
     };

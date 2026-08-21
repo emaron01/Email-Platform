@@ -167,6 +167,10 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
         }));
 
         const includeTemperature = !responsesModelOmitsTemperature(config.model);
+        const reasoning =
+          config.reasoningEffort != null
+            ? { effort: config.reasoningEffort }
+            : undefined;
 
         const body =
           mode === "research_web_search"
@@ -181,6 +185,7 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
                 ...(includeTemperature
                   ? { temperature: config.temperature }
                   : {}),
+                ...(reasoning ? { reasoning } : {}),
                 text: { format: { type: "json_object" } },
               }
             : {
@@ -190,6 +195,7 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
                 ...(includeTemperature
                   ? { temperature: config.temperature }
                   : {}),
+                ...(reasoning ? { reasoning } : {}),
                 text: { format: { type: "json_object" } },
               };
 

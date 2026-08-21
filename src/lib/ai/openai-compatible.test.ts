@@ -19,6 +19,7 @@ describe("openai-compatible adapter retries", () => {
     timeoutMs: 5000,
     maxRetries: 2,
     temperature: 0.2,
+    reasoningEffort: null,
   };
 
   const schema = z.object({ ok: z.boolean() });

@@ -244,6 +244,7 @@ describe("retry synthesis architecture (source inspection)", () => {
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body ?? "{}"));
     expect(body.model).toBe("gpt-5.6-luna");
     expect(body.temperature).toBeUndefined();
+    expect(body.reasoning).toEqual({ effort: "low" });
     expect(body.text).toEqual({ format: { type: "json_object" } });
     expect(body.tools).toBeUndefined();
     vi.unstubAllGlobals();
