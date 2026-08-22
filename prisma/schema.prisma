@@ -105,6 +105,7 @@ enum UsageCategory {
   SCORING
   EMAIL_GENERATION
   PRODUCT_RESEARCH
+  PERSONA_RESEARCH
 }
 
 enum UsageOperation {
@@ -120,6 +121,10 @@ enum UsageOperation {
   PRODUCT_DOCUMENT_EXTRACTION
   PRODUCT_SYNTHESIS
   PRODUCT_SOURCE_INGEST
+  PERSONA_SOURCE_INGEST
+  PERSONA_WEB_SEARCH
+  PERSONA_SYNTHESIS
+  PERSONA_URL_RETRIEVAL
 }
 
 enum CriterionDataType {
@@ -267,6 +272,16 @@ enum ProductApprovalStatus {
   SUPERSEDED
 }
 
+enum PersonaSetupStatus {
+  NOT_STARTED
+  RESEARCHING
+  SYNTHESIZING
+  NEEDS_REVIEW
+  APPROVED
+  PARTIAL
+  FAILED
+}
+
 model Organization {
   id        String             @id @default(cuid())
   name      String
@@ -307,6 +322,9 @@ model Organization {
   productSourceBlobs           ProductSourceBlob[]
   productEvidenceBundles       ProductEvidenceBundle[]
   productSetupRuns             ProductSetupRun[]
+  personaSources               PersonaSource[]
+  personaEvidenceBundles       PersonaEvidenceBundle[]
+  personaSetupRuns             PersonaSetupRun[]
 
   @@index([status])
   @@index([createdAt])
@@ -403,6 +421,9 @@ model ResearchPolicy {
   productSourceResearchFreshnessDays Int @default(120)
   maxSearchQueriesPerProduct  Int      @default(3)
   maxSourcesPerProduct        Int      @default(12)
+  maxSearchQueriesPerPersona  Int      @default(2)
+  maxSourcesPerPersona        Int      @default(8)
+  personaResearchFreshnessDays Int     @default(90)
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 
@@ -544,6 +565,9 @@ model Product {
   sources      ProductSource[]
   evidenceBundles ProductEvidenceBundle[]
   setupRuns    ProductSetupRun[]
+  personaSources PersonaSource[]
+  personaEvidenceBundles PersonaEvidenceBundle[]
+  personaSetupRuns PersonaSetupRun[]
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
@@ -669,11 +693,15 @@ model Persona {
   approvedEvidenceBundleId String?
   approvedSetupRunId       String?
   manuallyEditedFields Json?
-  /// Links to a suggested persona key from a setup run (optional).
+  /// Links to a suggested buyer role key from a product setup run (optional).
   suggestionKey    String?
   whyThisPersonaMatters String?
   /// Persona-specific messaging (not scoring evidence).
   personaMessagingJson Json?
+  /// Extended approved persona profile from staged Persona synthesis.
+  profileJson      Json?
+  setupStatus      PersonaSetupStatus @default(NOT_STARTED)
+  approvedPersonaSetupRunId String?
   /// Soft-archive: hidden from setup UI; preserves ScoringRun FK history.
   archivedAt       DateTime?
   createdAt        DateTime @default(now())
@@ -684,6 +712,8 @@ model Persona {
   criteria     PersonaCriterion[]
   campaigns    Campaign[]
   scoringRuns  ScoringRun[]
+  setupRuns    PersonaSetupRun[]
+  sources      PersonaSource[]
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
@@ -761,6 +791,8 @@ model ProductEvidenceBundle {
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product      Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
   setupRuns    ProductSetupRun[]
+  personaEvidenceBundles PersonaEvidenceBundle[]
+  personaSetupRuns PersonaSetupRun[]
 
   @@unique([organizationId, productId, version])
   @@index([organizationId])
@@ -768,7 +800,8 @@ model ProductEvidenceBundle {
   @@index([organizationId, productId])
 }
 
-/// One synthesis workflow over an evidence bundle (Product + Personas drafts).
+/// One Product synthesis workflow over an evidence bundle (Product draft + suggested buyer roles).
+/// Historical runs may still contain personaDraftsJson from pre-split prompt versions.
 model ProductSetupRun {
   id                     String            @id @default(cuid())
   organizationId         String
@@ -778,7 +811,9 @@ model ProductSetupRun {
   status                 ProductSetupStatus @default(SYNTHESIZING)
   productDraftJson       Json?
   messagingDraftJson     Json?
+  /// Lightweight SuggestedBuyerRole[] (legacy runs may hold fuller suggested persona cards).
   suggestedPersonasJson  Json?
+  /// Legacy field — no longer written by Product synthesis v3+. Kept for history.
   personaDraftsJson      Json?
   synthesisPromptVersion String?
   aiProvider             String?
@@ -795,6 +830,103 @@ model ProductSetupRun {
   @@index([organizationId])
   @@index([productId])
   @@index([evidenceBundleId])
+  @@index([correlationId])
+}
+
+/// Persona-specific research source (not ProductSource).
+model PersonaSource {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  productId          String
+  personaSetupRunId  String?
+  personaId          String?
+  sourceType         ProductSourceType
+  displayName        String
+  originalUrl        String?
+  normalizedUrlKey   String?
+  filename           String?
+  mimeType           String?
+  byteSize           Int?
+  acquisitionMethod  String
+  /// CUSTOMER_EVIDENCE | WEB_EVIDENCE | MODEL_INFERENCE (input material class).
+  provenanceClass    String              @default("WEB_EVIDENCE")
+  createdByUserId    String?
+  createdAt          DateTime            @default(now())
+  retrievedAt        DateTime?
+  contentHash        String
+  status             ProductSourceStatus @default(PENDING)
+  errorSafe          String?
+  extractedText      String?
+  freshnessExpiresAt DateTime?
+  metadataJson       Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  persona      Persona?     @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, contentHash])
+  @@index([organizationId])
+  @@index([productId])
+  @@index([personaId])
+  @@index([personaSetupRunId])
+  @@index([organizationId, normalizedUrlKey])
+}
+
+/// Compact persona research evidence for one Persona setup attempt.
+model PersonaEvidenceBundle {
+  id                       String             @id @default(cuid())
+  organizationId           String
+  productId                String
+  personaSetupRunId        String?
+  version                  Int
+  correlationId            String
+  status                   PersonaSetupStatus @default(RESEARCHING)
+  createdByUserId          String?
+  createdAt                DateTime           @default(now())
+  normalizedEvidenceJson   Json?
+  sourceIdsJson            Json?
+  productEvidenceBundleId  String?
+  webSearchQueriesUsed     Int                @default(0)
+
+  organization           Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product                Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productEvidenceBundle  ProductEvidenceBundle? @relation(fields: [productEvidenceBundleId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([productId])
+  @@index([correlationId])
+}
+
+/// One Persona research + synthesis run for a single buyer role.
+model PersonaSetupRun {
+  id                       String             @id @default(cuid())
+  organizationId           String
+  productId                String
+  personaId                String?
+  productEvidenceBundleId  String
+  personaEvidenceBundleId  String?
+  correlationId            String
+  status                   PersonaSetupStatus @default(SYNTHESIZING)
+  selectedBuyerRoleJson    Json?
+  suggestionKey            String?
+  userContextJson          Json?
+  personaDraftJson         Json?
+  synthesisPromptVersion   String?
+  aiProvider               String?
+  aiModel                  String?
+  errorSafe                String?
+  createdByUserId          String?
+  createdAt                DateTime           @default(now())
+  completedAt              DateTime?
+
+  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product               Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  persona               Persona?              @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  productEvidenceBundle ProductEvidenceBundle @relation(fields: [productEvidenceBundleId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([productId])
+  @@index([personaId])
   @@index([correlationId])
 }
 

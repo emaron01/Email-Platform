@@ -203,8 +203,66 @@ describe.skipIf(!hasDatabase)(
       expect(leaked).toBeNull();
     });
 
-    it("product hard-delete removes sources/bundles/setup runs without orphans", async () => {
+    it("product hard-delete succeeds when PersonaSetupRun references ProductEvidenceBundle", async () => {
       if (!ready) return;
+      const { deleteProductAssistedSetupGraph } = await import(
+        "@/lib/tenant/product-persona-delete"
+      );
+      const product = await prisma.product.create({
+        data: { organizationId: orgA, name: `PersRunP ${suffix}` },
+      });
+      const source = await prisma.productSource.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          sourceType: "USER_NOTE",
+          displayName: "Notes",
+          acquisitionMethod: "USER_PROVIDED",
+          contentHash: `pers-hash-${suffix}`,
+          status: "EXTRACTED",
+          extractedText: "hello",
+        },
+      });
+      const bundle = await prisma.productEvidenceBundle.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          version: 1,
+          correlationId: `pers-c-${suffix}`,
+          sourceIdsJson: [source.id],
+          status: "APPROVED",
+        },
+      });
+      await prisma.personaSetupRun.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          productEvidenceBundleId: bundle.id,
+          correlationId: `pers-run-${suffix}`,
+          status: "NEEDS_REVIEW",
+        },
+      });
+
+      await prisma.$transaction(async (tx) => {
+        await deleteProductAssistedSetupGraph(tx, orgA, product.id);
+        await tx.product.delete({ where: { id: product.id } });
+      });
+
+      expect(
+        await prisma.productEvidenceBundle.count({
+          where: { productId: product.id },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.personaSetupRun.count({ where: { productId: product.id } }),
+      ).toBe(0);
+    });
+
+    it("product hard-delete removes Product + Persona research graph without orphans", async () => {
+      if (!ready) return;
+      const { deleteProductAssistedSetupGraph } = await import(
+        "@/lib/tenant/product-persona-delete"
+      );
       const product = await prisma.product.create({
         data: { organizationId: orgA, name: `SrcP ${suffix}` },
       });
@@ -239,15 +297,45 @@ describe.skipIf(!hasDatabase)(
           status: "NEEDS_REVIEW",
         },
       });
+      const personaRun = await prisma.personaSetupRun.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          productEvidenceBundleId: bundle.id,
+          correlationId: `persona-c-${suffix}`,
+          status: "NEEDS_REVIEW",
+        },
+      });
+      await prisma.personaSource.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          personaSetupRunId: personaRun.id,
+          sourceType: "USER_NOTE",
+          displayName: "Persona notes",
+          acquisitionMethod: "USER_PROVIDED",
+          contentHash: `persona-src-${suffix}`,
+          status: "EXTRACTED",
+          extractedText: "role notes",
+        },
+      });
+      await prisma.personaEvidenceBundle.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          personaSetupRunId: personaRun.id,
+          version: 1,
+          correlationId: `persona-eb-${suffix}`,
+          productEvidenceBundleId: bundle.id,
+          status: "NEEDS_REVIEW",
+        },
+      });
 
       await prisma.$transaction(async (tx) => {
-        await tx.productSetupRun.deleteMany({
-          where: { productId: product.id },
+        await deleteProductAssistedSetupGraph(tx, orgA, product.id);
+        await tx.persona.deleteMany({
+          where: { organizationId: orgA, productId: product.id },
         });
-        await tx.productEvidenceBundle.deleteMany({
-          where: { productId: product.id },
-        });
-        await tx.productSource.deleteMany({ where: { productId: product.id } });
         await tx.product.delete({ where: { id: product.id } });
       });
 
@@ -262,6 +350,304 @@ describe.skipIf(!hasDatabase)(
       expect(
         await prisma.productSetupRun.count({ where: { productId: product.id } }),
       ).toBe(0);
+      expect(
+        await prisma.personaSetupRun.count({ where: { productId: product.id } }),
+      ).toBe(0);
+      expect(
+        await prisma.personaSource.count({ where: { productId: product.id } }),
+      ).toBe(0);
+      expect(
+        await prisma.personaEvidenceBundle.count({
+          where: { productId: product.id },
+        }),
+      ).toBe(0);
+    });
+
+    it("persona hard-delete leaves zero PersonaSource rows with stale personaId", async () => {
+      if (!ready) return;
+      const { deletePersonaAssistedSetupGraph } = await import(
+        "@/lib/tenant/product-persona-delete"
+      );
+      const product = await prisma.product.create({
+        data: { organizationId: orgA, name: `PersDel ${suffix}` },
+      });
+      const persona = await prisma.persona.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          name: `Hard del persona ${suffix}`,
+        },
+      });
+      const peb = await prisma.productEvidenceBundle.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          version: 1,
+          correlationId: `pd-c-${suffix}`,
+          sourceIdsJson: [],
+          status: "APPROVED",
+        },
+      });
+      const run = await prisma.personaSetupRun.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          personaId: persona.id,
+          productEvidenceBundleId: peb.id,
+          correlationId: `pd-run-${suffix}`,
+          status: "APPROVED",
+        },
+      });
+      await prisma.personaSource.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          personaId: persona.id,
+          personaSetupRunId: run.id,
+          sourceType: "USER_NOTE",
+          displayName: "Linked source",
+          acquisitionMethod: "USER_PROVIDED",
+          contentHash: `pd-src-${suffix}`,
+          status: "EXTRACTED",
+        },
+      });
+      await prisma.personaEvidenceBundle.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          personaSetupRunId: run.id,
+          version: 1,
+          correlationId: `pd-eb-${suffix}`,
+          status: "APPROVED",
+        },
+      });
+
+      await prisma.$transaction(async (tx) => {
+        await deletePersonaAssistedSetupGraph(tx, orgA, persona.id);
+        await tx.persona.delete({ where: { id: persona.id } });
+      });
+
+      expect(
+        await prisma.personaSource.count({
+          where: { organizationId: orgA, personaId: persona.id },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.personaSource.count({
+          where: { organizationId: orgA, personaSetupRunId: run.id },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.personaEvidenceBundle.count({
+          where: { organizationId: orgA, personaSetupRunId: run.id },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.personaSetupRun.count({ where: { id: run.id } }),
+      ).toBe(0);
+    });
+
+    it("product soft-archive leaves research intact but unreachable from setup lists", async () => {
+      if (!ready) return;
+      const product = await prisma.product.create({
+        data: { organizationId: orgA, name: `ArchP ${suffix}` },
+      });
+      const persona = await prisma.persona.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          name: `Arch Persona ${suffix}`,
+        },
+      });
+      const peb = await prisma.productEvidenceBundle.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          version: 1,
+          correlationId: `arch-c-${suffix}`,
+          sourceIdsJson: [],
+          status: "APPROVED",
+        },
+      });
+      await prisma.personaSetupRun.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          personaId: persona.id,
+          productEvidenceBundleId: peb.id,
+          correlationId: `arch-run-${suffix}`,
+          status: "APPROVED",
+        },
+      });
+      await prisma.personaSource.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          personaId: persona.id,
+          sourceType: "USER_NOTE",
+          displayName: "Arch source",
+          acquisitionMethod: "USER_PROVIDED",
+          contentHash: `arch-src-${suffix}`,
+          status: "EXTRACTED",
+        },
+      });
+      const list = await prisma.contactList.create({
+        data: { organizationId: orgA, name: `Arch list ${suffix}` },
+      });
+      const icp = await prisma.icp.create({
+        data: {
+          organizationId: orgA,
+          productId: product.id,
+          name: `Arch ICP ${suffix}`,
+        },
+      });
+      await prisma.scoringRun.create({
+        data: {
+          organizationId: orgA,
+          contactListId: list.id,
+          productId: product.id,
+          icpId: icp.id,
+          personaId: persona.id,
+          status: "COMPLETED",
+          productSnapshot: {},
+          icpSnapshot: {},
+          personaSnapshot: { name: persona.name },
+        },
+      });
+
+      const now = new Date();
+      await prisma.$transaction([
+        prisma.product.update({
+          where: { id: product.id },
+          data: { archivedAt: now },
+        }),
+        prisma.persona.updateMany({
+          where: { organizationId: orgA, productId: product.id, archivedAt: null },
+          data: { archivedAt: now },
+        }),
+        prisma.icp.updateMany({
+          where: { organizationId: orgA, productId: product.id, archivedAt: null },
+          data: { archivedAt: now },
+        }),
+      ]);
+
+      // Research rows remain (not orphaned — product still exists)
+      expect(
+        await prisma.personaSource.count({
+          where: { organizationId: orgA, productId: product.id },
+        }),
+      ).toBe(1);
+      expect(
+        await prisma.personaSetupRun.count({
+          where: { organizationId: orgA, productId: product.id },
+        }),
+      ).toBe(1);
+
+      // Setup selectors exclude archived personas/products
+      expect(
+        await prisma.product.count({
+          where: { organizationId: orgA, id: product.id, archivedAt: null },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.persona.count({
+          where: {
+            organizationId: orgA,
+            productId: product.id,
+            archivedAt: null,
+          },
+        }),
+      ).toBe(0);
+
+      const listPersonasSrc = await import("node:fs").then((fs) =>
+        fs.readFileSync("src/lib/tenant/data.ts", "utf8"),
+      );
+      expect(listPersonasSrc).toMatch(
+        /listPersonas[\s\S]*archivedAt:\s*null/,
+      );
+    });
+
+    it("cross-tenant: deleting product research in org A touches zero rows in org B", async () => {
+      if (!ready) return;
+      const { deleteProductAssistedSetupGraph } = await import(
+        "@/lib/tenant/product-persona-delete"
+      );
+      const productA = await prisma.product.create({
+        data: { organizationId: orgA, name: `XTenA ${suffix}` },
+      });
+      const productB = await prisma.product.create({
+        data: { organizationId: orgB, name: `XTenB ${suffix}` },
+      });
+      const pebA = await prisma.productEvidenceBundle.create({
+        data: {
+          organizationId: orgA,
+          productId: productA.id,
+          version: 1,
+          correlationId: `xta-${suffix}`,
+          sourceIdsJson: [],
+          status: "APPROVED",
+        },
+      });
+      const pebB = await prisma.productEvidenceBundle.create({
+        data: {
+          organizationId: orgB,
+          productId: productB.id,
+          version: 1,
+          correlationId: `xtb-${suffix}`,
+          sourceIdsJson: [],
+          status: "APPROVED",
+        },
+      });
+      await prisma.personaSetupRun.create({
+        data: {
+          organizationId: orgA,
+          productId: productA.id,
+          productEvidenceBundleId: pebA.id,
+          correlationId: `xta-run-${suffix}`,
+          status: "NEEDS_REVIEW",
+        },
+      });
+      await prisma.personaSetupRun.create({
+        data: {
+          organizationId: orgB,
+          productId: productB.id,
+          productEvidenceBundleId: pebB.id,
+          correlationId: `xtb-run-${suffix}`,
+          status: "NEEDS_REVIEW",
+        },
+      });
+      await prisma.personaSource.create({
+        data: {
+          organizationId: orgB,
+          productId: productB.id,
+          sourceType: "USER_NOTE",
+          displayName: "B source",
+          acquisitionMethod: "USER_PROVIDED",
+          contentHash: `xtb-src-${suffix}`,
+          status: "EXTRACTED",
+        },
+      });
+
+      await prisma.$transaction(async (tx) => {
+        await deleteProductAssistedSetupGraph(tx, orgA, productA.id);
+        await tx.product.delete({ where: { id: productA.id } });
+      });
+
+      expect(
+        await prisma.personaSetupRun.count({
+          where: { organizationId: orgB, productId: productB.id },
+        }),
+      ).toBe(1);
+      expect(
+        await prisma.personaSource.count({
+          where: { organizationId: orgB, productId: productB.id },
+        }),
+      ).toBe(1);
+      expect(
+        await prisma.productEvidenceBundle.count({
+          where: { organizationId: orgB, productId: productB.id },
+        }),
+      ).toBe(1);
     });
 
     it("product with campaigns is blocked (message contract)", async () => {

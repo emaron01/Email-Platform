@@ -22,6 +22,10 @@ import {
   snapshotProduct,
 } from "@/lib/scoring/snapshots";
 import { requireOrganizationId, TenantError } from "@/lib/tenant/getCurrentOrganization";
+import {
+  deletePersonaAssistedSetupGraph,
+  deleteProductAssistedSetupGraph,
+} from "@/lib/tenant/product-persona-delete";
 
 async function orgId(): Promise<string> {
   return requireOrganizationId();
@@ -153,16 +157,12 @@ export async function deleteProduct(id: string): Promise<{
   }
 
   // Hard delete live setup graph in FK-safe order (no ScoringRun/Campaign refs).
+  // PersonaSetupRun.productEvidenceBundleId is Restrict — cleared inside
+  // deleteProductAssistedSetupGraph before ProductEvidenceBundle.
   await prisma.$transaction(async (tx) => {
-    await tx.productSetupRun.deleteMany({
-      where: { organizationId, productId: existing.id },
-    });
-    await tx.productEvidenceBundle.deleteMany({
-      where: { organizationId, productId: existing.id },
-    });
-    await tx.productSource.deleteMany({
-      where: { organizationId, productId: existing.id },
-    });
+    await deleteProductAssistedSetupGraph(tx, organizationId, existing.id);
+
+    // Personas (criteria Cascade; PersonaSource Cascade when personaId set)
     await tx.personaCriterion.deleteMany({
       where: {
         organizationId,
@@ -172,6 +172,7 @@ export async function deleteProduct(id: string): Promise<{
     await tx.persona.deleteMany({
       where: { organizationId, productId: existing.id },
     });
+
     await tx.icpCriterion.deleteMany({
       where: {
         organizationId,
@@ -413,8 +414,14 @@ export async function deletePersona(id: string): Promise<{
     };
   }
 
-  // Hard delete: PersonaCriterion cascades; no ScoringRun/Campaign refs.
-  await prisma.persona.delete({ where: { id: existing.id } });
+  // Hard delete: clear persona research graph, then Persona (criteria Cascade;
+  // PersonaSource rows with personaId Cascade). PersonaEvidenceBundle is
+  // Product-scoped — delete only bundles for this Persona's setup runs.
+  await prisma.$transaction(async (tx) => {
+    await deletePersonaAssistedSetupGraph(tx, organizationId, existing.id);
+    await tx.persona.delete({ where: { id: existing.id } });
+  });
+
   return {
     mode: "deleted",
     message: "Persona deleted.",
