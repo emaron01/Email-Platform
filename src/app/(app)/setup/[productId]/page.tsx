@@ -1,25 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { Icp, Product } from "@prisma/client";
-import {
-  deleteIcpAction,
-  deleteProductAction,
-  upsertIcpAction,
-  upsertProductAction,
-} from "@/app/actions";
-import { interpretIcpAction } from "@/app/actions/interpretation";
+import type { Product } from "@prisma/client";
+import type { ReactNode } from "react";
+import { deleteProductAction } from "@/app/actions";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
-import { PersonaForm } from "@/components/PersonaForm";
-import {
-  EmptyState,
-  Field,
-  PageHeader,
-  Panel,
-  SecondaryButton,
-  SubmitButton,
-  TenantMissing,
-} from "@/components/ui";
-import { formatCriterionDisplay } from "@/lib/criteria/types";
+import { PageHeader, Panel, TenantMissing } from "@/components/ui";
 import { listIcpCriteria } from "@/lib/interpretation/icp";
 import { listPersonaCriteria } from "@/lib/interpretation/persona";
 import { getProduct, listIcps, listPersonas } from "@/lib/tenant/data";
@@ -27,12 +12,54 @@ import {
   getCurrentOrganization,
   TenantError,
 } from "@/lib/tenant/getCurrentOrganization";
-import { listToCommaString } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
+import {
+  formatLikelyTitles,
+  formatPersonaCriteriaSummary,
+  normalizeSuggestedBuyerRoles,
+  partitionSuggestedRoles,
+  productCompletionLabel,
+  productCompletionState,
+  summarizePersonaCriteriaCounts,
+  truncateText,
+} from "@/lib/setup/product-overview";
 
 type PageProps = {
   params: Promise<{ productId: string }>;
 };
+
+function statusBadgeClass(state: ReturnType<typeof productCompletionState>) {
+  if (state === "approved") {
+    return "bg-emerald-50 text-emerald-800 ring-emerald-200";
+  }
+  if (state === "needs_review") {
+    return "bg-amber-50 text-amber-900 ring-amber-200";
+  }
+  return "bg-slate-100 text-slate-700 ring-slate-200";
+}
+
+function ActionLink({
+  href,
+  children,
+  primary,
+}: {
+  href: string;
+  children: ReactNode;
+  primary?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={
+        primary
+          ? "inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-slate-800"
+          : "inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+      }
+    >
+      {children}
+    </Link>
+  );
+}
 
 export default async function SetupProductPage({ params }: PageProps) {
   const organization = await getCurrentOrganization();
@@ -55,7 +82,7 @@ export default async function SetupProductPage({ params }: PageProps) {
     throw error;
   }
 
-  const [icps, personas, impact] = await Promise.all([
+  const [icps, personas, impact, latestRun] = await Promise.all([
     listIcps(product.id),
     listPersonas(product.id),
     prisma.product.findFirst({
@@ -73,6 +100,15 @@ export default async function SetupProductPage({ params }: PageProps) {
           },
         },
       },
+    }),
+    prisma.productSetupRun.findFirst({
+      where: {
+        organizationId: organization.id,
+        productId: product.id,
+        status: { in: ["NEEDS_REVIEW", "PARTIAL", "APPROVED"] },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { suggestedPersonasJson: true },
     }),
   ]);
 
@@ -99,34 +135,49 @@ export default async function SetupProductPage({ params }: PageProps) {
     return lines.join("\n");
   })();
 
-  const icpCriteriaMap = new Map<
-    string,
-    Awaited<ReturnType<typeof listIcpCriteria>>
-  >();
   const personaCriteriaMap = new Map<
     string,
     Awaited<ReturnType<typeof listPersonaCriteria>>
   >();
+  const icpCriteriaMap = new Map<
+    string,
+    Awaited<ReturnType<typeof listIcpCriteria>>
+  >();
   await Promise.all([
-    ...icps.map(async (icp) => {
-      icpCriteriaMap.set(
-        icp.id,
-        await listIcpCriteria(organization.id, icp.id),
-      );
-    }),
     ...personas.map(async (persona) => {
       personaCriteriaMap.set(
         persona.id,
         await listPersonaCriteria(organization.id, persona.id),
       );
     }),
+    ...icps.map(async (icp) => {
+      icpCriteriaMap.set(icp.id, await listIcpCriteria(organization.id, icp.id));
+    }),
   ]);
 
+  const suggestedRoles = normalizeSuggestedBuyerRoles(
+    latestRun?.suggestedPersonasJson,
+  );
+  const { unbuiltSuggestions } = partitionSuggestedRoles({
+    savedPersonas: personas,
+    suggestedRoles,
+  });
+
+  const completion = productCompletionState(product);
+  const productBlurb = truncateText(
+    product.description || product.valueProposition,
+    140,
+  );
+  const primaryIcp = icps[0] ?? null;
+  const primaryIcpCriteria = primaryIcp
+    ? (icpCriteriaMap.get(primaryIcp.id) ?? [])
+    : [];
+
   return (
-    <div>
+    <div className="mx-auto max-w-3xl">
       <PageHeader
         title={product.name}
-        description="Describe ideal customers and buyers in natural language. AI interprets structured criteria for research and scoring."
+        description="Track setup progress. Edit details only when you choose to."
         actions={
           <div className="flex flex-wrap gap-2">
             <Link
@@ -145,13 +196,37 @@ export default async function SetupProductPage({ params }: PageProps) {
         }
       />
 
-      <div className="space-y-6">
+      <div className="space-y-5">
+        {/* 1. Product */}
         <Panel
-          title="Product Details"
-          description="Edit this product’s core information."
+          title="1. Product"
+          description="Core product record used by research and scoring."
         >
-          <ProductForm product={product} />
-          <div className="mt-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-base font-semibold text-slate-900">
+                  {product.name}
+                </p>
+                <span
+                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${statusBadgeClass(completion)}`}
+                >
+                  {productCompletionLabel(completion)}
+                </span>
+              </div>
+              {productBlurb ? (
+                <p className="mt-2 text-sm text-slate-600">{productBlurb}</p>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">
+                  No description yet.
+                </p>
+              )}
+            </div>
+            <ActionLink href={`/setup/${product.id}/edit`}>
+              Edit product
+            </ActionLink>
+          </div>
+          <div className="mt-4 border-t border-slate-100 pt-3">
             <ConfirmDeleteForm
               action={deleteProductAction}
               hiddenFields={{ id: product.id }}
@@ -164,290 +239,154 @@ export default async function SetupProductPage({ params }: PageProps) {
           </div>
         </Panel>
 
+        {/* 2. Personas */}
         <Panel
-          title="ICPs"
-          description="Describe what kind of company should buy this product."
+          title="2. Personas"
+          description="Saved buyers and suggested roles still available to build."
         >
-          <div className="space-y-4">
-            {icps.length === 0 ? (
-              <EmptyState
-                title="No ICPs yet"
-                description="Add an ICP for this product."
-              />
-            ) : (
-              icps.map((icp) => (
-                <IcpForm
-                  key={icp.id}
-                  productId={product.id}
-                  icp={icp}
-                  criteria={icpCriteriaMap.get(icp.id) ?? []}
-                />
-              ))
-            )}
-            <div className="border-t border-slate-200 pt-4">
-              <h4 className="mb-3 text-sm font-semibold text-slate-900">
-                + Add ICP
+          <div className="space-y-5">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">
+                Saved personas
               </h4>
-              <IcpForm productId={product.id} criteria={[]} />
+              {personas.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-500">
+                  None saved yet. Build a suggested role or add a custom persona.
+                </p>
+              ) : (
+                <ul className="mt-2 divide-y divide-slate-100">
+                  {personas.map((persona) => {
+                    const summary = summarizePersonaCriteriaCounts(
+                      personaCriteriaMap.get(persona.id) ?? [],
+                    );
+                    const titles = formatLikelyTitles(persona.targetTitles);
+                    return (
+                      <li
+                        key={persona.id}
+                        className="flex flex-wrap items-start justify-between gap-3 py-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-slate-900">
+                            {persona.name}
+                          </p>
+                          {titles ? (
+                            <p className="mt-0.5 text-sm text-slate-500">
+                              {titles}
+                            </p>
+                          ) : null}
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatPersonaCriteriaSummary(summary)}
+                          </p>
+                        </div>
+                        <ActionLink
+                          href={`/setup/${product.id}/personas/manage/${persona.id}`}
+                        >
+                          Edit
+                        </ActionLink>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <h4 className="text-sm font-semibold text-slate-900">
+                Suggested roles not yet built
+              </h4>
+              {unbuiltSuggestions.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-500">
+                  {suggestedRoles.length === 0
+                    ? "No suggested roles from product research yet."
+                    : "All suggested roles have been built."}
+                </p>
+              ) : (
+                <ul className="mt-2 divide-y divide-slate-100">
+                  {unbuiltSuggestions.map((role) => (
+                    <li
+                      key={role.suggestionKey}
+                      className="flex flex-wrap items-start justify-between gap-3 py-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-slate-900">{role.name}</p>
+                        {role.whyThisRoleMatters ? (
+                          <p className="mt-0.5 text-sm text-slate-500">
+                            {truncateText(role.whyThisRoleMatters, 120)}
+                          </p>
+                        ) : null}
+                      </div>
+                      <ActionLink
+                        href={`/setup/${product.id}/personas/new?role=${encodeURIComponent(role.suggestionKey)}`}
+                        primary
+                      >
+                        Build Persona
+                      </ActionLink>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="mt-3">
+                <ActionLink href={`/setup/${product.id}/personas/manage/new`}>
+                  Add custom persona
+                </ActionLink>
+              </div>
             </div>
           </div>
         </Panel>
 
+        {/* 3. ICP */}
         <Panel
-          title="Personas"
-          description="Describe who inside the company buys or cares. Titles are evidence — roles drive fit."
+          title="3. ICP"
+          description="Ideal customer profile for company-level fit."
         >
-          <div className="space-y-4">
-            {personas.length === 0 ? (
-              <EmptyState
-                title="No personas yet"
-                description="Add a persona for this product."
-              />
-            ) : (
-              personas.map((persona) => (
-                <PersonaForm
-                  key={persona.id}
-                  productId={product.id}
-                  persona={persona}
-                  criteria={personaCriteriaMap.get(persona.id) ?? []}
-                />
-              ))
-            )}
-            <div className="border-t border-slate-200 pt-4">
-              <h4 className="mb-3 text-sm font-semibold text-slate-900">
-                + Add Persona
-              </h4>
-              <PersonaForm productId={product.id} criteria={[]} />
+          {primaryIcp ? (
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-slate-900">{primaryIcp.name}</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {truncateText(
+                    primaryIcp.definition || primaryIcp.description,
+                    140,
+                  ) || "No definition yet."}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {primaryIcpCriteria.length} criteria
+                  {icps.length > 1 ? ` · ${icps.length} ICPs total` : ""}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <ActionLink href={`/setup/${product.id}/icps/${primaryIcp.id}`}>
+                  Edit
+                </ActionLink>
+                {icps.length > 1 ? (
+                  <ActionLink href={`/setup/${product.id}/icps`}>
+                    View all
+                  </ActionLink>
+                ) : (
+                  <ActionLink href={`/setup/${product.id}/icps/new`}>
+                    Add ICP
+                  </ActionLink>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-md border border-dashed border-amber-300 bg-amber-50 px-4 py-4">
+              <p className="text-sm font-semibold text-amber-950">
+                ICP not set up yet
+              </p>
+              <p className="mt-1 text-sm text-amber-900/80">
+                Add an ideal customer profile so company-level scoring has a
+                target. You can do this before or after building personas.
+              </p>
+              <div className="mt-3">
+                <ActionLink href={`/setup/${product.id}/icps/new`} primary>
+                  Add ICP
+                </ActionLink>
+              </div>
+            </div>
+          )}
         </Panel>
       </div>
-    </div>
-  );
-}
-
-function ProductForm({ product }: { product: Product }) {
-  return (
-    <form action={upsertProductAction} className="grid gap-4 md:grid-cols-2">
-      <input type="hidden" name="id" value={product.id} />
-      <Field label="Product Name" name="name" defaultValue={product.name} required />
-      <Field
-        label="Website URL"
-        name="websiteUrl"
-        defaultValue={product.websiteUrl}
-        placeholder="https://"
-      />
-      <div className="md:col-span-2">
-        <Field
-          label="Product Description"
-          name="description"
-          defaultValue={product.description}
-          as="textarea"
-        />
-      </div>
-      <div className="md:col-span-2">
-        <Field
-          label="Primary Value Proposition"
-          name="valueProposition"
-          defaultValue={product.valueProposition}
-          as="textarea"
-        />
-      </div>
-      <Field
-        label="Typical Price / AOV"
-        name="averageOrderValue"
-        type="number"
-        defaultValue={
-          product.averageOrderValue != null
-            ? Number(product.averageOrderValue)
-            : ""
-        }
-      />
-      <div className="flex items-end">
-        <SubmitButton>Save product</SubmitButton>
-      </div>
-    </form>
-  );
-}
-
-function CriteriaReview({
-  title,
-  criteria,
-}: {
-  title: string;
-  criteria: Array<{
-    name: string;
-    importance: string;
-    isDisqualifier: boolean;
-    isRequired: boolean;
-    manuallyEdited?: boolean;
-    dataType: string;
-    operator: string;
-    targetValue?: unknown;
-    minValue?: unknown;
-    maxValue?: unknown;
-    sortOrder: number;
-    criterionType: string;
-  }>;
-}) {
-  if (criteria.length === 0) {
-    return (
-      <p className="mt-3 text-sm text-slate-500">
-        No structured criteria yet. Save a natural-language definition, then run
-        AI Interpretation.
-      </p>
-    );
-  }
-  return (
-    <div className="mt-4 rounded-md bg-slate-50 p-3">
-      <h5 className="text-sm font-semibold text-slate-900">{title}</h5>
-      <p className="mt-1 text-xs text-slate-500">
-        ✓ required / strong · ☆ supporting · ✗ disqualifier
-      </p>
-      <ul className="mt-2 space-y-1 text-sm text-slate-700">
-        {criteria.map((c, i) => (
-          <li key={`${c.name}-${i}`}>
-            {c.isDisqualifier ? "✗" : c.isRequired ? "✓" : "☆"}{" "}
-            {formatCriterionDisplay({
-              ...c,
-              dataType: c.dataType as never,
-              operator: c.operator as never,
-              importance: c.importance as never,
-            })}
-            {c.manuallyEdited ? (
-              <span className="ml-2 text-xs text-amber-700">(manual)</span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function IcpForm({
-  productId,
-  icp,
-  criteria,
-}: {
-  productId: string;
-  icp?: Icp;
-  criteria: Awaited<ReturnType<typeof listIcpCriteria>>;
-}) {
-  return (
-    <div className="rounded-md border border-slate-200 p-4">
-      <form action={upsertIcpAction} className="grid gap-4 md:grid-cols-2">
-        <input type="hidden" name="id" value={icp?.id ?? ""} />
-        <input type="hidden" name="productId" value={productId} />
-        <Field label="ICP Name" name="name" defaultValue={icp?.name} required />
-        <Field
-          label="Target Industries"
-          name="targetIndustries"
-          defaultValue={listToCommaString(icp?.targetIndustries)}
-          placeholder="SaaS, Manufacturing"
-        />
-        <div className="md:col-span-2">
-          <Field
-            label="Describe your ideal customer"
-            name="definition"
-            defaultValue={icp?.definition ?? icp?.description}
-            as="textarea"
-            placeholder="Commercial real-estate companies in the Northeast with at least $50M revenue that own 25+ buildings..."
-          />
-        </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Additional context (optional)"
-            name="additionalContext"
-            defaultValue={icp?.additionalContext}
-            as="textarea"
-          />
-        </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Short description (optional)"
-            name="description"
-            defaultValue={icp?.description}
-            as="textarea"
-          />
-        </div>
-        <Field
-          label="Minimum Employees"
-          name="minEmployees"
-          type="number"
-          defaultValue={icp?.minEmployees}
-        />
-        <Field
-          label="Maximum Employees"
-          name="maxEmployees"
-          type="number"
-          defaultValue={icp?.maxEmployees}
-        />
-        <Field
-          label="Minimum Revenue"
-          name="minRevenue"
-          type="number"
-          defaultValue={icp?.minRevenue != null ? Number(icp.minRevenue) : ""}
-        />
-        <Field
-          label="Maximum Revenue"
-          name="maxRevenue"
-          type="number"
-          defaultValue={icp?.maxRevenue != null ? Number(icp.maxRevenue) : ""}
-        />
-        <Field
-          label="Target Geographies"
-          name="targetGeographies"
-          defaultValue={listToCommaString(icp?.targetGeographies)}
-        />
-        <Field
-          label="Required Technologies"
-          name="requiredTechnologies"
-          defaultValue={listToCommaString(icp?.requiredTechnologies)}
-        />
-        <Field
-          label="Positive Buying Signals"
-          name="positiveSignals"
-          defaultValue={listToCommaString(icp?.positiveSignals)}
-        />
-        <Field
-          label="Negative / Disqualifying Signals"
-          name="negativeSignals"
-          defaultValue={listToCommaString(icp?.negativeSignals)}
-        />
-        <div className="md:col-span-2">
-          <Field
-            label="Additional Notes"
-            name="notes"
-            defaultValue={icp?.notes}
-            as="textarea"
-          />
-        </div>
-        <div className="md:col-span-2">
-          <SubmitButton>{icp ? "Save ICP" : "Add ICP"}</SubmitButton>
-        </div>
-      </form>
-      {icp ? (
-        <>
-          <CriteriaReview title="AI Interpretation" criteria={criteria} />
-          <div className="mt-3 flex flex-wrap gap-2">
-            <form action={interpretIcpAction}>
-              <input type="hidden" name="icpId" value={icp.id} />
-              <input type="hidden" name="productId" value={productId} />
-              <SecondaryButton type="submit">
-                Interpret / Reinterpret ICP
-              </SecondaryButton>
-            </form>
-            <ConfirmDeleteForm
-              action={deleteIcpAction}
-              hiddenFields={{ id: icp.id, productId }}
-              triggerLabel="Delete ICP"
-              confirmTitle={`Delete ICP "${icp.name}"?`}
-              confirmBody={`This will remove this ICP and its current generated criteria.\nHistorical scoring snapshots will not be changed.\nIf scoring runs reference this ICP, it will be archived instead of permanently deleted.`}
-              confirmButtonLabel="Delete ICP"
-            />
-          </div>
-        </>
-      ) : null}
     </div>
   );
 }

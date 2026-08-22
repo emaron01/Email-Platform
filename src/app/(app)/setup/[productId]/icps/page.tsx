@@ -1,0 +1,85 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { IcpDetailsForm } from "@/components/IcpDetailsForm";
+import { PageHeader, TenantMissing } from "@/components/ui";
+import { listIcpCriteria } from "@/lib/interpretation/icp";
+import { getProduct, listIcps } from "@/lib/tenant/data";
+import {
+  getCurrentOrganization,
+  TenantError,
+} from "@/lib/tenant/getCurrentOrganization";
+
+type PageProps = {
+  params: Promise<{ productId: string }>;
+};
+
+/** Optional list when a product has multiple ICPs. */
+export default async function ListIcpsPage({ params }: PageProps) {
+  const organization = await getCurrentOrganization();
+  const { productId } = await params;
+
+  if (!organization) {
+    return (
+      <div>
+        <PageHeader title="ICPs" />
+        <TenantMissing />
+      </div>
+    );
+  }
+
+  let product;
+  try {
+    product = await getProduct(productId);
+  } catch (error) {
+    if (error instanceof TenantError) notFound();
+    throw error;
+  }
+
+  const icps = await listIcps(product.id);
+  const criteriaMap = new Map<
+    string,
+    Awaited<ReturnType<typeof listIcpCriteria>>
+  >();
+  await Promise.all(
+    icps.map(async (icp) => {
+      criteriaMap.set(icp.id, await listIcpCriteria(organization.id, icp.id));
+    }),
+  );
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader
+        title={`ICPs: ${product.name}`}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/setup/${product.id}/icps/new`}
+              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white"
+            >
+              Add ICP
+            </Link>
+            <Link
+              href={`/setup/${product.id}`}
+              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+            >
+              Back to overview
+            </Link>
+          </div>
+        }
+      />
+      {icps.length === 0 ? (
+        <p className="text-sm text-slate-500">No ICPs yet.</p>
+      ) : (
+        icps.map((icp) => (
+          <IcpDetailsForm
+            key={icp.id}
+            productId={product.id}
+            productName={product.name}
+            icp={icp}
+            criteria={criteriaMap.get(icp.id) ?? []}
+          />
+        ))
+      )}
+    </div>
+  );
+}

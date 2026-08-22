@@ -16,44 +16,12 @@ import { productUrlResearchIsStale } from "@/lib/product-research/acquire";
 import type {
   ProductDraft,
   ProductMessagingDraft,
-  SuggestedBuyerRole,
 } from "@/lib/product-research/contract";
+import { normalizeSuggestedBuyerRoles } from "@/lib/setup/product-overview";
 
 type PageProps = {
   params: Promise<{ productId: string }>;
 };
-
-function normalizeBuyerRoles(raw: unknown): SuggestedBuyerRole[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((row, i) => {
-      if (!row || typeof row !== "object") return null;
-      const r = row as Record<string, unknown>;
-      const name = String(r.name || "").trim();
-      if (!name) return null;
-      return {
-        suggestionKey: String(r.suggestionKey || `legacy-${i + 1}`),
-        name,
-        likelyTitles: Array.isArray(r.likelyTitles)
-          ? r.likelyTitles.map(String)
-          : [],
-        departmentFunction:
-          (r.departmentFunction as string | null | undefined) ??
-          (r.department as string | null | undefined) ??
-          null,
-        whyThisRoleMatters:
-          (r.whyThisRoleMatters as string | null | undefined) ??
-          (r.whyThisPersonaMatters as string | null | undefined) ??
-          null,
-        confidence:
-          (r.confidence as "HIGH" | "MEDIUM" | "LOW" | undefined) ?? "MEDIUM",
-        evidenceRefs: Array.isArray(r.evidenceRefs)
-          ? (r.evidenceRefs as SuggestedBuyerRole["evidenceRefs"])
-          : [],
-      } satisfies SuggestedBuyerRole;
-    })
-    .filter(Boolean) as SuggestedBuyerRole[];
-}
 
 export default async function ProductResearchPage({ params }: PageProps) {
   const organization = await getCurrentOrganization();
@@ -114,7 +82,7 @@ export default async function ProductResearchPage({ params }: PageProps) {
   const draft = (latestRun?.productDraftJson as ProductDraft | null) ?? null;
   const messaging =
     (latestRun?.messagingDraftJson as ProductMessagingDraft | null) ?? null;
-  const roles = normalizeBuyerRoles(latestRun?.suggestedPersonasJson);
+  const roles = normalizeSuggestedBuyerRoles(latestRun?.suggestedPersonasJson);
 
   const showSynthesisFailure =
     !draft &&
