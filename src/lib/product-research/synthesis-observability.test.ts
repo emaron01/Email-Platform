@@ -245,7 +245,9 @@ describe("retry synthesis architecture (source inspection)", () => {
     expect(body.model).toBe("gpt-5.6-luna");
     expect(body.temperature).toBeUndefined();
     expect(body.reasoning).toEqual({ effort: "low" });
-    expect(body.text).toEqual({ format: { type: "json_object" } });
+    expect(body.text.format.type).toBe("json_schema");
+    expect(body.text.format.strict).toBe(true);
+    expect(body.text.format.schema.additionalProperties).toBe(false);
     expect(body.tools).toBeUndefined();
     vi.unstubAllGlobals();
   });

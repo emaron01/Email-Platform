@@ -5,11 +5,13 @@ import {
   AiValidationError,
 } from "@/lib/ai/errors";
 import { redactSecrets } from "@/lib/ai/redact";
+import { buildOpenAiJsonSchemaFormat } from "@/lib/ai/zod-json-schema";
 import type {
   AiProvider,
   AiStructuredRequest,
   AiStructuredResponse,
 } from "@/lib/ai/types";
+import { ZodError } from "zod";
 
 /**
  * Generic OpenAI-compatible chat completions adapter.
@@ -38,7 +40,13 @@ export function createOpenAiCompatibleProvider(
           body: JSON.stringify({
             model: config.model,
             temperature: config.temperature,
-            response_format: { type: "json_object" },
+            response_format: {
+              type: "json_schema",
+              json_schema: buildOpenAiJsonSchemaFormat(
+                request.schemaName ?? "structured_response",
+                request.schema,
+              ),
+            },
             messages: request.messages,
           }),
           signal: controller.signal,
@@ -85,19 +93,39 @@ export function createOpenAiCompatibleProvider(
           );
         }
 
-        const validated = request.schema.safeParse(dataJson);
-        if (!validated.success) {
-          throw new AiValidationError(
-            `AI structured output failed validation: ${validated.error.message}`,
-          );
+        let data: T;
+        let coercedFields: string[] = [];
+        if (request.parseOutput) {
+          try {
+            const parsed = request.parseOutput(dataJson);
+            data = parsed.data;
+            coercedFields = parsed.coercedFields;
+          } catch (error) {
+            if (error instanceof AiValidationError) throw error;
+            if (error instanceof ZodError) {
+              throw new AiValidationError(
+                `AI structured output failed validation: ${error.message}`,
+              );
+            }
+            throw error;
+          }
+        } else {
+          const validated = request.schema.safeParse(dataJson);
+          if (!validated.success) {
+            throw new AiValidationError(
+              `AI structured output failed validation: ${validated.error.message}`,
+            );
+          }
+          data = validated.data;
         }
 
         return {
-          data: validated.data,
+          data,
           rawText: content,
           provider: config.provider,
           model: config.model,
           modelUrlIdentifier: config.modelUrlIdentifier,
+          coercedFields: coercedFields.length > 0 ? coercedFields : undefined,
         };
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {

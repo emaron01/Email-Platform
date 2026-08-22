@@ -323,7 +323,9 @@ describe("openai-responses scoring adapter", () => {
       expect(body.tools).toBeUndefined();
       expect(body.tool_choice).toBeUndefined();
       expect(body.store).toBe(false);
-      expect(body.text).toEqual({ format: { type: "json_object" } });
+      expect(body.text.format.type).toBe("json_schema");
+      expect(body.text.format.strict).toBe(true);
+      expect(body.text.format.schema.additionalProperties).toBe(false);
       return new Response(
         JSON.stringify({
           output: [

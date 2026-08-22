@@ -7,11 +7,21 @@ export type AiMessage = {
   content: string;
 };
 
+export type StructuredParseResult<T> = {
+  data: T;
+  coercedFields: string[];
+};
+
 export type AiStructuredRequest<T> = {
   messages: AiMessage[];
   schema: z.ZodType<T>;
   /** Optional schema name for adapters that support named JSON schemas. */
   schemaName?: string;
+  /**
+   * Optional normalizer/coercer run on raw model JSON before returning.
+   * Use when the contract tolerates ambiguous values (defensive layer).
+   */
+  parseOutput?: (raw: unknown) => StructuredParseResult<T>;
 };
 
 /** Adapter-normalized web/tool sources — never OpenAI-specific objects. */
@@ -36,6 +46,8 @@ export type AiStructuredResponse<T> = {
   /** Sources recovered from tools (e.g. Responses web_search). */
   retrievedSources?: NormalizedRetrievedSource[];
   usage?: AiUsageMetadata;
+  /** Field groups coerced while parsing structured output (if parseOutput used). */
+  coercedFields?: string[];
 };
 
 export interface AiProvider {

@@ -5,6 +5,7 @@ import {
   AiValidationError,
 } from "@/lib/ai/errors";
 import { redactSecrets } from "@/lib/ai/redact";
+import { buildOpenAiJsonSchemaFormat } from "@/lib/ai/zod-json-schema";
 import type {
   AiProvider,
   AiStructuredRequest,
@@ -12,6 +13,7 @@ import type {
   NormalizedRetrievedSource,
   AiUsageMetadata,
 } from "@/lib/ai/types";
+import { ZodError } from "zod";
 
 /**
  * Resolve the Responses API URL from a role-specific *_AI_MODEL_URL.
@@ -66,6 +68,73 @@ type ParsedResponsesPayload = {
 };
 
 type ResponsesRoleMode = "research_web_search" | "structured_only";
+
+function structuredTextFormat(request: AiStructuredRequest<unknown>) {
+  return {
+    format: buildOpenAiJsonSchemaFormat(
+      request.schemaName ?? "structured_response",
+      request.schema,
+    ),
+  };
+}
+
+function parseStructuredOutput<T>(
+  request: AiStructuredRequest<T>,
+  dataJson: unknown,
+  label: string,
+  usage?: AiUsageMetadata,
+): { data: T; coercedFields: string[] } {
+  if (request.parseOutput) {
+    try {
+      const parsed = request.parseOutput(dataJson);
+      return {
+        data: parsed.data,
+        coercedFields: parsed.coercedFields,
+      };
+    } catch (error) {
+      if (error instanceof AiValidationError) throw error;
+      if (error instanceof ZodError) {
+        throw new AiValidationError(
+          `${label} structured output failed validation after normalization.`,
+          {
+            issues: error.issues.slice(0, 30).map((issue) => ({
+              path: issue.path.join(".") || "(root)",
+              code: issue.code,
+              expected:
+                "expected" in issue && issue.expected != null
+                  ? String(issue.expected).slice(0, 80)
+                  : undefined,
+            })),
+            usage,
+          },
+        );
+      }
+      throw new AiValidationError(
+        `${label} structured output failed validation after normalization.`,
+        { usage },
+      );
+    }
+  }
+
+  const validated = request.schema.safeParse(dataJson);
+  if (!validated.success) {
+    throw new AiValidationError(
+      `${label} structured output failed validation.`,
+      {
+        issues: validated.error.issues.slice(0, 30).map((issue) => ({
+          path: issue.path.join(".") || "(root)",
+          code: issue.code,
+          expected:
+            "expected" in issue && issue.expected != null
+              ? String(issue.expected).slice(0, 80)
+              : undefined,
+        })),
+        usage,
+      },
+    );
+  }
+  return { data: validated.data, coercedFields: [] };
+}
 
 function roleMode(config: AiConfig): ResponsesRoleMode {
   if (config.role === "research") return "research_web_search";
@@ -189,7 +258,7 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
                   ? { temperature: config.temperature }
                   : {}),
                 ...(reasoning ? { reasoning } : {}),
-                text: { format: { type: "json_object" } },
+                text: structuredTextFormat(request),
               }
             : {
                 model: config.model,
@@ -199,7 +268,7 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
                   ? { temperature: config.temperature }
                   : {}),
                 ...(reasoning ? { reasoning } : {}),
-                text: { format: { type: "json_object" } },
+                text: structuredTextFormat(request),
               };
 
         const response = await fetch(responsesUrl, {
@@ -271,27 +340,16 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
           );
         }
 
-        const validated = request.schema.safeParse(dataJson);
-        if (!validated.success) {
-          throw new AiValidationError(
-            `${label} structured output failed validation.`,
-            {
-              issues: validated.error.issues.slice(0, 30).map((issue) => ({
-                path: issue.path.join(".") || "(root)",
-                code: issue.code,
-                expected:
-                  "expected" in issue && issue.expected != null
-                    ? String(issue.expected).slice(0, 80)
-                    : undefined,
-              })),
-              usage: {
-                ...parsed.usage,
-                webSearchCalls:
-                  mode === "research_web_search" ? parsed.webSearchCalls : 0,
-              },
-            },
-          );
-        }
+        const validated = parseStructuredOutput(
+          request,
+          dataJson,
+          label,
+          {
+            ...parsed.usage,
+            webSearchCalls:
+              mode === "research_web_search" ? parsed.webSearchCalls : 0,
+          },
+        );
 
         return {
           data: validated.data,
@@ -306,6 +364,10 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
             webSearchCalls:
               mode === "research_web_search" ? parsed.webSearchCalls : 0,
           },
+          coercedFields:
+            validated.coercedFields.length > 0
+              ? validated.coercedFields
+              : undefined,
         };
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
