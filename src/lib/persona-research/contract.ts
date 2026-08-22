@@ -125,4 +125,4 @@ export function parsePersonaAiResponse(
   };
 }
 
-export const PERSONA_SYNTHESIS_PROMPT_VERSION = "3";
+export const PERSONA_SYNTHESIS_PROMPT_VERSION = "4";

@@ -129,7 +129,7 @@ export function normalizeCriterionFlags(input: {
 
   return {
     isRequired: Boolean(input.isRequired),
-    isDisqualifier: Boolean(input.isDisqualifier),
+    isDisqualifier: false,
   };
 }
 

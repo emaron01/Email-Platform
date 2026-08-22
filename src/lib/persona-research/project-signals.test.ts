@@ -161,24 +161,32 @@ describe("projectPersonaSignalsToCriteria", () => {
     expect(criteria.some((row) => row.isRequired)).toBe(true);
   });
 
-  it("corrects flags on the real CRO setup-run draft fixture", () => {
+  it("corrects flags on the production CRO setup-run draft fixture", () => {
     const { criteria } = buildPersonaCriteriaForReview(CRO_PERSONA_DRAFT_FIXTURE);
 
-    const ownsForecast = criteria.find((row) =>
-      row.name.toLowerCase().includes("owns revenue forecast governance"),
-    );
-    expect(ownsForecast?.isDisqualifier).toBe(false);
+    const byName = (name: string) =>
+      criteria.find((row) => row.name === name);
+
+    const ownsForecast = byName("Owns revenue forecast governance");
+    expect(ownsForecast?.criterionType).toBe("responsibility");
     expect(ownsForecast?.isRequired).toBe(true);
+    expect(ownsForecast?.isDisqualifier).toBe(false);
 
-    const positive = criteria.find((row) =>
-      row.name.includes("Leads a B2B sales organization"),
-    );
-    expect(positive?.isDisqualifier).toBe(false);
+    const leadsB2b = byName("Leads a B2B sales organization");
+    expect(leadsB2b?.criterionType).toBe("organizational_context");
+    expect(leadsB2b?.isRequired).toBe(true);
+    expect(leadsB2b?.isDisqualifier).toBe(false);
 
-    const negative = criteria.find((row) =>
-      row.name.includes("marketing, finance, or customer success"),
-    );
-    expect(negative?.isDisqualifier).toBe(false);
+    for (const name of [
+      "Accountable for revenue predictability",
+      "Experiences unsupported commits or weak deal evidence",
+      "Needs executive visibility into deal risk",
+      "Uses CRM or structured deal data",
+    ]) {
+      const row = byName(name);
+      expect(row, name).toBeDefined();
+      expect(row?.isDisqualifier).toBe(false);
+    }
 
     const forecastSemantic = criteria.filter(
       (row) =>
