@@ -12,6 +12,7 @@ import {
   saveAndInterpretPersonaAction,
   updatePersonaCriterionAction,
 } from "@/app/actions/interpretation";
+import { projectPersonaSignalsFromProfileAction } from "@/app/actions/persona-setup";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
 import { formatCriterionDisplay } from "@/lib/criteria/types";
@@ -164,9 +165,13 @@ export function PersonaForm({
     saveAndInterpretPersonaAction,
     initialResult,
   );
+  const [projectState, projectAction, projectPending] = useActionState(
+    projectPersonaSignalsFromProfileAction,
+    initialResult,
+  );
 
-  const status = interpretState ?? saveState;
-  const pending = savePending || interpretPending;
+  const status = interpretState ?? saveState ?? projectState;
+  const pending = savePending || interpretPending || projectPending;
 
   useEffect(() => {
     if (saveState?.ok && saveState.personaId && !persona) {
@@ -175,7 +180,10 @@ export function PersonaForm({
     if (interpretState?.ok) {
       router.refresh();
     }
-  }, [saveState, interpretState, persona, router]);
+    if (projectState?.ok) {
+      router.refresh();
+    }
+  }, [saveState, interpretState, projectState, persona, router]);
 
   return (
     <div
@@ -302,6 +310,21 @@ export function PersonaForm({
             personaId={persona.id}
             criteria={criteria}
           />
+          {persona.profileJson ? (
+            <form action={projectAction} className="mt-3">
+              <input type="hidden" name="productId" value={productId} />
+              <input type="hidden" name="personaId" value={persona.id} />
+              <SecondaryButton type="submit" disabled={projectPending}>
+                {projectPending
+                  ? "Projecting…"
+                  : "Project role signals from profile"}
+              </SecondaryButton>
+              <p className="mt-1 text-xs text-slate-500">
+                Adds criteria from stored AI role signals (ownership, KPIs,
+                positive/negative signals) without rewriting existing rows.
+              </p>
+            </form>
+          ) : null}
           <div className="mt-3">
             <ConfirmDeleteForm
               action={deletePersonaAction}

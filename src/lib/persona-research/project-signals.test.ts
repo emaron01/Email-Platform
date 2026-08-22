@@ -1,0 +1,224 @@
+/**
+ * Persona signal → PersonaCriterion projection tests.
+ */
+import { describe, expect, it } from "vitest";
+import { identifyPersonaEvidenceGaps } from "@/lib/contact-research/gaps";
+import { getApplicableDimensions } from "@/lib/scoring/dimensions";
+import { planCriterionReinterpretation } from "@/lib/criteria/merge";
+import {
+  PERSONA_SIGNAL_CRITERION_TYPES,
+  buildPersonaCriteriaForReview,
+  projectPersonaSignalsToCriteria,
+  projectSignalsFromProfileJson,
+} from "@/lib/persona-research/project-signals";
+import type { PersonaAiDraft } from "@/lib/persona-research/contract";
+
+const richDraft: PersonaAiDraft = {
+  name: "VP Revenue Operations",
+  likelyTitles: ["VP RevOps"],
+  departmentFunction: "Revenue Operations",
+  seniority: "VP",
+  roleSummary: "Owns forecast process",
+  primaryResponsibilities: [],
+  ownershipAreas: ["Sales forecasting process", "CRM hygiene"],
+  kpisAndAccountabilities: ["Forecast accuracy", "Pipeline coverage"],
+  organizationalPressures: [],
+  painPoints: [],
+  desiredOutcomesFromSolution: [],
+  buyingRole: null,
+  decisionInfluence: null,
+  positiveRoleSignals: ["Owns weekly forecast call"],
+  negativeRoleSignals: [
+    "!Pure marketing scope only",
+  ],
+  likelyObjections: [],
+  terminology: [],
+  messagingNotes: [],
+  personaSpecificPositioning: [],
+  proofPointsToEmphasize: [],
+  researchGuidance: [],
+  criteria: [],
+  confidence: "HIGH",
+  evidenceRefs: [],
+  provenanceAssessments: [],
+};
+
+describe("projectPersonaSignalsToCriteria", () => {
+  it("rich signal arrays with empty draft.criteria produce non-empty rows", () => {
+    const rows = projectPersonaSignalsToCriteria(richDraft);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.some((r) => r.criterionType.includes("ownership"))).toBe(true);
+    expect(rows.some((r) => r.criterionType.includes("responsib"))).toBe(true);
+    expect(rows.some((r) => r.criterionType.includes("signal"))).toBe(true);
+  });
+
+  it("duplicate signal/criterion pairs produce one row in review merge", () => {
+    const draft: PersonaAiDraft = {
+      ...richDraft,
+      ownershipAreas: ["Sales forecasting process"],
+      criteria: [
+        {
+          name: "Sales forecasting process",
+          criterionType: "ownership",
+          operator: "EXISTS",
+          importance: "HIGH",
+          isRequired: true,
+          isDisqualifier: false,
+        },
+      ],
+    };
+    const review = buildPersonaCriteriaForReview(draft);
+    const ownershipRows = review.filter((r) =>
+      r.criterionType.toLowerCase().includes("ownership"),
+    );
+    expect(ownershipRows).toHaveLength(1);
+  });
+
+  it("negative signal marked disqualifying produces isDisqualifier = true", () => {
+    const rows = projectPersonaSignalsToCriteria(richDraft);
+    const neg = rows.find((r) => r.name.includes("Pure marketing scope"));
+    expect(neg?.isDisqualifier).toBe(true);
+    expect(neg?.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+    );
+  });
+
+  it("projected types are recognized by getApplicableDimensions heuristics", () => {
+    const projected = projectPersonaSignalsToCriteria(richDraft);
+    const persona = {
+      name: "VP RevOps",
+      criteria: projected.map((p, i) => ({
+        id: `c-${i}`,
+        name: p.name,
+        criterionType: p.criterionType,
+        dataType: "TEXT" as const,
+        operator: "EXISTS" as const,
+        importance: p.importance,
+        isRequired: p.isRequired,
+        isDisqualifier: p.isDisqualifier,
+        sortOrder: i,
+      })),
+    };
+    const dims = getApplicableDimensions({
+      icp: { criteria: [] } as unknown as Parameters<
+        typeof getApplicableDimensions
+      >[0]["icp"],
+      persona: persona as unknown as Parameters<
+        typeof getApplicableDimensions
+      >[0]["persona"],
+      product: { name: "Product" } as unknown as Parameters<
+        typeof getApplicableDimensions
+      >[0]["product"],
+    });
+    expect(
+      dims.some((d) => d.dimension === "Role / Responsibility Match"),
+    ).toBe(true);
+    expect(dims.some((d) => d.dimension === "Title Match")).toBe(true);
+  });
+
+  it("projected signal types participate in contact-research gap detection", () => {
+    const signalRow = projectPersonaSignalsToCriteria({
+      ...richDraft,
+      ownershipAreas: [],
+      kpisAndAccountabilities: [],
+      positiveRoleSignals: ["Runs forecast committee"],
+      negativeRoleSignals: [],
+    })[0]!;
+
+    const signalGaps = identifyPersonaEvidenceGaps(
+      [
+        {
+          name: signalRow.name,
+          criterionType: signalRow.criterionType,
+          dataType: "TEXT",
+          operator: "EXISTS",
+          importance: signalRow.importance,
+          isRequired: signalRow.isRequired,
+          isDisqualifier: signalRow.isDisqualifier,
+          sortOrder: 0,
+        },
+      ],
+      {
+        currentTitle: "VP Sales",
+        professionalSignals: "Leads forecast committee weekly",
+      },
+      "VP Sales",
+    );
+    expect(signalGaps).not.toContain(signalRow.name);
+
+    const ownershipRow = projectPersonaSignalsToCriteria({
+      ...richDraft,
+      positiveRoleSignals: [],
+      negativeRoleSignals: [],
+    }).find((r) => r.criterionType.includes("ownership"))!;
+
+    const ownershipGaps = identifyPersonaEvidenceGaps(
+      [
+        {
+          name: ownershipRow.name,
+          criterionType: ownershipRow.criterionType,
+          dataType: "TEXT",
+          operator: "EXISTS",
+          importance: ownershipRow.importance,
+          isRequired: ownershipRow.isRequired,
+          isDisqualifier: ownershipRow.isDisqualifier,
+          sortOrder: 0,
+        },
+      ],
+      {
+        ownershipAreas: "Owns sales forecasting process end-to-end",
+      },
+      null,
+    );
+    expect(ownershipGaps).not.toContain(ownershipRow.name);
+  });
+
+  it("manual criterion survives reinterpretation planning", () => {
+    const plan = planCriterionReinterpretation({
+      existing: [
+        {
+          id: "manual-1",
+          name: "Owns weekly forecast call",
+          criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+          manuallyEdited: true,
+        },
+      ],
+      aiDrafts: [
+        {
+          name: "Owns weekly forecast call",
+          criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+          dataType: "TEXT",
+          operator: "EXISTS",
+          importance: "HIGH",
+          isRequired: false,
+          isDisqualifier: false,
+          sortOrder: 0,
+        },
+      ],
+    });
+    expect(plan.keepIds).toEqual(["manual-1"]);
+    expect(plan.insertDrafts).toHaveLength(0);
+  });
+
+  it("profileJson projection skips rows that already exist", () => {
+    const projected = projectSignalsFromProfileJson(richDraft, [
+      {
+        name: "Sales forecasting process",
+        criterionType: PERSONA_SIGNAL_CRITERION_TYPES.ownership,
+      },
+    ]);
+    expect(
+      projected.some((p) => p.name === "Sales forecasting process"),
+    ).toBe(false);
+    expect(projected.length).toBeGreaterThan(0);
+  });
+
+  it("existing approved personas are not changed until projection is invoked", () => {
+    const existing = projectPersonaSignalsToCriteria(richDraft).map((row) => ({
+      name: row.name,
+      criterionType: row.criterionType,
+    }));
+    const secondPass = projectSignalsFromProfileJson(richDraft, existing);
+    expect(secondPass).toHaveLength(0);
+  });
+});
