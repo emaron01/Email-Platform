@@ -9,6 +9,7 @@ import {
   TenantError,
 } from "@/lib/tenant/getCurrentOrganization";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
+import { getResearchPolicy } from "@/lib/usage/policy";
 
 type PageProps = {
   params: Promise<{ productId: string; runId: string }>;
@@ -44,6 +45,8 @@ export default async function PersonaSetupRunPage({ params }: PageProps) {
   });
   if (!run) notFound();
 
+  const researchPolicy = await getResearchPolicy(organization.id);
+
   const draft = (run.personaDraftJson as PersonaAiDraft | null) ?? null;
   const failed = run.status === "FAILED";
 
@@ -68,6 +71,7 @@ export default async function PersonaSetupRunPage({ params }: PageProps) {
           draft={draft}
           failed={failed}
           errorSafe={run.errorSafe}
+          maxProjectedPersonaCriteria={researchPolicy.maxProjectedPersonaCriteria}
         />
       </section>
     </div>

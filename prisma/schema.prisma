@@ -424,6 +424,8 @@ model ResearchPolicy {
   maxSearchQueriesPerPersona  Int      @default(2)
   maxSourcesPerPersona        Int      @default(8)
   personaResearchFreshnessDays Int     @default(90)
+  /// Max criteria projected from Persona AI signal arrays before review cap.
+  maxProjectedPersonaCriteria Int      @default(15)
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 

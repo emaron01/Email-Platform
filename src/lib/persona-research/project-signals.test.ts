@@ -8,10 +8,13 @@ import { planCriterionReinterpretation } from "@/lib/criteria/merge";
 import {
   PERSONA_SIGNAL_CRITERION_TYPES,
   buildPersonaCriteriaForReview,
+  capPersonaCriteria,
+  normalizeCriterionSemanticKey,
   projectPersonaSignalsToCriteria,
   projectSignalsFromProfileJson,
 } from "@/lib/persona-research/project-signals";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
+import { CRO_PERSONA_DRAFT_FIXTURE } from "@/lib/persona-research/fixtures/cro-setup-run-draft";
 
 const richDraft: PersonaAiDraft = {
   name: "VP Revenue Operations",
@@ -28,9 +31,7 @@ const richDraft: PersonaAiDraft = {
   buyingRole: null,
   decisionInfluence: null,
   positiveRoleSignals: ["Owns weekly forecast call"],
-  negativeRoleSignals: [
-    "!Pure marketing scope only",
-  ],
+  negativeRoleSignals: ["!Pure marketing scope only"],
   likelyObjections: [],
   terminology: [],
   messagingNotes: [],
@@ -67,20 +68,123 @@ describe("projectPersonaSignalsToCriteria", () => {
         },
       ],
     };
-    const review = buildPersonaCriteriaForReview(draft);
+    const review = buildPersonaCriteriaForReview(draft).criteria;
     const ownershipRows = review.filter((r) =>
       r.criterionType.toLowerCase().includes("ownership"),
     );
     expect(ownershipRows).toHaveLength(1);
   });
 
-  it("negative signal marked disqualifying produces isDisqualifier = true", () => {
+  it("a positive role signal never produces isDisqualifier = true", () => {
+    const rows = projectPersonaSignalsToCriteria({
+      ...richDraft,
+      negativeRoleSignals: [],
+      ownershipAreas: [],
+      kpisAndAccountabilities: [],
+    });
+    expect(rows.every((r) => !r.isDisqualifier)).toBe(true);
+    const positive = rows.find((r) => r.name.includes("forecast call"));
+    expect(positive?.isDisqualifier).toBe(false);
+  });
+
+  it("negative signal marked disqualifying produces isDisqualifier = true; unmarked produces false", () => {
     const rows = projectPersonaSignalsToCriteria(richDraft);
     const neg = rows.find((r) => r.name.includes("Pure marketing scope"));
     expect(neg?.isDisqualifier).toBe(true);
-    expect(neg?.criterionType).toBe(
-      PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+
+    const soft = projectPersonaSignalsToCriteria({
+      ...richDraft,
+      negativeRoleSignals: ["Mostly marketing scope"],
+      positiveRoleSignals: [],
+      ownershipAreas: [],
+      kpisAndAccountabilities: [],
+    })[0]!;
+    expect(soft.isDisqualifier).toBe(false);
+  });
+
+  it("ownership and KPI projections default to isRequired = false", () => {
+    const rows = projectPersonaSignalsToCriteria({
+      ...richDraft,
+      positiveRoleSignals: [],
+      negativeRoleSignals: [],
+    });
+    for (const row of rows) {
+      expect(row.isRequired).toBe(false);
+      expect(row.isDisqualifier).toBe(false);
+    }
+  });
+
+  it("Revenue forecast governance and Owns revenue forecast governance dedupe to one row", () => {
+    const review = buildPersonaCriteriaForReview({
+      ...richDraft,
+      criteria: [],
+      ownershipAreas: ["Revenue forecast governance"],
+      kpisAndAccountabilities: ["Owns revenue forecast governance"],
+      positiveRoleSignals: [],
+      negativeRoleSignals: [],
+    }).criteria;
+    const semanticMatches = review.filter(
+      (row) =>
+        normalizeCriterionSemanticKey(row.name) === "revenue forecast governance",
     );
+    expect(semanticMatches).toHaveLength(1);
+  });
+
+  it("caps a draft producing 40 signals at the policy value with required/disqualifying retained", () => {
+    const manySignals = Array.from({ length: 20 }, (_, i) => `Positive signal ${i}`);
+    const manyOwnership = Array.from({ length: 10 }, (_, i) => `Ownership area ${i}`);
+    const manyKpis = Array.from({ length: 10 }, (_, i) => `KPI ${i}`);
+    const draft: PersonaAiDraft = {
+      ...richDraft,
+      positiveRoleSignals: manySignals,
+      negativeRoleSignals: ["!Hard disqualifier"],
+      ownershipAreas: manyOwnership,
+      kpisAndAccountabilities: manyKpis,
+      criteria: [
+        {
+          name: "Explicit required criterion",
+          criterionType: "responsibility",
+          operator: "EXISTS",
+          importance: "HIGH",
+          isRequired: true,
+          isDisqualifier: false,
+        },
+      ],
+    };
+
+    const { criteria, droppedCount } = buildPersonaCriteriaForReview(draft, {
+      maxCriteria: 15,
+    });
+    expect(criteria.length).toBe(15);
+    expect(droppedCount).toBeGreaterThan(0);
+    expect(criteria.some((row) => row.isDisqualifier)).toBe(true);
+    expect(criteria.some((row) => row.isRequired)).toBe(true);
+  });
+
+  it("corrects flags on the real CRO setup-run draft fixture", () => {
+    const { criteria } = buildPersonaCriteriaForReview(CRO_PERSONA_DRAFT_FIXTURE);
+
+    const ownsForecast = criteria.find((row) =>
+      row.name.toLowerCase().includes("owns revenue forecast governance"),
+    );
+    expect(ownsForecast?.isDisqualifier).toBe(false);
+    expect(ownsForecast?.isRequired).toBe(true);
+
+    const positive = criteria.find((row) =>
+      row.name.includes("Leads a B2B sales organization"),
+    );
+    expect(positive?.isDisqualifier).toBe(false);
+
+    const negative = criteria.find((row) =>
+      row.name.includes("marketing, finance, or customer success"),
+    );
+    expect(negative?.isDisqualifier).toBe(false);
+
+    const forecastSemantic = criteria.filter(
+      (row) =>
+        normalizeCriterionSemanticKey(row.name) === "revenue forecast governance",
+    );
+    expect(forecastSemantic).toHaveLength(1);
   });
 
   it("projected types are recognized by getApplicableDimensions heuristics", () => {
@@ -201,7 +305,7 @@ describe("projectPersonaSignalsToCriteria", () => {
   });
 
   it("profileJson projection skips rows that already exist", () => {
-    const projected = projectSignalsFromProfileJson(richDraft, [
+    const { criteria: projected } = projectSignalsFromProfileJson(richDraft, [
       {
         name: "Sales forecasting process",
         criterionType: PERSONA_SIGNAL_CRITERION_TYPES.ownership,
@@ -219,6 +323,17 @@ describe("projectPersonaSignalsToCriteria", () => {
       criterionType: row.criterionType,
     }));
     const secondPass = projectSignalsFromProfileJson(richDraft, existing);
-    expect(secondPass).toHaveLength(0);
+    expect(secondPass.criteria).toHaveLength(0);
+  });
+
+  it("capPersonaCriteria keeps disqualifiers before supporting rows", () => {
+    const rows = [
+      { name: "support 1", criterionType: "ownership", isRequired: false, isDisqualifier: false },
+      { name: "support 2", criterionType: "ownership", isRequired: false, isDisqualifier: false },
+      { name: "hard no", criterionType: "negative_role_signal", isRequired: false, isDisqualifier: true },
+    ];
+    const capped = capPersonaCriteria(rows, 2);
+    expect(capped.criteria.some((row) => row.name === "hard no")).toBe(true);
+    expect(capped.droppedCount).toBe(1);
   });
 });

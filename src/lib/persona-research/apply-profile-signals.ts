@@ -1,16 +1,15 @@
-/**
- * Apply projected Persona signals from stored profileJson (user-initiated).
- */
-
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { projectSignalsFromProfileJson } from "@/lib/persona-research/project-signals";
+import { getResearchPolicy } from "@/lib/usage/policy";
+import { recordUsageEvent } from "@/lib/usage/events";
 
 export async function projectPersonaSignalsFromProfile(input: {
   organizationId: string;
   personaId: string;
+  userId?: string | null;
 }): Promise<number> {
   const persona = await prisma.persona.findFirst({
     where: {
@@ -26,15 +25,18 @@ export async function projectPersonaSignalsFromProfile(input: {
     return 0;
   }
 
+  const policy = await getResearchPolicy(input.organizationId);
+
   const existing = await prisma.personaCriterion.findMany({
     where: { organizationId: input.organizationId, personaId: persona.id },
     select: { name: true, criterionType: true, sortOrder: true },
     orderBy: { sortOrder: "asc" },
   });
 
-  const toInsert = projectSignalsFromProfileJson(
+  const { criteria: toInsert, droppedCount } = projectSignalsFromProfileJson(
     persona.profileJson,
     existing,
+    { maxCriteria: policy.maxProjectedPersonaCriteria },
   );
   if (toInsert.length === 0) return 0;
 
@@ -58,6 +60,27 @@ export async function projectPersonaSignalsFromProfile(input: {
         source: row.source,
         sortOrder: baseSort + offset,
         manuallyEdited: false,
+      },
+    });
+  }
+
+  if (droppedCount > 0) {
+    await recordUsageEvent({
+      organizationId: input.organizationId,
+      userId: input.userId ?? null,
+      category: "PERSONA_RESEARCH",
+      operation: "PERSONA_SYNTHESIS",
+      provider: null,
+      model: null,
+      status: "SUCCESS",
+      durationMs: 0,
+      retryCount: 0,
+      operationId: persona.id,
+      metadata: {
+        personaId: persona.id,
+        projectedCriteriaInserted: toInsert.length,
+        projectedCriteriaDropped: droppedCount,
+        maxProjectedPersonaCriteria: policy.maxProjectedPersonaCriteria,
       },
     });
   }

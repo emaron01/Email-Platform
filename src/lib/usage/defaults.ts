@@ -23,6 +23,7 @@ export const DEFAULT_RESEARCH_POLICY_VALUES = {
   maxSearchQueriesPerPersona: 2,
   maxSourcesPerPersona: 8,
   personaResearchFreshnessDays: 90,
+  maxProjectedPersonaCriteria: 15,
 } as const;
 
 /** Default IANA timezone for new Organizations when none is provided. */

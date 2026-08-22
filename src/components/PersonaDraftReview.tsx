@@ -206,12 +206,14 @@ export function PersonaDraftReview({
   draft,
   failed,
   errorSafe,
+  maxProjectedPersonaCriteria = 15,
 }: {
   productId: string;
   personaSetupRunId: string;
   draft: PersonaAiDraft | null;
   failed?: boolean;
   errorSafe?: string | null;
+  maxProjectedPersonaCriteria?: number;
 }) {
   const router = useRouter();
   const [state, action, pending] = useActionState(
@@ -223,8 +225,13 @@ export function PersonaDraftReview({
     initial,
   );
   const initialCriteria = useMemo(
-    () => (draft ? buildPersonaCriteriaForReview(draft) : []),
-    [draft],
+    () =>
+      draft
+        ? buildPersonaCriteriaForReview(draft, {
+            maxCriteria: maxProjectedPersonaCriteria,
+          }).criteria
+        : [],
+    [draft, maxProjectedPersonaCriteria],
   );
   const [criteriaJson, setCriteriaJson] = useState("[]");
   const handleCriteriaChange = useMemo(
@@ -236,9 +243,15 @@ export function PersonaDraftReview({
 
   useEffect(() => {
     if (draft) {
-      setCriteriaJson(JSON.stringify(buildPersonaCriteriaForReview(draft)));
+      setCriteriaJson(
+        JSON.stringify(
+          buildPersonaCriteriaForReview(draft, {
+            maxCriteria: maxProjectedPersonaCriteria,
+          }).criteria,
+        ),
+      );
     }
-  }, [draft]);
+  }, [draft, maxProjectedPersonaCriteria]);
 
   useEffect(() => {
     if (state?.ok) {

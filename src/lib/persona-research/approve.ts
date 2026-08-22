@@ -12,6 +12,8 @@ import {
   buildPersonaCriteriaForReview,
   type PersonaCriterionFormRow,
 } from "@/lib/persona-research/project-signals";
+import { getResearchPolicy } from "@/lib/usage/policy";
+import { recordUsageEvent } from "@/lib/usage/events";
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -117,10 +119,18 @@ export async function approvePersonaFromSetupRun(input: {
   });
 
   // Criteria: user-reviewed list, or merge draft.criteria + projected signals.
+  const policy = await getResearchPolicy(input.organizationId);
+  let projectedCriteriaDropped = 0;
   const criteriaRows =
     input.criteria && input.criteria.length > 0
       ? input.criteria
-      : buildPersonaCriteriaForReview(draft);
+      : (() => {
+          const built = buildPersonaCriteriaForReview(draft, {
+            maxCriteria: policy.maxProjectedPersonaCriteria,
+          });
+          projectedCriteriaDropped = built.droppedCount;
+          return built.criteria;
+        })();
 
   for (const [i, c] of criteriaRows.entries()) {
     const name = c.name.trim();
@@ -162,6 +172,27 @@ export async function approvePersonaFromSetupRun(input: {
       completedAt: new Date(),
     },
   });
+
+  if (projectedCriteriaDropped > 0) {
+    await recordUsageEvent({
+      organizationId: input.organizationId,
+      userId: input.userId,
+      category: "PERSONA_RESEARCH",
+      operation: "PERSONA_SYNTHESIS",
+      provider: run.aiProvider,
+      model: run.aiModel,
+      status: "SUCCESS",
+      durationMs: 0,
+      retryCount: 0,
+      operationId: run.id,
+      metadata: {
+        personaSetupRunId: run.id,
+        personaId: created.id,
+        projectedCriteriaDropped,
+        maxProjectedPersonaCriteria: policy.maxProjectedPersonaCriteria,
+      },
+    });
+  }
 
   return created.id;
 }
