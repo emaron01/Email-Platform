@@ -14,7 +14,7 @@ import {
 import type { NormalizedRetrievedSource } from "@/lib/ai/types";
 import { assertSafeExternalHttpUrl } from "@/lib/research/url-safety";
 
-const discoverySchema = z.object({
+export const productSourceDiscoverySchema = z.object({
   /** Hints only — authoritative URLs come from retrievedSources. */
   notes: z.string().nullable().optional(),
 });
@@ -76,7 +76,7 @@ export async function discoverSourcesViaWebSearch(
   const ai = getResearchAiProvider();
 
   const response = await ai.generateStructured({
-    schema: discoverySchema,
+    schema: productSourceDiscoverySchema,
     schemaName: "product_source_discovery",
     messages: [
       {

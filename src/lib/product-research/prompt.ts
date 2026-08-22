@@ -37,7 +37,8 @@ RULES:
 2. Keep productDraft concise for reliable synchronous synthesis.
 3. Messaging drafts are guidance, not scoring criteria.
 4. Do NOT score contacts or invent fit scores.
-5. Return JSON matching the schema only.`;
+5. Required fields may be returned as empty arrays or null when evidence does not support them. An empty array is correct; inventing content is not.
+6. Return JSON matching the schema only.`;
 
   const user = JSON.stringify({
     productName: input.productName,

@@ -145,3 +145,20 @@ export function summarizeCoercedFields(
   }
   return [...summary].sort();
 }
+
+/** Strict JSON Schema may emit null for optional fields; normalize to absent for Zod defaults. */
+export function normalizeAbsentNulls(value: unknown): unknown {
+  if (value === null) return undefined;
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeAbsentNulls(entry));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        normalizeAbsentNulls(entry),
+      ]),
+    );
+  }
+  return value;
+}

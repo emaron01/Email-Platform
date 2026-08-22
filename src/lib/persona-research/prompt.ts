@@ -33,7 +33,8 @@ RULES:
 6. Mark provenance honestly. Do not claim MODEL_INFERENCE as researched fact.
 7. confidence must be exactly HIGH, MEDIUM, or LOW (uppercase).
 8. evidenceRefs entries MUST include claim (string). sourceIds may be empty.
-9. Return JSON matching the schema only (personaDraft).`;
+9. Required fields may be returned as empty arrays or null when evidence does not support them. An empty array is correct; inventing content is not.
+10. Return JSON matching the schema only (personaDraft).`;
 
   const user = JSON.stringify({
     productName: input.productName,

@@ -99,7 +99,7 @@ describe("Product synthesis contract", () => {
     });
     expect(parsed.productDraft.unknownFields).toContain("pricing");
     expect(parsed.suggestedBuyerRoles).toHaveLength(1);
-    expect(PRODUCT_SYNTHESIS_PROMPT_VERSION).toBe("4");
+    expect(PRODUCT_SYNTHESIS_PROMPT_VERSION).toBe("5");
   });
 
   it("prompt separates messaging from scoring and forbids persona drafts", () => {

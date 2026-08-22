@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import {
+  normalizeAbsentNulls,
   normalizeConfidenceValue,
   normalizeEvidenceRefs,
   summarizeCoercedFields,
@@ -113,7 +114,7 @@ export function parsePersonaAiResponse(
     };
   }
 
-  const root = raw as Record<string, unknown>;
+  const root = normalizeAbsentNulls(raw) as Record<string, unknown>;
   const normalized = {
     personaDraft: normalizePersonaDraft(root.personaDraft, coercedFields),
   };
@@ -124,4 +125,4 @@ export function parsePersonaAiResponse(
   };
 }
 
-export const PERSONA_SYNTHESIS_PROMPT_VERSION = "2";
+export const PERSONA_SYNTHESIS_PROMPT_VERSION = "3";

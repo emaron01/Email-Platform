@@ -26,7 +26,7 @@ export type ContactResearchPolicy = {
   contactResearchFreshnessDays: number;
 };
 
-const contactResearchAiResultSchema = z.object({
+export const contactResearchAiResultSchema = z.object({
   roleSummary: z.string().nullable(),
   responsibilities: z.array(z.string()),
   ownershipAreas: z.array(z.string()),

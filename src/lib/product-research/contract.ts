@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import {
+  normalizeAbsentNulls,
   normalizeConfidenceValue,
   normalizeEvidenceRefs,
   summarizeCoercedFields,
@@ -178,7 +179,7 @@ export function parseProductAiResponse(
     };
   }
 
-  const root = raw as Record<string, unknown>;
+  const root = normalizeAbsentNulls(raw) as Record<string, unknown>;
   const normalized = {
     ...root,
     productDraft: normalizeProductDraft(root.productDraft, coercedFields),
@@ -224,4 +225,4 @@ export type PersonaDraft = {
   criteria?: Array<Record<string, unknown>>;
 };
 
-export const PRODUCT_SYNTHESIS_PROMPT_VERSION = "4";
+export const PRODUCT_SYNTHESIS_PROMPT_VERSION = "5";
