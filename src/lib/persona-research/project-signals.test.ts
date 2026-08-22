@@ -9,12 +9,16 @@ import {
   PERSONA_SIGNAL_CRITERION_TYPES,
   buildPersonaCriteriaForReview,
   capPersonaCriteria,
+  criteriaToEditorBoxes,
+  editorBoxesToCriteria,
   mapAiCriterionType,
   normalizeCriterionSemanticKey,
+  parseCriteriaBoxLines,
   parsePersonaCriteriaFormJson,
   projectPersonaSignalsToCriteria,
   projectSignalsFromProfileJson,
   resolveExclusionTestability,
+  type PersonaCriterionFormRow,
 } from "@/lib/persona-research/project-signals";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import { CRO_PERSONA_DRAFT_FIXTURE } from "@/lib/persona-research/fixtures/cro-setup-run-draft";
@@ -488,5 +492,215 @@ describe("researchGuidance display contract", () => {
     };
     expect(withGuidance.researchGuidance?.trim()).toBeTruthy();
     expect(withoutGuidance.researchGuidance?.trim()).toBeFalsy();
+  });
+});
+
+describe("criteria editor boxes (four textareas)", () => {
+  it("round-trips 15 projected criteria into four boxes and back with types/flags", () => {
+    const { criteria } = buildPersonaCriteriaForReview(REVOPS_PERSONA_DRAFT_FIXTURE, {
+      maxCriteria: 15,
+    });
+    expect(criteria.length).toBeGreaterThan(0);
+    expect(criteria.length).toBeLessThanOrEqual(15);
+
+    const boxes = criteriaToEditorBoxes(criteria);
+    const restored = editorBoxesToCriteria(boxes, criteria);
+
+    expect(restored).toHaveLength(criteria.length);
+    for (const original of criteria) {
+      const match = restored.find(
+        (row) =>
+          normalizeCriterionSemanticKey(row.name) ===
+            normalizeCriterionSemanticKey(original.name) &&
+          row.criterionType === original.criterionType,
+      );
+      expect(match).toBeDefined();
+      expect(match!.isDisqualifier).toBe(Boolean(original.isDisqualifier));
+      expect(match!.isRequired).toBe(Boolean(original.isRequired));
+      if (original.isDisqualifier) {
+        expect(match!.exclusionTestability).toBe(
+          resolveExclusionTestability({
+            name: original.name,
+            isDisqualifier: true,
+            aiValue: original.exclusionTestability,
+          }),
+        );
+      }
+    }
+  });
+
+  it("a line added to Exclusions saves as negative_role_signal with isDisqualifier true", () => {
+    const baseline: PersonaCriterionFormRow[] = [];
+    const boxes = {
+      positiveRoleSignals: "",
+      exclusions: "Individual contributor only\n",
+      ownershipAreas: "",
+      responsibilities: "",
+    };
+    const rows = editorBoxesToCriteria(boxes, baseline);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+    );
+    expect(rows[0]?.isDisqualifier).toBe(true);
+    expect(rows[0]?.isRequired).toBe(false);
+  });
+
+  it("a line deleted from a box is removed from saved criteria", () => {
+    const baseline: PersonaCriterionFormRow[] = [
+      {
+        name: "Owns forecast",
+        criterionType: "ownership",
+        isRequired: false,
+        isDisqualifier: false,
+      },
+      {
+        name: "Owns CRM hygiene",
+        criterionType: "ownership",
+        isRequired: false,
+        isDisqualifier: false,
+      },
+    ];
+    const boxes = criteriaToEditorBoxes(baseline);
+    boxes.ownershipAreas = "Owns forecast\n";
+    const rows = editorBoxesToCriteria(boxes, baseline);
+    expect(rows.map((r) => r.name)).toEqual(["Owns forecast"]);
+  });
+
+  it("isRequired true survives a round-trip with no edits", () => {
+    const baseline: PersonaCriterionFormRow[] = [
+      {
+        name: "Owns sales forecasting process",
+        criterionType: "ownership",
+        isRequired: true,
+        isDisqualifier: false,
+      },
+    ];
+    const boxes = criteriaToEditorBoxes(baseline);
+    const rows = editorBoxesToCriteria(boxes, baseline);
+    expect(rows[0]?.isRequired).toBe(true);
+  });
+
+  it("reword that changes semantic key drops prior isRequired (documented behavior)", () => {
+    // Match is normalizeCriterionSemanticKey within the same box. Rewording that
+    // changes the key is a new criterion; prior flags are not carried over.
+    const baseline: PersonaCriterionFormRow[] = [
+      {
+        name: "Owns sales forecasting process",
+        criterionType: "ownership",
+        isRequired: true,
+        isDisqualifier: false,
+        researchGuidance: "Confirm from org chart",
+      },
+    ];
+    const boxes = criteriaToEditorBoxes(baseline);
+    boxes.ownershipAreas = "Pipeline coverage governance\n";
+    const rows = editorBoxesToCriteria(boxes, baseline);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.name).toBe("Pipeline coverage governance");
+    expect(rows[0]?.isRequired).toBe(false);
+    expect(rows[0]?.researchGuidance).toBeNull();
+  });
+
+  it("reword that keeps semantic key preserves isRequired and exclusionTestability", () => {
+    const baseline: PersonaCriterionFormRow[] = [
+      {
+        name: "Owns sales forecasting process",
+        criterionType: "ownership",
+        isRequired: true,
+        isDisqualifier: false,
+      },
+      {
+        name: "Individual selling role only",
+        criterionType: "negative_role_signal",
+        isRequired: false,
+        isDisqualifier: true,
+        exclusionTestability: "TITLE_TESTABLE",
+      },
+    ];
+    const boxes = criteriaToEditorBoxes(baseline);
+    // "Owns " stripped → same semantic key as baseline ownership name
+    boxes.ownershipAreas = "sales forecasting process\n";
+    boxes.exclusions = "Individual selling role only\n";
+    const rows = editorBoxesToCriteria(boxes, baseline);
+    const ownership = rows.find((r) => r.criterionType === "ownership");
+    const exclusion = rows.find((r) => r.isDisqualifier);
+    expect(ownership?.isRequired).toBe(true);
+    expect(exclusion?.exclusionTestability).toBe("TITLE_TESTABLE");
+  });
+
+  it("empty Exclusions box yields no disqualifiers (warning trigger)", () => {
+    const baseline: PersonaCriterionFormRow[] = [
+      {
+        name: "Bad fit",
+        criterionType: "negative_role_signal",
+        isDisqualifier: true,
+        exclusionTestability: "TITLE_TESTABLE",
+      },
+    ];
+    const boxes = criteriaToEditorBoxes(baseline);
+    boxes.exclusions = "  \n\n";
+    const rows = editorBoxesToCriteria(boxes, baseline);
+    expect(rows.every((r) => !r.isDisqualifier)).toBe(true);
+    expect(parseCriteriaBoxLines(boxes.exclusions)).toHaveLength(0);
+  });
+
+  it("modified box marks manuallyEdited on emitted criteria", () => {
+    const baseline: PersonaCriterionFormRow[] = [
+      {
+        name: "Owns forecast",
+        criterionType: "ownership",
+        isRequired: false,
+        isDisqualifier: false,
+      },
+    ];
+    const boxes = criteriaToEditorBoxes(baseline);
+    boxes.ownershipAreas = "Owns forecast\nOwns CRM\n";
+    const rows = editorBoxesToCriteria(boxes, baseline, {
+      modifiedBoxes: ["ownershipAreas"],
+    });
+    expect(rows.every((r) => r.manuallyEdited === true)).toBe(true);
+  });
+
+  it("RevOps and CRO v2 fixtures round-trip without loss", () => {
+    for (const fixture of [
+      REVOPS_PERSONA_DRAFT_FIXTURE,
+      CRO_PERSONA_DRAFT_V2_FIXTURE,
+    ]) {
+      const { criteria } = buildPersonaCriteriaForReview(fixture, {
+        maxCriteria: 15,
+      });
+      const boxes = criteriaToEditorBoxes(criteria);
+      const restored = editorBoxesToCriteria(boxes, criteria);
+      expect(restored).toHaveLength(criteria.length);
+
+      const originalKeys = new Set(
+        criteria.map(
+          (r) =>
+            `${r.criterionType}:${normalizeCriterionSemanticKey(r.name)}`,
+        ),
+      );
+      const restoredKeys = new Set(
+        restored.map(
+          (r) =>
+            `${r.criterionType}:${normalizeCriterionSemanticKey(r.name)}`,
+        ),
+      );
+      expect(restoredKeys).toEqual(originalKeys);
+
+      for (const original of criteria) {
+        const match = restored.find(
+          (r) =>
+            r.criterionType === original.criterionType &&
+            normalizeCriterionSemanticKey(r.name) ===
+              normalizeCriterionSemanticKey(original.name),
+        )!;
+        expect(match.isRequired).toBe(Boolean(original.isRequired));
+        expect(match.isDisqualifier).toBe(Boolean(original.isDisqualifier));
+        expect(match.researchGuidance ?? null).toBe(
+          original.researchGuidance ?? null,
+        );
+      }
+    }
   });
 });

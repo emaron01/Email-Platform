@@ -893,3 +893,183 @@ export function projectSignalsFromProfileJson(
     droppedCount: capped.droppedCount,
   };
 }
+
+export type CriteriaEditorBoxKey =
+  | "positiveRoleSignals"
+  | "exclusions"
+  | "ownershipAreas"
+  | "responsibilities";
+
+export type CriteriaEditorBoxes = Record<CriteriaEditorBoxKey, string>;
+
+const BOX_CRITERION_TYPE: Record<
+  CriteriaEditorBoxKey,
+  string
+> = {
+  positiveRoleSignals: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+  exclusions: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+  ownershipAreas: PERSONA_SIGNAL_CRITERION_TYPES.ownership,
+  responsibilities: PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
+};
+
+function boxKeyForCriterion(row: PersonaCriterionFormRow): CriteriaEditorBoxKey {
+  if (row.isDisqualifier || isNegativeRoleSignalType(row.criterionType)) {
+    return "exclusions";
+  }
+  if (row.criterionType.toLowerCase().includes("ownership")) {
+    return "ownershipAreas";
+  }
+  if (row.criterionType.toLowerCase().includes("responsib")) {
+    return "responsibilities";
+  }
+  return "positiveRoleSignals";
+}
+
+export function parseCriteriaBoxLines(text: string): string[] {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const key = normalizeCriterionSemanticKey(line);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    lines.push(line);
+  }
+  return lines;
+}
+
+/** Group projected criteria into four newline-separated box texts (order preserved). */
+export function criteriaToEditorBoxes(
+  criteria: PersonaCriterionFormRow[],
+): CriteriaEditorBoxes {
+  const buckets: Record<CriteriaEditorBoxKey, string[]> = {
+    positiveRoleSignals: [],
+    exclusions: [],
+    ownershipAreas: [],
+    responsibilities: [],
+  };
+  for (const row of criteria) {
+    const name = row.name.trim();
+    if (!name) continue;
+    buckets[boxKeyForCriterion(row)].push(name);
+  }
+  return {
+    positiveRoleSignals: buckets.positiveRoleSignals.join("\n"),
+    exclusions: buckets.exclusions.join("\n"),
+    ownershipAreas: buckets.ownershipAreas.join("\n"),
+    responsibilities: buckets.responsibilities.join("\n"),
+  };
+}
+
+/**
+ * Parse editor boxes back into criteria.
+ *
+ * Matching (item 3): within the same box type, an edited line matches a baseline
+ * criterion when normalizeCriterionSemanticKey(line) equals the baseline name key.
+ * Exact string match is not required — e.g. "Owns X" and "X" share a key after verb
+ * stripping. Rewording that changes the semantic key is treated as a NEW criterion
+ * (isRequired false); the previous baseline row is dropped because its line is gone.
+ *
+ * Testability (item 5): matched exclusions keep baseline exclusionTestability, then
+ * resolveExclusionTestability re-applies the evidence-gap heuristic. New exclusion
+ * lines use EVIDENCE_TESTABLE (+ heuristic).
+ *
+ * Manual edits (item 6): pass modifiedBoxes for any box whose text differs from the
+ * initial boxes; all criteria emitted from those boxes get manuallyEdited: true.
+ */
+export function editorBoxesToCriteria(
+  boxes: CriteriaEditorBoxes,
+  baseline: PersonaCriterionFormRow[],
+  options?: { modifiedBoxes?: Iterable<CriteriaEditorBoxKey> },
+): PersonaCriterionFormRow[] {
+  const modified = new Set(options?.modifiedBoxes ?? []);
+  const baselineByBox = new Map<
+    CriteriaEditorBoxKey,
+    Map<string, PersonaCriterionFormRow>
+  >();
+
+  for (const key of Object.keys(BOX_CRITERION_TYPE) as CriteriaEditorBoxKey[]) {
+    baselineByBox.set(key, new Map());
+  }
+  for (const row of baseline) {
+    const box = boxKeyForCriterion(row);
+    const map = baselineByBox.get(box)!;
+    const semantic = normalizeCriterionSemanticKey(row.name);
+    if (!semantic || map.has(semantic)) continue;
+    map.set(semantic, row);
+  }
+
+  const out: PersonaCriterionFormRow[] = [];
+
+  for (const boxKey of Object.keys(BOX_CRITERION_TYPE) as CriteriaEditorBoxKey[]) {
+    const criterionType = BOX_CRITERION_TYPE[boxKey];
+    const isExclusion = boxKey === "exclusions";
+    const lines = parseCriteriaBoxLines(boxes[boxKey] ?? "");
+    const baselineMap = baselineByBox.get(boxKey)!;
+    const boxModified = modified.has(boxKey);
+
+    for (const line of lines) {
+      const semantic = normalizeCriterionSemanticKey(line);
+      const prior = baselineMap.get(semantic);
+      const isRequired = prior?.isRequired ?? false;
+      const exclusionTestability = isExclusion
+        ? resolveExclusionTestability({
+            name: line,
+            isDisqualifier: true,
+            aiValue: prior?.exclusionTestability,
+          })
+        : null;
+
+      out.push({
+        name: line,
+        criterionType,
+        description: prior?.description ?? null,
+        importance: prior?.importance ?? (isExclusion ? "CRITICAL" : "MEDIUM"),
+        isRequired,
+        isDisqualifier: isExclusion,
+        exclusionTestability,
+        researchGuidance: prior?.researchGuidance ?? null,
+        manuallyEdited: boxModified || Boolean(prior?.manuallyEdited),
+      });
+    }
+  }
+
+  return out;
+}
+
+/** True when normalized box text differs from the initial snapshot. */
+export function criteriaEditorBoxModified(
+  initial: string,
+  current: string,
+): boolean {
+  return (
+    parseCriteriaBoxLines(initial).join("\n") !==
+    parseCriteriaBoxLines(current).join("\n")
+  );
+}
+
+/** Research guidance lines for criteria still present in a box (by semantic key). */
+export function researchGuidanceForBox(
+  boxKey: CriteriaEditorBoxKey,
+  boxText: string,
+  baseline: PersonaCriterionFormRow[],
+): string[] {
+  const keys = new Set(
+    parseCriteriaBoxLines(boxText).map((line) =>
+      normalizeCriterionSemanticKey(line),
+    ),
+  );
+  const notes: string[] = [];
+  const seen = new Set<string>();
+  for (const row of baseline) {
+    if (boxKeyForCriterion(row) !== boxKey) continue;
+    const guidance = row.researchGuidance?.trim();
+    if (!guidance) continue;
+    const semantic = normalizeCriterionSemanticKey(row.name);
+    if (!keys.has(semantic) || seen.has(guidance)) continue;
+    seen.add(guidance);
+    notes.push(guidance);
+  }
+  return notes;
+}

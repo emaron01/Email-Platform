@@ -68,6 +68,8 @@ export function EmptyState({
   );
 }
 
+import { AutosizeTextarea } from "@/components/AutosizeTextarea";
+
 export function Field({
   label,
   name,
@@ -101,13 +103,13 @@ export function Field({
         </span>
       ) : null}
       {as === "textarea" ? (
-        <textarea
+        <AutosizeTextarea
           name={name}
           defaultValue={defaultValue ?? ""}
           required={required}
           placeholder={placeholder}
-          rows={rows}
-          className={shared}
+          minRows={rows}
+          className={`${shared} resize-none overflow-hidden`}
         />
       ) : (
         <input

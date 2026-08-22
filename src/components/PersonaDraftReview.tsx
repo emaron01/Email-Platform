@@ -7,77 +7,78 @@ import {
   saveApprovedPersonaFromRunAction,
   type PersonaSetupActionResult,
 } from "@/app/actions/persona-setup";
+import { AutosizeTextarea } from "@/components/AutosizeTextarea";
 import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
-import type { ExclusionTestabilityValue } from "@/lib/persona-research/contract";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import {
   buildPersonaCriteriaForReview,
+  criteriaEditorBoxModified,
+  criteriaToEditorBoxes,
+  editorBoxesToCriteria,
+  parseCriteriaBoxLines,
+  researchGuidanceForBox,
+  type CriteriaEditorBoxKey,
+  type CriteriaEditorBoxes,
   type PersonaCriterionFormRow,
 } from "@/lib/persona-research/project-signals";
 
 const initial: PersonaSetupActionResult | null = null;
 
-type EditableCriterion = PersonaCriterionFormRow & { key: string };
+const BOX_META: Array<{
+  key: CriteriaEditorBoxKey;
+  label: string;
+  hint: string;
+  placeholder: string;
+}> = [
+  {
+    key: "positiveRoleSignals",
+    label: "Positive role signals",
+    hint: "One signal per line. Type is fixed for this box.",
+    placeholder: "e.g. Owns weekly forecast call",
+  },
+  {
+    key: "exclusions",
+    label: "Exclusions (disqualifiers)",
+    hint: "One exclusion per line. Contacts matching these are disqualified.",
+    placeholder: "e.g. Pure marketing scope only",
+  },
+  {
+    key: "ownershipAreas",
+    label: "Ownership areas",
+    hint: "One ownership area per line.",
+    placeholder: "e.g. Sales forecasting process",
+  },
+  {
+    key: "responsibilities",
+    label: "Responsibilities / KPIs",
+    hint: "One responsibility or KPI per line.",
+    placeholder: "e.g. Forecast accuracy",
+  },
+];
 
-function roleToFlags(role: "required" | "supporting" | "disqualifier"): {
-  isRequired: boolean;
-  isDisqualifier: boolean;
-} {
-  if (role === "disqualifier") {
-    return { isRequired: false, isDisqualifier: true };
-  }
-  if (role === "required") {
-    return { isRequired: true, isDisqualifier: false };
-  }
-  return { isRequired: false, isDisqualifier: false };
-}
-
-function flagsToRole(row: PersonaCriterionFormRow): "required" | "supporting" | "disqualifier" {
-  if (row.isDisqualifier) return "disqualifier";
-  if (row.isRequired) return "required";
-  return "supporting";
-}
-
-function criterionTypeLabel(type: string): string {
-  const lower = type.toLowerCase();
-  if (lower.includes("positive") && lower.includes("signal")) {
-    return "Positive role signal";
-  }
-  if (lower.includes("negative") && lower.includes("signal")) {
-    return "Negative role signal";
-  }
-  if (lower.includes("ownership")) return "Ownership";
-  if (lower.includes("responsib")) return "Responsibility / KPI";
-  return type;
-}
-
-const GUIDANCE_PREVIEW_CHARS = 110;
-
-function ResearchGuidanceLine({ guidance }: { guidance: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const needsTruncate = guidance.length > GUIDANCE_PREVIEW_CHARS;
-  const shown =
-    expanded || !needsTruncate
-      ? guidance
-      : `${guidance.slice(0, GUIDANCE_PREVIEW_CHARS).trimEnd()}…`;
+function BoxResearchGuidance({ notes }: { notes: string[] }) {
+  const [open, setOpen] = useState(false);
+  if (notes.length === 0) return null;
 
   return (
-    <p className="mt-2 text-xs text-slate-500">
-      <span className="font-medium text-slate-600">Research: </span>
-      {shown}
-      {needsTruncate ? (
-        <>
-          {" "}
-          <button
-            type="button"
-            className="font-medium text-slate-700 underline"
-            onClick={() => setExpanded((v) => !v)}
-          >
-            {expanded ? "Show less" : "Show more"}
-          </button>
-        </>
+    <div className="mt-1.5">
+      <button
+        type="button"
+        className="text-xs font-medium text-slate-600 underline"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open
+          ? "Hide research notes"
+          : `Research notes (${notes.length})`}
+      </button>
+      {open ? (
+        <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-slate-500">
+          {notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
       ) : null}
-    </p>
+    </div>
   );
 }
 
@@ -88,60 +89,34 @@ function PersonaCriteriaEditor({
   initialCriteria: PersonaCriterionFormRow[];
   onChange: (rows: PersonaCriterionFormRow[]) => void;
 }) {
-  const [rows, setRows] = useState<EditableCriterion[]>(() =>
-    initialCriteria.map((c, i) => ({
-      ...c,
-      key: `c-${i}-${c.criterionType}-${c.name}`,
-    })),
+  const baseline = useMemo(() => initialCriteria, [initialCriteria]);
+  const initialBoxes = useMemo(
+    () => criteriaToEditorBoxes(baseline),
+    [baseline],
   );
+  const [boxes, setBoxes] = useState<CriteriaEditorBoxes>(initialBoxes);
 
   useEffect(() => {
-    onChange(rows.map(({ key: _key, ...rest }) => rest));
-  }, [rows, onChange]);
+    setBoxes(criteriaToEditorBoxes(baseline));
+  }, [baseline]);
 
-  function updateRow(
-    key: string,
-    patch: Partial<EditableCriterion> & {
-      role?: "required" | "supporting" | "disqualifier";
-    },
-  ) {
-    setRows((prev) =>
-      prev.map((row) => {
-        if (row.key !== key) return row;
-        const next = { ...row, ...patch, manuallyEdited: true };
-        if (patch.role) {
-          Object.assign(next, roleToFlags(patch.role));
-          if (patch.role === "disqualifier") {
-            next.exclusionTestability =
-              next.exclusionTestability ?? "EVIDENCE_TESTABLE";
-          } else {
-            next.exclusionTestability = null;
-          }
-        }
-        return next;
-      }),
+  useEffect(() => {
+    const modifiedBoxes = (
+      Object.keys(initialBoxes) as CriteriaEditorBoxKey[]
+    ).filter((key) =>
+      criteriaEditorBoxModified(initialBoxes[key], boxes[key]),
     );
+    onChange(
+      editorBoxesToCriteria(boxes, baseline, { modifiedBoxes }),
+    );
+  }, [boxes, baseline, initialBoxes, onChange]);
+
+  function updateBox(key: CriteriaEditorBoxKey, value: string) {
+    setBoxes((prev) => ({ ...prev, [key]: value }));
   }
 
-  function removeRow(key: string) {
-    setRows((prev) => prev.filter((row) => row.key !== key));
-  }
-
-  function addRow() {
-    setRows((prev) => [
-      ...prev,
-      {
-        key: `new-${Date.now()}`,
-        name: "",
-        criterionType: "responsibility",
-        importance: "MEDIUM",
-        isRequired: false,
-        isDisqualifier: false,
-        exclusionTestability: null,
-        manuallyEdited: true,
-      },
-    ]);
-  }
+  const exclusionsEmpty =
+    parseCriteriaBoxLines(boxes.exclusions).length === 0;
 
   return (
     <div className="md:col-span-2 space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -150,115 +125,44 @@ function PersonaCriteriaEditor({
           Scoring criteria & role signals
         </h3>
         <p className="mt-1 text-xs text-slate-500">
-          Review projected ownership, KPI, and role signals before saving. ✓
-          required · ☆ supporting · ✗ disqualifier. Manual edits are preserved
-          on later reinterpretation.
+          One criterion per line in each box. Type and disqualifier role come
+          from which box a line is in. Manual edits in a box are preserved on
+          later reinterpretation.
         </p>
       </div>
-      {rows.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          No criteria yet. Add signals that distinguish this role from title
-          alone.
-        </p>
-      ) : (
-        <ul className="space-y-3">
-          {rows.map((row) => (
-            <li
-              key={row.key}
-              className="rounded border border-slate-200 bg-white p-3"
-            >
-              <div className="grid gap-2 md:grid-cols-[1fr_auto_auto] md:items-end">
-                <label className="block text-xs text-slate-600">
-                  Criterion
-                  <input
-                    type="text"
-                    value={row.name}
-                    onChange={(e) =>
-                      updateRow(row.key, { name: e.target.value })
-                    }
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-                    placeholder="e.g. Owns sales forecasting process"
-                  />
-                </label>
-                <label className="block text-xs text-slate-600">
-                  Type
-                  <select
-                    value={row.criterionType}
-                    onChange={(e) =>
-                      updateRow(row.key, { criterionType: e.target.value })
-                    }
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-                  >
-                    <option value="positive_role_signal">
-                      Positive role signal
-                    </option>
-                    <option value="negative_role_signal">
-                      Negative role signal
-                    </option>
-                    <option value="ownership">Ownership</option>
-                    <option value="responsibility">Responsibility / KPI</option>
-                  </select>
-                </label>
-                <label className="block text-xs text-slate-600">
-                  Role
-                  <select
-                    value={flagsToRole(row)}
-                    onChange={(e) =>
-                      updateRow(row.key, {
-                        role: e.target.value as
-                          | "required"
-                          | "supporting"
-                          | "disqualifier",
-                      })
-                    }
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-                  >
-                    <option value="required">Required / strong</option>
-                    <option value="supporting">Supporting</option>
-                    <option value="disqualifier">Disqualifier</option>
-                  </select>
-                </label>
-              </div>
-              {row.isDisqualifier ? (
-                <label className="mt-2 block text-xs text-slate-600">
-                  Exclusion test
-                  <select
-                    value={row.exclusionTestability ?? "EVIDENCE_TESTABLE"}
-                    onChange={(e) =>
-                      updateRow(row.key, {
-                        exclusionTestability: e.target
-                          .value as ExclusionTestabilityValue,
-                      })
-                    }
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm md:max-w-xs"
-                  >
-                    <option value="TITLE_TESTABLE">
-                      Title-testable (title/department alone)
-                    </option>
-                    <option value="EVIDENCE_TESTABLE">
-                      Evidence-testable (needs researched ownership)
-                    </option>
-                  </select>
-                </label>
-              ) : null}
-              {row.researchGuidance?.trim() ? (
-                <ResearchGuidanceLine guidance={row.researchGuidance.trim()} />
-              ) : null}
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <span className="text-xs text-slate-500">
-                  {criterionTypeLabel(row.criterionType)}
+      <div className="space-y-4">
+        {BOX_META.map((meta) => {
+          const guidance = researchGuidanceForBox(
+            meta.key,
+            boxes[meta.key],
+            baseline,
+          );
+          return (
+            <div key={meta.key}>
+              <label className="block text-sm">
+                <span className="font-medium text-slate-700">{meta.label}</span>
+                <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                  {meta.hint}
                 </span>
-                <SecondaryButton type="button" onClick={() => removeRow(row.key)}>
-                  Remove
-                </SecondaryButton>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      <SecondaryButton type="button" onClick={addRow}>
-        Add criterion
-      </SecondaryButton>
+                <AutosizeTextarea
+                  value={boxes[meta.key]}
+                  onChange={(e) => updateBox(meta.key, e.target.value)}
+                  minRows={3}
+                  placeholder={meta.placeholder}
+                  className="mt-1 w-full resize-none overflow-hidden rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 placeholder:text-slate-400 focus:ring-2"
+                />
+              </label>
+              <BoxResearchGuidance notes={guidance} />
+              {meta.key === "exclusions" && exclusionsEmpty ? (
+                <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  This persona has no exclusion criteria — no contact will be
+                  disqualified.
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -421,11 +325,6 @@ export function PersonaDraftReview({
         initialCriteria={initialCriteria}
         onChange={handleCriteriaChange}
       />
-      {reviewResult.missingExclusionCriteria ? (
-        <p className="md:col-span-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          This persona has no exclusion criteria — no contact will be disqualified.
-        </p>
-      ) : null}
       <div className="md:col-span-2">
         <SubmitButton disabled={pending}>
           {pending ? "Saving…" : "Review & Save Persona"}
