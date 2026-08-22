@@ -24,8 +24,9 @@ Produce ONE structured JSON response with ONLY:
 
 Each suggestedBuyerRoles[] item MUST include:
 - name: concise non-empty role name (e.g. "Chief Revenue Officer", "Revenue Operations Leader")
-- likelyTitles[], departmentFunction, whyThisRoleMatters, confidence
-- evidenceRefs where practical
+- likelyTitles[], departmentFunction, whyThisRoleMatters
+- confidence: exactly HIGH, MEDIUM, or LOW (uppercase — no other values)
+- evidenceRefs: array of { claim (required string), sourceIds[], note|null }
 
 Do NOT return suggestionKey (application-owned).
 Do NOT return personas[], personaDrafts[], or complete Persona profiles.
@@ -48,6 +49,57 @@ RULES:
       url: e.url ?? null,
       text: e.text.slice(0, 8_000),
     })),
+    responseSchema: {
+      productDraft: {
+        description: "string|null",
+        valueProposition: "string|null",
+        problemsSolved: ["string"],
+        capabilities: ["string"],
+        differentiators: ["string"],
+        primaryUseCases: ["string"],
+        relevantBuyerFunctions: ["string"],
+        relevantIndustries: ["string"],
+        businessOutcomes: ["string"],
+        proofPoints: ["string"],
+        customerEvidence: ["string"],
+        terminology: ["string"],
+        unknownFields: ["string"],
+        evidenceRefs: [
+          {
+            claim: "string (REQUIRED — one factual sentence)",
+            sourceIds: ["string"],
+            note: "string|null",
+          },
+        ],
+      },
+      productMessagingDraft: {
+        primaryPositioning: "string|null",
+        coreValueThemes: ["string"],
+        strongestDifferentiators: ["string"],
+        proofPoints: ["string"],
+        companyLanguage: ["string"],
+        supportedClaims: ["string"],
+        claimsNotToMake: ["string"],
+        terminologyToUse: ["string"],
+        terminologyToAvoid: ["string"],
+      },
+      suggestedBuyerRoles: [
+        {
+          name: "string (REQUIRED)",
+          likelyTitles: ["string"],
+          departmentFunction: "string|null",
+          whyThisRoleMatters: "string|null",
+          confidence: "HIGH|MEDIUM|LOW (exact uppercase only)",
+          evidenceRefs: [
+            {
+              claim: "string (REQUIRED)",
+              sourceIds: ["string"],
+              note: "string|null",
+            },
+          ],
+        },
+      ],
+    },
     domainsAbsent: [
       "campaign",
       "offer",

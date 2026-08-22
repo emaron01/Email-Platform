@@ -28,7 +28,7 @@ describe("Product AI buyer-role contract (v3)", () => {
       ],
     });
     expect(parsed.suggestedBuyerRoles[0]!.name).toBe("Chief Revenue Officer");
-    expect(PRODUCT_SYNTHESIS_PROMPT_VERSION).toBe("3");
+    expect(PRODUCT_SYNTHESIS_PROMPT_VERSION).toBe("4");
   });
 
   it("requires non-empty buyer role name", () => {

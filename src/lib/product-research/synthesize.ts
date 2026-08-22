@@ -13,6 +13,7 @@ import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
 import {
   PRODUCT_SYNTHESIS_PROMPT_VERSION,
+  parseProductAiResponse,
   productAiResponseSchema,
   type ProductSynthesisResult,
 } from "@/lib/product-research/contract";
@@ -177,10 +178,11 @@ export async function synthesizeProductSetup(input: {
       }),
       schema: productAiResponseSchema,
       schemaName: "product_setup_synthesis",
+      parseOutput: parseProductAiResponse,
     });
 
     stage = "validation";
-    const aiResult = productAiResponseSchema.parse(response.data);
+    const aiResult = response.data;
     const allowedSourceIds = new Set(input.excerpts.map((e) => e.sourceId));
     const result = transformProductAiResponse(aiResult, { allowedSourceIds });
 
@@ -235,6 +237,9 @@ export async function synthesizeProductSetup(input: {
         setupRunId: run.id,
         promptVersion: PRODUCT_SYNTHESIS_PROMPT_VERSION,
         suggestedPersonaCount: result.suggestedBuyerRoles.length,
+        ...(response.coercedFields?.length
+          ? { coercedFields: response.coercedFields }
+          : {}),
       },
     });
 
