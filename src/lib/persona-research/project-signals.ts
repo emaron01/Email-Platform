@@ -530,7 +530,39 @@ function retentionRank(row: PersonaCriterionFormRow): number {
   return 3 + importanceRank(row.importance);
 }
 
-/** Cap merged criteria — exclusions are never dropped. */
+/**
+ * Flexible (non-exclusion) families used when capping.
+ * Round-robin across families so one HIGH-importance type cannot starve another
+ * when exclusions consume most of the maxCriteria budget.
+ */
+type FlexibleCapFamily =
+  | "ownership"
+  | "positive"
+  | "responsibility"
+  | "other";
+
+const FLEXIBLE_CAP_FAMILY_ORDER: FlexibleCapFamily[] = [
+  "ownership",
+  "positive",
+  "responsibility",
+  "other",
+];
+
+function flexibleCapFamily(row: PersonaCriterionFormRow): FlexibleCapFamily {
+  if (isOwnershipType(row.criterionType)) return "ownership";
+  if (isPositiveRoleSignalType(row.criterionType)) return "positive";
+  if (isResponsibilityType(row.criterionType)) return "responsibility";
+  return "other";
+}
+
+/**
+ * Cap merged criteria — exclusions are never dropped.
+ *
+ * Flexible slots are filled by round-robin across ownership / positive /
+ * responsibility / other (each family ordered by retentionRank). A global
+ * retentionRank-only trim previously dropped every positive_role_signal once
+ * protected exclusions + CRITICAL ownership filled maxProjectedPersonaCriteria.
+ */
 export function capPersonaCriteria(
   rows: PersonaCriterionFormRow[],
   maxCriteria: number,
@@ -554,19 +586,47 @@ export function capPersonaCriteria(
     return { criteria: rows, droppedCount: 0 };
   }
 
-  const indexed = flexibleRows.map((row, index) => ({ row, index }));
-  indexed.sort((a, b) => {
-    const rankDiff = retentionRank(a.row) - retentionRank(b.row);
-    return rankDiff !== 0 ? rankDiff : a.index - b.index;
+  const buckets = new Map<
+    FlexibleCapFamily,
+    Array<{ row: PersonaCriterionFormRow; index: number }>
+  >();
+  for (const family of FLEXIBLE_CAP_FAMILY_ORDER) {
+    buckets.set(family, []);
+  }
+  flexibleRows.forEach((row, index) => {
+    buckets.get(flexibleCapFamily(row))!.push({ row, index });
   });
+  for (const family of FLEXIBLE_CAP_FAMILY_ORDER) {
+    buckets.get(family)!.sort((a, b) => {
+      const rankDiff = retentionRank(a.row) - retentionRank(b.row);
+      return rankDiff !== 0 ? rankDiff : a.index - b.index;
+    });
+  }
 
-  const keptFlexible = indexed
-    .slice(0, flexibleSlots)
-    .sort((a, b) => a.index - b.index)
-    .map((entry) => entry.row);
+  const keptFlexible: Array<{ row: PersonaCriterionFormRow; index: number }> =
+    [];
+  const cursors = new Map<FlexibleCapFamily, number>(
+    FLEXIBLE_CAP_FAMILY_ORDER.map((family) => [family, 0]),
+  );
+
+  while (keptFlexible.length < flexibleSlots) {
+    let progressed = false;
+    for (const family of FLEXIBLE_CAP_FAMILY_ORDER) {
+      if (keptFlexible.length >= flexibleSlots) break;
+      const bucket = buckets.get(family)!;
+      const cursor = cursors.get(family)!;
+      if (cursor >= bucket.length) continue;
+      keptFlexible.push(bucket[cursor]!);
+      cursors.set(family, cursor + 1);
+      progressed = true;
+    }
+    if (!progressed) break;
+  }
+
+  keptFlexible.sort((a, b) => a.index - b.index);
 
   const keptKeys = new Set(
-    [...protectedRows, ...keptFlexible].map((row) =>
+    [...protectedRows, ...keptFlexible.map((entry) => entry.row)].map((row) =>
       criterionKey(row.name, row.criterionType),
     ),
   );

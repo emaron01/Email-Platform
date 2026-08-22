@@ -362,6 +362,68 @@ describe("projectPersonaSignalsToCriteria", () => {
     expect(negativeRows.every((row) => row.isDisqualifier)).toBe(true);
   });
 
+  it("under max 15 keeps all four projected types (does not starve positives)", () => {
+    const draft: PersonaAiDraft = {
+      ...richDraft,
+      criteria: [],
+      positiveRoleSignals: Array.from({ length: 6 }, (_, i) => `Positive signal ${i}`),
+      negativeRoleSignals: Array.from({ length: 6 }, (_, i) => `Negative signal ${i}`),
+      ownershipAreas: Array.from({ length: 6 }, (_, i) => `Ownership area ${i}`),
+      kpisAndAccountabilities: Array.from(
+        { length: 6 },
+        (_, i) => `KPI accountability ${i}`,
+      ),
+    };
+
+    const { criteria } = buildPersonaCriteriaForReview(draft, {
+      maxCriteria: 15,
+    });
+
+    const byType = {
+      positive_role_signal: criteria.filter(
+        (r) => r.criterionType === "positive_role_signal",
+      ).length,
+      negative_role_signal: criteria.filter(
+        (r) => r.criterionType === "negative_role_signal",
+      ).length,
+      ownership: criteria.filter((r) => r.criterionType === "ownership").length,
+      responsibility: criteria.filter((r) => r.criterionType === "responsibility")
+        .length,
+    };
+
+    expect(byType.negative_role_signal).toBe(6);
+    expect(byType.positive_role_signal).toBeGreaterThan(0);
+    expect(byType.ownership).toBeGreaterThan(0);
+    expect(byType.responsibility).toBeGreaterThan(0);
+    expect(criteria).toHaveLength(15);
+    // Round-robin across 3 flexible families with 9 slots → 3 each
+    expect(byType.positive_role_signal).toBe(3);
+    expect(byType.ownership).toBe(3);
+    expect(byType.responsibility).toBe(3);
+  });
+
+  it("RevOps fixture under max 15 retains projected positiveRoleSignals", () => {
+    const { criteria } = buildPersonaCriteriaForReview(REVOPS_PERSONA_DRAFT_FIXTURE, {
+      maxCriteria: 15,
+    });
+    const positives = criteria.filter(
+      (row) => row.criterionType === "positive_role_signal",
+    );
+    const fromSignals = positives.filter((row) =>
+      REVOPS_PERSONA_DRAFT_FIXTURE.positiveRoleSignals.some((signal) => {
+        const text =
+          typeof signal === "string"
+            ? signal
+            : String((signal as { text?: string }).text ?? "");
+        return text === row.name;
+      }),
+    );
+    expect(fromSignals.length).toBeGreaterThan(0);
+    expect(
+      criteria.filter((r) => r.criterionType === "responsibility").length,
+    ).toBeGreaterThan(0);
+  });
+
   it("sets missingExclusionCriteria when a draft has zero exclusions", () => {
     const result = buildPersonaCriteriaForReview({
       ...richDraft,
@@ -479,6 +541,42 @@ describe("projectPersonaSignalsToCriteria", () => {
     const capped = capPersonaCriteria(rows, 2);
     expect(capped.criteria.some((row) => row.name === "hard no")).toBe(true);
     expect(capped.droppedCount).toBe(1);
+  });
+
+  it("capPersonaCriteria round-robins flexible types so positives are not starved", () => {
+    const rows = [
+      ...Array.from({ length: 6 }, (_, i) => ({
+        name: `neg ${i}`,
+        criterionType: "negative_role_signal",
+        isDisqualifier: true as const,
+        importance: "CRITICAL" as const,
+      })),
+      ...Array.from({ length: 6 }, (_, i) => ({
+        name: `own ${i}`,
+        criterionType: "ownership",
+        isDisqualifier: false as const,
+        importance: "CRITICAL" as const,
+      })),
+      ...Array.from({ length: 6 }, (_, i) => ({
+        name: `pos ${i}`,
+        criterionType: "positive_role_signal",
+        isDisqualifier: false as const,
+        importance: "HIGH" as const,
+      })),
+      ...Array.from({ length: 6 }, (_, i) => ({
+        name: `kpi ${i}`,
+        criterionType: "responsibility",
+        isDisqualifier: false as const,
+        importance: "HIGH" as const,
+      })),
+    ];
+    const capped = capPersonaCriteria(rows, 15);
+    const count = (type: string) =>
+      capped.criteria.filter((row) => row.criterionType === type).length;
+    expect(count("negative_role_signal")).toBe(6);
+    expect(count("ownership")).toBe(3);
+    expect(count("positive_role_signal")).toBe(3);
+    expect(count("responsibility")).toBe(3);
   });
 });
 
