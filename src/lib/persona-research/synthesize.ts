@@ -22,6 +22,7 @@ import type { EvidenceExcerpt } from "@/lib/product-research/prompt";
 import { selectProductEvidenceForPersona } from "@/lib/persona-research/compact";
 import {
   PERSONA_SYNTHESIS_PROMPT_VERSION,
+  parsePersonaAiResponse,
   personaAiResponseSchema,
   type PersonaAiDraft,
 } from "@/lib/persona-research/contract";
@@ -355,11 +356,11 @@ export async function synthesizePersonaFromEvidence(input: {
       }),
       schema: personaAiResponseSchema,
       schemaName: "persona_setup_synthesis",
+      parseOutput: parsePersonaAiResponse,
     });
 
     stage = "validation";
-    const parsed = personaAiResponseSchema.parse(response.data);
-    const draft = parsed.personaDraft;
+    const draft = response.data.personaDraft;
 
     stage = "persist";
     await prisma.personaSetupRun.update({
@@ -390,6 +391,9 @@ export async function synthesizePersonaFromEvidence(input: {
         correlationId: input.correlationId,
         personaSetupRunId: input.personaSetupRunId,
         promptVersion: PERSONA_SYNTHESIS_PROMPT_VERSION,
+        ...(response.coercedFields?.length
+          ? { coercedFields: response.coercedFields }
+          : {}),
       },
     });
 

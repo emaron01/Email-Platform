@@ -3,6 +3,12 @@
  */
 
 import { z } from "zod";
+import {
+  normalizeConfidenceValue,
+  normalizeEvidenceRefs,
+  summarizeCoercedFields,
+} from "@/lib/ai/contract-normalize";
+import type { StructuredParseResult } from "@/lib/ai/types";
 
 const optionalString = z.string().nullable().optional();
 const stringList = z.array(z.string()).optional().default([]);
@@ -78,4 +84,44 @@ export const personaAiResponseSchema = z.object({
 export type PersonaAiDraft = z.infer<typeof personaAiDraftSchema>;
 export type PersonaAiResponse = z.infer<typeof personaAiResponseSchema>;
 
-export const PERSONA_SYNTHESIS_PROMPT_VERSION = "1";
+function normalizePersonaDraft(value: unknown, coercedFields: Set<string>): unknown {
+  if (!value || typeof value !== "object") return value ?? {};
+  const draft = { ...(value as Record<string, unknown>) };
+  draft.confidence = normalizeConfidenceValue(
+    draft.confidence,
+    coercedFields,
+    "personaDraft.confidence",
+  );
+  draft.evidenceRefs = normalizeEvidenceRefs(
+    draft.evidenceRefs,
+    coercedFields,
+    "personaDraft.evidenceRefs",
+    { provenanceClasses: true },
+  );
+  return draft;
+}
+
+/** Defensive parse — normalizes ambiguous model output before strict validation. */
+export function parsePersonaAiResponse(
+  raw: unknown,
+): StructuredParseResult<PersonaAiResponse> {
+  const coercedFields = new Set<string>();
+  if (!raw || typeof raw !== "object") {
+    return {
+      data: personaAiResponseSchema.parse({ personaDraft: { name: "Unknown" } }),
+      coercedFields: [],
+    };
+  }
+
+  const root = raw as Record<string, unknown>;
+  const normalized = {
+    personaDraft: normalizePersonaDraft(root.personaDraft, coercedFields),
+  };
+
+  return {
+    data: personaAiResponseSchema.parse(normalized),
+    coercedFields: summarizeCoercedFields(coercedFields),
+  };
+}
+
+export const PERSONA_SYNTHESIS_PROMPT_VERSION = "2";

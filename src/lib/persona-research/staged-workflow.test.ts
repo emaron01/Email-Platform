@@ -32,7 +32,7 @@ describe("Product synthesis v3 — no full Persona drafts", () => {
     });
     expect(ai.suggestedBuyerRoles).toHaveLength(1);
     expect(ai).not.toHaveProperty("personas");
-    expect(PRODUCT_SYNTHESIS_PROMPT_VERSION).toBe("3");
+    expect(PRODUCT_SYNTHESIS_PROMPT_VERSION).toBe("4");
 
     const result = transformProductAiResponse(ai);
     expect(result.suggestedBuyerRoles[0]!.suggestionKey).toBeTruthy();
@@ -99,7 +99,7 @@ describe("Persona evidence sufficiency + progressive search triggers", () => {
   it("persona policy defaults exist separately from product", () => {
     expect(DEFAULT_RESEARCH_POLICY_VALUES.maxSearchQueriesPerPersona).toBe(2);
     expect(DEFAULT_RESEARCH_POLICY_VALUES.maxSourcesPerPersona).toBe(8);
-    expect(PERSONA_SYNTHESIS_PROMPT_VERSION).toBe("1");
+    expect(PERSONA_SYNTHESIS_PROMPT_VERSION).toBe("2");
   });
 
   it("selects role-relevant product evidence without Product re-fetch", () => {

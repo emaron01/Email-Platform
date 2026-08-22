@@ -31,7 +31,9 @@ RULES:
 4. Do NOT score contacts. Do NOT generate campaigns/emails.
 5. Prefer responsibility/ownership criteria over literal title match.
 6. Mark provenance honestly. Do not claim MODEL_INFERENCE as researched fact.
-7. Return JSON matching the schema only (personaDraft).`;
+7. confidence must be exactly HIGH, MEDIUM, or LOW (uppercase).
+8. evidenceRefs entries MUST include claim (string). sourceIds may be empty.
+9. Return JSON matching the schema only (personaDraft).`;
 
   const user = JSON.stringify({
     productName: input.productName,
@@ -58,6 +60,40 @@ RULES:
       text: e.text.slice(0, 4_000),
       url: e.url ?? null,
     })),
+    responseSchema: {
+      personaDraft: {
+        name: "string (REQUIRED)",
+        likelyTitles: ["string"],
+        departmentFunction: "string|null",
+        seniority: "string|null",
+        roleSummary: "string|null",
+        primaryResponsibilities: ["string"],
+        ownershipAreas: ["string"],
+        kpisAndAccountabilities: ["string"],
+        painPoints: ["string"],
+        desiredOutcomesFromSolution: ["string"],
+        positiveRoleSignals: ["string"],
+        negativeRoleSignals: ["string"],
+        confidence: "HIGH|MEDIUM|LOW (exact uppercase only)",
+        evidenceRefs: [
+          {
+            claim: "string (REQUIRED)",
+            sourceIds: ["string"],
+            note: "string|null",
+            provenanceClasses: [
+              "CUSTOMER_EVIDENCE|WEB_EVIDENCE|MODEL_INFERENCE",
+            ],
+          },
+        ],
+        criteria: [
+          {
+            name: "string",
+            criterionType: "string",
+            importance: "CRITICAL|HIGH|MEDIUM|LOW",
+          },
+        ],
+      },
+    },
     domainsAbsent: ["campaign", "cta", "contactScoring", "emailGeneration"],
   });
 
