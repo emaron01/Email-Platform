@@ -6,6 +6,7 @@ import { ConsoleTransactionalEmailProvider } from "@/lib/transactional-email/pro
 import { ResendTransactionalEmailProvider } from "@/lib/transactional-email/providers/resend";
 import { SmtpTransactionalEmailProvider } from "@/lib/transactional-email/providers/smtp";
 import type { TransactionalEmailProvider } from "@/lib/transactional-email/providers/types";
+import { assertLiveSmtpAllowedInTests } from "@/lib/transactional-email/test-runtime";
 
 export function getTransactionalEmailProvider(): TransactionalEmailProvider {
   const config = getTransactionalEmailConfig();
@@ -26,6 +27,7 @@ export function getTransactionalEmailProvider(): TransactionalEmailProvider {
     if (!config.smtp) {
       throw new Error("SMTP configuration missing.");
     }
+    assertLiveSmtpAllowedInTests({ phase: "construct" });
     return new SmtpTransactionalEmailProvider(
       config.smtp,
       from,

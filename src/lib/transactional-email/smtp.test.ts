@@ -8,6 +8,7 @@ const ORIGINAL_ENV = { ...process.env };
 
 function setSmtpEnv(overrides: Record<string, string> = {}) {
   process.env.TRANSACTIONAL_EMAIL_PROVIDER = "smtp";
+  process.env.TRANSACTIONAL_EMAIL_ALLOW_LIVE_SMTP_IN_TESTS = "1";
   process.env.TRANSACTIONAL_EMAIL_FROM_EMAIL = "platform@example.com";
   process.env.TRANSACTIONAL_EMAIL_FROM_NAME = "Platform";
   process.env.TRANSACTIONAL_EMAIL_REPLY_TO = "support@example.com";
@@ -24,6 +25,28 @@ afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
   vi.restoreAllMocks();
   vi.resetModules();
+});
+
+describe("test runtime SMTP guard", () => {
+  it("blocks SMTP provider construction without explicit test opt-in", async () => {
+    process.env.TRANSACTIONAL_EMAIL_PROVIDER = "smtp";
+    process.env.TRANSACTIONAL_EMAIL_FROM_EMAIL = "platform@example.com";
+    process.env.TRANSACTIONAL_EMAIL_FROM_NAME = "Platform";
+    process.env.TRANSACTIONAL_EMAIL_SMTP_HOST = "smtp.ionos.com";
+    process.env.TRANSACTIONAL_EMAIL_SMTP_PORT = "587";
+    process.env.TRANSACTIONAL_EMAIL_SMTP_SECURE = "false";
+    process.env.TRANSACTIONAL_EMAIL_SMTP_USER = "platform@example.com";
+    process.env.TRANSACTIONAL_EMAIL_SMTP_PASSWORD = "secret";
+    delete process.env.TRANSACTIONAL_EMAIL_ALLOW_LIVE_SMTP_IN_TESTS;
+
+    vi.resetModules();
+    const { getTransactionalEmailProvider } = await import(
+      "@/lib/transactional-email/providers"
+    );
+    expect(() => getTransactionalEmailProvider()).toThrow(
+      /blocked while running tests/i,
+    );
+  });
 });
 
 describe("transactional email config parsing", () => {

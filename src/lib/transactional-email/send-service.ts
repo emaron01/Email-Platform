@@ -15,6 +15,7 @@ import {
   type RenderedTransactionalEmail,
 } from "@/lib/transactional-email/render-service";
 import type { TemplateVariableMap } from "@/lib/transactional-email/templates";
+import { assertLiveSmtpAllowedInTests } from "@/lib/transactional-email/test-runtime";
 
 export type { TransactionalEmailProvider } from "@/lib/transactional-email/providers";
 export { getTransactionalEmailProvider } from "@/lib/transactional-email/providers";
@@ -92,6 +93,14 @@ export async function sendTransactionalEmail(input: {
       retryCount: 0,
     },
   });
+
+  if (config.provider === "smtp") {
+    assertLiveSmtpAllowedInTests({
+      phase: "send",
+      templateKey: input.templateKey,
+      recipient: to,
+    });
+  }
 
   const provider = getTransactionalEmailProvider();
   const maxRetries = input.maxRetries ?? 2;
