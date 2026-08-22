@@ -224,15 +224,21 @@ export function PersonaDraftReview({
     retryPersonaSynthesisAction,
     initial,
   );
-  const initialCriteria = useMemo(
+  const reviewResult = useMemo(
     () =>
       draft
         ? buildPersonaCriteriaForReview(draft, {
             maxCriteria: maxProjectedPersonaCriteria,
-          }).criteria
-        : [],
+          })
+        : {
+            criteria: [],
+            droppedCount: 0,
+            unmappedCriterionTypes: [],
+            missingExclusionCriteria: true,
+          },
     [draft, maxProjectedPersonaCriteria],
   );
+  const initialCriteria = reviewResult.criteria;
   const [criteriaJson, setCriteriaJson] = useState("[]");
   const handleCriteriaChange = useMemo(
     () => (rows: PersonaCriterionFormRow[]) => {
@@ -243,15 +249,9 @@ export function PersonaDraftReview({
 
   useEffect(() => {
     if (draft) {
-      setCriteriaJson(
-        JSON.stringify(
-          buildPersonaCriteriaForReview(draft, {
-            maxCriteria: maxProjectedPersonaCriteria,
-          }).criteria,
-        ),
-      );
+      setCriteriaJson(JSON.stringify(reviewResult.criteria));
     }
-  }, [draft, maxProjectedPersonaCriteria]);
+  }, [draft, reviewResult.criteria]);
 
   useEffect(() => {
     if (state?.ok) {
@@ -358,6 +358,11 @@ export function PersonaDraftReview({
         initialCriteria={initialCriteria}
         onChange={handleCriteriaChange}
       />
+      {reviewResult.missingExclusionCriteria ? (
+        <p className="md:col-span-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          This persona has no exclusion criteria — no contact will be disqualified.
+        </p>
+      ) : null}
       <div className="md:col-span-2">
         <SubmitButton disabled={pending}>
           {pending ? "Saving…" : "Review & Save Persona"}

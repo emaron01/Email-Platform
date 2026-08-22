@@ -1,10 +1,5 @@
 /**
  * Project Persona AI signal arrays into PersonaCriterion drafts.
- *
- * Type strings match existing scoring / gap heuristics:
- * - responsibility → dimensions.ts personaHasResponsibilityCriteria ("responsib")
- * - ownership → dimensions.ts + gaps.ts ("ownership")
- * - positive_role_signal / negative_role_signal → gaps.ts ("signal")
  */
 
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
@@ -47,11 +42,24 @@ export type PersonaCriterionFormRow = {
 export type PersonaCriteriaReviewResult = {
   criteria: PersonaCriterionFormRow[];
   droppedCount: number;
+  unmappedCriterionTypes: string[];
+  missingExclusionCriteria: boolean;
 };
 
 /** Leading ownership verbs stripped before semantic dedupe (case-insensitive). */
 const LEADING_OWNERSHIP_VERB_PATTERN =
   /^(?:owns|owning|responsible for|accountable for|manages|managing|leads|leading|oversees|overseeing|directs|directing|drives|driving|runs|running)\s+/i;
+
+/** Names that express exclusion regardless of declared criterionType. */
+const EXCLUSION_NAME_PATTERN =
+  /^(?:no|not|lack of|without|absence of)\b/i;
+
+export type MappedAiCriterion = {
+  criterionType: string;
+  isDisqualifier: boolean;
+  unmapped: boolean;
+  originalType: string;
+};
 
 function criterionKey(name: string, criterionType: string): string {
   return `${criterionType.trim().toLowerCase()}::${name.trim().toLowerCase()}`;
@@ -65,72 +73,277 @@ export function normalizeCriterionSemanticKey(name: string): string {
   return normalized;
 }
 
-function criterionTypeRank(criterionType: string): number {
-  const lower = criterionType.toLowerCase();
-  if (lower.includes("ownership")) return 0;
-  if (lower.includes("responsib")) return 1;
-  if (lower.includes("positive") && lower.includes("signal")) return 2;
-  if (lower.includes("negative") && lower.includes("signal")) return 3;
-  return 4;
+export function isExclusionCriterionName(name: string): boolean {
+  return EXCLUSION_NAME_PATTERN.test(name.trim());
 }
 
-function isPositiveRoleSignalType(criterionType: string): boolean {
+export function isPositiveRoleSignalType(criterionType: string): boolean {
   const lower = criterionType.toLowerCase();
-  return lower.includes("positive") && lower.includes("signal");
+  return (
+    lower === PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal ||
+    (lower.includes("positive") && lower.includes("signal"))
+  );
 }
 
-function isNegativeRoleSignalType(criterionType: string): boolean {
+export function isNegativeRoleSignalType(criterionType: string): boolean {
   const lower = criterionType.toLowerCase();
-  return lower.includes("negative") && lower.includes("signal");
+  return (
+    lower === PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal ||
+    (lower.includes("negative") && lower.includes("signal"))
+  );
 }
 
 function isOwnershipType(criterionType: string): boolean {
-  return criterionType.toLowerCase().includes("ownership");
+  const lower = criterionType.toLowerCase();
+  return (
+    lower === PERSONA_SIGNAL_CRITERION_TYPES.ownership ||
+    lower.includes("ownership")
+  );
 }
 
 function isResponsibilityType(criterionType: string): boolean {
-  return criterionType.toLowerCase().includes("responsib");
+  const lower = criterionType.toLowerCase();
+  return (
+    lower === PERSONA_SIGNAL_CRITERION_TYPES.responsibility ||
+    lower.includes("responsib")
+  );
+}
+
+function isProtectedFromCap(row: PersonaCriterionFormRow): boolean {
+  return row.isDisqualifier === true || isNegativeRoleSignalType(row.criterionType);
 }
 
 /**
- * Normalize isRequired / isDisqualifier by criterion semantics.
- * Signal projection arrays always use explicit rules; draft.criteria keeps AI isRequired.
+ * Map free-form AI criterionType (+ name polarity) to platform vocabulary.
+ *
+ * | AI type pattern | Mapped type | isDisqualifier |
+ * |---|---|---|
+ * | Name starts with No/Not/Lack of/Without/Absence of | negative_role_signal | true |
+ * | contains disqualif or exclusion | negative_role_signal | true |
+ * | contains negative | negative_role_signal | from AI/signal flag |
+ * | contains ownership or word "own" | ownership | false |
+ * | contains responsib, accountab, or kpi | responsibility | false |
+ * | contains pain, outcome, signal, context, or behavior | positive_role_signal | false |
+ * | Already platform vocabulary | unchanged | per type rules |
+ * | No rule matched | positive_role_signal | false (unmapped) |
  */
+export function mapAiCriterionType(input: {
+  name: string;
+  criterionType: string;
+  isDisqualifier?: boolean;
+  isDisqualifyingSignal?: boolean;
+}): MappedAiCriterion {
+  const originalType = input.criterionType.trim() || "unknown";
+  const lower = originalType.toLowerCase();
+  const name = input.name.trim();
+
+  if (isExclusionCriterionName(name)) {
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+      isDisqualifier: true,
+      unmapped: false,
+      originalType,
+    };
+  }
+
+  if (isPositiveRoleSignalType(lower)) {
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+      isDisqualifier: false,
+      unmapped: false,
+      originalType,
+    };
+  }
+  if (isNegativeRoleSignalType(lower)) {
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+      isDisqualifier: Boolean(
+        input.isDisqualifyingSignal ?? input.isDisqualifier,
+      ),
+      unmapped: false,
+      originalType,
+    };
+  }
+  if (isOwnershipType(lower)) {
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.ownership,
+      isDisqualifier: false,
+      unmapped: false,
+      originalType,
+    };
+  }
+  if (isResponsibilityType(lower)) {
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
+      isDisqualifier: false,
+      unmapped: false,
+      originalType,
+    };
+  }
+
+  if (lower.includes("disqualif") || lower.includes("exclusion")) {
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+      isDisqualifier: true,
+      unmapped: false,
+      originalType,
+    };
+  }
+  if (lower.includes("negative")) {
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+      isDisqualifier: Boolean(
+        input.isDisqualifyingSignal ?? input.isDisqualifier,
+      ),
+      unmapped: false,
+      originalType,
+    };
+  }
+  if (lower.includes("ownership") || /\bown\b/.test(lower)) {
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.ownership,
+      isDisqualifier: false,
+      unmapped: false,
+      originalType,
+    };
+  }
+  if (
+    lower.includes("responsib") ||
+    lower.includes("accountab") ||
+    lower.includes("kpi")
+  ) {
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
+      isDisqualifier: false,
+      unmapped: false,
+      originalType,
+    };
+  }
+  if (
+    lower.includes("pain") ||
+    lower.includes("outcome") ||
+    lower.includes("signal") ||
+    lower.includes("context") ||
+    lower.includes("behavior")
+  ) {
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+      isDisqualifier: false,
+      unmapped: false,
+      originalType,
+    };
+  }
+
+  return {
+    criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+    isDisqualifier: false,
+    unmapped: true,
+    originalType,
+  };
+}
+
+function criterionTypeRank(criterionType: string): number {
+  if (isOwnershipType(criterionType)) return 0;
+  if (isResponsibilityType(criterionType)) return 1;
+  if (isPositiveRoleSignalType(criterionType)) return 2;
+  if (isNegativeRoleSignalType(criterionType)) return 3;
+  return 4;
+}
+
 export function normalizeCriterionFlags(input: {
+  name: string;
   criterionType: string;
   isRequired?: boolean;
   isDisqualifier?: boolean;
   isDisqualifyingSignal?: boolean;
   fromSignalProjection?: boolean;
-}): { isRequired: boolean; isDisqualifier: boolean } {
-  const { criterionType } = input;
-
-  if (isPositiveRoleSignalType(criterionType)) {
-    return { isRequired: false, isDisqualifier: false };
+}): {
+  criterionType: string;
+  isRequired: boolean;
+  isDisqualifier: boolean;
+  unmapped: boolean;
+} {
+  if (input.fromSignalProjection) {
+    const mapped = mapAiCriterionType({
+      name: input.name,
+      criterionType: input.criterionType,
+      isDisqualifier: input.isDisqualifier,
+      isDisqualifyingSignal: input.isDisqualifyingSignal,
+    });
+    if (isPositiveRoleSignalType(mapped.criterionType)) {
+      return {
+        criterionType: mapped.criterionType,
+        isRequired: false,
+        isDisqualifier: false,
+        unmapped: false,
+      };
+    }
+    if (isNegativeRoleSignalType(mapped.criterionType)) {
+      return {
+        criterionType: mapped.criterionType,
+        isRequired: false,
+        isDisqualifier: mapped.isDisqualifier,
+        unmapped: false,
+      };
+    }
+    if (isOwnershipType(mapped.criterionType) || isResponsibilityType(mapped.criterionType)) {
+      return {
+        criterionType: mapped.criterionType,
+        isRequired: false,
+        isDisqualifier: false,
+        unmapped: false,
+      };
+    }
   }
 
-  if (isNegativeRoleSignalType(criterionType)) {
+  const mapped = mapAiCriterionType({
+    name: input.name,
+    criterionType: input.criterionType,
+    isDisqualifier: input.isDisqualifier,
+    isDisqualifyingSignal: input.isDisqualifyingSignal,
+  });
+
+  if (isPositiveRoleSignalType(mapped.criterionType)) {
     return {
+      criterionType: mapped.criterionType,
       isRequired: false,
-      isDisqualifier: Boolean(
-        input.isDisqualifyingSignal ?? input.isDisqualifier,
-      ),
+      isDisqualifier: false,
+      unmapped: mapped.unmapped,
     };
   }
 
-  if (isOwnershipType(criterionType) || isResponsibilityType(criterionType)) {
+  if (isNegativeRoleSignalType(mapped.criterionType)) {
     return {
+      criterionType: mapped.criterionType,
+      isRequired: false,
+      isDisqualifier: mapped.isDisqualifier,
+      unmapped: mapped.unmapped,
+    };
+  }
+
+  if (isOwnershipType(mapped.criterionType) || isResponsibilityType(mapped.criterionType)) {
+    return {
+      criterionType: mapped.criterionType,
       isRequired: input.fromSignalProjection
         ? false
         : Boolean(input.isRequired),
       isDisqualifier: false,
+      unmapped: mapped.unmapped,
     };
   }
 
   return {
+    criterionType: mapped.criterionType,
     isRequired: Boolean(input.isRequired),
-    isDisqualifier: false,
+    isDisqualifier: mapped.isDisqualifier,
+    unmapped: mapped.unmapped,
   };
+}
+
+export function personaHasExclusionCriteria(
+  criteria: PersonaCriterionFormRow[],
+): boolean {
+  return criteria.some((row) => isProtectedFromCap(row));
 }
 
 /** Parse string or structured role-signal entries from AI / profileJson. */
@@ -148,6 +361,9 @@ export function parseRoleSignalEntry(value: unknown): RoleSignalEntry | null {
         isDisqualifying: true,
       };
     }
+    if (isExclusionCriterionName(raw)) {
+      return { text: raw, isDisqualifying: true };
+    }
     return { text: raw, isDisqualifying: false };
   }
   if (value && typeof value === "object") {
@@ -156,7 +372,9 @@ export function parseRoleSignalEntry(value: unknown): RoleSignalEntry | null {
     if (!text) return null;
     return {
       text,
-      isDisqualifying: Boolean(obj.isDisqualifying ?? obj.disqualifying),
+      isDisqualifying: Boolean(
+        obj.isDisqualifying ?? obj.disqualifying ?? isExclusionCriterionName(text),
+      ),
     };
   }
   return null;
@@ -177,6 +395,34 @@ function asStringList(values: unknown): string[] {
 type MergeRow = PersonaCriterionFormRow & {
   source: "draft" | "projected";
 };
+
+function normalizeReviewRow(
+  row: Omit<PersonaCriterionFormRow, "criterionType" | "isRequired" | "isDisqualifier"> & {
+    name: string;
+    criterionType: string;
+    isRequired?: boolean;
+    isDisqualifier?: boolean;
+  },
+  options?: { fromSignalProjection?: boolean; isDisqualifyingSignal?: boolean },
+): { row: PersonaCriterionFormRow; unmapped: boolean } {
+  const normalized = normalizeCriterionFlags({
+    name: row.name,
+    criterionType: row.criterionType,
+    isRequired: row.isRequired,
+    isDisqualifier: row.isDisqualifier,
+    isDisqualifyingSignal: options?.isDisqualifyingSignal,
+    fromSignalProjection: options?.fromSignalProjection,
+  });
+  return {
+    row: {
+      ...row,
+      criterionType: normalized.criterionType,
+      isRequired: normalized.isRequired,
+      isDisqualifier: normalized.isDisqualifier,
+    },
+    unmapped: normalized.unmapped,
+  };
+}
 
 function shouldReplaceSemanticDuplicate(
   existing: MergeRow,
@@ -242,36 +488,61 @@ function importanceRank(
 
 function retentionRank(row: PersonaCriterionFormRow): number {
   if (row.isDisqualifier) return 0;
-  if (row.isRequired) return 1;
-  return 2 + importanceRank(row.importance);
+  if (isNegativeRoleSignalType(row.criterionType)) return 1;
+  if (row.isRequired) return 2;
+  return 3 + importanceRank(row.importance);
 }
 
-/** Cap merged criteria — retain required/disqualifying rows first. */
+/** Cap merged criteria — exclusions are never dropped. */
 export function capPersonaCriteria(
   rows: PersonaCriterionFormRow[],
   maxCriteria: number,
 ): { criteria: PersonaCriterionFormRow[]; droppedCount: number } {
-  if (maxCriteria < 1 || rows.length <= maxCriteria) {
+  if (maxCriteria < 1) {
+    return { criteria: [], droppedCount: rows.length };
+  }
+
+  const protectedRows = rows.filter((row) => isProtectedFromCap(row));
+  const flexibleRows = rows.filter((row) => !isProtectedFromCap(row));
+
+  if (protectedRows.length >= maxCriteria) {
+    return {
+      criteria: protectedRows,
+      droppedCount: rows.length - protectedRows.length,
+    };
+  }
+
+  const flexibleSlots = maxCriteria - protectedRows.length;
+  if (flexibleRows.length <= flexibleSlots) {
     return { criteria: rows, droppedCount: 0 };
   }
 
-  const indexed = rows.map((row, index) => ({ row, index }));
+  const indexed = flexibleRows.map((row, index) => ({ row, index }));
   indexed.sort((a, b) => {
     const rankDiff = retentionRank(a.row) - retentionRank(b.row);
     return rankDiff !== 0 ? rankDiff : a.index - b.index;
   });
 
-  const kept = indexed.slice(0, maxCriteria).sort((a, b) => a.index - b.index);
+  const keptFlexible = indexed
+    .slice(0, flexibleSlots)
+    .sort((a, b) => a.index - b.index)
+    .map((entry) => entry.row);
+
+  const keptKeys = new Set(
+    [...protectedRows, ...keptFlexible].map((row) =>
+      criterionKey(row.name, row.criterionType),
+    ),
+  );
+  const criteria = rows.filter((row) =>
+    keptKeys.has(criterionKey(row.name, row.criterionType)),
+  );
+
   return {
-    criteria: kept.map((entry) => entry.row),
-    droppedCount: rows.length - kept.length,
+    criteria,
+    droppedCount: rows.length - criteria.length,
   };
 }
 
-/**
- * Build criterion drafts from draft.criteria plus signal arrays.
- * Signal-derived rows dedupe against explicit draft.criteria by semantic key.
- */
 export function projectPersonaSignalsToCriteria(
   draft: Pick<
     PersonaAiDraft,
@@ -298,17 +569,22 @@ export function projectPersonaSignalsToCriteria(
   }
 
   for (const signal of asSignalList(draft.positiveRoleSignals)) {
-    const flags = normalizeCriterionFlags({
-      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
-      fromSignalProjection: true,
-    });
+    const { row: normalized } = normalizeReviewRow(
+      {
+        name: signal.text,
+        criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+        importance: "HIGH",
+      },
+      { fromSignalProjection: true },
+    );
     pushUnique({
-      name: signal.text,
-      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+      name: normalized.name,
+      criterionType: normalized.criterionType,
       description: "Positive role signal — evidence this buyer role fits.",
       operator: "EXISTS",
       importance: "HIGH",
-      ...flags,
+      isRequired: normalized.isRequired ?? false,
+      isDisqualifier: normalized.isDisqualifier ?? false,
       researchGuidance:
         "Look for professional signals that indicate this role scope.",
       source: "AI_INTERPRETED",
@@ -316,18 +592,25 @@ export function projectPersonaSignalsToCriteria(
   }
 
   for (const signal of asSignalList(draft.negativeRoleSignals)) {
-    const flags = normalizeCriterionFlags({
-      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
-      isDisqualifyingSignal: signal.isDisqualifying,
-      fromSignalProjection: true,
-    });
+    const { row: normalized } = normalizeReviewRow(
+      {
+        name: signal.text,
+        criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+        importance: signal.isDisqualifying ? "CRITICAL" : "MEDIUM",
+      },
+      {
+        fromSignalProjection: true,
+        isDisqualifyingSignal: signal.isDisqualifying,
+      },
+    );
     pushUnique({
-      name: signal.text,
-      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+      name: normalized.name,
+      criterionType: normalized.criterionType,
       description: "Negative role signal — evidence against this buyer role.",
       operator: "EXISTS",
       importance: signal.isDisqualifying ? "CRITICAL" : "MEDIUM",
-      ...flags,
+      isRequired: normalized.isRequired ?? false,
+      isDisqualifier: normalized.isDisqualifier ?? false,
       researchGuidance:
         "Confirm whether contact evidence contradicts this buyer role.",
       source: "AI_INTERPRETED",
@@ -335,17 +618,22 @@ export function projectPersonaSignalsToCriteria(
   }
 
   for (const area of asStringList(draft.ownershipAreas)) {
-    const flags = normalizeCriterionFlags({
-      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.ownership,
-      fromSignalProjection: true,
-    });
+    const { row: normalized } = normalizeReviewRow(
+      {
+        name: area,
+        criterionType: PERSONA_SIGNAL_CRITERION_TYPES.ownership,
+        importance: "CRITICAL",
+      },
+      { fromSignalProjection: true },
+    );
     pushUnique({
-      name: area,
-      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.ownership,
+      name: normalized.name,
+      criterionType: normalized.criterionType,
       description: "Ownership area for this buyer role.",
       operator: "EXISTS",
       importance: "CRITICAL",
-      ...flags,
+      isRequired: normalized.isRequired ?? false,
+      isDisqualifier: normalized.isDisqualifier ?? false,
       researchGuidance:
         "Confirm ownership / scope from role evidence — not title alone.",
       source: "AI_INTERPRETED",
@@ -353,17 +641,22 @@ export function projectPersonaSignalsToCriteria(
   }
 
   for (const kpi of asStringList(draft.kpisAndAccountabilities)) {
-    const flags = normalizeCriterionFlags({
-      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
-      fromSignalProjection: true,
-    });
+    const { row: normalized } = normalizeReviewRow(
+      {
+        name: kpi,
+        criterionType: PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
+        importance: "HIGH",
+      },
+      { fromSignalProjection: true },
+    );
     pushUnique({
-      name: kpi,
-      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
+      name: normalized.name,
+      criterionType: normalized.criterionType,
       description: "KPI or accountability for this buyer role.",
       operator: "EXISTS",
       importance: "HIGH",
-      ...flags,
+      isRequired: normalized.isRequired ?? false,
+      isDisqualifier: normalized.isDisqualifier ?? false,
       researchGuidance:
         "Confirm KPIs / accountabilities from responsibilities evidence.",
       source: "AI_INTERPRETED",
@@ -375,7 +668,6 @@ export function projectPersonaSignalsToCriteria(
 
 const CRITERION_IMPORTANCE = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
 
-/** Parse criteriaJson submitted from PersonaDraftReview. */
 export function parsePersonaCriteriaFormJson(
   raw: string | null | undefined,
 ): PersonaCriterionFormRow[] | null {
@@ -395,24 +687,21 @@ export function parsePersonaCriteriaFormJson(
       )
         ? (row.importance as (typeof CRITERION_IMPORTANCE)[number])
         : "MEDIUM";
-      const flags = normalizeCriterionFlags({
-        criterionType,
-        isRequired: Boolean(row.isRequired),
-        isDisqualifier: Boolean(row.isDisqualifier),
-      });
-      rows.push({
+      const { row: normalized } = normalizeReviewRow({
         name,
         criterionType,
         description:
           row.description == null ? null : String(row.description),
         importance,
-        ...flags,
+        isRequired: Boolean(row.isRequired),
+        isDisqualifier: Boolean(row.isDisqualifier),
         researchGuidance:
           row.researchGuidance == null
             ? null
             : String(row.researchGuidance),
         manuallyEdited: Boolean(row.manuallyEdited),
       });
+      rows.push(normalized);
     }
     return rows;
   } catch {
@@ -420,27 +709,25 @@ export function parsePersonaCriteriaFormJson(
   }
 }
 
-/** Merge explicit draft criteria with projected signals for review UI. */
 export function buildPersonaCriteriaForReview(
   draft: PersonaAiDraft,
   options?: { maxCriteria?: number },
 ): PersonaCriteriaReviewResult {
+  const unmappedTypes = new Set<string>();
+
   const fromDraft: MergeRow[] = (draft.criteria ?? []).map((c) => {
-    const flags = normalizeCriterionFlags({
-      criterionType: c.criterionType,
-      isRequired: c.isRequired ?? false,
-      isDisqualifier: c.isDisqualifier ?? false,
-    });
-    return {
+    const { row, unmapped } = normalizeReviewRow({
       name: c.name,
       criterionType: c.criterionType,
       description: c.description ?? null,
       importance: c.importance ?? "MEDIUM",
-      ...flags,
+      isRequired: c.isRequired ?? false,
+      isDisqualifier: c.isDisqualifier ?? false,
       researchGuidance: c.researchGuidance ?? null,
       manuallyEdited: false,
-      source: "draft",
-    };
+    });
+    if (unmapped) unmappedTypes.add(c.criterionType);
+    return { ...row, source: "draft" as const };
   });
 
   const projected: MergeRow[] = projectPersonaSignalsToCriteria(draft).map(
@@ -453,7 +740,7 @@ export function buildPersonaCriteriaForReview(
       isDisqualifier: c.isDisqualifier,
       researchGuidance: c.researchGuidance,
       manuallyEdited: false,
-      source: "projected",
+      source: "projected" as const,
     }),
   );
 
@@ -469,17 +756,19 @@ export function buildPersonaCriteriaForReview(
 
   const deduped = mergeCriteriaRows(merged);
   const maxCriteria = options?.maxCriteria;
-  if (maxCriteria == null) {
-    return { criteria: deduped, droppedCount: 0 };
-  }
-  const capped = capPersonaCriteria(deduped, maxCriteria);
+  const capped =
+    maxCriteria == null
+      ? { criteria: deduped, droppedCount: 0 }
+      : capPersonaCriteria(deduped, maxCriteria);
+
   return {
     criteria: capped.criteria,
     droppedCount: capped.droppedCount,
+    unmappedCriterionTypes: [...unmappedTypes].sort(),
+    missingExclusionCriteria: !personaHasExclusionCriteria(capped.criteria),
   };
 }
 
-/** Read profileJson from an approved Persona and project only missing criteria. */
 export function projectSignalsFromProfileJson(
   profileJson: unknown,
   existingCriteria: Array<{ name: string; criterionType: string }>,
@@ -511,13 +800,13 @@ export function projectSignalsFromProfileJson(
     options.maxCriteria,
   );
 
-  const cappedNames = new Set(
+  const cappedKeys = new Set(
     capped.criteria.map((row) => criterionKey(row.name, row.criterionType)),
   );
 
   return {
     criteria: projected.filter((row) =>
-      cappedNames.has(criterionKey(row.name, row.criterionType)),
+      cappedKeys.has(criterionKey(row.name, row.criterionType)),
     ),
     droppedCount: capped.droppedCount,
   };

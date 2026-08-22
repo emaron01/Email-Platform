@@ -9,12 +9,14 @@ import {
   PERSONA_SIGNAL_CRITERION_TYPES,
   buildPersonaCriteriaForReview,
   capPersonaCriteria,
+  mapAiCriterionType,
   normalizeCriterionSemanticKey,
   projectPersonaSignalsToCriteria,
   projectSignalsFromProfileJson,
 } from "@/lib/persona-research/project-signals";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import { CRO_PERSONA_DRAFT_FIXTURE } from "@/lib/persona-research/fixtures/cro-setup-run-draft";
+import { CRO_PERSONA_DRAFT_V2_FIXTURE } from "@/lib/persona-research/fixtures/cro-setup-run-draft-v2";
 
 const richDraft: PersonaAiDraft = {
   name: "VP Revenue Operations",
@@ -43,6 +45,60 @@ const richDraft: PersonaAiDraft = {
   evidenceRefs: [],
   provenanceAssessments: [],
 };
+
+describe("mapAiCriterionType", () => {
+  it('maps criterionType "disqualifier" to negative_role_signal with isDisqualifier true', () => {
+    const mapped = mapAiCriterionType({
+      name: "Wrong role scope",
+      criterionType: "disqualifier",
+      isDisqualifier: true,
+    });
+    expect(mapped.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+    );
+    expect(mapped.isDisqualifier).toBe(true);
+    expect(mapped.unmapped).toBe(false);
+  });
+
+  it('maps "No revenue or sales forecast responsibility" as exclusion regardless of type', () => {
+    const mapped = mapAiCriterionType({
+      name: "No revenue or sales forecast responsibility",
+      criterionType: "organizational_context",
+    });
+    expect(mapped.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+    );
+    expect(mapped.isDisqualifier).toBe(true);
+  });
+
+  it("maps organizational_context, behavior, and pain_point to positive role signal", () => {
+    for (const criterionType of [
+      "organizational_context",
+      "behavior",
+      "pain_point",
+    ]) {
+      const mapped = mapAiCriterionType({
+        name: "Example criterion",
+        criterionType,
+      });
+      expect(mapped.criterionType).toBe(
+        PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+      );
+      expect(mapped.unmapped).toBe(false);
+    }
+  });
+
+  it("records truly unknown types as unmapped supporting positive", () => {
+    const mapped = mapAiCriterionType({
+      name: "Invented criterion",
+      criterionType: "totally_custom_ai_type",
+    });
+    expect(mapped.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+    );
+    expect(mapped.unmapped).toBe(true);
+  });
+});
 
 describe("projectPersonaSignalsToCriteria", () => {
   it("rich signal arrays with empty draft.criteria produce non-empty rows", () => {
@@ -130,6 +186,99 @@ describe("projectPersonaSignalsToCriteria", () => {
     expect(semanticMatches).toHaveLength(1);
   });
 
+  it("caps supporting criteria but keeps all negative signals when cap is 5", () => {
+    const negatives = Array.from({ length: 8 }, (_, i) => `Negative signal ${i}`);
+    const draft: PersonaAiDraft = {
+      ...richDraft,
+      criteria: [],
+      positiveRoleSignals: Array.from({ length: 10 }, (_, i) => `Positive ${i}`),
+      negativeRoleSignals: negatives,
+      ownershipAreas: [],
+      kpisAndAccountabilities: [],
+    };
+
+    const { criteria } = buildPersonaCriteriaForReview(draft, { maxCriteria: 5 });
+    const negativeRows = criteria.filter((row) =>
+      row.criterionType.includes("negative"),
+    );
+    expect(negativeRows).toHaveLength(8);
+  });
+
+  it("sets missingExclusionCriteria when a draft has zero exclusions", () => {
+    const result = buildPersonaCriteriaForReview({
+      ...richDraft,
+      criteria: [],
+      negativeRoleSignals: [],
+    });
+    expect(result.missingExclusionCriteria).toBe(true);
+  });
+
+  it("corrects flags on the prior production CRO draft fixture (cmt4hadug000flp2o2b44e6zb)", () => {
+    const { criteria, missingExclusionCriteria } =
+      buildPersonaCriteriaForReview(CRO_PERSONA_DRAFT_FIXTURE);
+
+    expect(missingExclusionCriteria).toBe(false);
+
+    const byName = (name: string) =>
+      criteria.find((row) => row.name === name);
+
+    const ownsForecast = byName("Owns revenue forecast governance");
+    expect(ownsForecast?.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
+    );
+    expect(ownsForecast?.isRequired).toBe(true);
+    expect(ownsForecast?.isDisqualifier).toBe(false);
+
+    const leadsB2b = byName("Leads a B2B sales organization");
+    expect(leadsB2b?.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+    );
+    expect(leadsB2b?.isRequired).toBe(false);
+    expect(leadsB2b?.isDisqualifier).toBe(false);
+
+    for (const name of [
+      "Accountable for revenue predictability",
+      "Experiences unsupported commits or weak deal evidence",
+      "Needs executive visibility into deal risk",
+      "Uses CRM or structured deal data",
+    ]) {
+      const row = byName(name);
+      expect(row, name).toBeDefined();
+      expect(row?.isDisqualifier).toBe(false);
+    }
+
+    const forecastSemantic = criteria.filter(
+      (row) =>
+        normalizeCriterionSemanticKey(row.name) === "revenue forecast governance",
+    );
+    expect(forecastSemantic).toHaveLength(1);
+  });
+
+  it("maps disqualifier criteria on the new production CRO draft fixture (cmt4i34120009to2opl62sec9)", () => {
+    expect(CRO_PERSONA_DRAFT_V2_FIXTURE.negativeRoleSignals.length).toBe(4);
+
+    const { criteria, missingExclusionCriteria } = buildPersonaCriteriaForReview(
+      CRO_PERSONA_DRAFT_V2_FIXTURE,
+      { maxCriteria: 15 },
+    );
+
+    expect(missingExclusionCriteria).toBe(false);
+
+    const exclusion = criteria.find(
+      (row) => row.name === "No revenue or sales forecast responsibility",
+    );
+    expect(exclusion?.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+    );
+    expect(exclusion?.isDisqualifier).toBe(true);
+
+    expect(
+      criteria.filter((row) =>
+        row.criterionType.includes("negative"),
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
   it("caps a draft producing 40 signals at the policy value with required/disqualifying retained", () => {
     const manySignals = Array.from({ length: 20 }, (_, i) => `Positive signal ${i}`);
     const manyOwnership = Array.from({ length: 10 }, (_, i) => `Ownership area ${i}`);
@@ -155,44 +304,10 @@ describe("projectPersonaSignalsToCriteria", () => {
     const { criteria, droppedCount } = buildPersonaCriteriaForReview(draft, {
       maxCriteria: 15,
     });
-    expect(criteria.length).toBe(15);
+    expect(criteria.length).toBeGreaterThanOrEqual(15);
     expect(droppedCount).toBeGreaterThan(0);
     expect(criteria.some((row) => row.isDisqualifier)).toBe(true);
     expect(criteria.some((row) => row.isRequired)).toBe(true);
-  });
-
-  it("corrects flags on the production CRO setup-run draft fixture", () => {
-    const { criteria } = buildPersonaCriteriaForReview(CRO_PERSONA_DRAFT_FIXTURE);
-
-    const byName = (name: string) =>
-      criteria.find((row) => row.name === name);
-
-    const ownsForecast = byName("Owns revenue forecast governance");
-    expect(ownsForecast?.criterionType).toBe("responsibility");
-    expect(ownsForecast?.isRequired).toBe(true);
-    expect(ownsForecast?.isDisqualifier).toBe(false);
-
-    const leadsB2b = byName("Leads a B2B sales organization");
-    expect(leadsB2b?.criterionType).toBe("organizational_context");
-    expect(leadsB2b?.isRequired).toBe(true);
-    expect(leadsB2b?.isDisqualifier).toBe(false);
-
-    for (const name of [
-      "Accountable for revenue predictability",
-      "Experiences unsupported commits or weak deal evidence",
-      "Needs executive visibility into deal risk",
-      "Uses CRM or structured deal data",
-    ]) {
-      const row = byName(name);
-      expect(row, name).toBeDefined();
-      expect(row?.isDisqualifier).toBe(false);
-    }
-
-    const forecastSemantic = criteria.filter(
-      (row) =>
-        normalizeCriterionSemanticKey(row.name) === "revenue forecast governance",
-    );
-    expect(forecastSemantic).toHaveLength(1);
   });
 
   it("projected types are recognized by getApplicableDimensions heuristics", () => {

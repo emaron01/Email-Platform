@@ -121,6 +121,7 @@ export async function approvePersonaFromSetupRun(input: {
   // Criteria: user-reviewed list, or merge draft.criteria + projected signals.
   const policy = await getResearchPolicy(input.organizationId);
   let projectedCriteriaDropped = 0;
+  let unmappedCriterionTypes: string[] = [];
   const criteriaRows =
     input.criteria && input.criteria.length > 0
       ? input.criteria
@@ -129,6 +130,7 @@ export async function approvePersonaFromSetupRun(input: {
             maxCriteria: policy.maxProjectedPersonaCriteria,
           });
           projectedCriteriaDropped = built.droppedCount;
+          unmappedCriterionTypes = built.unmappedCriterionTypes;
           return built.criteria;
         })();
 
@@ -173,7 +175,7 @@ export async function approvePersonaFromSetupRun(input: {
     },
   });
 
-  if (projectedCriteriaDropped > 0) {
+  if (projectedCriteriaDropped > 0 || unmappedCriterionTypes.length > 0) {
     await recordUsageEvent({
       organizationId: input.organizationId,
       userId: input.userId,
@@ -188,8 +190,15 @@ export async function approvePersonaFromSetupRun(input: {
       metadata: {
         personaSetupRunId: run.id,
         personaId: created.id,
-        projectedCriteriaDropped,
-        maxProjectedPersonaCriteria: policy.maxProjectedPersonaCriteria,
+        ...(projectedCriteriaDropped > 0
+          ? {
+              projectedCriteriaDropped,
+              maxProjectedPersonaCriteria: policy.maxProjectedPersonaCriteria,
+            }
+          : {}),
+        ...(unmappedCriterionTypes.length > 0
+          ? { unmappedCriterionTypes }
+          : {}),
       },
     });
   }
