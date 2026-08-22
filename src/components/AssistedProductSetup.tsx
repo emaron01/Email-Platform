@@ -7,7 +7,6 @@ import {
   createProductMinimalAction,
   researchAndBuildProductAction,
   retryProductSynthesisAction,
-  saveApprovedPersonaFromSuggestionAction,
   saveApprovedProductAction,
   type ProductSetupActionResult,
 } from "@/app/actions/product-setup";
@@ -16,6 +15,7 @@ import type {
   PersonaDraft,
   ProductDraft,
   ProductMessagingDraft,
+  SuggestedBuyerRole,
   SuggestedPersona,
 } from "@/lib/product-research/contract";
 
@@ -298,163 +298,115 @@ export function ProductDraftReview({
   );
 }
 
-export function SuggestedPersonasPanel({
+export function SuggestedBuyerRolesPanel({
   productId,
-  setupRunId,
-  suggestions,
-  drafts,
+  productApproved,
+  roles,
 }: {
   productId: string;
-  setupRunId: string;
-  suggestions: SuggestedPersona[];
-  drafts: PersonaDraft[];
+  productApproved: boolean;
+  roles: SuggestedBuyerRole[];
 }) {
-  if (suggestions.length === 0) {
+  if (!productApproved) {
     return (
-      <p className="text-sm text-slate-500">
-        No suggested personas from this run. You can still add Personas
-        manually on the product page.
-      </p>
+      <div
+        className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"
+        data-testid="suggested-buyer-roles-locked"
+      >
+        Save and approve the Product first. Suggested buyer roles become
+        available for building Personas after Product approval.
+      </div>
     );
   }
 
   return (
-    <div className="space-y-4" data-testid="suggested-personas">
+    <div className="space-y-4" data-testid="suggested-buyer-roles">
       <div>
         <h3 className="text-lg font-semibold text-slate-900">
-          Suggested Buyer Personas
+          Suggested Buyer Roles
         </h3>
         <p className="mt-1 text-sm text-slate-600">
-          Drafts from the same product evidence. Add & save to make a Persona
-          authoritative — no extra website research.
+          Recommendations only — not Personas yet. Build one Persona at a time.
+          Unused roles incur no Persona research or synthesis cost.
         </p>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        {suggestions.map((s) => {
-          const draft =
-            drafts.find((d) => d.suggestionKey === s.suggestionKey) ?? null;
-          return (
-            <PersonaSuggestionCard
-              key={s.suggestionKey}
-              productId={productId}
-              setupRunId={setupRunId}
-              suggestion={s}
-              draft={draft}
-            />
-          );
-        })}
-      </div>
+      {roles.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          No suggested roles from Product synthesis. You can still create a
+          custom Persona.
+        </p>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {roles.map((role) => (
+            <div
+              key={role.suggestionKey}
+              className="rounded-md border border-slate-200 bg-white p-4"
+            >
+              <p className="font-medium text-slate-900">{role.name}</p>
+              {role.whyThisRoleMatters ? (
+                <p className="mt-2 text-sm text-slate-600">
+                  {role.whyThisRoleMatters}
+                </p>
+              ) : null}
+              {role.likelyTitles.length > 0 ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  Likely titles: {role.likelyTitles.join(", ")}
+                </p>
+              ) : null}
+              <p className="mt-3">
+                <Link
+                  href={`/setup/${productId}/personas/new?role=${encodeURIComponent(role.suggestionKey)}`}
+                  className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
+                >
+                  Build Persona
+                </Link>
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
       <p className="text-sm">
+        <Link
+          href={`/setup/${productId}/personas/new`}
+          className="font-medium text-slate-800 underline"
+        >
+          Create Custom Persona
+        </Link>
+        {" · "}
         <Link href={`/setup/${productId}`} className="underline">
-          Back to Product ICPs & Personas
+          Product ICPs & Personas
         </Link>
       </p>
     </div>
   );
 }
 
-function PersonaSuggestionCard({
+/** @deprecated legacy combined draft UI — prefer SuggestedBuyerRolesPanel */
+export function SuggestedPersonasPanel({
   productId,
-  setupRunId,
-  suggestion,
-  draft,
+  setupRunId: _setupRunId,
+  suggestions,
+  drafts: _drafts,
 }: {
   productId: string;
   setupRunId: string;
-  suggestion: SuggestedPersona;
-  draft: PersonaDraft | null;
+  suggestions: SuggestedPersona[];
+  drafts: PersonaDraft[];
 }) {
-  const [state, action, pending] = useActionState(
-    saveApprovedPersonaFromSuggestionAction,
-    initial,
-  );
-  const router = useRouter();
-  useEffect(() => {
-    if (state?.ok) router.refresh();
-  }, [state, router]);
-
+  const roles: SuggestedBuyerRole[] = suggestions.map((s) => ({
+    suggestionKey: s.suggestionKey,
+    name: s.name,
+    likelyTitles: s.likelyTitles ?? [],
+    departmentFunction: s.departmentFunction ?? s.department ?? null,
+    whyThisRoleMatters: s.whyThisRoleMatters ?? s.whyThisPersonaMatters ?? null,
+    confidence: s.confidence ?? "MEDIUM",
+    evidenceRefs: s.evidenceRefs ?? [],
+  }));
   return (
-    <div className="rounded-md border border-slate-200 bg-white p-4">
-      <p className="font-medium text-slate-900">{suggestion.name}</p>
-      <p className="mt-1 text-xs text-slate-500">
-        Confidence: {suggestion.confidence}
-        {suggestion.department ? ` · ${suggestion.department}` : ""}
-        {suggestion.seniority ? ` · ${suggestion.seniority}` : ""}
-      </p>
-      {suggestion.whyThisPersonaMatters ? (
-        <p className="mt-2 text-sm text-slate-600">
-          {suggestion.whyThisPersonaMatters}
-        </p>
-      ) : null}
-      {suggestion.evidenceSummary ? (
-        <p className="mt-1 text-xs text-slate-500">{suggestion.evidenceSummary}</p>
-      ) : null}
-      <form action={action} className="mt-3 space-y-2">
-        <input type="hidden" name="productId" value={productId} />
-        <input type="hidden" name="setupRunId" value={setupRunId} />
-        <input type="hidden" name="suggestionKey" value={suggestion.suggestionKey} />
-        <Field
-          label="Persona Name"
-          name="name"
-          defaultValue={draft?.name ?? suggestion.name}
-          required
-        />
-        <Field
-          label="Likely Titles"
-          name="targetTitles"
-          defaultValue={(draft?.likelyTitles ?? suggestion.likelyTitles).join(
-            ", ",
-          )}
-        />
-        <Field
-          label="Department / Function"
-          name="department"
-          defaultValue={draft?.department ?? suggestion.department ?? ""}
-        />
-        <Field
-          label="Seniority"
-          name="seniority"
-          defaultValue={draft?.seniority ?? suggestion.seniority ?? ""}
-        />
-        <Field
-          label="Describe the person"
-          name="definition"
-          as="textarea"
-          defaultValue={draft?.definition ?? ""}
-        />
-        <Field
-          label="Primary Responsibilities"
-          name="responsibilities"
-          as="textarea"
-          defaultValue={(draft?.responsibilities ?? []).join("\n")}
-        />
-        <Field
-          label="Problems / Pain Points"
-          name="painPoints"
-          as="textarea"
-          defaultValue={(draft?.painPoints ?? []).join("\n")}
-        />
-        <Field
-          label="Desired Outcomes From Your Solution"
-          name="desiredOutcomes"
-          as="textarea"
-          defaultValue={(
-            draft?.desiredOutcomesFromYourSolution ?? []
-          ).join("\n")}
-          hint="Business outcomes — not campaign CTAs."
-        />
-        <Field
-          label="Messaging Notes"
-          name="messagingNotes"
-          as="textarea"
-          defaultValue={draft?.messagingNotes ?? ""}
-          hint="Persona messaging guidance — not scoring evidence."
-        />
-        <SubmitButton disabled={pending}>
-          {pending ? "Saving…" : "Review & Save Persona"}
-        </SubmitButton>
-      </form>
-      <Status result={state} />
-    </div>
+    <SuggestedBuyerRolesPanel
+      productId={productId}
+      productApproved
+      roles={roles}
+    />
   );
 }

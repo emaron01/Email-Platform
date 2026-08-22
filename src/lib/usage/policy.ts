@@ -27,6 +27,9 @@ export type ResearchPolicyResolved = {
   productSourceResearchFreshnessDays: number;
   maxSearchQueriesPerProduct: number;
   maxSourcesPerProduct: number;
+  maxSearchQueriesPerPersona: number;
+  maxSourcesPerPersona: number;
+  personaResearchFreshnessDays: number;
 };
 
 /**
@@ -70,6 +73,12 @@ export async function ensureOrganizationPolicies(
         DEFAULT_RESEARCH_POLICY_VALUES.maxSearchQueriesPerProduct,
       maxSourcesPerProduct:
         DEFAULT_RESEARCH_POLICY_VALUES.maxSourcesPerProduct,
+      maxSearchQueriesPerPersona:
+        DEFAULT_RESEARCH_POLICY_VALUES.maxSearchQueriesPerPersona,
+      maxSourcesPerPersona:
+        DEFAULT_RESEARCH_POLICY_VALUES.maxSourcesPerPersona,
+      personaResearchFreshnessDays:
+        DEFAULT_RESEARCH_POLICY_VALUES.personaResearchFreshnessDays,
     },
   });
 }
@@ -139,5 +148,8 @@ export async function getResearchPolicy(
       policy.productSourceResearchFreshnessDays,
     maxSearchQueriesPerProduct: policy.maxSearchQueriesPerProduct,
     maxSourcesPerProduct: policy.maxSourcesPerProduct,
+    maxSearchQueriesPerPersona: policy.maxSearchQueriesPerPersona,
+    maxSourcesPerPersona: policy.maxSourcesPerPersona,
+    personaResearchFreshnessDays: policy.personaResearchFreshnessDays,
   };
 }

@@ -1,0 +1,81 @@
+/**
+ * PERSONA_AI synthesis contract — one canonical PersonaDraft per run.
+ */
+
+import { z } from "zod";
+
+const optionalString = z.string().nullable().optional();
+const stringList = z.array(z.string()).optional().default([]);
+
+const evidenceRefSchema = z.object({
+  claim: z.string(),
+  sourceIds: z.array(z.string()).optional().default([]),
+  note: optionalString,
+  provenanceClasses: z
+    .array(z.enum(["CUSTOMER_EVIDENCE", "WEB_EVIDENCE", "MODEL_INFERENCE"]))
+    .optional()
+    .default([]),
+});
+
+const criterionDraftSchema = z.object({
+  name: z.string().min(1),
+  criterionType: z.string().min(1),
+  description: optionalString,
+  operator: z.string().optional().default("EXISTS"),
+  targetValue: z.unknown().optional(),
+  importance: z
+    .enum(["CRITICAL", "HIGH", "MEDIUM", "LOW"])
+    .optional()
+    .default("MEDIUM"),
+  isRequired: z.boolean().optional().default(false),
+  isDisqualifier: z.boolean().optional().default(false),
+  researchGuidance: optionalString,
+});
+
+export const personaAiDraftSchema = z.object({
+  name: z.string().trim().min(1),
+  likelyTitles: stringList,
+  departmentFunction: optionalString,
+  seniority: optionalString,
+  roleSummary: optionalString,
+  primaryResponsibilities: stringList,
+  ownershipAreas: stringList,
+  kpisAndAccountabilities: stringList,
+  organizationalPressures: stringList,
+  painPoints: stringList,
+  desiredOutcomesFromSolution: stringList,
+  buyingRole: optionalString,
+  decisionInfluence: optionalString,
+  positiveRoleSignals: stringList,
+  negativeRoleSignals: stringList,
+  likelyObjections: stringList,
+  terminology: stringList,
+  messagingNotes: stringList,
+  personaSpecificPositioning: stringList,
+  proofPointsToEmphasize: stringList,
+  researchGuidance: stringList,
+  criteria: z.array(criterionDraftSchema).optional().default([]),
+  confidence: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().default("MEDIUM"),
+  evidenceRefs: z.array(evidenceRefSchema).optional().default([]),
+  provenanceAssessments: z
+    .array(
+      z.object({
+        claim: z.string(),
+        provenanceClasses: z.array(
+          z.enum(["CUSTOMER_EVIDENCE", "WEB_EVIDENCE", "MODEL_INFERENCE"]),
+        ),
+        note: optionalString,
+      }),
+    )
+    .optional()
+    .default([]),
+});
+
+export const personaAiResponseSchema = z.object({
+  personaDraft: personaAiDraftSchema,
+});
+
+export type PersonaAiDraft = z.infer<typeof personaAiDraftSchema>;
+export type PersonaAiResponse = z.infer<typeof personaAiResponseSchema>;
+
+export const PERSONA_SYNTHESIS_PROMPT_VERSION = "1";

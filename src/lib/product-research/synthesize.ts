@@ -193,9 +193,8 @@ export async function synthesizeProductSetup(input: {
         messagingDraftJson:
           result.productMessagingDraft as unknown as Prisma.InputJsonValue,
         suggestedPersonasJson:
-          result.suggestedPersonas as unknown as Prisma.InputJsonValue,
-        personaDraftsJson:
-          result.personaDrafts as unknown as Prisma.InputJsonValue,
+          result.suggestedBuyerRoles as unknown as Prisma.InputJsonValue,
+        personaDraftsJson: Prisma.DbNull,
         aiProvider: providerSummary.provider,
         aiModel: providerSummary.model,
         completedAt: new Date(),
@@ -235,7 +234,7 @@ export async function synthesizeProductSetup(input: {
         evidenceBundleId: input.evidenceBundleId,
         setupRunId: run.id,
         promptVersion: PRODUCT_SYNTHESIS_PROMPT_VERSION,
-        suggestedPersonaCount: result.suggestedPersonas.length,
+        suggestedPersonaCount: result.suggestedBuyerRoles.length,
       },
     });
 

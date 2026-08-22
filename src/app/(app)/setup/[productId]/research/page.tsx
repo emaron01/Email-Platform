@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import {
   AssistedProductIntake,
   ProductDraftReview,
-  SuggestedPersonasPanel,
+  SuggestedBuyerRolesPanel,
 } from "@/components/AssistedProductSetup";
 import { PageHeader, TenantMissing } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
@@ -14,15 +14,46 @@ import {
 } from "@/lib/tenant/getCurrentOrganization";
 import { productUrlResearchIsStale } from "@/lib/product-research/acquire";
 import type {
-  PersonaDraft,
   ProductDraft,
   ProductMessagingDraft,
-  SuggestedPersona,
+  SuggestedBuyerRole,
 } from "@/lib/product-research/contract";
 
 type PageProps = {
   params: Promise<{ productId: string }>;
 };
+
+function normalizeBuyerRoles(raw: unknown): SuggestedBuyerRole[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((row, i) => {
+      if (!row || typeof row !== "object") return null;
+      const r = row as Record<string, unknown>;
+      const name = String(r.name || "").trim();
+      if (!name) return null;
+      return {
+        suggestionKey: String(r.suggestionKey || `legacy-${i + 1}`),
+        name,
+        likelyTitles: Array.isArray(r.likelyTitles)
+          ? r.likelyTitles.map(String)
+          : [],
+        departmentFunction:
+          (r.departmentFunction as string | null | undefined) ??
+          (r.department as string | null | undefined) ??
+          null,
+        whyThisRoleMatters:
+          (r.whyThisRoleMatters as string | null | undefined) ??
+          (r.whyThisPersonaMatters as string | null | undefined) ??
+          null,
+        confidence:
+          (r.confidence as "HIGH" | "MEDIUM" | "LOW" | undefined) ?? "MEDIUM",
+        evidenceRefs: Array.isArray(r.evidenceRefs)
+          ? (r.evidenceRefs as SuggestedBuyerRole["evidenceRefs"])
+          : [],
+      } satisfies SuggestedBuyerRole;
+    })
+    .filter(Boolean) as SuggestedBuyerRole[];
+}
 
 export default async function ProductResearchPage({ params }: PageProps) {
   const organization = await getCurrentOrganization();
@@ -83,21 +114,20 @@ export default async function ProductResearchPage({ params }: PageProps) {
   const draft = (latestRun?.productDraftJson as ProductDraft | null) ?? null;
   const messaging =
     (latestRun?.messagingDraftJson as ProductMessagingDraft | null) ?? null;
-  const suggestions =
-    (latestRun?.suggestedPersonasJson as SuggestedPersona[] | null) ?? [];
-  const personaDrafts =
-    (latestRun?.personaDraftsJson as PersonaDraft[] | null) ?? [];
+  const roles = normalizeBuyerRoles(latestRun?.suggestedPersonasJson);
 
   const showSynthesisFailure =
     !draft &&
     Boolean(latestBundle) &&
     (product.setupStatus === "FAILED" || Boolean(latestFailedRun));
 
+  const productApproved = product.approvalStatus === "APPROVED";
+
   return (
     <div className="space-y-8">
       <PageHeader
         title={`Research: ${product.name}`}
-        description="Acquire evidence once. Review AI drafts. Saving makes Product and Personas authoritative."
+        description="Research the Product once. Approve it. Then build Personas one at a time."
         actions={
           <Link
             href={`/setup/${product.id}`}
@@ -115,9 +145,8 @@ export default async function ProductResearchPage({ params }: PageProps) {
         >
           <p className="font-medium">Product synthesis could not be completed.</p>
           <p className="mt-1">
-            Acquired evidence was preserved. Use{" "}
-            <strong>Retry Synthesis</strong> below — this reuses the evidence
-            bundle and does not re-fetch URLs or run web search.
+            Acquired evidence was preserved. Use Retry Synthesis — no URL
+            re-fetch or Product web search.
           </p>
           {latestFailedRun?.errorSafe ? (
             <p className="mt-2 text-xs text-amber-800/80">
@@ -151,13 +180,12 @@ export default async function ProductResearchPage({ params }: PageProps) {
         </section>
       ) : null}
 
-      {latestRun && suggestions.length > 0 ? (
+      {latestRun || productApproved ? (
         <section className="rounded-lg border border-slate-200 bg-white p-5">
-          <SuggestedPersonasPanel
+          <SuggestedBuyerRolesPanel
             productId={product.id}
-            setupRunId={latestRun.id}
-            suggestions={suggestions}
-            drafts={personaDrafts}
+            productApproved={productApproved}
+            roles={roles}
           />
         </section>
       ) : null}

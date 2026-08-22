@@ -46,6 +46,7 @@ function clearAllAiEnv() {
       key.startsWith("INTERPRETATION_AI_") ||
       key.startsWith("CONTACT_RESEARCH_AI_") ||
       key.startsWith("PRODUCT_AI_") ||
+      key.startsWith("PERSONA_AI_") ||
       key.startsWith("AI_")
     ) {
       delete process.env[key];

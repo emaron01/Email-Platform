@@ -73,7 +73,8 @@ function roleMode(config: AiConfig): ResponsesRoleMode {
     config.role === "scoring" ||
     config.role === "interpretation" ||
     config.role === "contact_research" ||
-    config.role === "product"
+    config.role === "product" ||
+    config.role === "persona"
   ) {
     return "structured_only";
   }
@@ -95,6 +96,8 @@ function roleLabel(config: AiConfig): string {
       return "Contact research";
     case "product":
       return "Product";
+    case "persona":
+      return "Persona";
     default:
       return "AI";
   }

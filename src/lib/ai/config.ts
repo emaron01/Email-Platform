@@ -31,7 +31,8 @@ export type AiRole =
   | "scoring"
   | "interpretation"
   | "contact_research"
-  | "product";
+  | "product"
+  | "persona";
 
 /**
  * OpenAI Responses `reasoning.effort` values.
@@ -69,7 +70,7 @@ export type AiConfig = {
   temperature: number;
   /**
    * When set, openai-responses includes `reasoning: { effort }`.
-   * Product AI only today; other roles leave this null (request unchanged).
+   * Product/Persona AI; other roles leave this null.
    */
   reasoningEffort: AiReasoningEffort | null;
 };
@@ -133,6 +134,16 @@ const ROLE_ENV: Record<AiRole, RoleEnv> = {
     temperature: "PRODUCT_AI_TEMPERATURE",
     reasoningEffort: "PRODUCT_AI_REASONING_EFFORT",
   },
+  persona: {
+    provider: "PERSONA_AI_PROVIDER",
+    model: "PERSONA_AI_MODEL",
+    modelUrl: "PERSONA_AI_MODEL_URL",
+    apiKey: "PERSONA_AI_API_KEY",
+    timeoutMs: "PERSONA_AI_TIMEOUT_MS",
+    maxRetries: "PERSONA_AI_MAX_RETRIES",
+    temperature: "PERSONA_AI_TEMPERATURE",
+    reasoningEffort: "PERSONA_AI_REASONING_EFFORT",
+  },
 };
 
 function notConfiguredMessage(role: AiRole): string {
@@ -147,6 +158,8 @@ function notConfiguredMessage(role: AiRole): string {
       return "Contact role research is not configured.";
     case "product":
       return "Product research & assisted setup AI is not configured.";
+    case "persona":
+      return "Persona research & synthesis AI is not configured.";
   }
 }
 
@@ -199,7 +212,8 @@ function parseProvider(
       role === "scoring" ||
       role === "interpretation" ||
       role === "contact_research" ||
-      role === "product"
+      role === "product" ||
+      role === "persona"
     ) {
       return "openai-responses";
     }
@@ -248,9 +262,9 @@ function getAiConfigForRole(role: AiRole): AiConfig {
       min: 0,
       max: 2,
     }),
-    // Product synthesis defaults to low effort; other roles do not send reasoning.
+    // Product/Persona synthesis defaults to low effort; other roles omit reasoning.
     reasoningEffort:
-      role === "product" && env.reasoningEffort
+      (role === "product" || role === "persona") && env.reasoningEffort
         ? readOptionalReasoningEffort(role, env.reasoningEffort, "low")
         : null,
   };
@@ -320,6 +334,20 @@ export function getProductAiConfig(): AiConfig {
 export function isProductAiConfigured(): boolean {
   try {
     getProductAiConfig();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Fail closed for Persona AI. Never reads Product/Research/Scoring vars. */
+export function getPersonaAiConfig(): AiConfig {
+  return getAiConfigForRole("persona");
+}
+
+export function isPersonaAiConfigured(): boolean {
+  try {
+    getPersonaAiConfig();
     return true;
   } catch {
     return false;

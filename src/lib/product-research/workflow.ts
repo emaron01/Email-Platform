@@ -87,6 +87,6 @@ export async function researchAndBuildProduct(input: {
       ? "Product draft ready for review (some sources failed)."
       : "Product draft ready for review.",
     sourceCount: acquired.excerpts.length,
-    suggestedPersonaCount: synth.result?.suggestedPersonas.length ?? 0,
+    suggestedPersonaCount: synth.result?.suggestedBuyerRoles.length ?? 0,
   };
 }

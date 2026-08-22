@@ -84,35 +84,25 @@ describe("Upload validation", () => {
 });
 
 describe("Product synthesis contract", () => {
-  it("validates canonical AI personas without suggestionKey", () => {
+  it("validates suggestedBuyerRoles without suggestionKey", () => {
     const parsed = productAiResponseSchema.parse({
       productDraft: { description: "A tool", unknownFields: ["pricing"] },
       productMessagingDraft: { primaryPositioning: "Save time" },
-      personas: [
+      suggestedBuyerRoles: [
         {
           name: "CRO",
           likelyTitles: ["CRO"],
-          function: "Sales",
-          seniority: "C-Suite",
+          whyThisRoleMatters: "Owns forecasting",
           confidence: "HIGH",
-          responsibilities: ["Owns forecasting"],
-          desiredOutcomesFromSolution: ["Reduce forecast admin"],
-          criteria: [
-            {
-              name: "Owns forecasting",
-              criterionType: "responsibility",
-            },
-          ],
         },
       ],
     });
     expect(parsed.productDraft.unknownFields).toContain("pricing");
-    expect(parsed.personas).toHaveLength(1);
-    expect(parsed.personas[0]).not.toHaveProperty("suggestionKey");
-    expect(PRODUCT_SYNTHESIS_PROMPT_VERSION).toBe("2");
+    expect(parsed.suggestedBuyerRoles).toHaveLength(1);
+    expect(PRODUCT_SYNTHESIS_PROMPT_VERSION).toBe("3");
   });
 
-  it("prompt separates messaging from scoring and Title≠Role", () => {
+  it("prompt separates messaging from scoring and forbids persona drafts", () => {
     const messages = buildProductSynthesisMessages({
       productName: "Forecast App",
       primaryUrl: "https://example.com",
@@ -126,21 +116,10 @@ describe("Product synthesis contract", () => {
         },
       ],
     });
-    expect(messages[0]!.content).toContain("Title Match ≠ Role Match");
+    expect(messages[0]!.content).toContain("suggestedBuyerRoles");
     expect(messages[0]!.content).toContain("Do NOT score contacts");
-    expect(messages[0]!.content).toContain("NEVER campaign CTAs");
-    expect(messages[0]!.content).toContain("personas");
+    expect(messages[0]!.content).toContain("personaDrafts");
     expect(messages[1]!.content).toContain("domainsAbsent");
-    const userPayload = JSON.parse(messages[1]!.content);
-    expect(userPayload.domainsAbsent).toEqual(
-      expect.arrayContaining([
-        "campaign",
-        "offer",
-        "cta",
-        "contactScoring",
-        "emailGeneration",
-      ]),
-    );
   });
 
   it("120-day default comes from DB policy defaults constant, not enforcement hard-code", async () => {

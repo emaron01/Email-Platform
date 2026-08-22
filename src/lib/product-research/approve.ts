@@ -131,11 +131,12 @@ export async function approvePersonaFromDraft(input: {
   const definition =
     input.draft.definition?.trim() ||
     input.suggestion.whyThisPersonaMatters ||
+    input.suggestion.whyThisRoleMatters ||
     null;
-  const responsibilities = input.draft.responsibilities.join("\n") || null;
-  const painPoints = input.draft.painPoints.join("\n") || null;
+  const responsibilities = (input.draft.responsibilities ?? []).join("\n") || null;
+  const painPoints = (input.draft.painPoints ?? []).join("\n") || null;
   const desiredOutcomes =
-    input.draft.desiredOutcomesFromYourSolution.join("\n") || null;
+    (input.draft.desiredOutcomesFromYourSolution ?? []).join("\n") || null;
 
   let personaId = input.personaId?.trim() || "";
 
@@ -236,27 +237,35 @@ export async function approvePersonaFromDraft(input: {
   const criteria = input.draft.criteria ?? [];
   if (criteria.length > 0) {
     await prisma.personaCriterion.createMany({
-      data: criteria.map((c, i) => ({
-        organizationId: input.organizationId,
-        personaId,
-        name: c.name,
-        description: c.description ?? null,
-        criterionType: c.criterionType,
-        dataType: "TEXT" as const,
-        operator: (["EXISTS", "CONTAINS", "IN", "EQUALS"].includes(
-          c.operator || "",
-        )
-          ? c.operator
-          : "EXISTS") as "EXISTS",
-        targetValue: (c.targetValue ?? c.name) as Prisma.InputJsonValue,
-        importance: c.importance ?? "MEDIUM",
-        isRequired: c.isRequired ?? false,
-        isDisqualifier: c.isDisqualifier ?? false,
-        researchGuidance: c.researchGuidance ?? input.draft.researchGuidance,
-        source: "AI_INTERPRETED" as const,
-        sortOrder: i,
-        manuallyEdited: false,
-      })),
+      data: criteria.map((c, i) => {
+        const op = typeof c.operator === "string" ? c.operator : "";
+        const operator = (
+          ["EXISTS", "CONTAINS", "IN", "EQUALS"].includes(op) ? op : "EXISTS"
+        ) as "EXISTS";
+        return {
+          organizationId: input.organizationId,
+          personaId,
+          name: String(c.name ?? ""),
+          description:
+            c.description == null ? null : String(c.description),
+          criterionType: String(c.criterionType ?? "OTHER"),
+          dataType: "TEXT" as const,
+          operator,
+          targetValue: (c.targetValue ?? c.name) as Prisma.InputJsonValue,
+          importance: (typeof c.importance === "string"
+            ? c.importance
+            : "MEDIUM") as "MEDIUM",
+          isRequired: Boolean(c.isRequired),
+          isDisqualifier: Boolean(c.isDisqualifier),
+          researchGuidance:
+            c.researchGuidance == null
+              ? input.draft.researchGuidance
+              : String(c.researchGuidance),
+          source: "AI_INTERPRETED" as const,
+          sortOrder: i,
+          manuallyEdited: false,
+        };
+      }),
     });
   }
 
