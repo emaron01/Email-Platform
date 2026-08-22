@@ -1,8 +1,16 @@
 /**
  * Project Persona AI signal arrays into PersonaCriterion drafts.
+ *
+ * Negative / exclusion paths always set isDisqualifier=true on projection.
+ * Positive / ownership / responsibility paths always set isDisqualifier=false.
+ * User demotion of a negative to supporting is preserved via form parse.
  */
 
-import type { PersonaAiDraft } from "@/lib/persona-research/contract";
+import type {
+  ExclusionTestabilityValue,
+  PersonaAiDraft,
+} from "@/lib/persona-research/contract";
+import { EXCLUSION_TESTABILITY_VALUES } from "@/lib/persona-research/contract";
 
 export const PERSONA_SIGNAL_CRITERION_TYPES = {
   positiveRoleSignal: "positive_role_signal",
@@ -19,6 +27,7 @@ export type ProjectedPersonaCriterionDraft = {
   importance: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
   isRequired: boolean;
   isDisqualifier: boolean;
+  exclusionTestability: ExclusionTestabilityValue | null;
   researchGuidance: string | null;
   source: "AI_INTERPRETED";
 };
@@ -26,6 +35,7 @@ export type ProjectedPersonaCriterionDraft = {
 export type RoleSignalEntry = {
   text: string;
   isDisqualifying: boolean;
+  exclusionTestability?: ExclusionTestabilityValue | null;
 };
 
 export type PersonaCriterionFormRow = {
@@ -35,6 +45,7 @@ export type PersonaCriterionFormRow = {
   importance?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
   isRequired?: boolean;
   isDisqualifier?: boolean;
+  exclusionTestability?: ExclusionTestabilityValue | null;
   researchGuidance?: string | null;
   manuallyEdited?: boolean;
 };
@@ -53,6 +64,13 @@ const LEADING_OWNERSHIP_VERB_PATTERN =
 /** Names that express exclusion regardless of declared criterionType. */
 const EXCLUSION_NAME_PATTERN =
   /^(?:no|not|lack of|without|absence of)\b/i;
+
+/**
+ * Exclusion text that describes a responsibility / ownership gap — never title-only.
+ * Matches: without, lacks, not responsible for, no ownership of, and close variants.
+ */
+const EVIDENCE_GAP_HEURISTIC_PATTERN =
+  /\b(?:without|lacks|lacking|not responsible for|no ownership of|without ownership(?:\s+of)?)\b/i;
 
 export type MappedAiCriterion = {
   criterionType: string;
@@ -75,6 +93,30 @@ export function normalizeCriterionSemanticKey(name: string): string {
 
 export function isExclusionCriterionName(name: string): boolean {
   return EXCLUSION_NAME_PATTERN.test(name.trim());
+}
+
+export function describesEvidenceGap(text: string): boolean {
+  return EVIDENCE_GAP_HEURISTIC_PATTERN.test(text.trim());
+}
+
+/**
+ * Resolve exclusion testability for a disqualifier.
+ * Heuristic wins over AI; missing/unrecognized AI values → EVIDENCE_TESTABLE.
+ */
+export function resolveExclusionTestability(input: {
+  name: string;
+  isDisqualifier: boolean;
+  aiValue?: unknown;
+}): ExclusionTestabilityValue | null {
+  if (!input.isDisqualifier) return null;
+  if (describesEvidenceGap(input.name)) return "EVIDENCE_TESTABLE";
+  if (
+    typeof input.aiValue === "string" &&
+    (EXCLUSION_TESTABILITY_VALUES as readonly string[]).includes(input.aiValue)
+  ) {
+    return input.aiValue as ExclusionTestabilityValue;
+  }
+  return "EVIDENCE_TESTABLE";
 }
 
 export function isPositiveRoleSignalType(criterionType: string): boolean {
@@ -110,22 +152,16 @@ function isResponsibilityType(criterionType: string): boolean {
 }
 
 function isProtectedFromCap(row: PersonaCriterionFormRow): boolean {
-  return row.isDisqualifier === true || isNegativeRoleSignalType(row.criterionType);
+  return (
+    row.isDisqualifier === true || isNegativeRoleSignalType(row.criterionType)
+  );
 }
 
 /**
  * Map free-form AI criterionType (+ name polarity) to platform vocabulary.
  *
- * | AI type pattern | Mapped type | isDisqualifier |
- * |---|---|---|
- * | Name starts with No/Not/Lack of/Without/Absence of | negative_role_signal | true |
- * | contains disqualif or exclusion | negative_role_signal | true |
- * | contains negative | negative_role_signal | from AI/signal flag |
- * | contains ownership or word "own" | ownership | false |
- * | contains responsib, accountab, or kpi | responsibility | false |
- * | contains pain, outcome, signal, context, or behavior | positive_role_signal | false |
- * | Already platform vocabulary | unchanged | per type rules |
- * | No rule matched | positive_role_signal | false (unmapped) |
+ * Negative / exclusion paths always set isDisqualifier=true (Change A).
+ * Positive / ownership / responsibility paths always set isDisqualifier=false.
  */
 export function mapAiCriterionType(input: {
   name: string;
@@ -157,9 +193,7 @@ export function mapAiCriterionType(input: {
   if (isNegativeRoleSignalType(lower)) {
     return {
       criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
-      isDisqualifier: Boolean(
-        input.isDisqualifyingSignal ?? input.isDisqualifier,
-      ),
+      isDisqualifier: true,
       unmapped: false,
       originalType,
     };
@@ -192,9 +226,7 @@ export function mapAiCriterionType(input: {
   if (lower.includes("negative")) {
     return {
       criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
-      isDisqualifier: Boolean(
-        input.isDisqualifyingSignal ?? input.isDisqualifier,
-      ),
+      isDisqualifier: true,
       unmapped: false,
       originalType,
     };
@@ -257,45 +289,16 @@ export function normalizeCriterionFlags(input: {
   isDisqualifier?: boolean;
   isDisqualifyingSignal?: boolean;
   fromSignalProjection?: boolean;
+  /** When true (form JSON), preserve user demotion of a negative to supporting. */
+  preserveUserDisqualifierFlag?: boolean;
+  exclusionTestability?: unknown;
 }): {
   criterionType: string;
   isRequired: boolean;
   isDisqualifier: boolean;
+  exclusionTestability: ExclusionTestabilityValue | null;
   unmapped: boolean;
 } {
-  if (input.fromSignalProjection) {
-    const mapped = mapAiCriterionType({
-      name: input.name,
-      criterionType: input.criterionType,
-      isDisqualifier: input.isDisqualifier,
-      isDisqualifyingSignal: input.isDisqualifyingSignal,
-    });
-    if (isPositiveRoleSignalType(mapped.criterionType)) {
-      return {
-        criterionType: mapped.criterionType,
-        isRequired: false,
-        isDisqualifier: false,
-        unmapped: false,
-      };
-    }
-    if (isNegativeRoleSignalType(mapped.criterionType)) {
-      return {
-        criterionType: mapped.criterionType,
-        isRequired: false,
-        isDisqualifier: mapped.isDisqualifier,
-        unmapped: false,
-      };
-    }
-    if (isOwnershipType(mapped.criterionType) || isResponsibilityType(mapped.criterionType)) {
-      return {
-        criterionType: mapped.criterionType,
-        isRequired: false,
-        isDisqualifier: false,
-        unmapped: false,
-      };
-    }
-  }
-
   const mapped = mapAiCriterionType({
     name: input.name,
     criterionType: input.criterionType,
@@ -308,34 +311,53 @@ export function normalizeCriterionFlags(input: {
       criterionType: mapped.criterionType,
       isRequired: false,
       isDisqualifier: false,
+      exclusionTestability: null,
       unmapped: mapped.unmapped,
     };
   }
 
   if (isNegativeRoleSignalType(mapped.criterionType)) {
+    const isDisqualifier = input.preserveUserDisqualifierFlag
+      ? Boolean(input.isDisqualifier)
+      : true;
     return {
       criterionType: mapped.criterionType,
       isRequired: false,
-      isDisqualifier: mapped.isDisqualifier,
+      isDisqualifier,
+      exclusionTestability: resolveExclusionTestability({
+        name: input.name,
+        isDisqualifier,
+        aiValue: input.exclusionTestability,
+      }),
       unmapped: mapped.unmapped,
     };
   }
 
-  if (isOwnershipType(mapped.criterionType) || isResponsibilityType(mapped.criterionType)) {
+  if (
+    isOwnershipType(mapped.criterionType) ||
+    isResponsibilityType(mapped.criterionType)
+  ) {
     return {
       criterionType: mapped.criterionType,
       isRequired: input.fromSignalProjection
         ? false
         : Boolean(input.isRequired),
       isDisqualifier: false,
+      exclusionTestability: null,
       unmapped: mapped.unmapped,
     };
   }
 
+  const isDisqualifier = mapped.isDisqualifier;
   return {
     criterionType: mapped.criterionType,
     isRequired: Boolean(input.isRequired),
-    isDisqualifier: mapped.isDisqualifier,
+    isDisqualifier,
+    exclusionTestability: resolveExclusionTestability({
+      name: input.name,
+      isDisqualifier,
+      aiValue: input.exclusionTestability,
+    }),
     unmapped: mapped.unmapped,
   };
 }
@@ -361,20 +383,22 @@ export function parseRoleSignalEntry(value: unknown): RoleSignalEntry | null {
         isDisqualifying: true,
       };
     }
-    if (isExclusionCriterionName(raw)) {
-      return { text: raw, isDisqualifying: true };
-    }
-    return { text: raw, isDisqualifying: false };
+    // Plain negativeRoleSignals entries are exclusions by default (Change A).
+    return { text: raw, isDisqualifying: true };
   }
   if (value && typeof value === "object") {
     const obj = value as Record<string, unknown>;
     const text = String(obj.text ?? obj.signal ?? obj.name ?? "").trim();
     if (!text) return null;
+    const exclusionTestability = resolveExclusionTestability({
+      name: text,
+      isDisqualifier: true,
+      aiValue: obj.exclusionTestability,
+    });
     return {
       text,
-      isDisqualifying: Boolean(
-        obj.isDisqualifying ?? obj.disqualifying ?? isExclusionCriterionName(text),
-      ),
+      isDisqualifying: true,
+      exclusionTestability,
     };
   }
   return null;
@@ -397,13 +421,22 @@ type MergeRow = PersonaCriterionFormRow & {
 };
 
 function normalizeReviewRow(
-  row: Omit<PersonaCriterionFormRow, "criterionType" | "isRequired" | "isDisqualifier"> & {
+  row: Omit<
+    PersonaCriterionFormRow,
+    "criterionType" | "isRequired" | "isDisqualifier" | "exclusionTestability"
+  > & {
     name: string;
     criterionType: string;
     isRequired?: boolean;
     isDisqualifier?: boolean;
+    exclusionTestability?: ExclusionTestabilityValue | null;
   },
-  options?: { fromSignalProjection?: boolean; isDisqualifyingSignal?: boolean },
+  options?: {
+    fromSignalProjection?: boolean;
+    isDisqualifyingSignal?: boolean;
+    preserveUserDisqualifierFlag?: boolean;
+    aiExclusionTestability?: unknown;
+  },
 ): { row: PersonaCriterionFormRow; unmapped: boolean } {
   const normalized = normalizeCriterionFlags({
     name: row.name,
@@ -412,6 +445,9 @@ function normalizeReviewRow(
     isDisqualifier: row.isDisqualifier,
     isDisqualifyingSignal: options?.isDisqualifyingSignal,
     fromSignalProjection: options?.fromSignalProjection,
+    preserveUserDisqualifierFlag: options?.preserveUserDisqualifierFlag,
+    exclusionTestability:
+      options?.aiExclusionTestability ?? row.exclusionTestability,
   });
   return {
     row: {
@@ -419,6 +455,7 @@ function normalizeReviewRow(
       criterionType: normalized.criterionType,
       isRequired: normalized.isRequired,
       isDisqualifier: normalized.isDisqualifier,
+      exclusionTestability: normalized.exclusionTestability,
     },
     unmapped: normalized.unmapped,
   };
@@ -554,9 +591,7 @@ export function projectPersonaSignalsToCriteria(
   >,
 ): ProjectedPersonaCriterionDraft[] {
   const existingKeys = new Set(
-    (draft.criteria ?? []).map((c) =>
-      criterionKey(c.name, c.criterionType),
-    ),
+    (draft.criteria ?? []).map((c) => criterionKey(c.name, c.criterionType)),
   );
 
   const out: ProjectedPersonaCriterionDraft[] = [];
@@ -584,7 +619,8 @@ export function projectPersonaSignalsToCriteria(
       operator: "EXISTS",
       importance: "HIGH",
       isRequired: normalized.isRequired ?? false,
-      isDisqualifier: normalized.isDisqualifier ?? false,
+      isDisqualifier: false,
+      exclusionTestability: null,
       researchGuidance:
         "Look for professional signals that indicate this role scope.",
       source: "AI_INTERPRETED",
@@ -596,11 +632,13 @@ export function projectPersonaSignalsToCriteria(
       {
         name: signal.text,
         criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
-        importance: signal.isDisqualifying ? "CRITICAL" : "MEDIUM",
+        importance: "CRITICAL",
+        exclusionTestability: signal.exclusionTestability ?? null,
       },
       {
         fromSignalProjection: true,
-        isDisqualifyingSignal: signal.isDisqualifying,
+        isDisqualifyingSignal: true,
+        aiExclusionTestability: signal.exclusionTestability,
       },
     );
     pushUnique({
@@ -608,9 +646,10 @@ export function projectPersonaSignalsToCriteria(
       criterionType: normalized.criterionType,
       description: "Negative role signal — evidence against this buyer role.",
       operator: "EXISTS",
-      importance: signal.isDisqualifying ? "CRITICAL" : "MEDIUM",
-      isRequired: normalized.isRequired ?? false,
-      isDisqualifier: normalized.isDisqualifier ?? false,
+      importance: "CRITICAL",
+      isRequired: false,
+      isDisqualifier: true,
+      exclusionTestability: normalized.exclusionTestability ?? null,
       researchGuidance:
         "Confirm whether contact evidence contradicts this buyer role.",
       source: "AI_INTERPRETED",
@@ -633,7 +672,8 @@ export function projectPersonaSignalsToCriteria(
       operator: "EXISTS",
       importance: "CRITICAL",
       isRequired: normalized.isRequired ?? false,
-      isDisqualifier: normalized.isDisqualifier ?? false,
+      isDisqualifier: false,
+      exclusionTestability: null,
       researchGuidance:
         "Confirm ownership / scope from role evidence — not title alone.",
       source: "AI_INTERPRETED",
@@ -656,7 +696,8 @@ export function projectPersonaSignalsToCriteria(
       operator: "EXISTS",
       importance: "HIGH",
       isRequired: normalized.isRequired ?? false,
-      isDisqualifier: normalized.isDisqualifier ?? false,
+      isDisqualifier: false,
+      exclusionTestability: null,
       researchGuidance:
         "Confirm KPIs / accountabilities from responsibilities evidence.",
       source: "AI_INTERPRETED",
@@ -687,26 +728,57 @@ export function parsePersonaCriteriaFormJson(
       )
         ? (row.importance as (typeof CRITERION_IMPORTANCE)[number])
         : "MEDIUM";
-      const { row: normalized } = normalizeReviewRow({
-        name,
-        criterionType,
-        description:
-          row.description == null ? null : String(row.description),
-        importance,
-        isRequired: Boolean(row.isRequired),
-        isDisqualifier: Boolean(row.isDisqualifier),
-        researchGuidance:
-          row.researchGuidance == null
-            ? null
-            : String(row.researchGuidance),
-        manuallyEdited: Boolean(row.manuallyEdited),
-      });
+      const { row: normalized } = normalizeReviewRow(
+        {
+          name,
+          criterionType,
+          description:
+            row.description == null ? null : String(row.description),
+          importance,
+          isRequired: Boolean(row.isRequired),
+          isDisqualifier: Boolean(row.isDisqualifier),
+          exclusionTestability:
+            typeof row.exclusionTestability === "string"
+              ? (row.exclusionTestability as ExclusionTestabilityValue)
+              : null,
+          researchGuidance:
+            row.researchGuidance == null
+              ? null
+              : String(row.researchGuidance),
+          manuallyEdited: Boolean(row.manuallyEdited),
+        },
+        {
+          preserveUserDisqualifierFlag: true,
+          aiExclusionTestability: row.exclusionTestability,
+        },
+      );
       rows.push(normalized);
     }
     return rows;
   } catch {
     return null;
   }
+}
+
+function findNegativeSignalTestability(
+  draft: Pick<PersonaAiDraft, "negativeRoleSignals">,
+  name: string,
+): unknown {
+  const target = normalizeCriterionSemanticKey(name);
+  for (const signal of draft.negativeRoleSignals ?? []) {
+    if (typeof signal === "string") {
+      if (normalizeCriterionSemanticKey(signal) === target) return undefined;
+      continue;
+    }
+    if (!signal || typeof signal !== "object") continue;
+    const obj = signal as Record<string, unknown>;
+    const text = String(obj.text ?? obj.signal ?? obj.name ?? "").trim();
+    if (!text) continue;
+    if (normalizeCriterionSemanticKey(text) === target) {
+      return obj.exclusionTestability;
+    }
+  }
+  return undefined;
 }
 
 export function buildPersonaCriteriaForReview(
@@ -716,16 +788,24 @@ export function buildPersonaCriteriaForReview(
   const unmappedTypes = new Set<string>();
 
   const fromDraft: MergeRow[] = (draft.criteria ?? []).map((c) => {
-    const { row, unmapped } = normalizeReviewRow({
-      name: c.name,
-      criterionType: c.criterionType,
-      description: c.description ?? null,
-      importance: c.importance ?? "MEDIUM",
-      isRequired: c.isRequired ?? false,
-      isDisqualifier: c.isDisqualifier ?? false,
-      researchGuidance: c.researchGuidance ?? null,
-      manuallyEdited: false,
-    });
+    const { row, unmapped } = normalizeReviewRow(
+      {
+        name: c.name,
+        criterionType: c.criterionType,
+        description: c.description ?? null,
+        importance: c.importance ?? "MEDIUM",
+        isRequired: c.isRequired ?? false,
+        isDisqualifier: c.isDisqualifier ?? false,
+        exclusionTestability: c.exclusionTestability ?? null,
+        researchGuidance: c.researchGuidance ?? null,
+        manuallyEdited: false,
+      },
+      {
+        aiExclusionTestability:
+          c.exclusionTestability ??
+          findNegativeSignalTestability(draft, c.name),
+      },
+    );
     if (unmapped) unmappedTypes.add(c.criterionType);
     return { ...row, source: "draft" as const };
   });
@@ -738,6 +818,7 @@ export function buildPersonaCriteriaForReview(
       importance: c.importance,
       isRequired: c.isRequired,
       isDisqualifier: c.isDisqualifier,
+      exclusionTestability: c.exclusionTestability,
       researchGuidance: c.researchGuidance,
       manuallyEdited: false,
       source: "projected" as const,
@@ -796,6 +877,7 @@ export function projectSignalsFromProfileJson(
       importance: row.importance,
       isRequired: row.isRequired,
       isDisqualifier: row.isDisqualifier,
+      exclusionTestability: row.exclusionTestability,
     })),
     options.maxCriteria,
   );

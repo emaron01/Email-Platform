@@ -165,6 +165,12 @@ enum CriterionSource {
   MIGRATED_FROM_LEGACY
 }
 
+/// Whether a persona exclusion can be decided from title alone or needs researched evidence.
+enum ExclusionTestability {
+  TITLE_TESTABLE
+  EVIDENCE_TESTABLE
+}
+
 enum ContactResearchStatus {
   NOT_STARTED
   IN_PROGRESS
@@ -949,6 +955,8 @@ model PersonaCriterion {
   importance        CriterionImportance @default(MEDIUM)
   isRequired        Boolean             @default(false)
   isDisqualifier    Boolean             @default(false)
+  /// TITLE_TESTABLE | EVIDENCE_TESTABLE for exclusions; null for non-disqualifiers.
+  exclusionTestability ExclusionTestability?
   researchGuidance  String?
   source            CriterionSource     @default(AI_INTERPRETED)
   confidence        ResearchConfidence?

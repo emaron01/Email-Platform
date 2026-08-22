@@ -14,6 +14,16 @@ import type { StructuredParseResult } from "@/lib/ai/types";
 const optionalString = z.string().nullable().optional();
 const stringList = z.array(z.string()).optional().default([]);
 
+export const EXCLUSION_TESTABILITY_VALUES = [
+  "TITLE_TESTABLE",
+  "EVIDENCE_TESTABLE",
+] as const;
+
+export type ExclusionTestabilityValue =
+  (typeof EXCLUSION_TESTABILITY_VALUES)[number];
+
+export const exclusionTestabilitySchema = z.enum(EXCLUSION_TESTABILITY_VALUES);
+
 const evidenceRefSchema = z.object({
   claim: z.string(),
   sourceIds: z.array(z.string()).optional().default([]),
@@ -36,8 +46,22 @@ const criterionDraftSchema = z.object({
     .default("MEDIUM"),
   isRequired: z.boolean().optional().default(false),
   isDisqualifier: z.boolean().optional().default(false),
+  exclusionTestability: exclusionTestabilitySchema.nullable().optional(),
   researchGuidance: optionalString,
 });
+
+/** Plain string or structured negative signal with optional testability. */
+const negativeRoleSignalEntrySchema = z.union([
+  z.string(),
+  z.object({
+    text: z.string().optional(),
+    signal: z.string().optional(),
+    name: z.string().optional(),
+    exclusionTestability: exclusionTestabilitySchema.nullable().optional(),
+    isDisqualifying: z.boolean().optional(),
+    disqualifying: z.boolean().optional(),
+  }),
+]);
 
 export const personaAiDraftSchema = z.object({
   name: z.string().trim().min(1),
@@ -54,7 +78,10 @@ export const personaAiDraftSchema = z.object({
   buyingRole: optionalString,
   decisionInfluence: optionalString,
   positiveRoleSignals: stringList,
-  negativeRoleSignals: stringList,
+  negativeRoleSignals: z
+    .array(negativeRoleSignalEntrySchema)
+    .optional()
+    .default([]),
   likelyObjections: stringList,
   terminology: stringList,
   messagingNotes: stringList,
@@ -125,4 +152,4 @@ export function parsePersonaAiResponse(
   };
 }
 
-export const PERSONA_SYNTHESIS_PROMPT_VERSION = "5";
+export const PERSONA_SYNTHESIS_PROMPT_VERSION = "6";

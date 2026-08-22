@@ -56,6 +56,9 @@ export async function projectPersonaSignalsFromProfile(input: {
         importance: row.importance,
         isRequired: row.isRequired,
         isDisqualifier: row.isDisqualifier,
+        exclusionTestability: row.isDisqualifier
+          ? (row.exclusionTestability ?? "EVIDENCE_TESTABLE")
+          : null,
         researchGuidance: row.researchGuidance,
         source: row.source,
         sortOrder: baseSort + offset,

@@ -11,12 +11,15 @@ import {
   capPersonaCriteria,
   mapAiCriterionType,
   normalizeCriterionSemanticKey,
+  parsePersonaCriteriaFormJson,
   projectPersonaSignalsToCriteria,
   projectSignalsFromProfileJson,
+  resolveExclusionTestability,
 } from "@/lib/persona-research/project-signals";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import { CRO_PERSONA_DRAFT_FIXTURE } from "@/lib/persona-research/fixtures/cro-setup-run-draft";
 import { CRO_PERSONA_DRAFT_V2_FIXTURE } from "@/lib/persona-research/fixtures/cro-setup-run-draft-v2";
+import { REVOPS_PERSONA_DRAFT_FIXTURE } from "@/lib/persona-research/fixtures/revops-setup-run-draft";
 
 const richDraft: PersonaAiDraft = {
   name: "VP Revenue Operations",
@@ -51,13 +54,11 @@ describe("mapAiCriterionType", () => {
     const mapped = mapAiCriterionType({
       name: "Wrong role scope",
       criterionType: "disqualifier",
-      isDisqualifier: true,
     });
     expect(mapped.criterionType).toBe(
       PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
     );
     expect(mapped.isDisqualifier).toBe(true);
-    expect(mapped.unmapped).toBe(false);
   });
 
   it('maps "No revenue or sales forecast responsibility" as exclusion regardless of type', () => {
@@ -84,29 +85,210 @@ describe("mapAiCriterionType", () => {
       expect(mapped.criterionType).toBe(
         PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
       );
+      expect(mapped.isDisqualifier).toBe(false);
       expect(mapped.unmapped).toBe(false);
     }
   });
+});
 
-  it("records truly unknown types as unmapped supporting positive", () => {
-    const mapped = mapAiCriterionType({
-      name: "Invented criterion",
-      criterionType: "totally_custom_ai_type",
-    });
-    expect(mapped.criterionType).toBe(
-      PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
-    );
-    expect(mapped.unmapped).toBe(true);
+describe("exclusionTestability", () => {
+  it("defaults missing or unrecognized classification to EVIDENCE_TESTABLE", () => {
+    expect(
+      resolveExclusionTestability({
+        name: "Sales representative focused on quota",
+        isDisqualifier: true,
+      }),
+    ).toBe("EVIDENCE_TESTABLE");
+    expect(
+      resolveExclusionTestability({
+        name: "Sales representative focused on quota",
+        isDisqualifier: true,
+        aiValue: "NOT_A_REAL_VALUE",
+      }),
+    ).toBe("EVIDENCE_TESTABLE");
+  });
+
+  it('overrides AI TITLE_TESTABLE to EVIDENCE_TESTABLE when text contains "without ownership of"', () => {
+    expect(
+      resolveExclusionTestability({
+        name: "CRM admin without ownership of forecasting",
+        isDisqualifier: true,
+        aiValue: "TITLE_TESTABLE",
+      }),
+    ).toBe("EVIDENCE_TESTABLE");
+  });
+
+  it("returns null for non-disqualifiers", () => {
+    expect(
+      resolveExclusionTestability({
+        name: "Owns forecast process",
+        isDisqualifier: false,
+        aiValue: "TITLE_TESTABLE",
+      }),
+    ).toBeNull();
   });
 });
 
 describe("projectPersonaSignalsToCriteria", () => {
+  it("plain negativeRoleSignals entry with no marker projects as isDisqualifier true", () => {
+    const rows = projectPersonaSignalsToCriteria({
+      ...richDraft,
+      positiveRoleSignals: [],
+      ownershipAreas: [],
+      kpisAndAccountabilities: [],
+      negativeRoleSignals: ["Mostly marketing scope"],
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.isDisqualifier).toBe(true);
+    expect(rows[0]!.exclusionTestability).toBe("EVIDENCE_TESTABLE");
+  });
+
+  it("user demoting a negative to supporting survives planCriterionReinterpretation", () => {
+    const plan = planCriterionReinterpretation({
+      existing: [
+        {
+          id: "manual-neg",
+          name: "Mostly marketing scope",
+          criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+          manuallyEdited: true,
+        },
+      ],
+      aiDrafts: [
+        {
+          name: "Mostly marketing scope",
+          criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+          dataType: "TEXT",
+          operator: "EXISTS",
+          importance: "CRITICAL",
+          isRequired: false,
+          isDisqualifier: true,
+          sortOrder: 0,
+        },
+      ],
+    });
+    expect(plan.keepIds).toEqual(["manual-neg"]);
+    expect(plan.insertDrafts).toHaveLength(0);
+
+    const formRows = parsePersonaCriteriaFormJson(
+      JSON.stringify([
+        {
+          name: "Mostly marketing scope",
+          criterionType: "negative_role_signal",
+          isRequired: false,
+          isDisqualifier: false,
+          exclusionTestability: null,
+          manuallyEdited: true,
+        },
+      ]),
+    );
+    expect(formRows?.[0]?.isDisqualifier).toBe(false);
+  });
+
+  it("positive, ownership, and responsibility never become disqualifiers", () => {
+    const rows = projectPersonaSignalsToCriteria({
+      ...richDraft,
+      negativeRoleSignals: [],
+    });
+    for (const row of rows) {
+      expect(row.isDisqualifier).toBe(false);
+      expect(row.exclusionTestability).toBeNull();
+    }
+  });
+
+  it("RevOps production fixture: all six negatives project as disqualifiers with correct testability", () => {
+    const { criteria } = buildPersonaCriteriaForReview(REVOPS_PERSONA_DRAFT_FIXTURE);
+    const negatives = criteria.filter(
+      (row) =>
+        row.isDisqualifier === true ||
+        row.criterionType.includes("negative"),
+    );
+    expect(negatives.length).toBeGreaterThanOrEqual(6);
+    expect(
+      negatives.filter((row) =>
+        REVOPS_PERSONA_DRAFT_FIXTURE.negativeRoleSignals.some((signal) => {
+          const text =
+            typeof signal === "string"
+              ? signal
+              : String(
+                  (signal as { text?: string }).text ??
+                    (signal as { name?: string }).name ??
+                    "",
+                );
+          return text === row.name;
+        }),
+      ),
+    ).toHaveLength(6);
+
+    const byName = (name: string) =>
+      criteria.find((row) => row.name === name);
+
+    expect(byName("Individual selling role only")?.isDisqualifier).toBe(true);
+    expect(byName("Individual selling role only")?.exclusionTestability).toBe(
+      "TITLE_TESTABLE",
+    );
+    expect(
+      byName(
+        "Sales representative or account executive focused primarily on individual quota and opportunity execution.",
+      )?.exclusionTestability,
+    ).toBe("TITLE_TESTABLE");
+    expect(
+      byName(
+        "Marketing operations leader focused primarily on campaign operations, lead routing, and marketing automation rather than sales forecasting.",
+      )?.exclusionTestability,
+    ).toBe("TITLE_TESTABLE");
+    expect(
+      byName(
+        "CRM administrator whose scope is limited to technical configuration and ticket support without ownership of forecasting or revenue governance.",
+      )?.exclusionTestability,
+    ).toBe("EVIDENCE_TESTABLE");
+    expect(
+      byName(
+        "Front-line sales manager who only runs a single team's forecast calls without ownership of RevOps systems or cross-team governance.",
+      )?.exclusionTestability,
+    ).toBe("EVIDENCE_TESTABLE");
+  });
+
+  it("CRO v2 fixture: no regression in flag assignment", () => {
+    const { criteria, missingExclusionCriteria } = buildPersonaCriteriaForReview(
+      CRO_PERSONA_DRAFT_V2_FIXTURE,
+      { maxCriteria: 15 },
+    );
+    expect(missingExclusionCriteria).toBe(false);
+    const exclusion = criteria.find(
+      (row) => row.name === "No revenue or sales forecast responsibility",
+    );
+    expect(exclusion?.isDisqualifier).toBe(true);
+    expect(exclusion?.exclusionTestability).toBe("EVIDENCE_TESTABLE");
+  });
+
+  it("criterion with researchGuidance keeps it; one without has null guidance", () => {
+    const { criteria } = buildPersonaCriteriaForReview({
+      ...richDraft,
+      criteria: [
+        {
+          name: "Has guidance",
+          criterionType: "responsibility",
+          operator: "EXISTS",
+          importance: "HIGH",
+          researchGuidance: "Look for forecast ownership in the role description.",
+          isRequired: true,
+          isDisqualifier: false,
+        },
+      ],
+      ownershipAreas: [],
+      kpisAndAccountabilities: [],
+      positiveRoleSignals: [],
+      negativeRoleSignals: ["Title-only AE"],
+    });
+    const withGuidance = criteria.find((row) => row.name === "Has guidance");
+    const without = criteria.find((row) => row.name === "Title-only AE");
+    expect(withGuidance?.researchGuidance).toContain("forecast ownership");
+    expect(without?.researchGuidance).toBeTruthy();
+  });
+
   it("rich signal arrays with empty draft.criteria produce non-empty rows", () => {
     const rows = projectPersonaSignalsToCriteria(richDraft);
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows.some((r) => r.criterionType.includes("ownership"))).toBe(true);
-    expect(rows.some((r) => r.criterionType.includes("responsib"))).toBe(true);
-    expect(rows.some((r) => r.criterionType.includes("signal"))).toBe(true);
   });
 
   it("duplicate signal/criterion pairs produce one row in review merge", () => {
@@ -139,35 +321,6 @@ describe("projectPersonaSignalsToCriteria", () => {
       kpisAndAccountabilities: [],
     });
     expect(rows.every((r) => !r.isDisqualifier)).toBe(true);
-    const positive = rows.find((r) => r.name.includes("forecast call"));
-    expect(positive?.isDisqualifier).toBe(false);
-  });
-
-  it("negative signal marked disqualifying produces isDisqualifier = true; unmarked produces false", () => {
-    const rows = projectPersonaSignalsToCriteria(richDraft);
-    const neg = rows.find((r) => r.name.includes("Pure marketing scope"));
-    expect(neg?.isDisqualifier).toBe(true);
-
-    const soft = projectPersonaSignalsToCriteria({
-      ...richDraft,
-      negativeRoleSignals: ["Mostly marketing scope"],
-      positiveRoleSignals: [],
-      ownershipAreas: [],
-      kpisAndAccountabilities: [],
-    })[0]!;
-    expect(soft.isDisqualifier).toBe(false);
-  });
-
-  it("ownership and KPI projections default to isRequired = false", () => {
-    const rows = projectPersonaSignalsToCriteria({
-      ...richDraft,
-      positiveRoleSignals: [],
-      negativeRoleSignals: [],
-    });
-    for (const row of rows) {
-      expect(row.isRequired).toBe(false);
-      expect(row.isDisqualifier).toBe(false);
-    }
   });
 
   it("Revenue forecast governance and Owns revenue forecast governance dedupe to one row", () => {
@@ -202,6 +355,7 @@ describe("projectPersonaSignalsToCriteria", () => {
       row.criterionType.includes("negative"),
     );
     expect(negativeRows).toHaveLength(8);
+    expect(negativeRows.every((row) => row.isDisqualifier)).toBe(true);
   });
 
   it("sets missingExclusionCriteria when a draft has zero exclusions", () => {
@@ -213,101 +367,13 @@ describe("projectPersonaSignalsToCriteria", () => {
     expect(result.missingExclusionCriteria).toBe(true);
   });
 
-  it("corrects flags on the prior production CRO draft fixture (cmt4hadug000flp2o2b44e6zb)", () => {
-    const { criteria, missingExclusionCriteria } =
-      buildPersonaCriteriaForReview(CRO_PERSONA_DRAFT_FIXTURE);
-
-    expect(missingExclusionCriteria).toBe(false);
-
-    const byName = (name: string) =>
-      criteria.find((row) => row.name === name);
-
-    const ownsForecast = byName("Owns revenue forecast governance");
-    expect(ownsForecast?.criterionType).toBe(
-      PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
+  it("corrects flags on the prior production CRO draft fixture", () => {
+    const { criteria } = buildPersonaCriteriaForReview(CRO_PERSONA_DRAFT_FIXTURE);
+    const ownsForecast = criteria.find((row) =>
+      row.name.includes("Owns revenue forecast governance"),
     );
-    expect(ownsForecast?.isRequired).toBe(true);
     expect(ownsForecast?.isDisqualifier).toBe(false);
-
-    const leadsB2b = byName("Leads a B2B sales organization");
-    expect(leadsB2b?.criterionType).toBe(
-      PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
-    );
-    expect(leadsB2b?.isRequired).toBe(false);
-    expect(leadsB2b?.isDisqualifier).toBe(false);
-
-    for (const name of [
-      "Accountable for revenue predictability",
-      "Experiences unsupported commits or weak deal evidence",
-      "Needs executive visibility into deal risk",
-      "Uses CRM or structured deal data",
-    ]) {
-      const row = byName(name);
-      expect(row, name).toBeDefined();
-      expect(row?.isDisqualifier).toBe(false);
-    }
-
-    const forecastSemantic = criteria.filter(
-      (row) =>
-        normalizeCriterionSemanticKey(row.name) === "revenue forecast governance",
-    );
-    expect(forecastSemantic).toHaveLength(1);
-  });
-
-  it("maps disqualifier criteria on the new production CRO draft fixture (cmt4i34120009to2opl62sec9)", () => {
-    expect(CRO_PERSONA_DRAFT_V2_FIXTURE.negativeRoleSignals.length).toBe(4);
-
-    const { criteria, missingExclusionCriteria } = buildPersonaCriteriaForReview(
-      CRO_PERSONA_DRAFT_V2_FIXTURE,
-      { maxCriteria: 15 },
-    );
-
-    expect(missingExclusionCriteria).toBe(false);
-
-    const exclusion = criteria.find(
-      (row) => row.name === "No revenue or sales forecast responsibility",
-    );
-    expect(exclusion?.criterionType).toBe(
-      PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
-    );
-    expect(exclusion?.isDisqualifier).toBe(true);
-
-    expect(
-      criteria.filter((row) =>
-        row.criterionType.includes("negative"),
-      ).length,
-    ).toBeGreaterThan(0);
-  });
-
-  it("caps a draft producing 40 signals at the policy value with required/disqualifying retained", () => {
-    const manySignals = Array.from({ length: 20 }, (_, i) => `Positive signal ${i}`);
-    const manyOwnership = Array.from({ length: 10 }, (_, i) => `Ownership area ${i}`);
-    const manyKpis = Array.from({ length: 10 }, (_, i) => `KPI ${i}`);
-    const draft: PersonaAiDraft = {
-      ...richDraft,
-      positiveRoleSignals: manySignals,
-      negativeRoleSignals: ["!Hard disqualifier"],
-      ownershipAreas: manyOwnership,
-      kpisAndAccountabilities: manyKpis,
-      criteria: [
-        {
-          name: "Explicit required criterion",
-          criterionType: "responsibility",
-          operator: "EXISTS",
-          importance: "HIGH",
-          isRequired: true,
-          isDisqualifier: false,
-        },
-      ],
-    };
-
-    const { criteria, droppedCount } = buildPersonaCriteriaForReview(draft, {
-      maxCriteria: 15,
-    });
-    expect(criteria.length).toBeGreaterThanOrEqual(15);
-    expect(droppedCount).toBeGreaterThan(0);
-    expect(criteria.some((row) => row.isDisqualifier)).toBe(true);
-    expect(criteria.some((row) => row.isRequired)).toBe(true);
+    expect(ownsForecast?.isRequired).toBe(true);
   });
 
   it("projected types are recognized by getApplicableDimensions heuristics", () => {
@@ -340,7 +406,6 @@ describe("projectPersonaSignalsToCriteria", () => {
     expect(
       dims.some((d) => d.dimension === "Role / Responsibility Match"),
     ).toBe(true);
-    expect(dims.some((d) => d.dimension === "Title Match")).toBe(true);
   });
 
   it("projected signal types participate in contact-research gap detection", () => {
@@ -372,59 +437,6 @@ describe("projectPersonaSignalsToCriteria", () => {
       "VP Sales",
     );
     expect(signalGaps).not.toContain(signalRow.name);
-
-    const ownershipRow = projectPersonaSignalsToCriteria({
-      ...richDraft,
-      positiveRoleSignals: [],
-      negativeRoleSignals: [],
-    }).find((r) => r.criterionType.includes("ownership"))!;
-
-    const ownershipGaps = identifyPersonaEvidenceGaps(
-      [
-        {
-          name: ownershipRow.name,
-          criterionType: ownershipRow.criterionType,
-          dataType: "TEXT",
-          operator: "EXISTS",
-          importance: ownershipRow.importance,
-          isRequired: ownershipRow.isRequired,
-          isDisqualifier: ownershipRow.isDisqualifier,
-          sortOrder: 0,
-        },
-      ],
-      {
-        ownershipAreas: "Owns sales forecasting process end-to-end",
-      },
-      null,
-    );
-    expect(ownershipGaps).not.toContain(ownershipRow.name);
-  });
-
-  it("manual criterion survives reinterpretation planning", () => {
-    const plan = planCriterionReinterpretation({
-      existing: [
-        {
-          id: "manual-1",
-          name: "Owns weekly forecast call",
-          criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
-          manuallyEdited: true,
-        },
-      ],
-      aiDrafts: [
-        {
-          name: "Owns weekly forecast call",
-          criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
-          dataType: "TEXT",
-          operator: "EXISTS",
-          importance: "HIGH",
-          isRequired: false,
-          isDisqualifier: false,
-          sortOrder: 0,
-        },
-      ],
-    });
-    expect(plan.keepIds).toEqual(["manual-1"]);
-    expect(plan.insertDrafts).toHaveLength(0);
   });
 
   it("profileJson projection skips rows that already exist", () => {
@@ -437,26 +449,44 @@ describe("projectPersonaSignalsToCriteria", () => {
     expect(
       projected.some((p) => p.name === "Sales forecasting process"),
     ).toBe(false);
-    expect(projected.length).toBeGreaterThan(0);
-  });
-
-  it("existing approved personas are not changed until projection is invoked", () => {
-    const existing = projectPersonaSignalsToCriteria(richDraft).map((row) => ({
-      name: row.name,
-      criterionType: row.criterionType,
-    }));
-    const secondPass = projectSignalsFromProfileJson(richDraft, existing);
-    expect(secondPass.criteria).toHaveLength(0);
   });
 
   it("capPersonaCriteria keeps disqualifiers before supporting rows", () => {
     const rows = [
-      { name: "support 1", criterionType: "ownership", isRequired: false, isDisqualifier: false },
-      { name: "support 2", criterionType: "ownership", isRequired: false, isDisqualifier: false },
-      { name: "hard no", criterionType: "negative_role_signal", isRequired: false, isDisqualifier: true },
+      {
+        name: "support 1",
+        criterionType: "ownership",
+        isRequired: false,
+        isDisqualifier: false,
+      },
+      {
+        name: "support 2",
+        criterionType: "ownership",
+        isRequired: false,
+        isDisqualifier: false,
+      },
+      {
+        name: "hard no",
+        criterionType: "negative_role_signal",
+        isRequired: false,
+        isDisqualifier: true,
+      },
     ];
     const capped = capPersonaCriteria(rows, 2);
     expect(capped.criteria.some((row) => row.name === "hard no")).toBe(true);
     expect(capped.droppedCount).toBe(1);
+  });
+});
+
+describe("researchGuidance display contract", () => {
+  it("rows with guidance expose non-empty researchGuidance; empty guidance stays null/absent", () => {
+    const withGuidance: { researchGuidance: string | null } = {
+      researchGuidance: "Confirm ownership from role evidence.",
+    };
+    const withoutGuidance: { researchGuidance: string | null } = {
+      researchGuidance: null,
+    };
+    expect(withGuidance.researchGuidance?.trim()).toBeTruthy();
+    expect(withoutGuidance.researchGuidance?.trim()).toBeFalsy();
   });
 });

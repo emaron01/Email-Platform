@@ -8,6 +8,7 @@ import {
   type PersonaSetupActionResult,
 } from "@/app/actions/persona-setup";
 import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
+import type { ExclusionTestabilityValue } from "@/lib/persona-research/contract";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import {
   buildPersonaCriteriaForReview,
@@ -50,6 +51,36 @@ function criterionTypeLabel(type: string): string {
   return type;
 }
 
+const GUIDANCE_PREVIEW_CHARS = 110;
+
+function ResearchGuidanceLine({ guidance }: { guidance: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const needsTruncate = guidance.length > GUIDANCE_PREVIEW_CHARS;
+  const shown =
+    expanded || !needsTruncate
+      ? guidance
+      : `${guidance.slice(0, GUIDANCE_PREVIEW_CHARS).trimEnd()}…`;
+
+  return (
+    <p className="mt-2 text-xs text-slate-500">
+      <span className="font-medium text-slate-600">Research: </span>
+      {shown}
+      {needsTruncate ? (
+        <>
+          {" "}
+          <button
+            type="button"
+            className="font-medium text-slate-700 underline"
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? "Show less" : "Show more"}
+          </button>
+        </>
+      ) : null}
+    </p>
+  );
+}
+
 function PersonaCriteriaEditor({
   initialCriteria,
   onChange,
@@ -80,6 +111,12 @@ function PersonaCriteriaEditor({
         const next = { ...row, ...patch, manuallyEdited: true };
         if (patch.role) {
           Object.assign(next, roleToFlags(patch.role));
+          if (patch.role === "disqualifier") {
+            next.exclusionTestability =
+              next.exclusionTestability ?? "EVIDENCE_TESTABLE";
+          } else {
+            next.exclusionTestability = null;
+          }
         }
         return next;
       }),
@@ -100,6 +137,7 @@ function PersonaCriteriaEditor({
         importance: "MEDIUM",
         isRequired: false,
         isDisqualifier: false,
+        exclusionTestability: null,
         manuallyEdited: true,
       },
     ]);
@@ -181,6 +219,31 @@ function PersonaCriteriaEditor({
                   </select>
                 </label>
               </div>
+              {row.isDisqualifier ? (
+                <label className="mt-2 block text-xs text-slate-600">
+                  Exclusion test
+                  <select
+                    value={row.exclusionTestability ?? "EVIDENCE_TESTABLE"}
+                    onChange={(e) =>
+                      updateRow(row.key, {
+                        exclusionTestability: e.target
+                          .value as ExclusionTestabilityValue,
+                      })
+                    }
+                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm md:max-w-xs"
+                  >
+                    <option value="TITLE_TESTABLE">
+                      Title-testable (title/department alone)
+                    </option>
+                    <option value="EVIDENCE_TESTABLE">
+                      Evidence-testable (needs researched ownership)
+                    </option>
+                  </select>
+                </label>
+              ) : null}
+              {row.researchGuidance?.trim() ? (
+                <ResearchGuidanceLine guidance={row.researchGuidance.trim()} />
+              ) : null}
               <div className="mt-2 flex items-center justify-between gap-2">
                 <span className="text-xs text-slate-500">
                   {criterionTypeLabel(row.criterionType)}

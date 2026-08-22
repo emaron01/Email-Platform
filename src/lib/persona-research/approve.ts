@@ -149,6 +149,9 @@ export async function approvePersonaFromSetupRun(input: {
         importance: c.importance ?? "MEDIUM",
         isRequired: c.isRequired ?? false,
         isDisqualifier: c.isDisqualifier ?? false,
+        exclusionTestability: c.isDisqualifier
+          ? (c.exclusionTestability ?? "EVIDENCE_TESTABLE")
+          : null,
         researchGuidance: c.researchGuidance ?? null,
         source: "AI_INTERPRETED",
         sortOrder: i,

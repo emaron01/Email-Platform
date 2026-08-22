@@ -36,7 +36,11 @@ RULES:
 9. Required fields may be returned as empty arrays or null when evidence does not support them. An empty array is correct; inventing content is not.
 10. isDisqualifier means a contact matching this criterion is NOT a fit and should be excluded. A must-have requirement is isRequired: true, NOT isDisqualifier: true. Never set isDisqualifier on a positive signal, ownership area, or responsibility.
 11. negativeRoleSignals is REQUIRED and must not be empty. Every buyer role has titles that look similar but are not the buyer — list concrete negative signals for those non-buyer scopes.
-12. Return JSON matching the schema only (personaDraft).`;
+12. negativeRoleSignals must describe people who should NOT be contacted — roles sharing similar titles but lacking the ownership that makes this persona a buyer. Every entry is treated as an exclusion.
+13. Classify each negativeRoleSignal with exclusionTestability:
+    - TITLE_TESTABLE — decidable from the contact's title/department alone (e.g. "Sales representative focused primarily on individual quota").
+    - EVIDENCE_TESTABLE — requires researched responsibilities or ownership (e.g. "CRM administrator … WITHOUT ownership of forecasting or revenue governance").
+14. Return JSON matching the schema only (personaDraft).`;
 
   const user = JSON.stringify({
     productName: input.productName,
@@ -76,7 +80,12 @@ RULES:
         painPoints: ["string"],
         desiredOutcomesFromSolution: ["string"],
         positiveRoleSignals: ["string"],
-        negativeRoleSignals: ["string (REQUIRED — at least one)"],
+        negativeRoleSignals: [
+          {
+            text: "string (REQUIRED — person who should NOT be contacted)",
+            exclusionTestability: "TITLE_TESTABLE|EVIDENCE_TESTABLE",
+          },
+        ],
         confidence: "HIGH|MEDIUM|LOW (exact uppercase only)",
         evidenceRefs: [
           {
@@ -93,6 +102,9 @@ RULES:
             name: "string",
             criterionType: "string",
             importance: "CRITICAL|HIGH|MEDIUM|LOW",
+            isDisqualifier: "boolean",
+            exclusionTestability:
+              "TITLE_TESTABLE|EVIDENCE_TESTABLE|null (required when isDisqualifier)",
           },
         ],
       },
