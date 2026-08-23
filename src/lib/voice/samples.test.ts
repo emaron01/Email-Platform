@@ -45,15 +45,18 @@ describe("voiceReadiness", () => {
 });
 
 describe("voice capture seams", () => {
-  it("lives on account settings, not a new route or generation path", () => {
+  it("lives on its dedicated settings route and stays out of account settings", () => {
     const account = readFileSync("src/app/(app)/settings/account/page.tsx", "utf8");
+    const voice = readFileSync("src/app/(app)/settings/voice/page.tsx", "utf8");
     const settings = readFileSync("src/app/(app)/settings/page.tsx", "utf8");
     const form = readFileSync("src/components/VoiceSamplesForm.tsx", "utf8");
     const actions = readFileSync("src/app/actions/voice.ts", "utf8");
 
-    expect(account).toContain("VoiceSamplesForm");
-    expect(account).toContain("listVoiceSamplesForUser");
-    expect(settings).toMatch(/writing voice/i);
+    expect(account).not.toContain("VoiceSamplesForm");
+    expect(account).not.toContain("listVoiceSamplesForUser");
+    expect(voice).toContain("VoiceSamplesForm");
+    expect(voice).toContain("listVoiceSamplesForUser");
+    expect(settings).toContain('href="/settings/voice"');
     expect(form).toContain("saveVoiceSampleAction");
     expect(form).toContain("deleteVoiceSampleAction");
     expect(form).toContain("voice-action-status");

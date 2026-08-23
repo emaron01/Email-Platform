@@ -90,6 +90,11 @@ describe("buildSidebarNavItems", () => {
       isSuperAdmin: false,
     });
     expect(items.some((i) => i.href === "/")).toBe(true);
+    expect(
+      items.some(
+        (i) => i.href === "/settings/voice" && i.label === "Your Voice",
+      ),
+    ).toBe(true);
     expect(items.some((i) => i.href === "/platform/email-templates")).toBe(
       false,
     );

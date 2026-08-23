@@ -32,7 +32,18 @@ export default async function SettingsIndexPage() {
             Account
           </Link>
           <p className="text-slate-600">
-            Profile, writing voice, email verification, password, logout.
+            Profile, email verification, password, and logout.
+          </p>
+        </li>
+        <li>
+          <Link
+            href="/settings/voice"
+            className="font-medium text-slate-900 underline-offset-2 hover:underline"
+          >
+            Your Voice
+          </Link>
+          <p className="text-slate-600">
+            Writing samples used to style generated outbound emails.
           </p>
         </li>
         <li>
