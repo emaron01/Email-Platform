@@ -641,6 +641,10 @@ model Icp {
   interpretationVersion       Int       @default(1)
   interpretationPromptVersion String?
   lastInterpretedAt           DateTime?
+  /// Plain-language read-back of what interpretation understood (never overwrites definition).
+  interpretationSummary       String?
+  /// Explicitly named facts/constraints that could not be determined from the definition.
+  interpretationUndetermined  String?
   /// Soft-archive: hidden from setup UI; preserves ScoringRun FK history.
   archivedAt           DateTime?
   createdAt            DateTime @default(now())

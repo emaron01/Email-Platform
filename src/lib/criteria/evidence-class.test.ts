@@ -18,6 +18,7 @@ import {
 } from "@/lib/criteria/targeted-search-eval";
 import { calculateComponentScores, calculateScoresFromAssessment } from "@/lib/scoring/calculate";
 import { ICP_INTERPRETATION_PROMPT_VERSION } from "@/lib/criteria/types";
+import { parseIcpInterpretedCriteria } from "@/lib/interpretation/schema";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
 
 function criterion(
@@ -336,15 +337,50 @@ describe("cap enforcement", () => {
   });
 });
 
+describe("ICP interpretation prose + definition isolation", () => {
+  it("parses a prose read-back without a rewritten definition field", () => {
+    const parsed = parseIcpInterpretedCriteria({
+      understoodSummary:
+        "You want mid-market SaaS companies with a CRM already in place.",
+      undetermined: ["Preferred CRM brand mix when both Salesforce and HubSpot appear"],
+      criteria: [
+        {
+          name: "Industry",
+          criterionType: "industry",
+          dataType: "MULTI_SELECT",
+          operator: "IN",
+          targetValue: ["SaaS"],
+          importance: "HIGH",
+          isRequired: true,
+          isDisqualifier: false,
+          sortOrder: 0,
+        },
+      ],
+    });
+    expect(parsed.understoodSummary).toMatch(/mid-market SaaS/);
+    expect(parsed.undetermined[0]).toMatch(/CRM/);
+    expect(parsed).not.toHaveProperty("definition");
+  });
+
+  it("interpretation persist path never writes Icp.definition", () => {
+    const src = readFileSync("src/lib/interpretation/icp.ts", "utf8");
+    expect(src).toMatch(/icp\.definition\?\.trim\(\) \|\| icp\.description\?\.trim\(\)/);
+    expect(src).toContain("interpretationSummary: parsed.understoodSummary.trim()");
+    expect(src).not.toMatch(/data:\s*\{[\s\S]{0,400}definition:/);
+  });
+});
+
 describe("prompt version + UI seams", () => {
-  it("ICP interpretation prompt version is 2 and asserted in prompt builder", () => {
-    expect(ICP_INTERPRETATION_PROMPT_VERSION).toBe("2");
+  it("ICP interpretation prompt version is 3 and asserted in prompt builder", () => {
+    expect(ICP_INTERPRETATION_PROMPT_VERSION).toBe("3");
     const icp = readFileSync("src/lib/interpretation/icp.ts", "utf8");
     expect(icp).toContain("TARGETED_SEARCH");
     expect(icp).toContain("Uses Salesforce or HubSpot");
     expect(icp).toContain("array of discrete");
+    expect(icp).toContain("understoodSummary");
+    expect(icp).not.toMatch(/data:\s*\{[\s\S]*definition:/);
     const types = readFileSync("src/lib/criteria/types.ts", "utf8");
-    expect(types).toContain('ICP_INTERPRETATION_PROMPT_VERSION = "2"');
+    expect(types).toContain('ICP_INTERPRETATION_PROMPT_VERSION = "3"');
   });
 
   it("criteria review UI surfaces summary, targeted section, and decisions", () => {
@@ -356,6 +392,8 @@ describe("prompt version + UI seams", () => {
     expect(ui).toContain("MAKE_SUPPORTING");
     expect(ui).toContain("REMOVE");
     expect(ui).toContain("expectation-line");
+    expect(ui).toContain('data-testid="icp-interpretation-prose"');
+    expect(ui).toContain("Could not be determined from available data");
   });
 
   it("MAKE_SUPPORTING demote only clears isRequired via decide action", () => {

@@ -285,11 +285,15 @@ export function IcpCriteriaReview({
   productId,
   icpId,
   criteria,
+  interpretationSummary,
+  interpretationUndetermined,
 }: {
   title: string;
   productId: string;
   icpId: string;
   criteria: IcpCriterionReviewRow[];
+  interpretationSummary?: string | null;
+  interpretationUndetermined?: string | null;
 }) {
   if (criteria.length === 0) {
     return (
@@ -317,6 +321,37 @@ export function IcpCriteriaReview({
     <div className="mt-4 space-y-4" data-testid="icp-criteria-review">
       <div>
         <h5 className="text-sm font-semibold text-slate-900">{title}</h5>
+        {interpretationSummary?.trim() ? (
+          <div
+            className="mt-2 space-y-2 rounded-md border border-slate-300 bg-white px-3 py-3"
+            data-testid="icp-interpretation-prose"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              What we understood
+            </p>
+            <p className="text-sm text-slate-800">{interpretationSummary.trim()}</p>
+            {interpretationUndetermined?.trim() ? (
+              <div data-testid="icp-interpretation-undetermined">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                  Could not be determined from available data
+                </p>
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-amber-950">
+                  {interpretationUndetermined
+                    .split("\n")
+                    .map((item) => item.trim())
+                    .filter(Boolean)
+                    .map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Nothing in the definition was left undetermined.
+              </p>
+            )}
+          </div>
+        ) : null}
         <p
           className="mt-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900"
           data-testid="evidence-class-summary"

@@ -245,6 +245,8 @@ export function IcpDetailsForm({
             productId={productId}
             icpId={icp.id}
             criteria={criteria}
+            interpretationSummary={icp.interpretationSummary}
+            interpretationUndetermined={icp.interpretationUndetermined}
           />
           <StatusBanner
             result={interpretState}

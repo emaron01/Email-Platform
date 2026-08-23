@@ -29,8 +29,8 @@ import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
 import { getResearchPolicy } from "@/lib/usage/policy";
 import {
-  interpretationResultSchema,
-  parseInterpretedCriteria,
+  icpInterpretationResultSchema,
+  parseIcpInterpretedCriteria,
 } from "@/lib/interpretation/schema";
 import type { AiMessage } from "@/lib/ai/types";
 
@@ -95,7 +95,14 @@ RULES:
    - "Owns 25+ buildings" → TARGETED_SEARCH
    - "Currently uses [competitor product]" → TARGETED_SEARCH
    - "Sells complex multi-stakeholder deals" → SEMANTIC
-8. Return JSON matching the schema only.`;
+8. Also return a short plain-language read-back:
+   - understoodSummary: 2–4 sentences describing what you understood from the user's definition.
+     Do not invent requirements. Do not rewrite their narrative as if it were your text.
+   - undetermined: a list of specific facts or constraints named in the definition that you
+     could not turn into a reliable criterion from the available wording (empty array if none).
+9. NEVER return a rewritten definition. The user's narrative is authoritative and is stored
+   separately — you only produce criteria plus this read-back.
+10. Return JSON matching the schema only.`;
 
   const user = JSON.stringify({
     product: {
@@ -113,6 +120,8 @@ RULES:
       evidenceClassLocked: c.evidenceClassLocked ?? false,
     })),
     responseSchema: {
+      understoodSummary: "2-4 sentence plain-language read-back of what was understood",
+      undetermined: ["specific named items that could not be determined"],
       criteria: [
         {
           name: "string",
@@ -403,11 +412,11 @@ export async function interpretIcpDefinition(input: {
         additionalContext: icp.additionalContext,
         existingCriteria: existingSnapshots,
       }),
-      schema: interpretationResultSchema,
+      schema: icpInterpretationResultSchema,
       schemaName: "icp_interpretation",
     });
 
-    const parsed = parseInterpretedCriteria(response.data);
+    const parsed = parseIcpInterpretedCriteria(response.data);
     const aiDrafts: InterpretedCriterionDraft[] = parsed.criteria.map((c) => {
       const normalized = normalizeInOperatorValues({
         operator: c.operator,
@@ -492,6 +501,12 @@ export async function interpretIcpDefinition(input: {
           interpretationVersion: newVersion,
           interpretationPromptVersion: ICP_INTERPRETATION_PROMPT_VERSION,
           lastInterpretedAt: now,
+          interpretationSummary: parsed.understoodSummary.trim(),
+          interpretationUndetermined:
+            parsed.undetermined
+              .map((item) => item.trim())
+              .filter(Boolean)
+              .join("\n") || null,
         },
       });
     });

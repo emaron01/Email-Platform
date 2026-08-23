@@ -25,12 +25,28 @@ export const interpretedCriterionSchema = z.object({
   sortOrder: z.number().int().nonnegative(),
 });
 
+/** Persona interpretation — criteria only. */
 export const interpretationResultSchema = z.object({
   criteria: z.array(interpretedCriterionSchema).min(1),
 });
 
+/** ICP interpretation — criteria plus a prose read-back. */
+export const icpInterpretationResultSchema = interpretationResultSchema.extend({
+  understoodSummary: z.string().min(1),
+  undetermined: z.array(z.string().min(1)).default([]),
+});
+
 export type InterpretationAiResult = z.infer<typeof interpretationResultSchema>;
+export type IcpInterpretationAiResult = z.infer<
+  typeof icpInterpretationResultSchema
+>;
 
 export function parseInterpretedCriteria(raw: unknown): InterpretationAiResult {
   return interpretationResultSchema.parse(raw);
+}
+
+export function parseIcpInterpretedCriteria(
+  raw: unknown,
+): IcpInterpretationAiResult {
+  return icpInterpretationResultSchema.parse(raw);
 }

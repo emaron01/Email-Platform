@@ -7,7 +7,10 @@ import {
   zodToOpenAiStrictJsonSchema,
 } from "@/lib/ai/zod-json-schema";
 import { contactResearchAiResultSchema } from "@/lib/contact-research/service";
-import { interpretationResultSchema } from "@/lib/interpretation/schema";
+import {
+  icpInterpretationResultSchema,
+  interpretationResultSchema,
+} from "@/lib/interpretation/schema";
 import { personaAiResponseSchema } from "@/lib/persona-research/contract";
 import {
   parseProductAiResponse,
@@ -75,6 +78,7 @@ const GENERATE_STRUCTURED_SCHEMAS: Array<{ name: string; schema: z.ZodType }> = 
   { name: "personaAiResponseSchema", schema: personaAiResponseSchema },
   { name: "aiScoringAssessmentSchema", schema: aiScoringAssessmentSchema },
   { name: "interpretationResultSchema", schema: interpretationResultSchema },
+  { name: "icpInterpretationResultSchema", schema: icpInterpretationResultSchema },
   { name: "contactResearchAiResultSchema", schema: contactResearchAiResultSchema },
   { name: "companyResearchAiResultSchema", schema: companyResearchAiResultSchema },
   { name: "productSourceDiscoverySchema", schema: productSourceDiscoverySchema },
