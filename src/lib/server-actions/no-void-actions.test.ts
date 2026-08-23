@@ -82,6 +82,7 @@ describe("action result UI seams", () => {
     { form: "src/components/ManualCompanyResearchForm.tsx", statusTestId: "manual-research-status" },
     { form: "src/components/ActionFeedbackForm.tsx", statusTestId: "action-feedback-status" },
     { form: "src/components/VoiceSamplesForm.tsx", statusTestId: "voice-action-status" },
+    { form: "src/components/CampaignContactsManager.tsx", statusTestId: "campaign-contacts-status" },
   ];
 
   it.each(seams)(
@@ -90,7 +91,7 @@ describe("action result UI seams", () => {
       const source = readFileSync(form, "utf8");
       expect(source).toContain("useActionState");
       expect(source).toContain(statusTestId);
-      expect(source).toMatch(/(?:state|campaignState|result)\.message/);
+      expect(source).toMatch(/(?:state|\w+State|result)\.message/);
     },
   );
 });

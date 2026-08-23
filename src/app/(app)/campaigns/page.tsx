@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import Link from "next/link";
 import {
   EmptyState,
   PageHeader,
@@ -6,7 +6,6 @@ import {
   TenantMissing,
 } from "@/components/ui";
 import { NewCampaignForm } from "@/components/NewCampaignForm";
-import { GenerateEmailDraftForm } from "@/components/GenerateEmailDraftForm";
 import {
   listCampaigns,
   listIcps,
@@ -89,7 +88,7 @@ export default async function CampaignsPage() {
       {campaigns.length === 0 ? (
         <EmptyState
           title="No campaigns yet"
-          description="Create a campaign above. Email drafts are not generated in this phase."
+          description="Create a campaign above, then attach contacts and generate drafts from its detail page."
         />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -108,87 +107,37 @@ export default async function CampaignsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {campaigns.map((campaign) => (
-                <Fragment key={campaign.id}>
-                  <tr>
-                    <td className="px-4 py-3 font-medium text-slate-900">
+                <tr key={campaign.id}>
+                  <td className="px-4 py-3 font-medium text-slate-900">
+                    <Link
+                      href={`/campaigns/${campaign.id}`}
+                      className="underline-offset-2 hover:underline"
+                    >
                       {campaign.name}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {campaign.status}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {campaign.product.name}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {campaign.icp.name}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {campaign.persona.name}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {campaign.offerName ?? campaign.offer?.name ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {campaign._count.contacts}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {formatDate(campaign.createdAt)}
-                    </td>
-                  </tr>
-                  {campaign.contacts.length > 0 ? (
-                    <tr className="bg-slate-50/60">
-                      <td colSpan={8} className="px-4 py-4">
-                        <div className="space-y-4">
-                          {campaign.contacts.map((campaignContact) => {
-                            const contact = campaignContact.contact;
-                            const displayName =
-                              [contact.firstName, contact.lastName]
-                                .filter(Boolean)
-                                .join(" ") ||
-                              contact.email ||
-                              "Unnamed contact";
-                            const draft = campaignContact.emailDrafts[0];
-
-                            return (
-                              <section
-                                key={campaignContact.id}
-                                className="grid gap-3 rounded-md border border-slate-200 bg-white p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"
-                              >
-                                <div className="text-sm">
-                                  <p className="font-medium text-slate-900">
-                                    {displayName}
-                                  </p>
-                                  <p className="text-slate-600">
-                                    {[contact.title, contact.company]
-                                      .filter(Boolean)
-                                      .join(" · ") || "No role details"}
-                                  </p>
-                                  {contact.email ? (
-                                    <p className="text-slate-500">
-                                      {contact.email}
-                                    </p>
-                                  ) : null}
-                                </div>
-                                <GenerateEmailDraftForm
-                                  campaignContactId={campaignContact.id}
-                                  existingDraft={
-                                    draft?.subject && draft.body
-                                      ? {
-                                          draftId: draft.id,
-                                          subject: draft.subject,
-                                          body: draft.body,
-                                        }
-                                      : null
-                                  }
-                                />
-                              </section>
-                            );
-                          })}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </Fragment>
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {campaign.status}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {campaign.product.name}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {campaign.icp.name}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {campaign.persona.name}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {campaign.offerName ?? campaign.offer?.name ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {campaign._count.contacts}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {formatDate(campaign.createdAt)}
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>

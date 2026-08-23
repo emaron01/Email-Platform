@@ -174,8 +174,8 @@ describe("email generation action and UI seams", () => {
       "src/components/GenerateEmailDraftForm.tsx",
       "utf8",
     );
-    const campaignPage = readFileSync(
-      "src/app/(app)/campaigns/page.tsx",
+    const campaignDetailPage = readFileSync(
+      "src/app/(app)/campaigns/[id]/page.tsx",
       "utf8",
     );
 
@@ -191,7 +191,7 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("result.subject");
     expect(form).toContain("result.body");
     expect(form).not.toMatch(/send email|mailto|clipboard/i);
-    expect(campaignPage).toContain("GenerateEmailDraftForm");
+    expect(campaignDetailPage).toContain("GenerateEmailDraftForm");
   });
 });
 

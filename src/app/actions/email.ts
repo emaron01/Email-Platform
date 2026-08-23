@@ -30,6 +30,7 @@ export async function generateEmailDraftAction(
     const draft = await generateEmailDraft(context, messages);
 
     revalidatePath("/campaigns");
+    revalidatePath(`/campaigns/${context.campaign.id}`);
     return {
       ok: true,
       message: "Email draft generated.",
