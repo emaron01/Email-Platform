@@ -20,6 +20,11 @@ import {
   toOptionalInt,
 } from "@/lib/utils";
 import {
+  parseIcpFormData,
+  toSafeIcpActionError,
+  type IcpActionResult,
+} from "@/lib/icp/save";
+import {
   parsePersonaFormData,
   toSafePersonaActionError,
   type PersonaActionResult,
@@ -104,50 +109,60 @@ export async function deleteProductAction(
   }
 }
 
-export async function upsertIcpAction(formData: FormData): Promise<void> {
+export async function upsertIcpAction(
+  _prev: IcpActionResult | null,
+  formData: FormData,
+): Promise<IcpActionResult> {
+  const values = (() => {
+    try {
+      return parseIcpFormData(formData).values;
+    } catch {
+      return undefined;
+    }
+  })();
+
   try {
-    const id = requiredString(formData, "id");
-    const productId = requiredString(formData, "productId");
-    const name = requiredString(formData, "name");
-    if (!productId) throw new TenantError("Product is required.");
-    if (!name) throw new TenantError("ICP name is required.");
+    const parsed = parseIcpFormData(formData);
+    if (Object.keys(parsed.fieldErrors).length > 0) {
+      const firstField = Object.keys(parsed.fieldErrors)[0] as
+        | keyof typeof parsed.fieldErrors
+        | undefined;
+      const firstMessage = firstField
+        ? parsed.fieldErrors[firstField]
+        : undefined;
+      return {
+        ok: false,
+        message: firstMessage ?? "Please fix the highlighted fields.",
+        productId: parsed.productId || undefined,
+        values: parsed.values,
+        fieldErrors: parsed.fieldErrors,
+      };
+    }
 
-    const data = {
-      name,
-      description: requiredString(formData, "description") || null,
-      definition: requiredString(formData, "definition") || null,
-      additionalContext: requiredString(formData, "additionalContext") || null,
-      targetIndustries: parseCommaList(
-        requiredString(formData, "targetIndustries"),
-      ),
-      minEmployees: toOptionalInt(formData.get("minEmployees")),
-      maxEmployees: toOptionalInt(formData.get("maxEmployees")),
-      minRevenue: toOptionalFloat(formData.get("minRevenue")),
-      maxRevenue: toOptionalFloat(formData.get("maxRevenue")),
-      targetGeographies: parseCommaList(
-        requiredString(formData, "targetGeographies"),
-      ),
-      requiredTechnologies: parseCommaList(
-        requiredString(formData, "requiredTechnologies"),
-      ),
-      positiveSignals: parseCommaList(
-        requiredString(formData, "positiveSignals"),
-      ),
-      negativeSignals: parseCommaList(
-        requiredString(formData, "negativeSignals"),
-      ),
-      notes: requiredString(formData, "notes") || null,
-    };
-
+    const { id, productId, fields } = parsed;
+    let icpId = id;
     if (id) {
-      await updateIcp(id, data);
+      await updateIcp(id, fields);
     } else {
-      await createIcp({ ...data, productId });
+      const created = await createIcp({ ...fields, productId });
+      icpId = created.id;
     }
 
     revalidateSetup(productId);
+    return {
+      ok: true,
+      message: id ? "ICP saved." : "ICP created.",
+      icpId,
+      productId,
+    };
   } catch (error) {
     logActionError("Failed to save ICP.", error);
+    return {
+      ok: false,
+      message: toSafeIcpActionError(error),
+      productId: values?.productId || undefined,
+      values,
+    };
   }
 }
 

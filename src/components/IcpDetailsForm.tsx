@@ -1,12 +1,14 @@
+"use client";
+
+import { useActionState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import type { Icp } from "@prisma/client";
-import {
-  deleteIcpAction,
-  upsertIcpAction,
-} from "@/app/actions";
+import { deleteIcpAction, upsertIcpAction } from "@/app/actions";
 import { interpretIcpAction } from "@/app/actions/interpretation";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
 import { formatCriterionDisplay } from "@/lib/criteria/types";
+import type { IcpActionResult, IcpFormValues } from "@/lib/icp/save";
 import { listToCommaString } from "@/lib/utils";
 
 type CriterionRow = {
@@ -23,6 +25,25 @@ type CriterionRow = {
   sortOrder: number;
   criterionType: string;
 };
+
+const initialResult: IcpActionResult | null = null;
+
+function StatusBanner({ result }: { result: IcpActionResult | null }) {
+  if (!result) return null;
+  return (
+    <p
+      role="status"
+      data-testid="icp-action-status"
+      className={
+        result.ok
+          ? "mb-3 text-sm text-emerald-700"
+          : "mb-3 text-sm text-red-600"
+      }
+    >
+      {result.message}
+    </p>
+  );
+}
 
 function CriteriaReview({
   title,
@@ -65,7 +86,28 @@ function CriteriaReview({
   );
 }
 
-/** Existing ICP edit form — same fields and actions as the prior inline form. */
+function defaultsFromIcp(icp?: Icp): Partial<IcpFormValues> {
+  if (!icp) return {};
+  return {
+    id: icp.id,
+    name: icp.name,
+    description: icp.description ?? "",
+    definition: icp.definition ?? icp.description ?? "",
+    additionalContext: icp.additionalContext ?? "",
+    targetIndustries: listToCommaString(icp.targetIndustries),
+    minEmployees: icp.minEmployees != null ? String(icp.minEmployees) : "",
+    maxEmployees: icp.maxEmployees != null ? String(icp.maxEmployees) : "",
+    minRevenue: icp.minRevenue != null ? String(Number(icp.minRevenue)) : "",
+    maxRevenue: icp.maxRevenue != null ? String(Number(icp.maxRevenue)) : "",
+    targetGeographies: listToCommaString(icp.targetGeographies),
+    requiredTechnologies: listToCommaString(icp.requiredTechnologies),
+    positiveSignals: listToCommaString(icp.positiveSignals),
+    negativeSignals: listToCommaString(icp.negativeSignals),
+    notes: icp.notes ?? "",
+  };
+}
+
+/** Existing ICP edit form — same fields; useActionState for save feedback. */
 export function IcpDetailsForm({
   productId,
   productName,
@@ -77,101 +119,158 @@ export function IcpDetailsForm({
   icp?: Icp;
   criteria: CriterionRow[];
 }) {
+  const router = useRouter();
+  const [state, formAction, pending] = useActionState(
+    upsertIcpAction,
+    initialResult,
+  );
+
   const definitionPlaceholder = productName?.trim()
     ? `Describe companies that should buy ${productName.trim()} — industry, size, geography, and other fit signals.`
     : "Describe the companies that should buy this product — industry, size, geography, and other fit signals.";
 
+  const restored = state && !state.ok ? state.values : undefined;
+  const defaults = useMemo(
+    () => ({ ...defaultsFromIcp(icp), ...restored }),
+    [icp, restored],
+  );
+  const formKey =
+    state && !state.ok
+      ? `icp-fail-${state.message}-${defaults.definition?.slice(0, 24) ?? ""}`
+      : `icp-${icp?.id ?? "new"}`;
+
+  useEffect(() => {
+    if (!state?.ok || !state.icpId) return;
+    if (!icp) {
+      router.push(`/setup/${productId}/icps/${state.icpId}`);
+      return;
+    }
+    router.refresh();
+  }, [state, icp, productId, router]);
+
+  function fieldHint(key: keyof IcpFormValues): string | undefined {
+    if (!state || state.ok) return undefined;
+    return state.fieldErrors?.[key];
+  }
+
   return (
-    <div className="rounded-md border border-slate-200 p-4">
-      <form action={upsertIcpAction} className="grid gap-4 md:grid-cols-2">
-        <input type="hidden" name="id" value={icp?.id ?? ""} />
+    <div className="rounded-md border border-slate-200 p-4" data-testid="icp-form">
+      <StatusBanner result={state} />
+      <form
+        key={formKey}
+        action={formAction}
+        className="grid gap-4 md:grid-cols-2"
+        data-testid="icp-details-form"
+      >
+        <input type="hidden" name="id" value={icp?.id ?? defaults.id ?? ""} />
         <input type="hidden" name="productId" value={productId} />
-        <Field label="ICP Name" name="name" defaultValue={icp?.name} required />
+        <Field
+          label="ICP Name"
+          name="name"
+          defaultValue={defaults.name}
+          required
+          hint={fieldHint("name")}
+        />
         <Field
           label="Target Industries"
           name="targetIndustries"
-          defaultValue={listToCommaString(icp?.targetIndustries)}
+          defaultValue={defaults.targetIndustries}
           placeholder="SaaS, Manufacturing"
+          hint={fieldHint("targetIndustries")}
         />
         <div className="md:col-span-2">
           <Field
             label="Describe your ideal customer"
             name="definition"
-            defaultValue={icp?.definition ?? icp?.description}
+            defaultValue={defaults.definition}
             as="textarea"
             placeholder={definitionPlaceholder}
+            hint={fieldHint("definition")}
           />
         </div>
         <div className="md:col-span-2">
           <Field
             label="Additional context (optional)"
             name="additionalContext"
-            defaultValue={icp?.additionalContext}
+            defaultValue={defaults.additionalContext}
             as="textarea"
+            hint={fieldHint("additionalContext")}
           />
         </div>
         <div className="md:col-span-2">
           <Field
             label="Short description (optional)"
             name="description"
-            defaultValue={icp?.description}
+            defaultValue={defaults.description}
             as="textarea"
+            hint={fieldHint("description")}
           />
         </div>
         <Field
           label="Minimum Employees"
           name="minEmployees"
           type="number"
-          defaultValue={icp?.minEmployees}
+          defaultValue={defaults.minEmployees}
+          hint={fieldHint("minEmployees")}
         />
         <Field
           label="Maximum Employees"
           name="maxEmployees"
           type="number"
-          defaultValue={icp?.maxEmployees}
+          defaultValue={defaults.maxEmployees}
+          hint={fieldHint("maxEmployees")}
         />
         <Field
           label="Minimum Revenue"
           name="minRevenue"
           type="number"
-          defaultValue={icp?.minRevenue != null ? Number(icp.minRevenue) : ""}
+          defaultValue={defaults.minRevenue}
+          hint={fieldHint("minRevenue")}
         />
         <Field
           label="Maximum Revenue"
           name="maxRevenue"
           type="number"
-          defaultValue={icp?.maxRevenue != null ? Number(icp.maxRevenue) : ""}
+          defaultValue={defaults.maxRevenue}
+          hint={fieldHint("maxRevenue")}
         />
         <Field
           label="Target Geographies"
           name="targetGeographies"
-          defaultValue={listToCommaString(icp?.targetGeographies)}
+          defaultValue={defaults.targetGeographies}
+          hint={fieldHint("targetGeographies")}
         />
         <Field
           label="Required Technologies"
           name="requiredTechnologies"
-          defaultValue={listToCommaString(icp?.requiredTechnologies)}
+          defaultValue={defaults.requiredTechnologies}
+          hint={fieldHint("requiredTechnologies")}
         />
         <Field
           label="Positive Buying Signals"
           name="positiveSignals"
-          defaultValue={listToCommaString(icp?.positiveSignals)}
+          defaultValue={defaults.positiveSignals}
+          hint={fieldHint("positiveSignals")}
         />
         <Field
           label="Negative / Disqualifying Signals"
           name="negativeSignals"
-          defaultValue={listToCommaString(icp?.negativeSignals)}
+          defaultValue={defaults.negativeSignals}
+          hint={fieldHint("negativeSignals")}
         />
         <div className="md:col-span-2">
           <Field
             label="Additional Notes"
             name="notes"
-            defaultValue={icp?.notes}
+            defaultValue={defaults.notes}
             as="textarea"
+            hint={fieldHint("notes")}
           />
         </div>
         <div className="md:col-span-2">
-          <SubmitButton>{icp ? "Save ICP" : "Add ICP"}</SubmitButton>
+          <SubmitButton disabled={pending}>
+            {pending ? "Saving…" : icp ? "Save ICP" : "Add ICP"}
+          </SubmitButton>
         </div>
       </form>
       {icp ? (

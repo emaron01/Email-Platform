@@ -156,7 +156,8 @@ describe("write paths unchanged", () => {
     expect(productForm).toContain("productNameDomainMismatchWarning");
     expect(productForm).toContain("product-name-domain-warning");
     expect(icpForm).toContain("upsertIcpAction");
-    expect(icpForm).toContain("action={upsertIcpAction}");
+    expect(icpForm).toContain("useActionState");
+    expect(icpForm).toContain('data-testid="icp-action-status"');
     expect(personaForm).toContain("upsertPersonaAction");
     expect(personaForm).toContain("action={saveAction}");
 
