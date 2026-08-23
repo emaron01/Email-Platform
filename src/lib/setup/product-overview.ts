@@ -54,16 +54,22 @@ export type PersonaCriteriaCountSummary = {
   total: number;
   exclusions: number;
   required: number;
+  needsReview: number;
 };
 
-/** Count criteria for overview display (exclusions / required / total). */
+/** Count criteria for overview display (exclusions / required / needs_review / total). */
 export function summarizePersonaCriteriaCounts(
   criteria: CriterionCountRow[],
 ): PersonaCriteriaCountSummary {
   let exclusions = 0;
   let required = 0;
+  let needsReview = 0;
   for (const row of criteria) {
-    const type = (row.criterionType ?? "").toLowerCase();
+    const type = (row.criterionType ?? "").toLowerCase().trim();
+    if (type === "needs_review") {
+      needsReview += 1;
+      continue;
+    }
     const isExclusion =
       row.isDisqualifier === true ||
       (type.includes("negative") && type.includes("signal"));
@@ -77,13 +83,69 @@ export function summarizePersonaCriteriaCounts(
     total: criteria.length,
     exclusions,
     required,
+    needsReview,
   };
 }
 
 export function formatPersonaCriteriaSummary(
   summary: PersonaCriteriaCountSummary,
 ): string {
-  return `${summary.total} criteria · ${summary.exclusions} exclusions · ${summary.required} required`;
+  const base = `${summary.total} criteria · ${summary.exclusions} exclusions · ${summary.required} required`;
+  if (summary.needsReview > 0) {
+    return `${base} · ${summary.needsReview} needs review`;
+  }
+  return base;
+}
+
+/**
+ * Soft check: product name should plausibly match the website domain label.
+ * Returns null when no warning; otherwise a short user-facing message.
+ * Does not block save — typos like "salesforecater" vs "salesforecaster" should surface.
+ */
+export function productNameDomainMismatchWarning(
+  name: string,
+  websiteUrl: string | null | undefined,
+): string | null {
+  const url = (websiteUrl ?? "").trim();
+  if (!url) return null;
+  const domainLabel = extractWebsiteDomainLabel(url);
+  if (!domainLabel || domainLabel.length < 3) return null;
+
+  const normalizedName = normalizeBrandToken(name);
+  const normalizedDomain = normalizeBrandToken(domainLabel);
+  if (!normalizedName) return null;
+  if (
+    normalizedName === normalizedDomain ||
+    normalizedName.includes(normalizedDomain) ||
+    normalizedDomain.includes(normalizedName)
+  ) {
+    return null;
+  }
+
+  return `Product name doesn’t look like it matches ${domainLabel} from the website URL. Check for typos — this name is used in research prompts and outreach.`;
+}
+
+/** Hostname brand label: "https://www.salesforecaster.io" → "salesforecaster". */
+export function extractWebsiteDomainLabel(websiteUrl: string): string | null {
+  try {
+    const withProtocol = /:\/\//.test(websiteUrl)
+      ? websiteUrl
+      : `https://${websiteUrl}`;
+    const host = new URL(withProtocol).hostname
+      .trim()
+      .toLowerCase()
+      .replace(/^www\./, "");
+    if (!host || host === "localhost") return null;
+    const parts = host.split(".").filter(Boolean);
+    if (parts.length >= 2) return parts[parts.length - 2] ?? null;
+    return parts[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeBrandToken(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 export function titlesFromJson(value: unknown): string[] {

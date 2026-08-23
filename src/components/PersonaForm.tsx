@@ -73,8 +73,38 @@ function CriteriaReview({
     );
   }
 
+  const needsReview = criteria.filter(
+    (c) => c.criterionType.trim().toLowerCase() === "needs_review",
+  );
+  const scored = criteria.filter(
+    (c) => c.criterionType.trim().toLowerCase() !== "needs_review",
+  );
+
   return (
-    <div className="mt-4 rounded-md bg-slate-50 p-3">
+    <div className="mt-4 space-y-3">
+      {needsReview.length > 0 ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
+          <h5 className="text-sm font-semibold text-amber-950">
+            Needs review — {needsReview.length} unclassified
+            {needsReview.length === 1 ? " criterion" : " criteria"}
+          </h5>
+          <p className="mt-1 text-xs text-amber-900/80">
+            Unrecognized types from synthesis. Not scored as fit. Reclassify
+            via role below, or remove.
+          </p>
+          <ul className="mt-3 space-y-3 text-sm text-amber-950">
+            {needsReview.map((c, i) => (
+              <NeedsReviewCriterionRow
+                key={c.id ?? `needs-review-${c.name}-${i}`}
+                productId={productId}
+                personaId={personaId}
+                criterion={c}
+              />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="rounded-md bg-slate-50 p-3">
       <h5 className="text-sm font-semibold text-slate-900">
         AI Interpretation — review criteria
       </h5>
@@ -82,8 +112,13 @@ function CriteriaReview({
         ✓ required / strong · ☆ supporting · ✗ disqualifier. Manual edits are
         preserved on reinterpretation.
       </p>
+      {scored.length === 0 ? (
+        <p className="mt-3 text-sm text-slate-500">
+          No scored criteria yet — classify items under Needs review.
+        </p>
+      ) : null}
       <ul className="mt-3 space-y-3 text-sm text-slate-700">
-        {criteria.map((c, i) => {
+        {scored.map((c, i) => {
           const role = c.isDisqualifier
             ? "disqualifier"
             : c.isRequired
@@ -142,7 +177,59 @@ function CriteriaReview({
           );
         })}
       </ul>
+      </div>
     </div>
+  );
+}
+
+function NeedsReviewCriterionRow({
+  productId,
+  personaId,
+  criterion,
+}: {
+  productId: string;
+  personaId: string;
+  criterion: CriterionRow;
+}) {
+  return (
+    <li className="rounded border border-amber-200 bg-white p-2">
+      <div>
+        <span className="font-medium">{criterion.name}</span>
+        <span className="ml-2 text-xs text-amber-800/80">needs_review</span>
+      </div>
+      {criterion.id ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <form
+            action={updatePersonaCriterionAction}
+            className="flex flex-wrap items-center gap-2"
+          >
+            <input type="hidden" name="criterionId" value={criterion.id} />
+            <input type="hidden" name="personaId" value={personaId} />
+            <input type="hidden" name="productId" value={productId} />
+            <input type="hidden" name="name" value={criterion.name} />
+            <label className="text-xs text-amber-900">
+              Classify as
+              <select
+                name="role"
+                defaultValue="supporting"
+                className="ml-1 rounded border border-amber-300 px-1 py-0.5 text-xs"
+              >
+                <option value="required">Required / strong</option>
+                <option value="supporting">Supporting (positive)</option>
+                <option value="disqualifier">Disqualifier / exclusion</option>
+              </select>
+            </label>
+            <SecondaryButton type="submit">Update</SecondaryButton>
+          </form>
+          <form action={deletePersonaCriterionAction}>
+            <input type="hidden" name="criterionId" value={criterion.id} />
+            <input type="hidden" name="personaId" value={personaId} />
+            <input type="hidden" name="productId" value={productId} />
+            <SecondaryButton type="submit">Remove</SecondaryButton>
+          </form>
+        </div>
+      ) : null}
+    </li>
   );
 }
 

@@ -7,6 +7,7 @@ import {
   formatPersonaCriteriaSummary,
   partitionSuggestedRoles,
   productCompletionState,
+  productNameDomainMismatchWarning,
   summarizePersonaCriteriaCounts,
 } from "@/lib/setup/product-overview";
 
@@ -71,7 +72,7 @@ describe("ICP incomplete state", () => {
 });
 
 describe("summarizePersonaCriteriaCounts", () => {
-  it("matches database-style breakout by type/flags", () => {
+  it("matches database-style breakout by type/flags including needs_review", () => {
     const criteria = [
       { criterionType: "negative_role_signal", isDisqualifier: true, isRequired: false },
       { criterionType: "negative_role_signal", isDisqualifier: true, isRequired: false },
@@ -86,14 +87,43 @@ describe("summarizePersonaCriteriaCounts", () => {
       { criterionType: "responsibility", isDisqualifier: false, isRequired: false },
       { criterionType: "positive_role_signal", isDisqualifier: false, isRequired: false },
       { criterionType: "positive_role_signal", isDisqualifier: false, isRequired: false },
-      { criterionType: "positive_role_signal", isDisqualifier: false, isRequired: false },
-      { criterionType: "positive_role_signal", isDisqualifier: false, isRequired: false },
+      { criterionType: "needs_review", isDisqualifier: false, isRequired: false },
+      { criterionType: "needs_review", isDisqualifier: false, isRequired: false },
     ];
     const summary = summarizePersonaCriteriaCounts(criteria);
-    expect(summary).toEqual({ total: 15, exclusions: 7, required: 2 });
+    expect(summary).toEqual({
+      total: 15,
+      exclusions: 7,
+      required: 2,
+      needsReview: 2,
+    });
     expect(formatPersonaCriteriaSummary(summary)).toBe(
-      "15 criteria · 7 exclusions · 2 required",
+      "15 criteria · 7 exclusions · 2 required · 2 needs review",
     );
+  });
+});
+
+describe("productNameDomainMismatchWarning", () => {
+  it("warns when product name is a typo of the website domain", () => {
+    expect(
+      productNameDomainMismatchWarning(
+        "salesforecater.io",
+        "https://www.salesforecaster.io",
+      ),
+    ).toMatch(/doesn’t look like it matches salesforecaster/i);
+  });
+
+  it("does not warn when name matches the domain label", () => {
+    expect(
+      productNameDomainMismatchWarning(
+        "Sales Forecaster",
+        "https://www.salesforecaster.io",
+      ),
+    ).toBeNull();
+  });
+
+  it("does not warn when website URL is empty", () => {
+    expect(productNameDomainMismatchWarning("Acme", "")).toBeNull();
   });
 });
 
@@ -122,7 +152,9 @@ describe("write paths unchanged", () => {
     const actions = readFileSync("src/app/actions.ts", "utf8");
 
     expect(productForm).toContain("upsertProductAction");
-    expect(productForm).toContain('action={upsertProductAction}');
+    expect(productForm).toContain("action={upsertProductAction}");
+    expect(productForm).toContain("productNameDomainMismatchWarning");
+    expect(productForm).toContain("product-name-domain-warning");
     expect(icpForm).toContain("upsertIcpAction");
     expect(icpForm).toContain("action={upsertIcpAction}");
     expect(personaForm).toContain("upsertPersonaAction");

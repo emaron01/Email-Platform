@@ -274,9 +274,22 @@ export default async function SetupProductPage({ params }: PageProps) {
                               {titles}
                             </p>
                           ) : null}
-                          <p className="mt-1 text-xs text-slate-500">
+                          <p
+                            className={
+                              summary.needsReview > 0
+                                ? "mt-1 text-xs font-medium text-amber-800"
+                                : "mt-1 text-xs text-slate-500"
+                            }
+                          >
                             {formatPersonaCriteriaSummary(summary)}
                           </p>
+                          {summary.needsReview > 0 ? (
+                            <p className="mt-1 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-950">
+                              {summary.needsReview} need
+                              {summary.needsReview === 1 ? "s" : ""} review —
+                              not scored until classified on Edit.
+                            </p>
+                          ) : null}
                         </div>
                         <ActionLink
                           href={`/setup/${product.id}/personas/manage/${persona.id}`}

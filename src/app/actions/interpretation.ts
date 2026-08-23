@@ -174,17 +174,29 @@ export async function updatePersonaCriterionAction(
   let isDisqualifier =
     formData.get("isDisqualifier") === "on" ||
     formData.get("isDisqualifier") === "true";
+  let criterionType: string | undefined;
 
   if (role === "required") {
     isRequired = true;
     isDisqualifier = false;
+    criterionType = "positive_role_signal";
   } else if (role === "supporting") {
     isRequired = false;
     isDisqualifier = false;
+    criterionType = "positive_role_signal";
   } else if (role === "disqualifier") {
     isRequired = false;
     isDisqualifier = true;
+    criterionType = "negative_role_signal";
   }
+
+  const existing = await prisma.personaCriterion.findFirst({
+    where: { id: criterionId, organizationId, personaId },
+    select: { criterionType: true },
+  });
+  const promoteFromNeedsReview =
+    existing?.criterionType.trim().toLowerCase() === "needs_review" &&
+    Boolean(criterionType);
 
   const name = String(formData.get("name") || "").trim();
   await updatePersonaCriterionManual({
@@ -196,6 +208,9 @@ export async function updatePersonaCriterionAction(
       description: String(formData.get("description") || "") || null,
       isRequired,
       isDisqualifier,
+      ...(promoteFromNeedsReview && criterionType
+        ? { criterionType }
+        : {}),
     },
   });
   revalidateSetup(productId || undefined);
