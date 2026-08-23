@@ -7,6 +7,7 @@ import {
   renameWorkspaceAction,
   inviteUserAction,
 } from "@/app/actions/settings";
+import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import { requireOrgAdmin } from "@/lib/org/authz";
 import { prisma } from "@/lib/prisma";
 import { ensureOrganizationPolicies } from "@/lib/usage/policy";
@@ -60,7 +61,11 @@ export default async function OrganizationSettingsPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-900">Workspace name</h2>
-        <form action={renameWorkspaceAction} className="flex gap-2">
+        <ActionFeedbackForm
+          action={renameWorkspaceAction}
+          className="flex gap-2"
+          testId="rename-workspace-form"
+        >
           <input
             name="name"
             defaultValue={organization.name}
@@ -72,7 +77,7 @@ export default async function OrganizationSettingsPage() {
           >
             Save
           </button>
-        </form>
+        </ActionFeedbackForm>
       </section>
 
       <section className="space-y-3">
@@ -80,7 +85,11 @@ export default async function OrganizationSettingsPage() {
         <p className="text-sm text-slate-600">
           Daily email quotas use this IANA timezone (not server UTC alone).
         </p>
-        <form action={updateOrganizationTimezoneAction} className="flex gap-2">
+        <ActionFeedbackForm
+          action={updateOrganizationTimezoneAction}
+          className="flex gap-2"
+          testId="timezone-form"
+        >
           <input
             name="timezone"
             defaultValue={organization.timezone}
@@ -93,12 +102,16 @@ export default async function OrganizationSettingsPage() {
           >
             Save
           </button>
-        </form>
+        </ActionFeedbackForm>
       </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-900">Usage limits</h2>
-        <form action={updateOrganizationUsagePolicyAction} className="grid gap-3 sm:grid-cols-2">
+        <ActionFeedbackForm
+          action={updateOrganizationUsagePolicyAction}
+          className="grid gap-3 sm:grid-cols-2"
+          testId="usage-policy-form"
+        >
           <label className="text-sm">
             Active researched companies
             <input
@@ -125,12 +138,16 @@ export default async function OrganizationSettingsPage() {
           >
             Save usage policy
           </button>
-        </form>
+        </ActionFeedbackForm>
       </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-900">Research depth</h2>
-        <form action={updateResearchPolicyAction} className="grid gap-3 sm:grid-cols-3">
+        <ActionFeedbackForm
+          action={updateResearchPolicyAction}
+          className="grid gap-3 sm:grid-cols-3"
+          testId="research-policy-form"
+        >
           <label className="text-sm">
             Max searches / company
             <input
@@ -167,7 +184,7 @@ export default async function OrganizationSettingsPage() {
           >
             Save research policy
           </button>
-        </form>
+        </ActionFeedbackForm>
       </section>
 
       <section className="space-y-3">
@@ -190,9 +207,10 @@ export default async function OrganizationSettingsPage() {
                     ({m.role})
                   </span>
                 </p>
-                <form
+                <ActionFeedbackForm
                   action={upsertUserUsageOverrideAction}
                   className="mt-3 grid gap-2 sm:grid-cols-3"
+                  testId={`user-override-form-${m.userId}`}
                 >
                   <input type="hidden" name="userId" value={m.userId} />
                   <label className="text-xs text-slate-600">
@@ -223,7 +241,7 @@ export default async function OrganizationSettingsPage() {
                   >
                     Save override
                   </button>
-                </form>
+                </ActionFeedbackForm>
               </li>
             );
           })}
@@ -232,7 +250,11 @@ export default async function OrganizationSettingsPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-900">Invite user</h2>
-        <form action={inviteUserAction} className="grid gap-2 sm:grid-cols-3">
+        <ActionFeedbackForm
+          action={inviteUserAction}
+          className="grid gap-2 sm:grid-cols-3"
+          testId="invite-user-form"
+        >
           <input
             name="email"
             type="email"
@@ -254,7 +276,7 @@ export default async function OrganizationSettingsPage() {
           >
             Create invitation
           </button>
-        </form>
+        </ActionFeedbackForm>
         {invitations.length > 0 ? (
           <ul className="text-sm text-slate-600">
             {invitations.map((inv) => (

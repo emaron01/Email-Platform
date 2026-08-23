@@ -1,10 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createCampaignAction } from "@/app/actions";
+import type { CampaignActionResult } from "@/lib/campaign/save";
 import { Field, SubmitButton } from "@/components/ui";
 
 type Option = { id: string; name: string; productId: string };
+
+const initial: CampaignActionResult | null = null;
 
 export function NewCampaignForm({
   products,
@@ -15,9 +19,20 @@ export function NewCampaignForm({
   icps: Option[];
   personas: Option[];
 }) {
+  const router = useRouter();
   const [productId, setProductId] = useState("");
   const [icpId, setIcpId] = useState("");
   const [personaId, setPersonaId] = useState("");
+  const [state, formAction, pending] = useActionState(
+    createCampaignAction,
+    initial,
+  );
+
+  const restored = state && !state.ok ? state.values : undefined;
+  const formKey =
+    state && !state.ok
+      ? `campaign-fail-${state.message}-${restored?.name?.slice(0, 24) ?? ""}`
+      : "campaign-new";
 
   const productIcps = useMemo(
     () => icps.filter((icp) => icp.productId === productId),
@@ -35,9 +50,44 @@ export function NewCampaignForm({
     productIcps.some((icp) => icp.id === icpId) &&
     productPersonas.some((persona) => persona.id === personaId);
 
+  useEffect(() => {
+    if (!state?.ok) return;
+    router.push("/campaigns");
+    router.refresh();
+  }, [state, router]);
+
+  useEffect(() => {
+    if (!restored) return;
+    if (restored.productId) setProductId(restored.productId);
+    if (restored.icpId) setIcpId(restored.icpId);
+    if (restored.personaId) setPersonaId(restored.personaId);
+  }, [restored]);
+
   return (
-    <form action={createCampaignAction} className="grid gap-4 md:grid-cols-2">
-      <Field label="Campaign Name" name="name" required />
+    <form
+      key={formKey}
+      action={formAction}
+      className="grid gap-4 md:grid-cols-2"
+    >
+      {state ? (
+        <p
+          role="status"
+          data-testid="campaign-action-status"
+          className={
+            state.ok
+              ? "md:col-span-2 text-sm text-emerald-700"
+              : "md:col-span-2 text-sm text-red-600"
+          }
+        >
+          {state.message}
+        </p>
+      ) : null}
+      <Field
+        label="Campaign Name"
+        name="name"
+        required
+        defaultValue={restored?.name}
+      />
 
       <label className="block text-sm">
         <span className="font-medium text-slate-700">Product</span>
@@ -114,24 +164,44 @@ export function NewCampaignForm({
           use different offers across campaigns.
         </p>
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Offer Name" name="offerName" placeholder="Free Forecast Audit" />
-          <Field label="Primary CTA" name="offerCta" placeholder="Book a demo" />
+          <Field
+            label="Offer Name"
+            name="offerName"
+            placeholder="Free Forecast Audit"
+            defaultValue={restored?.offerName}
+          />
+          <Field
+            label="Primary CTA"
+            name="offerCta"
+            placeholder="Book a demo"
+            defaultValue={restored?.offerCta}
+          />
           <div className="md:col-span-2">
             <Field
               label="Offer Description"
               name="offerDescription"
               as="textarea"
+              defaultValue={restored?.offerDescription}
             />
           </div>
           <div className="md:col-span-2">
-            <Field label="Offer Notes" name="offerNotes" as="textarea" />
+            <Field
+              label="Offer Notes"
+              name="offerNotes"
+              as="textarea"
+              defaultValue={restored?.offerNotes}
+            />
           </div>
         </div>
       </div>
 
       <div className="md:col-span-2">
-        <SubmitButton>
-          {canSubmit ? "Create campaign" : "Select product, ICP, and persona"}
+        <SubmitButton disabled={!canSubmit || pending}>
+          {pending
+            ? "Creating…"
+            : canSubmit
+              ? "Create campaign"
+              : "Select product, ICP, and persona"}
         </SubmitButton>
       </div>
     </form>

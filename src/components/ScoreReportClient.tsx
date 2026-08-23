@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useMemo, useState, useTransition } from "react";
+import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createCampaignAction } from "@/app/actions";
+import type { CampaignActionResult } from "@/lib/campaign/save";
 import {
   Field,
   PrimaryButton,
@@ -178,7 +179,17 @@ export function ScoreReportClient({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showCampaign, setShowCampaign] = useState(false);
-  const [pending, startTransition] = useTransition();
+  const [campaignState, campaignAction, campaignPending] = useActionState(
+    createCampaignAction,
+    null as CampaignActionResult | null,
+  );
+
+  useEffect(() => {
+    if (!campaignState?.ok) return;
+    setShowCampaign(false);
+    router.push("/campaigns");
+    router.refresh();
+  }, [campaignState, router]);
 
   const visibleIds = useMemo(() => rows.map((row) => row.contactId), [rows]);
 
@@ -203,12 +214,7 @@ export function ScoreReportClient({
     for (const contactId of selected) {
       formData.append("contactIds", contactId);
     }
-    startTransition(async () => {
-      await createCampaignAction(formData);
-      setShowCampaign(false);
-      router.push("/campaigns");
-      router.refresh();
-    });
+    return campaignAction(formData);
   }
 
   return (
@@ -495,6 +501,15 @@ export function ScoreReportClient({
               </SecondaryButton>
             </div>
             <form action={submitCampaign} className="space-y-4 px-5 py-5">
+              {campaignState && !campaignState.ok ? (
+                <p
+                  role="status"
+                  data-testid="campaign-action-status"
+                  className="text-sm text-red-600"
+                >
+                  {campaignState.message}
+                </p>
+              ) : null}
               <input type="hidden" name="productId" value={productId} />
               <input type="hidden" name="icpId" value={icpId} />
               <input type="hidden" name="personaId" value={personaId} />
@@ -512,8 +527,8 @@ export function ScoreReportClient({
               />
               <Field label="Offer Notes" name="offerNotes" as="textarea" />
               <div className="flex gap-2">
-                <SubmitButton>
-                  {pending ? "Creating…" : "Create campaign"}
+                <SubmitButton disabled={campaignPending}>
+                  {campaignPending ? "Creating…" : "Create campaign"}
                 </SubmitButton>
                 <SecondaryButton
                   type="button"

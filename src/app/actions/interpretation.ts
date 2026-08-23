@@ -14,27 +14,54 @@ import {
   toSafePersonaActionError,
   type PersonaActionResult,
 } from "@/lib/persona/save";
+import type { IcpActionResult } from "@/lib/icp/save";
 import { createPersona, updatePersona } from "@/lib/tenant/data";
 import { prisma } from "@/lib/prisma";
+
+export type CriterionActionResult = {
+  ok: boolean;
+  message: string;
+};
 
 function revalidateSetup(productId?: string) {
   revalidatePath("/setup");
   if (productId) revalidatePath(`/setup/${productId}`);
 }
 
-export async function interpretIcpAction(formData: FormData): Promise<void> {
-  const organizationId = await requireOrganizationId();
-  const user = await getCurrentUser();
+export async function interpretIcpAction(
+  _prev: IcpActionResult | null,
+  formData: FormData,
+): Promise<IcpActionResult> {
   const icpId = String(formData.get("icpId") || "").trim();
   const productId = String(formData.get("productId") || "").trim();
-  if (!icpId) throw new TenantError("ICP id is required.");
+  if (!icpId) {
+    return { ok: false, message: "ICP id is required." };
+  }
 
-  await interpretIcpDefinition({
-    organizationId,
-    icpId,
-    userId: user?.id ?? null,
-  });
-  revalidateSetup(productId || undefined);
+  try {
+    const organizationId = await requireOrganizationId();
+    const user = await getCurrentUser();
+    await interpretIcpDefinition({
+      organizationId,
+      icpId,
+      userId: user?.id ?? null,
+    });
+    revalidateSetup(productId || undefined);
+    return { ok: true, message: "Interpretation complete.", icpId };
+  } catch (error) {
+    console.error(
+      "[icp] interpretation failed",
+      error instanceof Error ? error.message.slice(0, 300) : "unknown",
+    );
+    return {
+      ok: false,
+      message:
+        error instanceof TenantError
+          ? error.message
+          : "AI interpretation could not be completed. ICP data was not changed.",
+      icpId,
+    };
+  }
 }
 
 /**
@@ -132,110 +159,155 @@ export async function interpretPersonaAction(
   }
 }
 
-export async function updateIcpCriterionAction(formData: FormData): Promise<void> {
-  const organizationId = await requireOrganizationId();
-  const criterionId = String(formData.get("criterionId") || "").trim();
-  const icpId = String(formData.get("icpId") || "").trim();
-  const productId = String(formData.get("productId") || "").trim();
-  if (!criterionId || !icpId) {
-    throw new TenantError("ICP criterion id and icp id are required.");
-  }
+export async function updateIcpCriterionAction(
+  _prev: CriterionActionResult | null,
+  formData: FormData,
+): Promise<CriterionActionResult> {
+  try {
+    const organizationId = await requireOrganizationId();
+    const criterionId = String(formData.get("criterionId") || "").trim();
+    const icpId = String(formData.get("icpId") || "").trim();
+    const productId = String(formData.get("productId") || "").trim();
+    if (!criterionId || !icpId) {
+      return { ok: false, message: "ICP criterion id and icp id are required." };
+    }
 
-  const name = String(formData.get("name") || "").trim();
-  await updateIcpCriterionManual({
-    organizationId,
-    icpId,
-    criterionId,
-    data: {
-      ...(name ? { name } : {}),
-      description: String(formData.get("description") || "") || null,
-      isRequired: formData.get("isRequired") === "on" || formData.get("isRequired") === "true",
-      isDisqualifier:
-        formData.get("isDisqualifier") === "on" ||
-        formData.get("isDisqualifier") === "true",
-    },
-  });
-  revalidateSetup(productId || undefined);
+    const name = String(formData.get("name") || "").trim();
+    await updateIcpCriterionManual({
+      organizationId,
+      icpId,
+      criterionId,
+      data: {
+        ...(name ? { name } : {}),
+        description: String(formData.get("description") || "") || null,
+        isRequired: formData.get("isRequired") === "on" || formData.get("isRequired") === "true",
+        isDisqualifier:
+          formData.get("isDisqualifier") === "on" ||
+          formData.get("isDisqualifier") === "true",
+      },
+    });
+    revalidateSetup(productId || undefined);
+    return { ok: true, message: "Criterion updated." };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof TenantError
+          ? error.message
+          : "Unable to update ICP criterion. Please try again.",
+    };
+  }
 }
 
 export async function updatePersonaCriterionAction(
+  _prev: PersonaActionResult | null,
   formData: FormData,
-): Promise<void> {
-  const organizationId = await requireOrganizationId();
-  const criterionId = String(formData.get("criterionId") || "").trim();
-  const personaId = String(formData.get("personaId") || "").trim();
-  const productId = String(formData.get("productId") || "").trim();
-  if (!criterionId || !personaId) {
-    throw new TenantError("Persona criterion id and persona id are required.");
+): Promise<PersonaActionResult> {
+  try {
+    const organizationId = await requireOrganizationId();
+    const criterionId = String(formData.get("criterionId") || "").trim();
+    const personaId = String(formData.get("personaId") || "").trim();
+    const productId = String(formData.get("productId") || "").trim();
+    if (!criterionId || !personaId) {
+      return {
+        ok: false,
+        message: "Persona criterion id and persona id are required.",
+      };
+    }
+
+    const role = String(formData.get("role") || "").trim();
+    let isRequired = formData.get("isRequired") === "on" || formData.get("isRequired") === "true";
+    let isDisqualifier =
+      formData.get("isDisqualifier") === "on" ||
+      formData.get("isDisqualifier") === "true";
+    let criterionType: string | undefined;
+
+    if (role === "required") {
+      isRequired = true;
+      isDisqualifier = false;
+      criterionType = "positive_role_signal";
+    } else if (role === "supporting") {
+      isRequired = false;
+      isDisqualifier = false;
+      criterionType = "positive_role_signal";
+    } else if (role === "disqualifier") {
+      isRequired = false;
+      isDisqualifier = true;
+      criterionType = "negative_role_signal";
+    }
+
+    const existing = await prisma.personaCriterion.findFirst({
+      where: { id: criterionId, organizationId, personaId },
+      select: { criterionType: true },
+    });
+    const promoteFromNeedsReview =
+      existing?.criterionType.trim().toLowerCase() === "needs_review" &&
+      Boolean(criterionType);
+
+    const name = String(formData.get("name") || "").trim();
+    await updatePersonaCriterionManual({
+      organizationId,
+      personaId,
+      criterionId,
+      data: {
+        ...(name ? { name } : {}),
+        description: String(formData.get("description") || "") || null,
+        isRequired,
+        isDisqualifier,
+        ...(promoteFromNeedsReview && criterionType
+          ? { criterionType }
+          : {}),
+      },
+    });
+    revalidateSetup(productId || undefined);
+    return { ok: true, message: "Criterion updated.", personaId };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof TenantError
+          ? error.message
+          : "Unable to update persona criterion. Please try again.",
+    };
   }
-
-  const role = String(formData.get("role") || "").trim();
-  let isRequired = formData.get("isRequired") === "on" || formData.get("isRequired") === "true";
-  let isDisqualifier =
-    formData.get("isDisqualifier") === "on" ||
-    formData.get("isDisqualifier") === "true";
-  let criterionType: string | undefined;
-
-  if (role === "required") {
-    isRequired = true;
-    isDisqualifier = false;
-    criterionType = "positive_role_signal";
-  } else if (role === "supporting") {
-    isRequired = false;
-    isDisqualifier = false;
-    criterionType = "positive_role_signal";
-  } else if (role === "disqualifier") {
-    isRequired = false;
-    isDisqualifier = true;
-    criterionType = "negative_role_signal";
-  }
-
-  const existing = await prisma.personaCriterion.findFirst({
-    where: { id: criterionId, organizationId, personaId },
-    select: { criterionType: true },
-  });
-  const promoteFromNeedsReview =
-    existing?.criterionType.trim().toLowerCase() === "needs_review" &&
-    Boolean(criterionType);
-
-  const name = String(formData.get("name") || "").trim();
-  await updatePersonaCriterionManual({
-    organizationId,
-    personaId,
-    criterionId,
-    data: {
-      ...(name ? { name } : {}),
-      description: String(formData.get("description") || "") || null,
-      isRequired,
-      isDisqualifier,
-      ...(promoteFromNeedsReview && criterionType
-        ? { criterionType }
-        : {}),
-    },
-  });
-  revalidateSetup(productId || undefined);
 }
 
 export async function deletePersonaCriterionAction(
+  _prev: PersonaActionResult | null,
   formData: FormData,
-): Promise<void> {
-  const organizationId = await requireOrganizationId();
-  const criterionId = String(formData.get("criterionId") || "").trim();
-  const personaId = String(formData.get("personaId") || "").trim();
-  const productId = String(formData.get("productId") || "").trim();
-  if (!criterionId || !personaId) {
-    throw new TenantError("Persona criterion id and persona id are required.");
-  }
+): Promise<PersonaActionResult> {
+  try {
+    const organizationId = await requireOrganizationId();
+    const criterionId = String(formData.get("criterionId") || "").trim();
+    const personaId = String(formData.get("personaId") || "").trim();
+    const productId = String(formData.get("productId") || "").trim();
+    if (!criterionId || !personaId) {
+      return {
+        ok: false,
+        message: "Persona criterion id and persona id are required.",
+      };
+    }
 
-  const existing = await prisma.personaCriterion.findFirst({
-    where: { id: criterionId, organizationId, personaId },
-  });
-  if (!existing) {
-    throw new TenantError(
-      "Persona criterion not found in the active organization.",
-    );
-  }
+    const existing = await prisma.personaCriterion.findFirst({
+      where: { id: criterionId, organizationId, personaId },
+    });
+    if (!existing) {
+      return {
+        ok: false,
+        message: "Persona criterion not found in the active organization.",
+      };
+    }
 
-  await prisma.personaCriterion.delete({ where: { id: existing.id } });
-  revalidateSetup(productId || undefined);
+    await prisma.personaCriterion.delete({ where: { id: existing.id } });
+    revalidateSetup(productId || undefined);
+    return { ok: true, message: "Criterion removed.", personaId };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof TenantError
+          ? error.message
+          : "Unable to remove persona criterion. Please try again.",
+    };
+  }
 }

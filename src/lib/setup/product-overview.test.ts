@@ -152,12 +152,13 @@ describe("write paths unchanged", () => {
     const actions = readFileSync("src/app/actions.ts", "utf8");
 
     expect(productForm).toContain("upsertProductAction");
-    expect(productForm).toContain("action={upsertProductAction}");
+    expect(productForm).toContain("useActionState");
+    expect(productForm).toContain('data-testid="product-action-status"');
     expect(productForm).toContain("productNameDomainMismatchWarning");
     expect(productForm).toContain("product-name-domain-warning");
     expect(icpForm).toContain("upsertIcpAction");
     expect(icpForm).toContain("useActionState");
-    expect(icpForm).toContain('data-testid="icp-action-status"');
+    expect(icpForm).toContain("icp-action-status");
     expect(personaForm).toContain("upsertPersonaAction");
     expect(personaForm).toContain("action={saveAction}");
 

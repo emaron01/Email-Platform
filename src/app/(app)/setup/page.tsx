@@ -1,15 +1,11 @@
 import Link from "next/link";
-import {
-  deleteProductAction,
-  upsertProductAction,
-} from "@/app/actions";
+import { deleteProductAction } from "@/app/actions";
+import { AddProductForm } from "@/components/AddProductForm";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import {
   EmptyState,
-  Field,
   PageHeader,
   Panel,
-  PrimaryButton,
   TenantMissing,
 } from "@/components/ui";
 import { listProductsWithCounts } from "@/lib/tenant/data";
@@ -106,25 +102,7 @@ export default async function SetupPage() {
               Assisted Product Setup
             </Link>
           </div>
-          <form action={upsertProductAction} className="grid gap-4 md:grid-cols-2">
-            <input type="hidden" name="id" value="" />
-            <Field label="Product Name" name="name" required />
-            <Field label="Website URL" name="websiteUrl" placeholder="https://" />
-            <div className="md:col-span-2">
-              <Field label="Product Description" name="description" as="textarea" />
-            </div>
-            <div className="md:col-span-2">
-              <Field
-                label="Primary Value Proposition"
-                name="valueProposition"
-                as="textarea"
-              />
-            </div>
-            <Field label="Typical Price / AOV" name="averageOrderValue" type="number" />
-            <div className="flex items-end">
-              <PrimaryButton type="submit">Add Product</PrimaryButton>
-            </div>
-          </form>
+          <AddProductForm />
         </Panel>
       </div>
     </div>

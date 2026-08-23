@@ -1,0 +1,98 @@
+/**
+ * Product save parsing + action/UI seam tests.
+ */
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import {
+  parseProductFormData,
+  readProductFormValues,
+  toSafeProductActionError,
+} from "@/lib/product/save";
+import { TenantError } from "@/lib/tenant/errors";
+
+function formFrom(entries: Record<string, string>): FormData {
+  const fd = new FormData();
+  for (const [key, value] of Object.entries(entries)) {
+    fd.set(key, value);
+  }
+  return fd;
+}
+
+describe("parseProductFormData", () => {
+  it("accepts a valid create payload", () => {
+    const parsed = parseProductFormData(
+      formFrom({
+        id: "",
+        name: "Forecast OS",
+        description: "Pipeline forecasting",
+        websiteUrl: "https://example.com",
+      }),
+    );
+    expect(parsed.fieldErrors).toEqual({});
+    expect(parsed.fields.name).toBe("Forecast OS");
+    expect(parsed.fields.websiteUrl).toBe("https://example.com");
+  });
+
+  it("names the product name field when missing", () => {
+    const parsed = parseProductFormData(
+      formFrom({
+        name: "  ",
+        description: "Preserve this description on failure.",
+      }),
+    );
+    expect(parsed.fieldErrors.name).toBe("Product name is required.");
+    expect(parsed.values.description).toContain("Preserve this description");
+  });
+
+  it("names AOV when invalid", () => {
+    const parsed = parseProductFormData(
+      formFrom({
+        name: "Widget",
+        averageOrderValue: "not-a-number",
+      }),
+    );
+    expect(parsed.fieldErrors.averageOrderValue).toMatch(/number/i);
+  });
+});
+
+describe("toSafeProductActionError", () => {
+  it("surfaces TenantError messages", () => {
+    expect(
+      toSafeProductActionError(new TenantError("Product name is required.")),
+    ).toBe("Product name is required.");
+  });
+});
+
+describe("readProductFormValues", () => {
+  it("echoes description for restore-on-failure", () => {
+    const values = readProductFormValues(
+      formFrom({
+        name: "X",
+        description: "Preserve this long product description.",
+      }),
+    );
+    expect(values.description).toBe("Preserve this long product description.");
+  });
+});
+
+describe("Product save UI seam", () => {
+  it("wires useActionState result into visible status on success and failure", () => {
+    const formSrc = readFileSync("src/components/ProductDetailsForm.tsx", "utf8");
+    const actionsSrc = readFileSync("src/app/actions.ts", "utf8");
+    const setupSrc = readFileSync("src/app/(app)/setup/page.tsx", "utf8");
+
+    expect(actionsSrc).toMatch(
+      /export async function upsertProductAction\([\s\S]*Promise<ProductActionResult>/,
+    );
+    expect(actionsSrc).toContain("ok: true");
+    expect(actionsSrc).toContain("values: parsed.values");
+
+    expect(formSrc).toContain("useActionState");
+    expect(formSrc).toContain("upsertProductAction");
+    expect(formSrc).toContain('data-testid="product-action-status"');
+    expect(formSrc).toContain("state.values");
+
+    expect(setupSrc).toContain("AddProductForm");
+    expect(setupSrc).not.toContain("action={upsertProductAction}");
+  });
+});

@@ -6,6 +6,7 @@ import {
   saveTransactionalTemplateAction,
   testSendTransactionalTemplateAction,
 } from "@/app/actions/platform-templates";
+import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import type { TransactionalEmailTemplateKey } from "@prisma/client";
 
 export default async function PlatformEmailTemplatesPage({
@@ -67,7 +68,11 @@ export default async function PlatformEmailTemplatesPage({
         Allowed variables: {allowlist.map((v) => `{{${v}}}`).join(", ")}
       </p>
 
-      <form action={saveTransactionalTemplateAction} className="space-y-3">
+      <ActionFeedbackForm
+        action={saveTransactionalTemplateAction}
+        className="space-y-3"
+        testId="save-template-form"
+      >
         <input type="hidden" name="templateKey" value={selected} />
         <label className="block text-sm">
           Display name
@@ -126,9 +131,13 @@ export default async function PlatformEmailTemplatesPage({
         >
           Save template
         </button>
-      </form>
+      </ActionFeedbackForm>
 
-      <form action={testSendTransactionalTemplateAction} className="space-y-3 border-t border-slate-200 pt-6">
+      <ActionFeedbackForm
+        action={testSendTransactionalTemplateAction}
+        className="space-y-3 border-t border-slate-200 pt-6"
+        testId="test-send-template-form"
+      >
         <h2 className="text-lg font-medium">Test send</h2>
         <p className="text-xs text-slate-500">
           Does not mutate verification/reset account state. Uses placeholder
@@ -150,7 +159,7 @@ export default async function PlatformEmailTemplatesPage({
         >
           Send test
         </button>
-      </form>
+      </ActionFeedbackForm>
     </div>
   );
 }

@@ -1,19 +1,87 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Product } from "@prisma/client";
 import { upsertProductAction } from "@/app/actions";
 import { Field, SubmitButton } from "@/components/ui";
+import type { ProductActionResult, ProductFormValues } from "@/lib/product/save";
 import { productNameDomainMismatchWarning } from "@/lib/setup/product-overview";
 
-/** Existing product edit form — same fields and upsertProductAction as before. */
+const initial: ProductActionResult | null = null;
+
+function defaultsFromProduct(product: Product): ProductFormValues {
+  return {
+    id: product.id,
+    name: product.name,
+    description: product.description ?? "",
+    valueProposition: product.valueProposition ?? "",
+    averageOrderValue:
+      product.averageOrderValue != null
+        ? String(Number(product.averageOrderValue))
+        : "",
+    websiteUrl: product.websiteUrl ?? "",
+  };
+}
+
+/** Existing product edit form — useActionState for save feedback. */
 export function ProductDetailsForm({ product }: { product: Product }) {
-  const [name, setName] = useState(product.name);
-  const [websiteUrl, setWebsiteUrl] = useState(product.websiteUrl ?? "");
+  const router = useRouter();
+  const [state, formAction, pending] = useActionState(
+    upsertProductAction,
+    initial,
+  );
+
+  const restored = state && !state.ok ? state.values : undefined;
+  const defaults = useMemo(
+    () => ({ ...defaultsFromProduct(product), ...restored }),
+    [product, restored],
+  );
+  const formKey =
+    state && !state.ok
+      ? `product-fail-${state.message}-${defaults.name.slice(0, 24)}`
+      : `product-${product.id}`;
+
+  const [name, setName] = useState(defaults.name);
+  const [websiteUrl, setWebsiteUrl] = useState(defaults.websiteUrl);
   const warning = productNameDomainMismatchWarning(name, websiteUrl);
 
+  useEffect(() => {
+    if (state?.ok) {
+      router.refresh();
+    }
+  }, [state, router]);
+
+  useEffect(() => {
+    setName(defaults.name);
+    setWebsiteUrl(defaults.websiteUrl);
+  }, [defaults.name, defaults.websiteUrl]);
+
+  function fieldHint(key: keyof ProductFormValues): string | undefined {
+    if (!state || state.ok) return undefined;
+    return state.fieldErrors?.[key];
+  }
+
   return (
-    <form action={upsertProductAction} className="grid gap-4 md:grid-cols-2">
+    <form
+      key={formKey}
+      action={formAction}
+      className="grid gap-4 md:grid-cols-2"
+      data-testid="product-details-form"
+    >
+      {state ? (
+        <p
+          role="status"
+          data-testid="product-action-status"
+          className={
+            state.ok
+              ? "md:col-span-2 text-sm text-emerald-700"
+              : "md:col-span-2 text-sm text-red-600"
+          }
+        >
+          {state.message}
+        </p>
+      ) : null}
       <input type="hidden" name="id" value={product.id} />
       <label className="block text-sm">
         <span className="font-medium text-slate-700">Product Name</span>
@@ -24,6 +92,11 @@ export function ProductDetailsForm({ product }: { product: Product }) {
           onChange={(e) => setName(e.target.value)}
           className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 focus:ring-2"
         />
+        {fieldHint("name") ? (
+          <span className="mt-1 block text-xs text-red-600">
+            {fieldHint("name")}
+          </span>
+        ) : null}
       </label>
       <label className="block text-sm">
         <span className="font-medium text-slate-700">Website URL</span>
@@ -48,7 +121,7 @@ export function ProductDetailsForm({ product }: { product: Product }) {
         <Field
           label="Product Description"
           name="description"
-          defaultValue={product.description}
+          defaultValue={defaults.description}
           as="textarea"
         />
       </div>
@@ -56,7 +129,7 @@ export function ProductDetailsForm({ product }: { product: Product }) {
         <Field
           label="Primary Value Proposition"
           name="valueProposition"
-          defaultValue={product.valueProposition}
+          defaultValue={defaults.valueProposition}
           as="textarea"
         />
       </div>
@@ -64,14 +137,13 @@ export function ProductDetailsForm({ product }: { product: Product }) {
         label="Typical Price / AOV"
         name="averageOrderValue"
         type="number"
-        defaultValue={
-          product.averageOrderValue != null
-            ? Number(product.averageOrderValue)
-            : ""
-        }
+        defaultValue={defaults.averageOrderValue}
+        hint={fieldHint("averageOrderValue")}
       />
       <div className="flex items-end">
-        <SubmitButton>Save product</SubmitButton>
+        <SubmitButton disabled={pending}>
+          {pending ? "Saving…" : "Save product"}
+        </SubmitButton>
       </div>
     </form>
   );

@@ -1,14 +1,19 @@
 "use client";
 
-import { useTransition } from "react";
+import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { updateManualCompanyResearchAction } from "@/app/actions/research";
+import {
+  updateManualCompanyResearchAction,
+  type ResearchActionResult,
+} from "@/app/actions/research";
 import { Field, SubmitButton } from "@/components/ui";
 
 function listToText(value: unknown): string {
   if (!Array.isArray(value)) return "";
   return value.map(String).filter(Boolean).join("\n");
 }
+
+const initial: ResearchActionResult | null = null;
 
 export function ManualCompanyResearchForm({
   companyId,
@@ -31,17 +36,32 @@ export function ManualCompanyResearchForm({
   };
 }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [state, formAction, pending] = useActionState(
+    updateManualCompanyResearchAction,
+    initial,
+  );
 
-  function onSubmit(formData: FormData) {
-    startTransition(async () => {
-      await updateManualCompanyResearchAction(formData);
+  useEffect(() => {
+    if (state?.ok) {
       router.refresh();
-    });
-  }
+    }
+  }, [state, router]);
 
   return (
-    <form action={onSubmit} className="grid gap-4 md:grid-cols-2">
+    <form action={formAction} className="grid gap-4 md:grid-cols-2">
+      {state ? (
+        <p
+          role="status"
+          data-testid="manual-research-status"
+          className={
+            state.ok
+              ? "md:col-span-2 text-sm text-emerald-700"
+              : "md:col-span-2 text-sm text-red-600"
+          }
+        >
+          {state.message}
+        </p>
+      ) : null}
       <input type="hidden" name="companyId" value={companyId} />
       <div className="md:col-span-2">
         <Field
@@ -129,7 +149,7 @@ export function ManualCompanyResearchForm({
         />
       </div>
       <div className="md:col-span-2">
-        <SubmitButton>
+        <SubmitButton disabled={pending}>
           {pending ? "Saving…" : "Save Manual Research"}
         </SubmitButton>
         <p className="mt-2 text-xs text-slate-500">

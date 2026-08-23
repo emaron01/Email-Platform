@@ -11,25 +11,42 @@ function requiredString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
 }
 
+function toSafeScoringRunActionError(error: unknown): string {
+  if (error instanceof TenantError) return error.message;
+  return "Unable to create scoring run. Please try again.";
+}
+
+export type ScoringRunActionResult = {
+  ok: boolean;
+  message: string;
+};
+
 export async function createScoringRunAction(
+  _prev: ScoringRunActionResult | null,
   formData: FormData,
-): Promise<void> {
+): Promise<ScoringRunActionResult> {
   const contactListId = requiredString(formData, "contactListId");
   const productId = requiredString(formData, "productId");
   const icpId = requiredString(formData, "icpId");
   const personaId = requiredString(formData, "personaId");
 
   if (!contactListId || !productId || !icpId || !personaId) {
-    throw new TenantError("Product, ICP, and Persona are required.");
+    return { ok: false, message: "Product, ICP, and Persona are required." };
   }
 
-  const run = await createScoringRun({
-    contactListId,
-    productId,
-    icpId,
-    personaId,
-  });
+  let run;
+  try {
+    run = await createScoringRun({
+      contactListId,
+      productId,
+      icpId,
+      personaId,
+    });
+  } catch (error) {
+    return { ok: false, message: toSafeScoringRunActionError(error) };
+  }
 
+  // redirect() throws — keep it outside try/catch so navigation still fires.
   redirect(`/scoring/${run.id}`);
 }
 

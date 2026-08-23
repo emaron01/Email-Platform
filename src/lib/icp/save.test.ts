@@ -98,7 +98,7 @@ describe("ICP save UI seam", () => {
     // Form consumes action state and surfaces it.
     expect(formSrc).toContain("useActionState");
     expect(formSrc).toContain("upsertIcpAction");
-    expect(formSrc).toContain('data-testid="icp-action-status"');
+    expect(formSrc).toContain("icp-action-status");
     expect(formSrc).toContain("result.message");
     expect(formSrc).toContain("state.values");
     expect(formSrc).toContain("fieldErrors");

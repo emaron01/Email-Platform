@@ -1,6 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import type { Persona } from "@prisma/client";
 import { upsertPersonaAction } from "@/app/actions";
@@ -52,6 +57,49 @@ function StatusBanner({ result }: { result: PersonaActionResult | null }) {
     >
       {result.message}
     </p>
+  );
+}
+
+function CriterionActionForm({
+  action,
+  className,
+  children,
+}: {
+  action: (
+    prev: PersonaActionResult | null,
+    formData: FormData,
+  ) => Promise<PersonaActionResult>;
+  className?: string;
+  children: ReactNode;
+}) {
+  const router = useRouter();
+  const [state, formAction, pending] = useActionState(action, null);
+
+  useEffect(() => {
+    if (state?.ok) {
+      router.refresh();
+    }
+  }, [state, router]);
+
+  return (
+    <form action={formAction} className={className}>
+      {children}
+      {pending ? (
+        <span className="text-xs text-slate-500">Working…</span>
+      ) : null}
+      {state ? (
+        <p
+          role="status"
+          className={
+            state.ok
+              ? "basis-full text-xs text-emerald-700"
+              : "basis-full text-xs text-red-600"
+          }
+        >
+          {state.message}
+        </p>
+      ) : null}
+    </form>
   );
 }
 
@@ -143,7 +191,7 @@ function CriteriaReview({
               </div>
               {c.id ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <form
+                  <CriterionActionForm
                     action={updatePersonaCriterionAction}
                     className="flex flex-wrap items-center gap-2"
                   >
@@ -164,13 +212,13 @@ function CriteriaReview({
                       </select>
                     </label>
                     <SecondaryButton type="submit">Update</SecondaryButton>
-                  </form>
-                  <form action={deletePersonaCriterionAction}>
+                  </CriterionActionForm>
+                  <CriterionActionForm action={deletePersonaCriterionAction}>
                     <input type="hidden" name="criterionId" value={c.id} />
                     <input type="hidden" name="personaId" value={personaId} />
                     <input type="hidden" name="productId" value={productId} />
                     <SecondaryButton type="submit">Remove</SecondaryButton>
-                  </form>
+                  </CriterionActionForm>
                 </div>
               ) : null}
             </li>
@@ -199,7 +247,7 @@ function NeedsReviewCriterionRow({
       </div>
       {criterion.id ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <form
+          <CriterionActionForm
             action={updatePersonaCriterionAction}
             className="flex flex-wrap items-center gap-2"
           >
@@ -220,13 +268,13 @@ function NeedsReviewCriterionRow({
               </select>
             </label>
             <SecondaryButton type="submit">Update</SecondaryButton>
-          </form>
-          <form action={deletePersonaCriterionAction}>
+          </CriterionActionForm>
+          <CriterionActionForm action={deletePersonaCriterionAction}>
             <input type="hidden" name="criterionId" value={criterion.id} />
             <input type="hidden" name="personaId" value={personaId} />
             <input type="hidden" name="productId" value={productId} />
             <SecondaryButton type="submit">Remove</SecondaryButton>
-          </form>
+          </CriterionActionForm>
         </div>
       ) : null}
     </li>

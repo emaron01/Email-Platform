@@ -28,12 +28,18 @@ type CriterionRow = {
 
 const initialResult: IcpActionResult | null = null;
 
-function StatusBanner({ result }: { result: IcpActionResult | null }) {
+function StatusBanner({
+  result,
+  testId = "icp-action-status",
+}: {
+  result: IcpActionResult | null;
+  testId?: string;
+}) {
   if (!result) return null;
   return (
     <p
       role="status"
-      data-testid="icp-action-status"
+      data-testid={testId}
       className={
         result.ok
           ? "mb-3 text-sm text-emerald-700"
@@ -124,6 +130,10 @@ export function IcpDetailsForm({
     upsertIcpAction,
     initialResult,
   );
+  const [interpretState, interpretAction, interpretPending] = useActionState(
+    interpretIcpAction,
+    initialResult,
+  );
 
   const definitionPlaceholder = productName?.trim()
     ? `Describe companies that should buy ${productName.trim()} — industry, size, geography, and other fit signals.`
@@ -147,6 +157,12 @@ export function IcpDetailsForm({
     }
     router.refresh();
   }, [state, icp, productId, router]);
+
+  useEffect(() => {
+    if (interpretState?.ok) {
+      router.refresh();
+    }
+  }, [interpretState, router]);
 
   function fieldHint(key: keyof IcpFormValues): string | undefined {
     if (!state || state.ok) return undefined;
@@ -276,12 +292,18 @@ export function IcpDetailsForm({
       {icp ? (
         <>
           <CriteriaReview title="AI Interpretation" criteria={criteria} />
+          <StatusBanner
+            result={interpretState}
+            testId="icp-interpret-status"
+          />
           <div className="mt-3 flex flex-wrap gap-2">
-            <form action={interpretIcpAction}>
+            <form action={interpretAction}>
               <input type="hidden" name="icpId" value={icp.id} />
               <input type="hidden" name="productId" value={productId} />
-              <SecondaryButton type="submit">
-                Interpret / Reinterpret ICP
+              <SecondaryButton type="submit" disabled={interpretPending}>
+                {interpretPending
+                  ? "Interpreting…"
+                  : "Interpret / Reinterpret ICP"}
               </SecondaryButton>
             </form>
             <ConfirmDeleteForm

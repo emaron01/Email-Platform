@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ManualCompanyResearchForm } from "@/components/ManualCompanyResearchForm";
+import { RefreshCompanyResearchForm } from "@/components/RefreshCompanyResearchForm";
 import {
   PageHeader,
   Panel,
   TenantMissing,
 } from "@/components/ui";
-import { refreshCompanyResearchAction } from "@/app/actions/research";
 import {
   getCompany,
   researchStatusLabel,
@@ -112,15 +112,7 @@ export default async function CompanyResearchPage({ params }: PageProps) {
       </div>
 
       <div className="mb-6">
-        <form action={refreshCompanyResearchAction}>
-          <input type="hidden" name="companyId" value={company.id} />
-          <button
-            type="submit"
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            Refresh Research
-          </button>
-        </form>
+        <RefreshCompanyResearchForm companyId={company.id} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

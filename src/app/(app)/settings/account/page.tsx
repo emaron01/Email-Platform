@@ -1,6 +1,7 @@
 import { requireCurrentUser } from "@/lib/auth/authz";
 import { isEmailVerified } from "@/lib/auth/account-policy";
-import { logoutAction, changePasswordAction } from "@/app/actions/account";
+import { logoutAction } from "@/app/actions/account";
+import { ChangePasswordForm } from "@/components/ChangePasswordForm";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import Link from "next/link";
 
@@ -64,35 +65,7 @@ export default async function AccountSettingsPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Change password</h2>
-        <form action={changePasswordAction} className="space-y-3">
-          <label className="block text-sm">
-            Current password
-            <input
-              name="currentPassword"
-              type="password"
-              autoComplete="current-password"
-              required
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm">
-            New password
-            <input
-              name="newPassword"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={10}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            />
-          </label>
-          <button
-            type="submit"
-            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-          >
-            Update password
-          </button>
-        </form>
+        <ChangePasswordForm />
       </section>
 
       <form action={logoutAction}>

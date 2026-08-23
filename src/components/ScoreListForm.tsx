@@ -1,10 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { createScoringRunAction } from "@/app/actions/scoring";
+import { useActionState, useMemo, useState } from "react";
+import {
+  createScoringRunAction,
+  type ScoringRunActionResult,
+} from "@/app/actions/scoring";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
 
 type Option = { id: string; name: string; productId: string };
+
+const initial: ScoringRunActionResult | null = null;
 
 export function ScoreListForm({
   contactListId,
@@ -20,6 +25,10 @@ export function ScoreListForm({
   const [productId, setProductId] = useState("");
   const [icpId, setIcpId] = useState("");
   const [personaId, setPersonaId] = useState("");
+  const [state, formAction, pending] = useActionState(
+    createScoringRunAction,
+    initial,
+  );
 
   const productIcps = useMemo(
     () => icps.filter((icp) => icp.productId === productId),
@@ -38,8 +47,18 @@ export function ScoreListForm({
     productPersonas.some((persona) => persona.id === personaId);
 
   return (
-    <form action={createScoringRunAction} className="grid gap-4 md:grid-cols-2">
+    <form action={formAction} className="grid gap-4 md:grid-cols-2">
       <input type="hidden" name="contactListId" value={contactListId} />
+
+      {state && !state.ok ? (
+        <p
+          role="status"
+          data-testid="scoring-run-status"
+          className="md:col-span-2 text-sm text-red-600"
+        >
+          {state.message}
+        </p>
+      ) : null}
 
       <label className="block text-sm md:col-span-2">
         <span className="font-medium text-slate-700">Product</span>
@@ -108,8 +127,8 @@ export function ScoreListForm({
       </label>
 
       <div className="md:col-span-2 flex gap-2">
-        <PrimaryButton type="submit" disabled={!canSubmit}>
-          Create Scoring Run
+        <PrimaryButton type="submit" disabled={!canSubmit || pending}>
+          {pending ? "Creating…" : "Create Scoring Run"}
         </PrimaryButton>
         <SecondaryButton
           type="button"

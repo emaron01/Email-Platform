@@ -94,53 +94,86 @@ export async function researchCompaniesForScoringRunAction(
   }
 }
 
-export async function refreshCompanyResearchAction(
-  formData: FormData,
-): Promise<void> {
-  const companyId = requiredString(formData, "companyId");
-  if (!companyId) throw new TenantError("Company is required.");
+export type ResearchActionResult = {
+  ok: boolean;
+  message: string;
+};
 
-  await researchCompany(companyId, { force: true });
-  revalidatePath(`/companies/${companyId}`);
+export async function refreshCompanyResearchAction(
+  _prev: ResearchActionResult | null,
+  formData: FormData,
+): Promise<ResearchActionResult> {
+  try {
+    const companyId = requiredString(formData, "companyId");
+    if (!companyId) {
+      return { ok: false, message: "Company is required." };
+    }
+
+    await researchCompany(companyId, { force: true });
+    revalidatePath(`/companies/${companyId}`);
+    return { ok: true, message: "Research refreshed." };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof TenantError
+          ? error.message
+          : "Unable to refresh company research.",
+    };
+  }
 }
 
 export async function updateManualCompanyResearchAction(
+  _prev: ResearchActionResult | null,
   formData: FormData,
-): Promise<void> {
-  const companyId = requiredString(formData, "companyId");
-  if (!companyId) throw new TenantError("Company is required.");
+): Promise<ResearchActionResult> {
+  try {
+    const companyId = requiredString(formData, "companyId");
+    if (!companyId) {
+      return { ok: false, message: "Company is required." };
+    }
 
-  const confidenceRaw = requiredString(formData, "researchConfidence");
-  const confidence =
-    confidenceRaw === "HIGH" ||
-    confidenceRaw === "MEDIUM" ||
-    confidenceRaw === "LOW"
-      ? (confidenceRaw as ResearchConfidence)
-      : "MEDIUM";
+    const confidenceRaw = requiredString(formData, "researchConfidence");
+    const confidence =
+      confidenceRaw === "HIGH" ||
+      confidenceRaw === "MEDIUM" ||
+      confidenceRaw === "LOW"
+        ? (confidenceRaw as ResearchConfidence)
+        : "MEDIUM";
 
-  await updateManualCompanyResearch({
-    companyId,
-    companySummary: requiredString(formData, "companySummary") || null,
-    whatTheySell: requiredString(formData, "whatTheySell") || null,
-    estimatedAov: requiredString(formData, "estimatedAov") || null,
-    aovReasoning: requiredString(formData, "aovReasoning") || null,
-    customerTypes: parseLineList(
-      String(formData.get("customerTypes") ?? ""),
-    ),
-    primaryMarkets: parseLineList(
-      String(formData.get("primaryMarkets") ?? ""),
-    ),
-    businessModel: requiredString(formData, "businessModel") || null,
-    companySizeContext: requiredString(formData, "companySizeContext") || null,
-    relevantTechnologies: parseLineList(
-      String(formData.get("relevantTechnologies") ?? ""),
-    ),
-    buyingSignals: parseLineList(
-      String(formData.get("buyingSignals") ?? ""),
-    ),
-    riskSignals: parseLineList(String(formData.get("riskSignals") ?? "")),
-    researchConfidence: confidence,
-  });
+    await updateManualCompanyResearch({
+      companyId,
+      companySummary: requiredString(formData, "companySummary") || null,
+      whatTheySell: requiredString(formData, "whatTheySell") || null,
+      estimatedAov: requiredString(formData, "estimatedAov") || null,
+      aovReasoning: requiredString(formData, "aovReasoning") || null,
+      customerTypes: parseLineList(
+        String(formData.get("customerTypes") ?? ""),
+      ),
+      primaryMarkets: parseLineList(
+        String(formData.get("primaryMarkets") ?? ""),
+      ),
+      businessModel: requiredString(formData, "businessModel") || null,
+      companySizeContext: requiredString(formData, "companySizeContext") || null,
+      relevantTechnologies: parseLineList(
+        String(formData.get("relevantTechnologies") ?? ""),
+      ),
+      buyingSignals: parseLineList(
+        String(formData.get("buyingSignals") ?? ""),
+      ),
+      riskSignals: parseLineList(String(formData.get("riskSignals") ?? "")),
+      researchConfidence: confidence,
+    });
 
-  revalidatePath(`/companies/${companyId}`);
+    revalidatePath(`/companies/${companyId}`);
+    return { ok: true, message: "Manual research saved." };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof TenantError
+          ? error.message
+          : "Unable to save manual company research.",
+    };
+  }
 }

@@ -15,15 +15,20 @@ import {
 } from "@/lib/tenant/data";
 import { TenantError } from "@/lib/tenant/getCurrentOrganization";
 import {
-  parseCommaList,
-  toOptionalFloat,
-  toOptionalInt,
-} from "@/lib/utils";
+  parseCampaignFormData,
+  toSafeCampaignActionError,
+  type CampaignActionResult,
+} from "@/lib/campaign/save";
 import {
   parseIcpFormData,
   toSafeIcpActionError,
   type IcpActionResult,
 } from "@/lib/icp/save";
+import {
+  parseProductFormData,
+  toSafeProductActionError,
+  type ProductActionResult,
+} from "@/lib/product/save";
 import {
   parsePersonaFormData,
   toSafePersonaActionError,
@@ -54,29 +59,58 @@ function revalidateSetup(productId?: string) {
   revalidatePath("/");
 }
 
-export async function upsertProductAction(formData: FormData): Promise<void> {
-  try {
-    const id = requiredString(formData, "id");
-    const name = requiredString(formData, "name");
-    if (!name) throw new TenantError("Product name is required.");
-
-    const data = {
-      name,
-      description: requiredString(formData, "description") || null,
-      valueProposition: requiredString(formData, "valueProposition") || null,
-      averageOrderValue: toOptionalFloat(formData.get("averageOrderValue")),
-      websiteUrl: requiredString(formData, "websiteUrl") || null,
-    };
-
-    if (id) {
-      await updateProduct(id, data);
-      revalidateSetup(id);
-    } else {
-      const product = await createProduct(data);
-      revalidateSetup(product.id);
+export async function upsertProductAction(
+  _prev: ProductActionResult | null,
+  formData: FormData,
+): Promise<ProductActionResult> {
+  const values = (() => {
+    try {
+      return parseProductFormData(formData).values;
+    } catch {
+      return undefined;
     }
+  })();
+
+  try {
+    const parsed = parseProductFormData(formData);
+    if (Object.keys(parsed.fieldErrors).length > 0) {
+      const firstField = Object.keys(parsed.fieldErrors)[0] as
+        | keyof typeof parsed.fieldErrors
+        | undefined;
+      const firstMessage = firstField
+        ? parsed.fieldErrors[firstField]
+        : undefined;
+      return {
+        ok: false,
+        message: firstMessage ?? "Please fix the highlighted fields.",
+        values: parsed.values,
+        fieldErrors: parsed.fieldErrors,
+      };
+    }
+
+    const { id, fields } = parsed;
+    let productId = id;
+    if (id) {
+      await updateProduct(id, fields);
+      revalidateSetup(id);
+      return { ok: true, message: "Product saved.", productId: id };
+    }
+
+    const product = await createProduct(fields);
+    productId = product.id;
+    revalidateSetup(productId);
+    return {
+      ok: true,
+      message: "Product created.",
+      productId,
+    };
   } catch (error) {
     logActionError("Failed to save product.", error);
+    return {
+      ok: false,
+      message: toSafeProductActionError(error),
+      values,
+    };
   }
 }
 
@@ -241,38 +275,52 @@ export async function deletePersonaAction(
   }
 }
 
-export async function createCampaignAction(formData: FormData): Promise<void> {
-  try {
-    const name = requiredString(formData, "name");
-    const productId = requiredString(formData, "productId");
-    const icpId = requiredString(formData, "icpId");
-    const personaId = requiredString(formData, "personaId");
+export async function createCampaignAction(
+  _prev: CampaignActionResult | null,
+  formData: FormData,
+): Promise<CampaignActionResult> {
+  const values = (() => {
+    try {
+      return parseCampaignFormData(formData).values;
+    } catch {
+      return undefined;
+    }
+  })();
 
-    if (!name || !productId || !icpId || !personaId) {
-      throw new TenantError(
-        "Campaign name, product, ICP, and persona are required.",
-      );
+  try {
+    const parsed = parseCampaignFormData(formData);
+    if (Object.keys(parsed.fieldErrors).length > 0) {
+      const firstField = Object.keys(parsed.fieldErrors)[0] as
+        | keyof typeof parsed.fieldErrors
+        | undefined;
+      const firstMessage = firstField
+        ? parsed.fieldErrors[firstField]
+        : undefined;
+      return {
+        ok: false,
+        message: firstMessage ?? "Please fix the highlighted fields.",
+        values: parsed.values,
+        fieldErrors: parsed.fieldErrors,
+      };
     }
 
-    const contactIds = formData
-      .getAll("contactIds")
-      .map((value) => String(value).trim())
-      .filter(Boolean);
-
-    await createCampaign({
-      name,
-      productId,
-      icpId,
-      personaId,
-      offerName: requiredString(formData, "offerName") || null,
-      offerDescription: requiredString(formData, "offerDescription") || null,
-      offerCta: requiredString(formData, "offerCta") || null,
-      offerNotes: requiredString(formData, "offerNotes") || null,
-      contactIds,
+    const campaign = await createCampaign({
+      ...parsed.fields,
+      contactIds: parsed.contactIds,
     });
     revalidatePath("/campaigns");
     revalidatePath("/");
+    return {
+      ok: true,
+      message: "Campaign created.",
+      campaignId: campaign.id,
+    };
   } catch (error) {
     logActionError("Failed to create campaign.", error);
+    return {
+      ok: false,
+      message: toSafeCampaignActionError(error),
+      values,
+    };
   }
 }
