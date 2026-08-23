@@ -125,6 +125,7 @@ enum UsageOperation {
   PERSONA_WEB_SEARCH
   PERSONA_SYNTHESIS
   PERSONA_URL_RETRIEVAL
+  VOICE_SAMPLE_SAVED
 }
 
 enum CriterionDataType {
@@ -267,6 +268,12 @@ enum ProductSourceType {
   USER_NOTE
 }
 
+/// How a voice sample was captured. PASTED now; imported later.
+enum VoiceSampleProvenance {
+  PASTED
+  IMPORTED
+}
+
 enum ProductSourceStatus {
   PENDING
   ACQUIRED
@@ -347,6 +354,7 @@ model Organization {
   personaSources               PersonaSource[]
   personaEvidenceBundles       PersonaEvidenceBundle[]
   personaSetupRuns             PersonaSetupRun[]
+  voiceSamples                 VoiceSample[]
 
   @@index([status])
   @@index([createdAt])
@@ -375,9 +383,31 @@ model User {
   companyResearchInitiated     CompanyResearch[]        @relation("ResearchInitiatedBy")
   adminAuditEvents             AdminAuditEvent[]
   transactionalEmailEvents     TransactionalEmailEvent[]
+  voiceSamples                 VoiceSample[]
 
   @@index([platformRole])
   @@index([activeOrganizationId])
+}
+
+/// Pasted writing samples for one user inside one organization. Never org-wide.
+model VoiceSample {
+  id             String                 @id @default(cuid())
+  organizationId String
+  userId         String
+  label          String
+  sampleText     String
+  provenance     VoiceSampleProvenance  @default(PASTED)
+  active         Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([organizationId, userId])
+  @@index([organizationId, userId, createdAt])
 }
 
 model OrganizationMembership {

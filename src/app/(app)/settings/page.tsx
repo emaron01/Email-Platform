@@ -32,7 +32,7 @@ export default async function SettingsIndexPage() {
             Account
           </Link>
           <p className="text-slate-600">
-            Profile, email verification, password, logout.
+            Profile, writing voice, email verification, password, logout.
           </p>
         </li>
         <li>

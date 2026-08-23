@@ -81,6 +81,7 @@ describe("action result UI seams", () => {
     { form: "src/components/ChangePasswordForm.tsx", statusTestId: "change-password-status" },
     { form: "src/components/ManualCompanyResearchForm.tsx", statusTestId: "manual-research-status" },
     { form: "src/components/ActionFeedbackForm.tsx", statusTestId: "action-feedback-status" },
+    { form: "src/components/VoiceSamplesForm.tsx", statusTestId: "voice-action-status" },
   ];
 
   it.each(seams)(

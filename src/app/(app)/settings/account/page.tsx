@@ -2,7 +2,9 @@ import { requireCurrentUser } from "@/lib/auth/authz";
 import { isEmailVerified } from "@/lib/auth/account-policy";
 import { logoutAction } from "@/app/actions/account";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
+import { VoiceSamplesForm } from "@/components/VoiceSamplesForm";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
+import { listVoiceSamplesForUser } from "@/lib/voice/samples";
 import Link from "next/link";
 
 export default async function AccountSettingsPage() {
@@ -13,6 +15,12 @@ export default async function AccountSettingsPage() {
     [user.firstName, user.lastName].filter(Boolean).join(" ") ||
     user.name ||
     null;
+  const voiceSamples = organization
+    ? await listVoiceSamplesForUser({
+        organizationId: organization.id,
+        userId: user.id,
+      })
+    : [];
 
   return (
     <div className="mx-auto max-w-xl space-y-8">
@@ -62,6 +70,8 @@ export default async function AccountSettingsPage() {
           )}
         </p>
       </section>
+
+      {organization ? <VoiceSamplesForm samples={voiceSamples} /> : null}
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Change password</h2>
