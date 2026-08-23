@@ -1,5 +1,6 @@
 import {
   getContactResearchAiConfig,
+  getEmailAiConfig,
   getInterpretationAiConfig,
   getPersonaAiConfig,
   getProductAiConfig,
@@ -52,6 +53,10 @@ const productCache: { key: string; provider: AiProvider | null } = {
   provider: null,
 };
 const personaCache: { key: string; provider: AiProvider | null } = {
+  key: "",
+  provider: null,
+};
+const emailCache: { key: string; provider: AiProvider | null } = {
   key: "",
   provider: null,
 };
@@ -138,6 +143,19 @@ export function getPersonaAiProvider(): AiProvider {
   return provider;
 }
 
+/** Email generation AI only — never uses another role's configuration. */
+export function getEmailAiProvider(): AiProvider {
+  const config = getEmailAiConfig();
+  const key = cacheKey(config);
+  if (emailCache.key === key && emailCache.provider) {
+    return emailCache.provider;
+  }
+  const provider = createAiProvider(config);
+  emailCache.key = key;
+  emailCache.provider = provider;
+  return provider;
+}
+
 /** Test helper to clear provider caches. */
 export function clearAiProviderCache(): void {
   researchCache.key = "";
@@ -152,4 +170,6 @@ export function clearAiProviderCache(): void {
   productCache.provider = null;
   personaCache.key = "";
   personaCache.provider = null;
+  emailCache.key = "";
+  emailCache.provider = null;
 }

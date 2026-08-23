@@ -42,6 +42,11 @@ enum EmailDraftStatus {
   SKIPPED
 }
 
+enum EmailDraftSource {
+  AI
+  MANUAL
+}
+
 enum ContactListSource {
   PASTE
   UPLOAD
@@ -126,6 +131,7 @@ enum UsageOperation {
   PERSONA_SYNTHESIS
   PERSONA_URL_RETRIEVAL
   VOICE_SAMPLE_SAVED
+  EMAIL_DRAFT_CREATED
 }
 
 enum CriterionDataType {
@@ -1361,6 +1367,7 @@ model EmailDraft {
   subject           String?
   body              String?
   status            EmailDraftStatus @default(NOT_CREATED)
+  source            EmailDraftSource @default(AI)
   approvedAt        DateTime?
   sentAt            DateTime?
   createdAt         DateTime         @default(now())

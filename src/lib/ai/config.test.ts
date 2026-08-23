@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { clearAiProviderCache, createAiProvider } from "@/lib/ai/provider";
 import {
+  getEmailAiConfig,
   getResearchAiConfig,
   getScoringAiConfig,
+  isEmailAiConfigured,
   isResearchAiConfigured,
   isScoringAiConfigured,
 } from "@/lib/ai/config";
@@ -47,6 +49,7 @@ function clearAllAiEnv() {
       key.startsWith("CONTACT_RESEARCH_AI_") ||
       key.startsWith("PRODUCT_AI_") ||
       key.startsWith("PERSONA_AI_") ||
+      key.startsWith("EMAIL_AI_") ||
       key.startsWith("AI_")
     ) {
       delete process.env[key];
@@ -129,6 +132,30 @@ describe("role-specific AI configuration", () => {
     expect(researchProvider).toBeTruthy();
     expect(scoringProvider).toBeTruthy();
     expect(getResearchAiConfig().model).not.toBe(getScoringAiConfig().model);
+  });
+
+  it("keeps Email AI isolated and configured for gpt-5.6-luna", () => {
+    clearAllAiEnv();
+    setResearchEnv("must-not-leak-into-email");
+    process.env.EMAIL_AI_PROVIDER = "openai-responses";
+    process.env.EMAIL_AI_MODEL = "gpt-5.6-luna";
+    process.env.EMAIL_AI_MODEL_URL =
+      "https://api.openai.com/v1/responses";
+    process.env.EMAIL_AI_API_KEY = "email-secret-key";
+
+    expect(isEmailAiConfigured()).toBe(true);
+    const email = getEmailAiConfig();
+    expect(email.role).toBe("email");
+    expect(email.provider).toBe("openai-responses");
+    expect(email.model).toBe("gpt-5.6-luna");
+    expect(email.model).not.toBe(getResearchAiConfig().model);
+  });
+
+  it("does not fall back to another role when Email AI is missing", () => {
+    clearAllAiEnv();
+    setScoringEnv();
+    expect(isEmailAiConfigured()).toBe(false);
+    expect(() => getEmailAiConfig()).toThrow(/Email generation AI is not configured/);
   });
 
   it("allows openai-responses for Research and Scoring independently", () => {

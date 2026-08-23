@@ -2,10 +2,13 @@ import "server-only";
 
 import type {
   Campaign,
+  CampaignContactStatus,
   CampaignStatus,
   Contact,
   ContactList,
   ContactScore,
+  EmailDraftSource,
+  EmailDraftStatus,
   Icp,
   Offer,
   Persona,
@@ -656,6 +659,25 @@ export type CampaignWithRelations = Campaign & {
   icp: { id: string; name: string };
   persona: { id: string; name: string };
   offer: { id: string; name: string } | null;
+  contacts: Array<{
+    id: string;
+    status: CampaignContactStatus;
+    contact: {
+      id: string;
+      firstName: string | null;
+      lastName: string | null;
+      email: string | null;
+      title: string | null;
+      company: string | null;
+    };
+    emailDrafts: Array<{
+      id: string;
+      subject: string | null;
+      body: string | null;
+      status: EmailDraftStatus;
+      source: EmailDraftSource;
+    }>;
+  }>;
   _count: { contacts: number };
 };
 
@@ -668,6 +690,35 @@ export async function listCampaigns(): Promise<CampaignWithRelations[]> {
       icp: { select: { id: true, name: true } },
       persona: { select: { id: true, name: true } },
       offer: { select: { id: true, name: true } },
+      contacts: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          status: true,
+          contact: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              title: true,
+              company: true,
+            },
+          },
+          emailDrafts: {
+            where: { sequenceNumber: 1 },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              subject: true,
+              body: true,
+              status: true,
+              source: true,
+            },
+          },
+        },
+      },
       _count: { select: { contacts: true } },
     },
     orderBy: { createdAt: "desc" },

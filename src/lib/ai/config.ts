@@ -32,7 +32,8 @@ export type AiRole =
   | "interpretation"
   | "contact_research"
   | "product"
-  | "persona";
+  | "persona"
+  | "email";
 
 /**
  * OpenAI Responses `reasoning.effort` values.
@@ -144,6 +145,15 @@ const ROLE_ENV: Record<AiRole, RoleEnv> = {
     temperature: "PERSONA_AI_TEMPERATURE",
     reasoningEffort: "PERSONA_AI_REASONING_EFFORT",
   },
+  email: {
+    provider: "EMAIL_AI_PROVIDER",
+    model: "EMAIL_AI_MODEL",
+    modelUrl: "EMAIL_AI_MODEL_URL",
+    apiKey: "EMAIL_AI_API_KEY",
+    timeoutMs: "EMAIL_AI_TIMEOUT_MS",
+    maxRetries: "EMAIL_AI_MAX_RETRIES",
+    temperature: "EMAIL_AI_TEMPERATURE",
+  },
 };
 
 function notConfiguredMessage(role: AiRole): string {
@@ -160,6 +170,8 @@ function notConfiguredMessage(role: AiRole): string {
       return "Product research & assisted setup AI is not configured.";
     case "persona":
       return "Persona research & synthesis AI is not configured.";
+    case "email":
+      return "Email generation AI is not configured.";
   }
 }
 
@@ -213,7 +225,8 @@ function parseProvider(
       role === "interpretation" ||
       role === "contact_research" ||
       role === "product" ||
-      role === "persona"
+      role === "persona" ||
+      role === "email"
     ) {
       return "openai-responses";
     }
@@ -348,6 +361,20 @@ export function getPersonaAiConfig(): AiConfig {
 export function isPersonaAiConfigured(): boolean {
   try {
     getPersonaAiConfig();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Fail closed for Email AI. Never reads other role variables. */
+export function getEmailAiConfig(): AiConfig {
+  return getAiConfigForRole("email");
+}
+
+export function isEmailAiConfigured(): boolean {
+  try {
+    getEmailAiConfig();
     return true;
   } catch {
     return false;
