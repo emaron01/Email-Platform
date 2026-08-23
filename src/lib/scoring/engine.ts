@@ -225,17 +225,16 @@ export async function scoreSingleContact(input: {
       contactResearchRow = null;
     }
 
-    // Deterministic ICP criterion pre-evaluation (avoids AI when values known).
-    const { evaluateCriterionDeterministic, resolveCompanyActualForCriterion } =
-      await import("@/lib/criteria/evaluate");
-    const criterionAssessments: Array<{
-      scope: "ICP" | "PERSONA";
-      name: string;
-      assessment: string;
-      confidence: string;
-      method: string;
-      reasoning: string;
-    }> = [];
+    // Deterministic / asymmetric ICP criterion pre-evaluation.
+    const { resolveCompanyActualForCriterion } = await import(
+      "@/lib/criteria/evaluate"
+    );
+    const { evaluateIcpCriterionWithEvidenceClass } = await import(
+      "@/lib/criteria/targeted-search-eval"
+    );
+    const criterionAssessments: Array<
+      ReturnType<typeof evaluateIcpCriterionWithEvidenceClass>
+    > = [];
     for (const criterion of input.icp.criteria ?? []) {
       const actual = resolveCompanyActualForCriterion(
         criterion,
@@ -256,18 +255,12 @@ export async function scoreSingleContact(input: {
             }
           : null,
       );
-      const evalResult = evaluateCriterionDeterministic({
-        criterion,
-        actualValue: actual,
-      });
-      criterionAssessments.push({
-        scope: "ICP",
-        name: criterion.name,
-        assessment: evalResult.assessment,
-        confidence: evalResult.confidence,
-        method: evalResult.method,
-        reasoning: evalResult.reasoning,
-      });
+      criterionAssessments.push(
+        evaluateIcpCriterionWithEvidenceClass({
+          criterion,
+          actualValue: actual,
+        }),
+      );
     }
 
     const payload = buildScoringPayload({
@@ -320,6 +313,7 @@ export async function scoreSingleContact(input: {
       assessment: aiResponse.data,
       applicable,
       icp: input.icp,
+      criterionEvidenceAssessments: criterionAssessments,
     });
 
     const researchStatus =
@@ -368,6 +362,15 @@ export async function scoreSingleContact(input: {
           researchIncomplete: payload.researchIncomplete,
           researchLowConfidence: payload.researchLowConfidence,
           criterionAssessments,
+          /** Confirmed vs unverifiable TARGETED_SEARCH outcomes for later qualification UI. */
+          targetedSearchOutcomes: criterionAssessments
+            .filter((c) => c.evidenceClass === "TARGETED_SEARCH")
+            .map((c) => ({
+              name: c.name,
+              criterionId: c.criterionId ?? null,
+              evidenceOutcome: c.evidenceOutcome,
+              reasoning: c.reasoning,
+            })),
         },
         aiProvider: aiResponse.provider,
         aiModel: aiResponse.model,

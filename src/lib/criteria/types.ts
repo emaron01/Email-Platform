@@ -1,6 +1,5 @@
-/**
- * Shared criterion types for ICP / Persona structured interpretation.
- */
+import type { CriterionEvidenceClassValue } from "@/lib/criteria/evidence-class";
+import type { TargetedSearchDecisionValue } from "@/lib/criteria/evidence-class";
 
 export const CRITERION_DATA_TYPES = [
   "TEXT",
@@ -59,6 +58,12 @@ export type CriterionSnapshot = {
   source?: string;
   confidence?: string | null;
   manuallyEdited?: boolean;
+  /** ICP evidence class; persona criteria omit this. */
+  evidenceClass?: CriterionEvidenceClassValue;
+  evidenceClassLocked?: boolean;
+  targetedSearchDecision?: TargetedSearchDecisionValue | null;
+  targetedSearchDecisionFingerprint?: string | null;
+  targetedSearchDecidedAt?: string | null;
   sortOrder: number;
 };
 
@@ -110,7 +115,7 @@ function stringifyValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export const ICP_INTERPRETATION_PROMPT_VERSION = "1";
+export const ICP_INTERPRETATION_PROMPT_VERSION = "2";
 export const PERSONA_INTERPRETATION_PROMPT_VERSION = "2";
 export const CONTACT_RESEARCH_PROMPT_VERSION = "1";
-export const SCORING_LOGIC_VERSION_CRITERIA = "2";
+export const SCORING_LOGIC_VERSION_CRITERIA = "3";

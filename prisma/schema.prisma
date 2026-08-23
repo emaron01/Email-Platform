@@ -171,6 +171,22 @@ enum ExclusionTestability {
   EVIDENCE_TESTABLE
 }
 
+/// Where evidence for an ICP criterion is expected to come from.
+enum CriterionEvidenceClass {
+  LIST_DATA
+  COMPANY_RESEARCH
+  TARGETED_SEARCH
+  SEMANTIC
+}
+
+/// User decision for TARGETED_SEARCH criteria before they are considered approved.
+enum TargetedSearchDecision {
+  /// Confirm when found; never penalize when not found (recommended).
+  KEEP_ASYMMETRIC
+  MAKE_SUPPORTING
+  REMOVE
+}
+
 enum ContactResearchStatus {
   NOT_STARTED
   IN_PROGRESS
@@ -432,6 +448,8 @@ model ResearchPolicy {
   personaResearchFreshnessDays Int     @default(90)
   /// Max criteria projected from Persona AI signal arrays before review cap.
   maxProjectedPersonaCriteria Int      @default(15)
+  /// Max TARGETED_SEARCH ICP criteria per ICP (enforce at save — never silently drop).
+  maxTargetedSearchCriteriaPerIcp Int  @default(3)
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 
@@ -662,6 +680,16 @@ model IcpCriterion {
   researchGuidance  String?
   source            CriterionSource     @default(AI_INTERPRETED)
   confidence        ResearchConfidence?
+  /// Where evidence is expected; app owns default (missing/unrecognized → TARGETED_SEARCH).
+  evidenceClass     CriterionEvidenceClass @default(TARGETED_SEARCH)
+  /// When true, reinterpret preserves this evidenceClass even if the AI proposes another.
+  evidenceClassLocked Boolean           @default(false)
+  /// Required for TARGETED_SEARCH before the criterion is considered approved for scoring setup.
+  targetedSearchDecision TargetedSearchDecision?
+  /// Fingerprint of name/description/type/class/operator/targets at approval time.
+  /// Cleared (decision null) when the criterion changes materially.
+  targetedSearchDecisionFingerprint String?
+  targetedSearchDecidedAt DateTime?
   /// When true, reinterpret must not overwrite this row without explicit user action.
   manuallyEdited    Boolean             @default(false)
   sortOrder         Int                 @default(0)
@@ -675,6 +703,7 @@ model IcpCriterion {
   @@index([icpId])
   @@index([organizationId, icpId])
   @@index([organizationId, icpId, sortOrder])
+  @@index([organizationId, icpId, evidenceClass])
 }
 
 model Persona {

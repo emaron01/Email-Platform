@@ -31,6 +31,7 @@ export type ResearchPolicyResolved = {
   maxSourcesPerPersona: number;
   personaResearchFreshnessDays: number;
   maxProjectedPersonaCriteria: number;
+  maxTargetedSearchCriteriaPerIcp: number;
 };
 
 /**
@@ -82,6 +83,8 @@ export async function ensureOrganizationPolicies(
         DEFAULT_RESEARCH_POLICY_VALUES.personaResearchFreshnessDays,
       maxProjectedPersonaCriteria:
         DEFAULT_RESEARCH_POLICY_VALUES.maxProjectedPersonaCriteria,
+      maxTargetedSearchCriteriaPerIcp:
+        DEFAULT_RESEARCH_POLICY_VALUES.maxTargetedSearchCriteriaPerIcp,
     },
   });
 }
@@ -155,5 +158,6 @@ export async function getResearchPolicy(
     maxSourcesPerPersona: policy.maxSourcesPerPersona,
     personaResearchFreshnessDays: policy.personaResearchFreshnessDays,
     maxProjectedPersonaCriteria: policy.maxProjectedPersonaCriteria,
+    maxTargetedSearchCriteriaPerIcp: policy.maxTargetedSearchCriteriaPerIcp,
   };
 }

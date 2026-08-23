@@ -3,7 +3,8 @@
  */
 
 export const SCORING_PROMPT_VERSION = "2";
-export const SCORING_LOGIC_VERSION = "2";
+/** Bumped for TARGETED_SEARCH asymmetry + factual AI clamp. */
+export const SCORING_LOGIC_VERSION = "3";
 
 /** Concurrent AI scoring requests per ScoringRun. */
 export const SCORING_CONCURRENCY = 3;

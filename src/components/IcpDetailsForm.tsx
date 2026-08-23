@@ -6,25 +6,15 @@ import type { Icp } from "@prisma/client";
 import { deleteIcpAction, upsertIcpAction } from "@/app/actions";
 import { interpretIcpAction } from "@/app/actions/interpretation";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
+import {
+  IcpCriteriaReview,
+  type IcpCriterionReviewRow,
+} from "@/components/IcpCriteriaReview";
 import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
-import { formatCriterionDisplay } from "@/lib/criteria/types";
 import type { IcpActionResult, IcpFormValues } from "@/lib/icp/save";
 import { listToCommaString } from "@/lib/utils";
 
-type CriterionRow = {
-  name: string;
-  importance: string;
-  isDisqualifier: boolean;
-  isRequired: boolean;
-  manuallyEdited?: boolean;
-  dataType: string;
-  operator: string;
-  targetValue?: unknown;
-  minValue?: unknown;
-  maxValue?: unknown;
-  sortOrder: number;
-  criterionType: string;
-};
+type CriterionRow = IcpCriterionReviewRow;
 
 const initialResult: IcpActionResult | null = null;
 
@@ -48,47 +38,6 @@ function StatusBanner({
     >
       {result.message}
     </p>
-  );
-}
-
-function CriteriaReview({
-  title,
-  criteria,
-}: {
-  title: string;
-  criteria: CriterionRow[];
-}) {
-  if (criteria.length === 0) {
-    return (
-      <p className="mt-3 text-sm text-slate-500">
-        No structured criteria yet. Save a natural-language definition, then run
-        AI Interpretation.
-      </p>
-    );
-  }
-  return (
-    <div className="mt-4 rounded-md bg-slate-50 p-3">
-      <h5 className="text-sm font-semibold text-slate-900">{title}</h5>
-      <p className="mt-1 text-xs text-slate-500">
-        ✓ required / strong · ☆ supporting · ✗ disqualifier
-      </p>
-      <ul className="mt-2 space-y-1 text-sm text-slate-700">
-        {criteria.map((c, i) => (
-          <li key={`${c.name}-${i}`}>
-            {c.isDisqualifier ? "✗" : c.isRequired ? "✓" : "☆"}{" "}
-            {formatCriterionDisplay({
-              ...c,
-              dataType: c.dataType as never,
-              operator: c.operator as never,
-              importance: c.importance as never,
-            })}
-            {c.manuallyEdited ? (
-              <span className="ml-2 text-xs text-amber-700">(manual)</span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 
@@ -291,7 +240,12 @@ export function IcpDetailsForm({
       </form>
       {icp ? (
         <>
-          <CriteriaReview title="AI Interpretation" criteria={criteria} />
+          <IcpCriteriaReview
+            title="AI Interpretation"
+            productId={productId}
+            icpId={icp.id}
+            criteria={criteria}
+          />
           <StatusBanner
             result={interpretState}
             testId="icp-interpret-status"

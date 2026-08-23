@@ -15,6 +15,10 @@ import {
   type PersonaActionResult,
 } from "@/lib/persona/save";
 import type { IcpActionResult } from "@/lib/icp/save";
+import {
+  criterionMaterialFingerprint,
+  normalizeEvidenceClass,
+} from "@/lib/criteria/evidence-class";
 import { createPersona, updatePersona } from "@/lib/tenant/data";
 import { prisma } from "@/lib/prisma";
 
@@ -195,6 +199,129 @@ export async function updateIcpCriterionAction(
         error instanceof TenantError
           ? error.message
           : "Unable to update ICP criterion. Please try again.",
+    };
+  }
+}
+
+export async function updateIcpEvidenceClassAction(
+  _prev: CriterionActionResult | null,
+  formData: FormData,
+): Promise<CriterionActionResult> {
+  try {
+    const organizationId = await requireOrganizationId();
+    const criterionId = String(formData.get("criterionId") || "").trim();
+    const icpId = String(formData.get("icpId") || "").trim();
+    const productId = String(formData.get("productId") || "").trim();
+    const evidenceClass = normalizeEvidenceClass(
+      formData.get("evidenceClass"),
+    );
+    if (!criterionId || !icpId) {
+      return { ok: false, message: "ICP criterion id and icp id are required." };
+    }
+
+    await updateIcpCriterionManual({
+      organizationId,
+      icpId,
+      criterionId,
+      data: {
+        evidenceClass,
+        evidenceClassLocked: true,
+        // Class change is material — require a fresh TARGETED_SEARCH decision.
+        targetedSearchDecision: null,
+        targetedSearchDecisionFingerprint: null,
+        targetedSearchDecidedAt: null,
+      },
+    });
+    revalidateSetup(productId || undefined);
+    return { ok: true, message: "Evidence class updated." };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof TenantError
+          ? error.message
+          : "Unable to update evidence class. Please try again.",
+    };
+  }
+}
+
+export async function decideIcpTargetedSearchAction(
+  _prev: CriterionActionResult | null,
+  formData: FormData,
+): Promise<CriterionActionResult> {
+  try {
+    const organizationId = await requireOrganizationId();
+    const criterionId = String(formData.get("criterionId") || "").trim();
+    const icpId = String(formData.get("icpId") || "").trim();
+    const productId = String(formData.get("productId") || "").trim();
+    const decisionRaw = String(formData.get("decision") || "").trim();
+    const decision =
+      decisionRaw === "KEEP_ASYMMETRIC" ||
+      decisionRaw === "MAKE_SUPPORTING" ||
+      decisionRaw === "REMOVE"
+        ? decisionRaw
+        : null;
+
+    if (!criterionId || !icpId || !decision) {
+      return {
+        ok: false,
+        message: "Choose Keep, Make supporting, or Remove for this criterion.",
+      };
+    }
+
+    const existing = await prisma.icpCriterion.findFirst({
+      where: { id: criterionId, organizationId, icpId },
+    });
+    if (!existing) {
+      return { ok: false, message: "ICP criterion not found." };
+    }
+
+    if (decision === "REMOVE") {
+      await prisma.icpCriterion.delete({ where: { id: existing.id } });
+      revalidateSetup(productId || undefined);
+      return { ok: true, message: "Criterion removed." };
+    }
+
+    const evidenceClass = normalizeEvidenceClass(existing.evidenceClass);
+    const fingerprint = criterionMaterialFingerprint({
+      name: existing.name,
+      description: existing.description,
+      criterionType: existing.criterionType,
+      evidenceClass,
+      operator: existing.operator,
+      targetValue: existing.targetValue,
+      minValue: existing.minValue,
+      maxValue: existing.maxValue,
+      allowedValues: existing.allowedValues,
+    });
+
+    await updateIcpCriterionManual({
+      organizationId,
+      icpId,
+      criterionId,
+      data: {
+        isRequired:
+          decision === "MAKE_SUPPORTING" ? false : existing.isRequired,
+        targetedSearchDecision: decision,
+        targetedSearchDecisionFingerprint: fingerprint,
+        targetedSearchDecidedAt: new Date(),
+      },
+    });
+    revalidateSetup(productId || undefined);
+    return {
+      ok: true,
+      message:
+        decision === "MAKE_SUPPORTING"
+          ? "Criterion set to supporting."
+          : "Criterion kept with asymmetric evaluation.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof TenantError
+          ? error.message
+          : "Unable to save criterion decision. Please try again.",
     };
   }
 }

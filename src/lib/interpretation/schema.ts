@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CRITERION_EVIDENCE_CLASSES } from "@/lib/criteria/evidence-class";
 import {
   CRITERION_DATA_TYPES,
   CRITERION_IMPORTANCE,
@@ -19,6 +20,8 @@ export const interpretedCriterionSchema = z.object({
   isRequired: z.boolean(),
   isDisqualifier: z.boolean(),
   researchGuidance: z.string().nullable().optional(),
+  /** AI proposal; app normalizes missing/unrecognized to TARGETED_SEARCH. */
+  evidenceClass: z.enum(CRITERION_EVIDENCE_CLASSES).optional(),
   sortOrder: z.number().int().nonnegative(),
 });
 

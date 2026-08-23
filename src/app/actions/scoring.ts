@@ -34,6 +34,53 @@ export async function createScoringRunAction(
     return { ok: false, message: "Product, ICP, and Persona are required." };
   }
 
+  try {
+    const { listIcpCriteria } = await import("@/lib/interpretation/icp");
+    const { requireOrganizationId } = await import(
+      "@/lib/tenant/getCurrentOrganization"
+    );
+    const {
+      criterionMaterialFingerprint,
+      isTargetedSearchDecisionStale,
+      normalizeEvidenceClass,
+    } = await import("@/lib/criteria/evidence-class");
+    const organizationId = await requireOrganizationId();
+    const criteria = await listIcpCriteria(organizationId, icpId);
+    const undecided = criteria.filter((c) => {
+      const evidenceClass = normalizeEvidenceClass(c.evidenceClass);
+      if (evidenceClass !== "TARGETED_SEARCH") return false;
+      const fp = criterionMaterialFingerprint({
+        name: c.name,
+        description: c.description,
+        criterionType: c.criterionType,
+        evidenceClass,
+        operator: c.operator,
+        targetValue: c.targetValue,
+        minValue: c.minValue,
+        maxValue: c.maxValue,
+        allowedValues: c.allowedValues,
+      });
+      return isTargetedSearchDecisionStale({
+        decision: c.targetedSearchDecision,
+        storedFingerprint: c.targetedSearchDecisionFingerprint,
+        currentFingerprint: fp,
+      });
+    });
+    if (undecided.length > 0) {
+      return {
+        ok: false,
+        message: `Decide how to treat per-company lookup criteria before scoring: ${undecided
+          .map((c) => `"${c.name}"`)
+          .join(", ")}.`,
+      };
+    }
+  } catch (error) {
+    if (error instanceof TenantError) {
+      return { ok: false, message: error.message };
+    }
+    // Fall through to create — org resolution failures surface from createScoringRun.
+  }
+
   let run;
   try {
     run = await createScoringRun({

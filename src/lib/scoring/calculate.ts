@@ -12,6 +12,8 @@ import type {
 } from "@/lib/scoring/assessment";
 import type { ApplicableDimension } from "@/lib/scoring/dimensions";
 import type { ScoreLabelValue } from "@/lib/scoring/types";
+import type { CriterionEvidenceAssessment } from "@/lib/criteria/targeted-search-eval";
+import { clampFactualAiDimension } from "@/lib/criteria/targeted-search-eval";
 import {
   resolveDisqualifiers,
   type ResolvedDisqualifier,
@@ -77,14 +79,23 @@ export function filterAndFillDimensions(
 
 export function calculateComponentScores(
   dimensions: DimensionAssessment[],
+  options?: {
+    /** Dimension names (ICP component) to exclude from averages (TARGETED_SEARCH UNVERIFIABLE). */
+    excludeIcpDimensionNames?: Set<string>;
+  },
 ): ComponentScores {
   const icp: number[] = [];
   const persona: number[] = [];
   const company: number[] = [];
   const product: number[] = [];
   let unknownDimensionCount = 0;
+  const exclude = options?.excludeIcpDimensionNames ?? new Set<string>();
 
   for (const dim of dimensions) {
+    if (dim.component === "ICP" && exclude.has(dim.dimension)) {
+      // Asymmetry guard: unverifiable TARGETED_SEARCH never contributes (not even UNKNOWN=50).
+      continue;
+    }
     if (dim.assessment === "UNKNOWN") unknownDimensionCount += 1;
     const score = assessmentToNumeric(dim.assessment, dim.confidence);
     switch (dim.component) {
@@ -125,7 +136,7 @@ export function calculateComponentScores(
     productRelevanceScore,
     overallScore,
     unknownDimensionCount,
-    scoredDimensionCount: dimensions.length,
+    scoredDimensionCount: dimensions.length - exclude.size,
   };
 }
 
@@ -148,22 +159,59 @@ export type CalculatedScore = ComponentScores & {
   disqualifiers: ResolvedDisqualifier[];
   recommendedAction: string;
   reasoning: string;
+  /** Persisted on ContactScore.criterionAssessments / assessmentData. */
+  criterionEvidenceAssessments?: CriterionEvidenceAssessment[];
 };
 
 export function calculateScoresFromAssessment(input: {
   assessment: AiScoringAssessment;
   applicable: ApplicableDimension[];
   icp: IcpSnapshot;
+  criterionEvidenceAssessments?: CriterionEvidenceAssessment[];
 }): CalculatedScore {
+  const evidenceByName = new Map(
+    (input.criterionEvidenceAssessments ?? []).map((e) => [e.name, e]),
+  );
+
   const dimensions = filterAndFillDimensions(
     input.applicable,
     input.assessment.dimensions,
+  ).map((dim) => {
+    if (dim.component !== "ICP") return dim;
+    const ev = evidenceByName.get(dim.dimension);
+    const clamped = clampFactualAiDimension({
+      dimensionName: dim.dimension,
+      aiAssessment: dim.assessment,
+      evidenceAssessment: ev,
+    });
+    if (!clamped.forced) return dim;
+    return {
+      ...dim,
+      assessment: clamped.assessment as DimensionAssessment["assessment"],
+      concerns: [
+        ...dim.concerns,
+        ...(clamped.reason ? [clamped.reason] : []),
+      ],
+    };
+  });
+
+  const excludeIcpDimensionNames = new Set(
+    (input.criterionEvidenceAssessments ?? [])
+      .filter((e) => e.excludeFromScore)
+      .map((e) => e.name),
   );
-  const components = calculateComponentScores(dimensions);
+
+  const components = calculateComponentScores(dimensions, {
+    excludeIcpDimensionNames,
+  });
   const disqualifiers = resolveDisqualifiers(
     input.assessment.potentialDisqualifiers,
     input.icp,
-  );
+  ).filter((d) => {
+    // Asymmetry guard: unverifiable TARGETED_SEARCH must never exclude.
+    const ev = evidenceByName.get(d.criterion);
+    return !(ev?.excludeFromScore || ev?.evidenceOutcome === "UNVERIFIABLE");
+  });
   const disqualified = disqualifiers.length > 0;
   const scoreLabel = assignScoreLabel(components.overallScore, disqualified);
 
@@ -176,5 +224,6 @@ export function calculateScoresFromAssessment(input: {
     disqualifiers,
     recommendedAction: input.assessment.recommendedAction,
     reasoning: input.assessment.reasoning,
+    criterionEvidenceAssessments: input.criterionEvidenceAssessments,
   };
 }

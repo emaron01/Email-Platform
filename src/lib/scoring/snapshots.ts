@@ -27,7 +27,7 @@ function asStringArray(value: unknown): string[] | null {
 export function snapshotCriterionRow(
   row: IcpCriterion | PersonaCriterion,
 ): CriterionSnapshot {
-  return {
+  const base: CriterionSnapshot = {
     id: row.id,
     name: row.name,
     description: row.description,
@@ -47,6 +47,26 @@ export function snapshotCriterionRow(
     manuallyEdited: row.manuallyEdited,
     sortOrder: row.sortOrder,
   };
+  if ("evidenceClass" in row && row.evidenceClass) {
+    base.evidenceClass = row.evidenceClass as CriterionSnapshot["evidenceClass"];
+    base.evidenceClassLocked =
+      "evidenceClassLocked" in row
+        ? Boolean(row.evidenceClassLocked)
+        : false;
+    base.targetedSearchDecision =
+      "targetedSearchDecision" in row
+        ? (row.targetedSearchDecision as CriterionSnapshot["targetedSearchDecision"])
+        : null;
+    base.targetedSearchDecisionFingerprint =
+      "targetedSearchDecisionFingerprint" in row
+        ? (row.targetedSearchDecisionFingerprint as string | null)
+        : null;
+    base.targetedSearchDecidedAt =
+      "targetedSearchDecidedAt" in row && row.targetedSearchDecidedAt
+        ? row.targetedSearchDecidedAt.toISOString()
+        : null;
+  }
+  return base;
 }
 
 export function snapshotProduct(product: Product): ProductSnapshot {
