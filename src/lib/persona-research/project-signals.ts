@@ -17,6 +17,11 @@ export const PERSONA_SIGNAL_CRITERION_TYPES = {
   negativeRoleSignal: "negative_role_signal",
   ownership: "ownership",
   responsibility: "responsibility",
+  /**
+   * Unrecognized AI criterionType with no explicit isDisqualifier.
+   * Held out of scoring until the user places the line in a typed box.
+   */
+  needsReview: "needs_review",
 } as const;
 
 export type ProjectedPersonaCriterionDraft = {
@@ -157,11 +162,46 @@ function isProtectedFromCap(row: PersonaCriterionFormRow): boolean {
   );
 }
 
+export function isNeedsReviewCriterionType(criterionType: string): boolean {
+  return (
+    criterionType.trim().toLowerCase() ===
+    PERSONA_SIGNAL_CRITERION_TYPES.needsReview
+  );
+}
+
+function typeIsKnownVocabulary(lower: string): boolean {
+  return (
+    isPositiveRoleSignalType(lower) ||
+    isNegativeRoleSignalType(lower) ||
+    isOwnershipType(lower) ||
+    isResponsibilityType(lower) ||
+    lower.includes("disqualif") ||
+    lower.includes("exclusion") ||
+    lower.includes("negative") ||
+    lower.includes("ownership") ||
+    /\bown\b/.test(lower) ||
+    lower.includes("responsib") ||
+    lower.includes("accountab") ||
+    lower.includes("kpi") ||
+    lower.includes("pain") ||
+    lower.includes("outcome") ||
+    lower.includes("signal") ||
+    lower.includes("context") ||
+    lower.includes("behavior")
+  );
+}
+
 /**
  * Map free-form AI criterionType (+ name polarity) to platform vocabulary.
  *
- * Negative / exclusion paths always set isDisqualifier=true (Change A).
- * Positive / ownership / responsibility paths always set isDisqualifier=false.
+ * Precedence (before type-string mapping):
+ * 1. Exclusion-shaped names → negative_role_signal
+ * 2. Explicit AI isDisqualifier / isDisqualifyingSignal → negative_role_signal
+ *    (never discarded by an unrecognized or positive-looking type)
+ *
+ * Unmapped types without an explicit disqualifier become needs_review — not
+ * positive_role_signal — so invented labels cannot silently count as fit evidence.
+ * Do not map bare "scope" / "role_scope" to positive; role_scope carried exclusions.
  */
 export function mapAiCriterionType(input: {
   name: string;
@@ -178,6 +218,17 @@ export function mapAiCriterionType(input: {
       criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
       isDisqualifier: true,
       unmapped: false,
+      originalType,
+    };
+  }
+
+  // Rule 1 — explicit AI disqualifier wins before any type-string mapping.
+  if (input.isDisqualifier === true || input.isDisqualifyingSignal === true) {
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+      isDisqualifier: true,
+      // Keep unmapped=true when the type string itself is unknown (telemetry).
+      unmapped: !typeIsKnownVocabulary(lower),
       originalType,
     };
   }
@@ -267,7 +318,7 @@ export function mapAiCriterionType(input: {
   }
 
   return {
-    criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+    criterionType: PERSONA_SIGNAL_CRITERION_TYPES.needsReview,
     isDisqualifier: false,
     unmapped: true,
     originalType,
@@ -345,6 +396,18 @@ export function normalizeCriterionFlags(input: {
       isDisqualifier: false,
       exclusionTestability: null,
       unmapped: mapped.unmapped,
+    };
+  }
+
+  if (isNeedsReviewCriterionType(mapped.criterionType)) {
+    // Unmapped non-disqualifier: hold for review. Do not promote isRequired or
+    // exclusionTestability until the user places the line in a typed box.
+    return {
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.needsReview,
+      isRequired: false,
+      isDisqualifier: false,
+      exclusionTestability: null,
+      unmapped: true,
     };
   }
 
@@ -910,6 +973,36 @@ export function buildPersonaCriteriaForReview(
   };
 }
 
+/**
+ * Collect unrecognized draft.criteria types for UsageEvent telemetry.
+ * Independent of whether the approve path uses form-reviewed criteriaJson
+ * (which previously skipped buildPersonaCriteriaForReview and left logging empty).
+ */
+export function collectUnmappedCriterionTypesFromDraft(
+  draft: Pick<PersonaAiDraft, "criteria" | "negativeRoleSignals">,
+): string[] {
+  const unmappedTypes = new Set<string>();
+  for (const c of draft.criteria ?? []) {
+    const { unmapped } = normalizeReviewRow(
+      {
+        name: c.name,
+        criterionType: c.criterionType,
+        importance: c.importance ?? "MEDIUM",
+        isRequired: c.isRequired ?? false,
+        isDisqualifier: c.isDisqualifier ?? false,
+        exclusionTestability: c.exclusionTestability ?? null,
+      },
+      {
+        aiExclusionTestability:
+          c.exclusionTestability ??
+          findNegativeSignalTestability(draft, c.name),
+      },
+    );
+    if (unmapped) unmappedTypes.add(c.criterionType);
+  }
+  return [...unmappedTypes].sort();
+}
+
 export function projectSignalsFromProfileJson(
   profileJson: unknown,
   existingCriteria: Array<{ name: string; criterionType: string }>,
@@ -972,7 +1065,11 @@ const BOX_CRITERION_TYPE: Record<
   responsibilities: PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
 };
 
-function boxKeyForCriterion(row: PersonaCriterionFormRow): CriteriaEditorBoxKey {
+function boxKeyForCriterion(row: PersonaCriterionFormRow): CriteriaEditorBoxKey | null {
+  if (isNeedsReviewCriterionType(row.criterionType)) {
+    // Held out of the four typed boxes until the user places the line.
+    return null;
+  }
   if (row.isDisqualifier || isNegativeRoleSignalType(row.criterionType)) {
     return "exclusions";
   }
@@ -1012,7 +1109,9 @@ export function criteriaToEditorBoxes(
   for (const row of criteria) {
     const name = row.name.trim();
     if (!name) continue;
-    buckets[boxKeyForCriterion(row)].push(name);
+    const box = boxKeyForCriterion(row);
+    if (!box) continue;
+    buckets[box].push(name);
   }
   return {
     positiveRoleSignals: buckets.positiveRoleSignals.join("\n"),
@@ -1020,6 +1119,13 @@ export function criteriaToEditorBoxes(
     ownershipAreas: buckets.ownershipAreas.join("\n"),
     responsibilities: buckets.responsibilities.join("\n"),
   };
+}
+
+/** Criteria held for review (unmapped non-disqualifiers). */
+export function needsReviewCriteria(
+  criteria: PersonaCriterionFormRow[],
+): PersonaCriterionFormRow[] {
+  return criteria.filter((row) => isNeedsReviewCriterionType(row.criterionType));
 }
 
 /**
@@ -1054,6 +1160,7 @@ export function editorBoxesToCriteria(
   }
   for (const row of baseline) {
     const box = boxKeyForCriterion(row);
+    if (!box) continue;
     const map = baselineByBox.get(box)!;
     const semantic = normalizeCriterionSemanticKey(row.name);
     if (!semantic || map.has(semantic)) continue;
@@ -1061,6 +1168,7 @@ export function editorBoxesToCriteria(
   }
 
   const out: PersonaCriterionFormRow[] = [];
+  const placedSemantics = new Set<string>();
 
   for (const boxKey of Object.keys(BOX_CRITERION_TYPE) as CriteriaEditorBoxKey[]) {
     const criterionType = BOX_CRITERION_TYPE[boxKey];
@@ -1071,6 +1179,7 @@ export function editorBoxesToCriteria(
 
     for (const line of lines) {
       const semantic = normalizeCriterionSemanticKey(line);
+      placedSemantics.add(semantic);
       const prior = baselineMap.get(semantic);
       const isRequired = prior?.isRequired ?? false;
       const exclusionTestability = isExclusion
@@ -1093,6 +1202,19 @@ export function editorBoxesToCriteria(
         manuallyEdited: boxModified || Boolean(prior?.manuallyEdited),
       });
     }
+  }
+
+  // Preserve needs_review rows until the user places them in a typed box.
+  for (const row of needsReviewCriteria(baseline)) {
+    const semantic = normalizeCriterionSemanticKey(row.name);
+    if (!semantic || placedSemantics.has(semantic)) continue;
+    out.push({
+      ...row,
+      criterionType: PERSONA_SIGNAL_CRITERION_TYPES.needsReview,
+      isDisqualifier: false,
+      isRequired: false,
+      exclusionTestability: null,
+    });
   }
 
   return out;

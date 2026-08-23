@@ -9,6 +9,7 @@ import {
   PERSONA_SIGNAL_CRITERION_TYPES,
   buildPersonaCriteriaForReview,
   capPersonaCriteria,
+  collectUnmappedCriterionTypesFromDraft,
   criteriaToEditorBoxes,
   editorBoxesToCriteria,
   mapAiCriterionType,
@@ -92,6 +93,146 @@ describe("mapAiCriterionType", () => {
       expect(mapped.isDisqualifier).toBe(false);
       expect(mapped.unmapped).toBe(false);
     }
+  });
+
+  it('role_scope + isDisqualifier true maps to negative_role_signal (explicit flag wins)', () => {
+    const mapped = mapAiCriterionType({
+      name: "Full-revenue executive scope",
+      criterionType: "role_scope",
+      isDisqualifier: true,
+    });
+    expect(mapped.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+    );
+    expect(mapped.isDisqualifier).toBe(true);
+    expect(mapped.unmapped).toBe(true);
+  });
+
+  it("arbitrary unrecognized type + isDisqualifier true maps to negative", () => {
+    const mapped = mapAiCriterionType({
+      name: "Invented exclusion label",
+      criterionType: "totally_made_up_type_xyz",
+      isDisqualifier: true,
+    });
+    expect(mapped.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+    );
+    expect(mapped.isDisqualifier).toBe(true);
+  });
+
+  it("unrecognized type + isDisqualifier false becomes needs_review (not positive fit)", () => {
+    const mapped = mapAiCriterionType({
+      name: "Active B2B sales organization",
+      criterionType: "firmographic",
+      isDisqualifier: false,
+    });
+    expect(mapped.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.needsReview,
+    );
+    expect(mapped.isDisqualifier).toBe(false);
+    expect(mapped.unmapped).toBe(true);
+  });
+
+  it('kpi maps to responsibility via contains "kpi"', () => {
+    const mapped = mapAiCriterionType({
+      name: "Revenue and quota accountability",
+      criterionType: "kpi",
+      isDisqualifier: false,
+    });
+    expect(mapped.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
+    );
+    expect(mapped.unmapped).toBe(false);
+  });
+
+  it("buildPersonaCriteriaForReview preserves role_scope exclusions and holds firmographic", () => {
+    const draft: PersonaAiDraft = {
+      ...richDraft,
+      criteria: [
+        {
+          name: "Individual contributor sales role",
+          criterionType: "role_scope",
+          operator: "EXISTS",
+          isDisqualifier: true,
+          isRequired: false,
+          importance: "CRITICAL",
+        },
+        {
+          name: "Active B2B sales organization",
+          criterionType: "firmographic",
+          operator: "EXISTS",
+          isDisqualifier: false,
+          isRequired: false,
+          importance: "MEDIUM",
+        },
+        {
+          name: "Revenue and quota accountability",
+          criterionType: "kpi",
+          operator: "EXISTS",
+          isDisqualifier: false,
+          isRequired: false,
+          importance: "HIGH",
+        },
+      ],
+      positiveRoleSignals: [],
+      negativeRoleSignals: [],
+      ownershipAreas: [],
+      kpisAndAccountabilities: [],
+    };
+    const { criteria, unmappedCriterionTypes } =
+      buildPersonaCriteriaForReview(draft);
+    const exclusion = criteria.find(
+      (r) => r.name === "Individual contributor sales role",
+    );
+    const held = criteria.find(
+      (r) => r.name === "Active B2B sales organization",
+    );
+    const kpi = criteria.find(
+      (r) => r.name === "Revenue and quota accountability",
+    );
+    expect(exclusion?.criterionType).toBe("negative_role_signal");
+    expect(exclusion?.isDisqualifier).toBe(true);
+    expect(held?.criterionType).toBe("needs_review");
+    expect(held?.isDisqualifier).toBe(false);
+    expect(kpi?.criterionType).toBe("responsibility");
+    expect(unmappedCriterionTypes).toEqual(
+      expect.arrayContaining(["firmographic", "role_scope"]),
+    );
+  });
+});
+
+describe("collectUnmappedCriterionTypesFromDraft (UsageEvent logging)", () => {
+  it("records unmapped original types even when form criteria would skip build", () => {
+    const types = collectUnmappedCriterionTypesFromDraft({
+      criteria: [
+        {
+          name: "Full-revenue executive scope",
+          criterionType: "role_scope",
+          operator: "EXISTS",
+          importance: "CRITICAL",
+          isRequired: false,
+          isDisqualifier: true,
+        },
+        {
+          name: "Active B2B sales organization",
+          criterionType: "firmographic",
+          operator: "EXISTS",
+          importance: "MEDIUM",
+          isRequired: false,
+          isDisqualifier: false,
+        },
+        {
+          name: "Forecast accountability",
+          criterionType: "responsibility",
+          operator: "EXISTS",
+          importance: "MEDIUM",
+          isRequired: false,
+          isDisqualifier: false,
+        },
+      ],
+      negativeRoleSignals: [],
+    });
+    expect(types).toEqual(["firmographic", "role_scope"]);
   });
 });
 
@@ -433,13 +574,17 @@ describe("projectPersonaSignalsToCriteria", () => {
     expect(result.missingExclusionCriteria).toBe(true);
   });
 
-  it("corrects flags on the prior production CRO draft fixture", () => {
+  it("honors explicit isDisqualifier on the prior CRO draft (AI flag wins over type)", () => {
+    // Fixture documents AI wrongly tagging must-haves as disqualifiers; rule 1
+    // trusts the flag rather than silently flipping polarity by type.
     const { criteria } = buildPersonaCriteriaForReview(CRO_PERSONA_DRAFT_FIXTURE);
     const ownsForecast = criteria.find((row) =>
       row.name.includes("Owns revenue forecast governance"),
     );
-    expect(ownsForecast?.isDisqualifier).toBe(false);
-    expect(ownsForecast?.isRequired).toBe(true);
+    expect(ownsForecast?.criterionType).toBe(
+      PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+    );
+    expect(ownsForecast?.isDisqualifier).toBe(true);
   });
 
   it("projected types are recognized by getApplicableDimensions heuristics", () => {

@@ -89,6 +89,12 @@ export function getApplicableDimensions(input: {
 
   if (input.persona.criteria?.length) {
     for (const criterion of input.persona.criteria) {
+      if (
+        criterion.criterionType.trim().toLowerCase() === "needs_review"
+      ) {
+        // Unmapped AI types — excluded from scoring until classified.
+        continue;
+      }
       addUniqueDimension(
         dims,
         "PERSONA",

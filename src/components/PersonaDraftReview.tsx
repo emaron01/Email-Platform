@@ -15,6 +15,7 @@ import {
   criteriaEditorBoxModified,
   criteriaToEditorBoxes,
   editorBoxesToCriteria,
+  needsReviewCriteria,
   parseCriteriaBoxLines,
   researchGuidanceForBox,
   type CriteriaEditorBoxKey,
@@ -117,6 +118,7 @@ function PersonaCriteriaEditor({
 
   const exclusionsEmpty =
     parseCriteriaBoxLines(boxes.exclusions).length === 0;
+  const heldForReview = needsReviewCriteria(baseline);
 
   return (
     <div className="md:col-span-2 space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -130,6 +132,22 @@ function PersonaCriteriaEditor({
           later reinterpretation.
         </p>
       </div>
+      {heldForReview.length > 0 ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          <p className="font-medium">
+            Needs review — unrecognized criterion types (not scored as fit)
+          </p>
+          <p className="mt-1 text-xs text-amber-900/80">
+            Move each line into Exclusions, Ownership, Responsibilities, or
+            Positive role signals. Until then they are held out of scoring.
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-xs">
+            {heldForReview.map((row) => (
+              <li key={row.name}>{row.name}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="space-y-4">
         {BOX_META.map((meta) => {
           const guidance = researchGuidanceForBox(
@@ -325,6 +343,12 @@ export function PersonaDraftReview({
         initialCriteria={initialCriteria}
         onChange={handleCriteriaChange}
       />
+      {reviewResult.unmappedCriterionTypes.length > 0 ? (
+        <p className="md:col-span-2 text-xs text-slate-500">
+          Unrecognized AI criterion types logged for review:{" "}
+          {reviewResult.unmappedCriterionTypes.join(", ")}
+        </p>
+      ) : null}
       <div className="md:col-span-2">
         <SubmitButton disabled={pending}>
           {pending ? "Saving…" : "Review & Save Persona"}

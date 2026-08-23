@@ -209,5 +209,120 @@ describe.skipIf(!hasDatabase)(
           .every((r) => r.isDisqualifier === true),
       ).toBe(true);
     });
+
+    it("logs unmappedCriterionTypes on UsageEvent even when form criteriaJson is supplied", async () => {
+      if (!ready) return;
+
+      const draftWithUnmapped: PersonaAiDraft = {
+        ...fourTypeDraft,
+        name: `Unmapped Log ${suffix}`,
+        criteria: [
+          {
+            name: "Full-revenue executive scope",
+            criterionType: "role_scope",
+            operator: "EXISTS",
+            isDisqualifier: true,
+            isRequired: false,
+            importance: "CRITICAL",
+          },
+          {
+            name: "Active B2B sales organization",
+            criterionType: "firmographic",
+            operator: "EXISTS",
+            isDisqualifier: false,
+            isRequired: false,
+            importance: "MEDIUM",
+          },
+        ],
+        positiveRoleSignals: [],
+        negativeRoleSignals: [],
+        ownershipAreas: [],
+        kpisAndAccountabilities: [],
+      };
+
+      const source = await prisma.productSource.create({
+        data: {
+          organizationId,
+          productId,
+          sourceType: "USER_NOTE",
+          displayName: "Notes unmapped",
+          acquisitionMethod: "USER_PROVIDED",
+          contentHash: `pos-save-unmap-${suffix}`,
+          status: "EXTRACTED",
+          extractedText: "notes",
+        },
+      });
+      const bundle = await prisma.productEvidenceBundle.create({
+        data: {
+          organizationId,
+          productId,
+          version: 2,
+          correlationId: `pos-save-unmap-c-${suffix}`,
+          sourceIdsJson: [source.id],
+          status: "APPROVED",
+        },
+      });
+      const run = await prisma.personaSetupRun.create({
+        data: {
+          organizationId,
+          productId,
+          productEvidenceBundleId: bundle.id,
+          correlationId: `pos-save-unmap-run-${suffix}`,
+          status: "NEEDS_REVIEW",
+          suggestionKey: `sk-unmap-${suffix}`,
+          personaDraftJson: draftWithUnmapped as object,
+        },
+      });
+
+      const { approvePersonaFromSetupRun } = await import(
+        "@/lib/persona-research/approve"
+      );
+
+      // Simulate PersonaDraftReview criteriaJson path (non-empty form criteria).
+      const personaId = await approvePersonaFromSetupRun({
+        organizationId,
+        productId,
+        userId,
+        personaSetupRunId: run.id,
+        fields: {
+          name: draftWithUnmapped.name,
+          department: null,
+          seniority: null,
+          definition: null,
+          likelyTitles: ["VP Sales"],
+          responsibilities: [],
+          painPoints: [],
+          desiredOutcomes: [],
+          messagingNotes: null,
+        },
+        criteria: [
+          {
+            name: "Full-revenue executive scope",
+            criterionType: "negative_role_signal",
+            isDisqualifier: true,
+            isRequired: false,
+          },
+        ],
+      });
+
+      const event = await prisma.usageEvent.findFirst({
+        where: {
+          organizationId,
+          operationId: run.id,
+          operation: "PERSONA_SYNTHESIS",
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(event).toBeTruthy();
+      const meta = event!.metadata as {
+        unmappedCriterionTypes?: string[];
+        personaId?: string;
+      } | null;
+      expect(meta?.personaId).toBe(personaId);
+      expect(meta?.unmappedCriterionTypes?.sort()).toEqual([
+        "firmographic",
+        "role_scope",
+      ]);
+    });
   },
 );

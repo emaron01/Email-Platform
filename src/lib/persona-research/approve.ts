@@ -10,6 +10,7 @@ import { TenantError } from "@/lib/tenant/errors";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import {
   buildPersonaCriteriaForReview,
+  collectUnmappedCriterionTypesFromDraft,
   type PersonaCriterionFormRow,
 } from "@/lib/persona-research/project-signals";
 import { getResearchPolicy } from "@/lib/usage/policy";
@@ -120,19 +121,17 @@ export async function approvePersonaFromSetupRun(input: {
 
   // Criteria: user-reviewed list, or merge draft.criteria + projected signals.
   const policy = await getResearchPolicy(input.organizationId);
-  let projectedCriteriaDropped = 0;
-  let unmappedCriterionTypes: string[] = [];
+  const built = buildPersonaCriteriaForReview(draft, {
+    maxCriteria: policy.maxProjectedPersonaCriteria,
+  });
+  // Always derive unmapped types from the AI draft — even when the form supplies
+  // criteriaJson (the common path). Skipping build previously left logging empty.
+  const unmappedCriterionTypes = collectUnmappedCriterionTypesFromDraft(draft);
+  const projectedCriteriaDropped = built.droppedCount;
   const criteriaRows =
     input.criteria && input.criteria.length > 0
       ? input.criteria
-      : (() => {
-          const built = buildPersonaCriteriaForReview(draft, {
-            maxCriteria: policy.maxProjectedPersonaCriteria,
-          });
-          projectedCriteriaDropped = built.droppedCount;
-          unmappedCriterionTypes = built.unmappedCriterionTypes;
-          return built.criteria;
-        })();
+      : built.criteria;
 
   for (const [i, c] of criteriaRows.entries()) {
     const name = c.name.trim();
