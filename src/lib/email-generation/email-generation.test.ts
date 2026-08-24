@@ -191,15 +191,15 @@ describe("buildEmailPrompt", () => {
   it.each([
     [
       "SHORT",
-      "Write 2-3 sentences total. No paragraph breaks. One hook, one soft close question. Target 40-60 words.",
+      "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. One hook, one soft close question. Target 40-60 words excluding the greeting.",
     ],
     [
       "MEDIUM",
-      "Write exactly 2 short paragraphs separated by one blank line. Paragraph 1: problem or context, 2 sentences max. Paragraph 2: offer and close question, 2 sentences max. Target 80-100 words.",
+      "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: problem or context, 2 sentences max. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
     ],
     [
       "LONG",
-      "Write exactly 3 short paragraphs separated by one blank line. Paragraph 1: problem, 2 sentences max. Paragraph 2: how the product solves it, 2-3 sentences max. Paragraph 3: offer and close question, 2 sentences max. Target 120-150 words.",
+      "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: problem, 2 sentences max. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and close question, 2 sentences max. Target 120-150 words excluding the greeting.",
     ],
   ] as const)("uses the exact %s structure instruction", (emailLength, instruction) => {
     const base = contextFixture();
@@ -217,6 +217,9 @@ describe("buildEmailPrompt", () => {
     expect(messages[1].content).not.toContain("requiredParagraphCount");
     expect(messages[0].content).toMatch(
       /Follow the emailStructure instruction exactly/i,
+    );
+    expect(messages[0].content).toMatch(
+      /greeting on its own line, followed by exactly one blank line/i,
     );
   });
 
@@ -248,7 +251,8 @@ describe("buildEmailPrompt", () => {
     expect(systemPrompt).toMatch(/exactly one soft question/i);
     expect(systemPrompt).toMatch(/do not include a sign-off/i);
     expect(systemPrompt).toMatch(/signature block of any kind/i);
-    expect(systemPrompt).toMatch(/end the body immediately/i);
+    expect(systemPrompt).toMatch(/end the generated body immediately/i);
+    expect(systemPrompt).not.toMatch(/email client appends the signature/i);
     expect(systemPrompt).toMatch(/never use an em dash/i);
     expect(systemPrompt).toMatch(/no exceptions/i);
     expect(userPrompt).toContain(
@@ -320,6 +324,18 @@ describe("generated email output", () => {
 
     expect(output).toBe("Hi Alex,\n\nWould this be useful?");
     expect(output).not.toMatch(/Best,|\[Your Name\]/);
+  });
+
+  it.each([
+    "Hi Alex,\nWould this be useful?",
+    "Hi Alex, Would this be useful?",
+  ])("enforces a blank line after the greeting", async (input) => {
+    const { sanitizeGeneratedEmailBody } = await import(
+      "@/lib/email-generation/service"
+    );
+    expect(sanitizeGeneratedEmailBody(input)).toBe(
+      "Hi Alex,\n\nWould this be useful?",
+    );
   });
 
   it("preserves blank paragraphs in transport and mailto encoding", async () => {

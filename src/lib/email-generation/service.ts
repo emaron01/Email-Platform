@@ -38,7 +38,24 @@ const SENDER_PLACEHOLDER_LINE =
   /^(?:\[(?:your )?(?:name|signature)\]|<your (?:name|signature)>|\{your (?:name|signature)\})[,.!\s]*$/i;
 
 export function sanitizeGeneratedEmailBody(value: string): string {
-  const lines = normalizeEmailBody(removeEmDashes(value)).split("\n");
+  const normalized = normalizeEmailBody(removeEmDashes(value));
+  const inlineGreeting =
+    /^((?:hi|hello|hey|good morning|good afternoon|good evening)\s+[^,\n]{1,60},)[ \t]+(.+)$/i.exec(
+      normalized,
+    );
+  const lines = (inlineGreeting
+    ? `${inlineGreeting[1]}\n\n${inlineGreeting[2]}`
+    : normalized
+  ).split("\n");
+  const greetingLine =
+    /^(?:(?:hi|hello|hey|good morning|good afternoon|good evening)\b.+|[\p{L}'-]+(?:\s+[\p{L}'-]+)?)[,:!]$/iu;
+  if (
+    lines.length > 1 &&
+    greetingLine.test(lines[0].trim()) &&
+    lines[1].trim() !== ""
+  ) {
+    lines.splice(1, 0, "");
+  }
   const firstPossibleSignatureLine = Math.max(0, lines.length - 8);
 
   for (let index = firstPossibleSignatureLine; index < lines.length; index += 1) {

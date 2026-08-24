@@ -2,7 +2,7 @@ import type { AiMessage } from "@/lib/ai/types";
 import type { ReplyClassification } from "@prisma/client";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "7";
+export const EMAIL_GENERATION_PROMPT_VERSION = "8";
 export const ADDITIONAL_GUIDANCE_MAX_CHARS = 200;
 
 const SYSTEM_PROMPT = `You write concise, credible one-to-one outbound emails.
@@ -27,9 +27,10 @@ Writing and structure rules:
 - The writing sample's structure overrides any default outbound email or marketing template structure, except that emailStructure overrides the sample's paragraph count.
 - Use the sample only as a style reference. Do not copy its recipient, claims, offer, or other facts.
 - Do not use bullet points or structured headers unless the additional campaign instructions explicitly request them.
+- Put the greeting on its own line, followed by exactly one blank line before the first content paragraph. The greeting does not count as a paragraph or sentence in emailStructure.
 - No paragraph may exceed three sentences. Do not write run-on sentences.
 - Close the email with exactly one soft question. Do not place additional questions earlier in the email.
-- Do not include a sign-off, sender name, sender placeholder, signature, or signature block of any kind. Never write "Best," or "[Your Name]". End the body immediately after the closing question or final sentence because the sender's email client appends the signature.
+- Do not include a sign-off, sender name, sender placeholder, signature, or signature block of any kind. Never write "Best," or "[Your Name]". End the generated body immediately after the closing question or final sentence.
 - Never use an em dash character in the subject, body, or reasoning. No exceptions. Use a period, comma, or rewrite the sentence instead.
 
 Return exactly one JSON object matching:
@@ -48,18 +49,18 @@ export function buildEmailPrompt(
       ? {
           emailLength: "SHORT",
           instruction:
-            "Write 2-3 sentences total. No paragraph breaks. One hook, one soft close question. Target 40-60 words.",
+            "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. One hook, one soft close question. Target 40-60 words excluding the greeting.",
         }
       : context.campaign.emailLength === "LONG"
         ? {
             emailLength: "LONG",
             instruction:
-              "Write exactly 3 short paragraphs separated by one blank line. Paragraph 1: problem, 2 sentences max. Paragraph 2: how the product solves it, 2-3 sentences max. Paragraph 3: offer and close question, 2 sentences max. Target 120-150 words.",
+              "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: problem, 2 sentences max. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and close question, 2 sentences max. Target 120-150 words excluding the greeting.",
           }
         : {
             emailLength: "MEDIUM",
             instruction:
-              "Write exactly 2 short paragraphs separated by one blank line. Paragraph 1: problem or context, 2 sentences max. Paragraph 2: offer and close question, 2 sentences max. Target 80-100 words.",
+              "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: problem or context, 2 sentences max. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
           };
   const userPayload = {
     regenerationInstructions: regenerationGuidance
