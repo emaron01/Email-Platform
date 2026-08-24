@@ -323,7 +323,12 @@ describe("generated email output", () => {
   });
 
   it("preserves blank paragraphs in transport and mailto encoding", async () => {
-    const { buildMailtoHref, toEmailTransportBody } = await import(
+    const {
+      buildEmailClientLaunch,
+      buildMailtoHref,
+      EMAIL_CLIENTS,
+      toEmailTransportBody,
+    } = await import(
       "@/lib/email-generation/email-body"
     );
     const body = "First paragraph.\n\nSecond paragraph?";
@@ -338,6 +343,38 @@ describe("generated email output", () => {
     });
     expect(href).toContain("%0D%0A%0D%0A");
     expect(new URL(href).searchParams.get("body")).toBe(transportBody);
+    for (const client of EMAIL_CLIENTS) {
+      const launch = buildEmailClientLaunch({
+        client,
+        to: "alex@example.com",
+        subject: "Paragraph test",
+        body,
+        maxUrlLength: 10_000,
+      });
+      expect(launch.bodyHandling).toBe("PREFILLED");
+      expect(launch.href).toContain("%0D%0A%0D%0A");
+      expect(new URL(launch.href!).searchParams.get("body")).toBe(
+        transportBody,
+      );
+    }
+  });
+
+  it("copies an over-limit body without truncating it", async () => {
+    const { buildEmailClientLaunch } = await import(
+      "@/lib/email-generation/email-body"
+    );
+    const body = `${"Long paragraph. ".repeat(200)}\n\nClosing paragraph?`;
+    const launch = buildEmailClientLaunch({
+      client: "OUTLOOK_DESKTOP",
+      to: "alex@example.com",
+      subject: "Long email",
+      body,
+      maxUrlLength: 1800,
+    });
+    expect(launch.bodyHandling).toBe("COPIED");
+    expect(launch.href).not.toContain("body=");
+    expect(launch.bodyToCopy).toBe(body);
+    expect(launch.bodyToCopy?.endsWith("Closing paragraph?")).toBe(true);
   });
 });
 
@@ -724,8 +761,11 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("selected.subject");
     expect(form).toContain("selected.body");
     expect(form).toContain("Save draft");
-    expect(form).toContain("Open in email client");
-    expect(form).toContain("buildMailtoHref");
+    expect(form).toContain("Outlook Web");
+    expect(form).toContain("Outlook desktop");
+    expect(form).toContain("Gmail");
+    expect(form).toContain("buildEmailClientLaunch");
+    expect(form).toContain("recordEmailClientIntentAction");
     expect(action).toContain("saveEmailDraftAction");
     expect(campaignDetailPage).toContain("EmailSequenceWorkspace");
   });
@@ -1206,6 +1246,29 @@ describe.skipIf(!hasDatabase)(
       expect(new URL(deeplink).searchParams.get("body")).toBe(
         "Hi Alex, quick question.\r\n\r\nWould a forecast audit be useful?",
       );
+      const { recordEmailClientIntent } = await import(
+        "@/lib/email-generation/sequence"
+      );
+      await recordEmailClientIntent({
+        draftId: created.draftId,
+        userId: userAId,
+        client: "OUTLOOK_DESKTOP",
+        bodyHandling: "PREFILLED",
+      });
+      const afterIntent = await prisma.emailDraft.findUniqueOrThrow({
+        where: { id: created.draftId },
+        select: { status: true, sentAt: true },
+      });
+      expect(afterIntent).toEqual({ status: "DRAFT", sentAt: null });
+      expect(
+        await prisma.usageEvent.count({
+          where: {
+            organizationId,
+            userId: userAId,
+            operation: "EMAIL_DEEPLINK_OPENED",
+          },
+        }),
+      ).toBe(1);
       const { updateEmailDraftContent } = await import(
         "@/lib/email-generation/sequence"
       );

@@ -23,6 +23,7 @@ import {
 import {
   markEmailDraftSent,
   nextSequencePosition,
+  recordEmailClientIntent,
   updateEmailDraftContent,
 } from "@/lib/email-generation/sequence";
 import {
@@ -32,6 +33,11 @@ import {
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
 import { unacknowledgedOfferWarnings } from "@/lib/email-generation/offer-warnings";
 import type { AiMessage } from "@/lib/ai/types";
+import {
+  EMAIL_CLIENTS,
+  type EmailClient,
+  type EmailClientBodyHandling,
+} from "@/lib/email-generation/email-body";
 
 export type GenerateEmailDraftActionResult = {
   ok: boolean;
@@ -269,6 +275,43 @@ export async function saveEmailDraftAction(input: {
     };
   } catch (error) {
     console.error("Failed to save email draft.", error);
+    return { ok: false, message: toSafeEmailGenerationError(error) };
+  }
+}
+
+export async function recordEmailClientIntentAction(input: {
+  emailDraftId: string;
+  client: EmailClient;
+  bodyHandling: EmailClientBodyHandling;
+}): Promise<GenerateEmailDraftActionResult> {
+  if (!EMAIL_CLIENTS.includes(input.client)) {
+    return { ok: false, message: "Select a supported email client." };
+  }
+  if (
+    input.bodyHandling !== "PREFILLED" &&
+    input.bodyHandling !== "COPIED"
+  ) {
+    return { ok: false, message: "Invalid email handoff mode." };
+  }
+  try {
+    const user = await requireCurrentUser();
+    const recorded = await recordEmailClientIntent({
+      draftId: input.emailDraftId,
+      userId: user.id,
+      client: input.client,
+      bodyHandling: input.bodyHandling,
+    });
+    return {
+      ok: true,
+      message:
+        input.bodyHandling === "COPIED"
+          ? "Email client opened with the full body copied for you to paste. This did not mark the email as sent."
+          : "Email client opened. This did not mark the email as sent.",
+      draftId: input.emailDraftId,
+      sequenceNumber: recorded.sequenceNumber,
+    };
+  } catch (error) {
+    console.error("Failed to record email client intent.", error);
     return { ok: false, message: toSafeEmailGenerationError(error) };
   }
 }

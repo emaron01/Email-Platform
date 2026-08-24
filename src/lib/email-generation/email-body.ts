@@ -1,6 +1,14 @@
 export const EMAIL_SUBJECT_MAX_CHARS = 300;
 export const EMAIL_BODY_MAX_CHARS = 50_000;
 
+export const EMAIL_CLIENTS = [
+  "OUTLOOK_WEB",
+  "OUTLOOK_DESKTOP",
+  "GMAIL_WEB",
+] as const;
+export type EmailClient = (typeof EMAIL_CLIENTS)[number];
+export type EmailClientBodyHandling = "PREFILLED" | "COPIED";
+
 /** Canonical storage and rendering format. Internal blank lines are preserved. */
 export function normalizeEmailBody(value: string): string {
   return value.replace(/\r\n?/g, "\n");
@@ -19,4 +27,59 @@ export function buildMailtoHref(input: {
   const subject = encodeURIComponent(input.subject);
   const body = encodeURIComponent(toEmailTransportBody(input.body));
   return `mailto:${encodeURIComponent(input.to)}?subject=${subject}&body=${body}`;
+}
+
+function buildEmailClientHref(input: {
+  client: EmailClient;
+  to: string;
+  subject: string;
+  body?: string;
+}): string {
+  const to = encodeURIComponent(input.to);
+  const subject = encodeURIComponent(input.subject);
+  const body =
+    input.body == null
+      ? null
+      : encodeURIComponent(toEmailTransportBody(input.body));
+  if (input.client === "OUTLOOK_WEB") {
+    return `https://outlook.office.com/mail/deeplink/compose?to=${to}&subject=${subject}${body == null ? "" : `&body=${body}`}`;
+  }
+  if (input.client === "GMAIL_WEB") {
+    return `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${subject}${body == null ? "" : `&body=${body}`}`;
+  }
+  return `mailto:${to}?subject=${subject}${body == null ? "" : `&body=${body}`}`;
+}
+
+export function buildEmailClientLaunch(input: {
+  client: EmailClient;
+  to: string;
+  subject: string;
+  body: string;
+  maxUrlLength: number;
+}): {
+  href: string | null;
+  bodyHandling: EmailClientBodyHandling;
+  bodyToCopy: string | null;
+} {
+  const hrefWithBody = buildEmailClientHref(input);
+  if (hrefWithBody.length <= input.maxUrlLength) {
+    return {
+      href: hrefWithBody,
+      bodyHandling: "PREFILLED",
+      bodyToCopy: null,
+    };
+  }
+  const hrefWithoutBody = buildEmailClientHref({
+    client: input.client,
+    to: input.to,
+    subject: input.subject,
+  });
+  if (hrefWithoutBody.length > input.maxUrlLength) {
+    return { href: null, bodyHandling: "COPIED", bodyToCopy: input.body };
+  }
+  return {
+    href: hrefWithoutBody,
+    bodyHandling: "COPIED",
+    bodyToCopy: normalizeEmailBody(input.body),
+  };
 }

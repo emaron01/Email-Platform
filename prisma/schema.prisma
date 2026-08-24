@@ -160,6 +160,7 @@ enum UsageOperation {
   CAMPAIGN_OFFER_VALIDATED
   EMAIL_DRAFT_SENT
   EMAIL_REPLY_CLASSIFIED
+  EMAIL_DEEPLINK_OPENED
 }
 
 enum CriterionDataType {
@@ -487,6 +488,7 @@ model OrganizationUsagePolicy {
   organizationId               String   @unique
   activeResearchedCompanyLimit Int
   dailyEmailGenerationLimit    Int
+  emailDeeplinkMaxUrlLength    Int      @default(1800)
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 

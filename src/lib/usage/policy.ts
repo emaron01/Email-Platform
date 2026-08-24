@@ -11,9 +11,11 @@ export type PolicySource = "ORGANIZATION" | "USER_OVERRIDE";
 export type EffectiveUsagePolicy = {
   activeResearchedCompanyLimit: number;
   dailyEmailGenerationLimit: number;
+  emailDeeplinkMaxUrlLength: number;
   sources: {
     activeResearchedCompanyLimit: PolicySource;
     dailyEmailGenerationLimit: PolicySource;
+    emailDeeplinkMaxUrlLength: PolicySource;
   };
 };
 
@@ -50,6 +52,8 @@ export async function ensureOrganizationPolicies(
         DEFAULT_USAGE_POLICY_VALUES.activeResearchedCompanyLimit,
       dailyEmailGenerationLimit:
         DEFAULT_USAGE_POLICY_VALUES.dailyEmailGenerationLimit,
+      emailDeeplinkMaxUrlLength:
+        DEFAULT_USAGE_POLICY_VALUES.emailDeeplinkMaxUrlLength,
     },
   });
 
@@ -123,6 +127,7 @@ export async function getEffectiveUsagePolicy(input: {
   return {
     activeResearchedCompanyLimit,
     dailyEmailGenerationLimit,
+    emailDeeplinkMaxUrlLength: orgPolicy.emailDeeplinkMaxUrlLength,
     sources: {
       activeResearchedCompanyLimit:
         override?.activeResearchedCompanyLimit != null
@@ -132,6 +137,7 @@ export async function getEffectiveUsagePolicy(input: {
         override?.dailyEmailGenerationLimit != null
           ? "USER_OVERRIDE"
           : "ORGANIZATION",
+      emailDeeplinkMaxUrlLength: "ORGANIZATION",
     },
   };
 }

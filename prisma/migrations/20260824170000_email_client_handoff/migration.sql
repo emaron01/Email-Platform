@@ -1,0 +1,4 @@
+ALTER TYPE "UsageOperation" ADD VALUE IF NOT EXISTS 'EMAIL_DEEPLINK_OPENED';
+
+ALTER TABLE "OrganizationUsagePolicy"
+  ADD COLUMN "emailDeeplinkMaxUrlLength" INTEGER NOT NULL DEFAULT 1800;

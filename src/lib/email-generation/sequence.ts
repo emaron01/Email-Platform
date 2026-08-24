@@ -9,6 +9,8 @@ import {
   EMAIL_BODY_MAX_CHARS,
   EMAIL_SUBJECT_MAX_CHARS,
   normalizeEmailBody,
+  type EmailClient,
+  type EmailClientBodyHandling,
 } from "@/lib/email-generation/email-body";
 
 export function nextSequencePosition(context: EmailGenerationContext): number {
@@ -166,5 +168,58 @@ export async function updateEmailDraftContent(input: {
     sequenceNumber: draft.sequenceNumber,
     subject,
     body,
+  };
+}
+
+export async function recordEmailClientIntent(input: {
+  draftId: string;
+  userId: string;
+  client: EmailClient;
+  bodyHandling: EmailClientBodyHandling;
+}): Promise<{
+  campaignId: string;
+  sequenceNumber: number;
+}> {
+  const user = await prisma.user.findUnique({ where: { id: input.userId } });
+  if (!user) throw new TenantError("User not found.");
+  const membership = await resolveActiveOrganization(user);
+  if (!membership) {
+    throw new TenantError("No active organization membership was found.");
+  }
+  const organizationId = membership.organization.id;
+  const draft = await prisma.emailDraft.findFirst({
+    where: { id: input.draftId, organizationId },
+    select: {
+      id: true,
+      sequenceNumber: true,
+      campaignContact: {
+        select: { campaignId: true, contactId: true },
+      },
+    },
+  });
+  if (!draft) {
+    throw new TenantError(
+      "Email draft does not belong to the active organization.",
+    );
+  }
+  await recordUsageEvent({
+    organizationId,
+    userId: input.userId,
+    campaignId: draft.campaignContact.campaignId,
+    contactId: draft.campaignContact.contactId,
+    category: "EMAIL_GENERATION",
+    operation: "EMAIL_DEEPLINK_OPENED",
+    status: "SUCCESS",
+    metadata: {
+      draftId: draft.id,
+      sequenceNumber: draft.sequenceNumber,
+      client: input.client,
+      bodyHandling: input.bodyHandling,
+      markedSent: false,
+    },
+  });
+  return {
+    campaignId: draft.campaignContact.campaignId,
+    sequenceNumber: draft.sequenceNumber,
   };
 }

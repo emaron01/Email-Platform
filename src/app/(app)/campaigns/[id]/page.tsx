@@ -23,6 +23,8 @@ import {
   detectDeterministicOfferConflicts,
   offerConflictsFromJson,
 } from "@/lib/campaign/offer-validation";
+import { requireCurrentUser } from "@/lib/auth/session";
+import { getEffectiveUsagePolicy } from "@/lib/usage/policy";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -47,6 +49,7 @@ export default async function CampaignDetailPage({
   searchParams,
 }: PageProps) {
   const organization = await getCurrentOrganization();
+  const user = await requireCurrentUser();
   const { id } = await params;
   const query = await searchParams;
 
@@ -62,12 +65,18 @@ export default async function CampaignDetailPage({
   let campaign;
   let availableContacts;
   let scoringRuns;
+  let usagePolicy;
   try {
-    [campaign, availableContacts, scoringRuns] = await Promise.all([
+    [campaign, availableContacts, scoringRuns, usagePolicy] =
+      await Promise.all([
       getCampaignDetail(id),
       searchAvailableCampaignContacts(id, query.q),
       listCompatibleScoringRuns(id),
-    ]);
+        getEffectiveUsagePolicy({
+          organizationId: organization.id,
+          userId: user.id,
+        }),
+      ]);
   } catch (error) {
     if (error instanceof TenantError) notFound();
     throw error;
@@ -181,6 +190,9 @@ export default async function CampaignDetailPage({
                     }
                     contactEmail={contact.email}
                     contactStatus={campaignContact.status}
+                    emailDeeplinkMaxUrlLength={
+                      usagePolicy.emailDeeplinkMaxUrlLength
+                    }
                     initialDrafts={campaignContact.emailDrafts
                       .filter(
                         (draft) => Boolean(draft.subject) && Boolean(draft.body),

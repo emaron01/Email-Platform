@@ -7,6 +7,7 @@ import {
   draftReplyAction,
   generateEmailDraftAction,
   markEmailDraftSentAction,
+  recordEmailClientIntentAction,
   regenerateEmailDraftAction,
   saveEmailDraftAction,
   type GenerateEmailDraftActionResult,
@@ -15,9 +16,10 @@ import { ADDITIONAL_GUIDANCE_MAX_CHARS } from "@/lib/email-generation/prompt";
 import { PROSPECT_REPLY_MAX_CHARS } from "@/lib/email-generation/reply-contract";
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
 import {
-  buildMailtoHref,
+  buildEmailClientLaunch,
   EMAIL_BODY_MAX_CHARS,
   EMAIL_SUBJECT_MAX_CHARS,
+  type EmailClient,
 } from "@/lib/email-generation/email-body";
 
 type SequenceDraft = {
@@ -38,6 +40,15 @@ type SequenceDraft = {
   referralSuggested: boolean;
 };
 
+const EMAIL_CLIENT_OPTIONS: Array<{
+  client: EmailClient;
+  label: string;
+}> = [
+  { client: "OUTLOOK_WEB", label: "Outlook Web" },
+  { client: "OUTLOOK_DESKTOP", label: "Outlook desktop" },
+  { client: "GMAIL_WEB", label: "Gmail" },
+];
+
 function sentDate(value: string | null): string {
   if (!value) return "";
   return new Intl.DateTimeFormat("en-US", {
@@ -54,6 +65,7 @@ export function EmailSequenceWorkspace({
   contactStatus,
   initialDrafts,
   offerWarnings,
+  emailDeeplinkMaxUrlLength,
 }: {
   campaignContactId: string;
   contactName: string;
@@ -62,6 +74,7 @@ export function EmailSequenceWorkspace({
   contactStatus: string;
   initialDrafts: SequenceDraft[];
   offerWarnings: OfferConflict[];
+  emailDeeplinkMaxUrlLength: number;
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState(initialDrafts);
@@ -168,20 +181,61 @@ export function EmailSequenceWorkspace({
     });
   }
 
-  function openInEmailClient() {
+  function openInEmailClient(client: EmailClient) {
     if (!selected || !contactEmail) return;
+    const launch = buildEmailClientLaunch({
+      client,
+      to: contactEmail,
+      subject: selected.subject,
+      body: selected.body,
+      maxUrlLength: emailDeeplinkMaxUrlLength,
+    });
+    if (!launch.href) {
+      setResult({
+        ok: false,
+        message:
+          "The recipient and subject are too long for a safe email-client link. Shorten the subject and try again.",
+      });
+      return;
+    }
+    const href = launch.href;
+    let copyPromise: Promise<void> | null = null;
+    if (launch.bodyToCopy) {
+      if (!navigator.clipboard?.writeText) {
+        setResult({
+          ok: false,
+          message:
+            "This browser cannot copy the full email body automatically. Copy it from the editor before opening your email client.",
+        });
+        return;
+      }
+      copyPromise = navigator.clipboard.writeText(launch.bodyToCopy);
+    }
     startTransition(async () => {
-      let subject = selected.subject;
-      let body = selected.body;
       if (selected.status !== "SENT") {
         const saved = await persistDraft(selected);
         if (!saved.ok || !saved.subject || !saved.body) return;
-        subject = saved.subject;
-        body = saved.body;
       }
-      window.location.assign(
-        buildMailtoHref({ to: contactEmail, subject, body }),
-      );
+      if (copyPromise) {
+        try {
+          await copyPromise;
+        } catch {
+          setResult({
+            ok: false,
+            message:
+              "The browser could not copy the full email body. Copy it from the editor before opening your email client.",
+          });
+          return;
+        }
+      }
+      const recorded = await recordEmailClientIntentAction({
+        emailDraftId: selected.id,
+        client,
+        bodyHandling: launch.bodyHandling,
+      });
+      setResult(recorded);
+      if (!recorded.ok) return;
+      window.location.assign(href);
     });
   }
 
@@ -448,19 +502,22 @@ export function EmailSequenceWorkspace({
                   >
                     {pending ? "Regenerating…" : "Regenerate"}
                   </button>
-                  <button
-                    type="button"
-                    disabled={pending || !contactEmail}
-                    title={
-                      contactEmail
-                        ? "Save and open this draft in your email client."
-                        : "Add an email address to this contact first."
-                    }
-                    onClick={openInEmailClient}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
-                  >
-                    Open in email client
-                  </button>
+                  {EMAIL_CLIENT_OPTIONS.map((option) => (
+                    <button
+                      key={option.client}
+                      type="button"
+                      disabled={pending || !contactEmail}
+                      title={
+                        contactEmail
+                          ? `Save and open in ${option.label}.`
+                          : "Add an email address to this contact first."
+                      }
+                      onClick={() => openInEmailClient(option.client)}
+                      className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
+                    >
+                      Open in {option.label}
+                    </button>
+                  ))}
                   <button
                     type="button"
                     disabled={pending}
@@ -481,19 +538,22 @@ export function EmailSequenceWorkspace({
                   Sent emails are read-only.
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={pending || !contactEmail}
-                    title={
-                      contactEmail
-                        ? "Open this sent email in your email client."
-                        : "Add an email address to this contact first."
-                    }
-                    onClick={openInEmailClient}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
-                  >
-                    Open in email client
-                  </button>
+                  {EMAIL_CLIENT_OPTIONS.map((option) => (
+                    <button
+                      key={option.client}
+                      type="button"
+                      disabled={pending || !contactEmail}
+                      title={
+                        contactEmail
+                          ? `Open this sent email in ${option.label}.`
+                          : "Add an email address to this contact first."
+                      }
+                      onClick={() => openInEmailClient(option.client)}
+                      className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
+                    >
+                      Open in {option.label}
+                    </button>
+                  ))}
                   <button
                     type="button"
                     disabled={!canAdd || pending}
