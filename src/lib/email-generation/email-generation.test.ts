@@ -321,6 +321,24 @@ describe("generated email output", () => {
     expect(output).toBe("Hi Alex,\n\nWould this be useful?");
     expect(output).not.toMatch(/Best,|\[Your Name\]/);
   });
+
+  it("preserves blank paragraphs in transport and mailto encoding", async () => {
+    const { buildMailtoHref, toEmailTransportBody } = await import(
+      "@/lib/email-generation/email-body"
+    );
+    const body = "First paragraph.\n\nSecond paragraph?";
+    const transportBody = toEmailTransportBody(body);
+    expect(transportBody).toBe(
+      "First paragraph.\r\n\r\nSecond paragraph?",
+    );
+    const href = buildMailtoHref({
+      to: "alex@example.com",
+      subject: "Paragraph test",
+      body,
+    });
+    expect(href).toContain("%0D%0A%0D%0A");
+    expect(new URL(href).searchParams.get("body")).toBe(transportBody);
+  });
 });
 
 describe("sequence and claim guards", () => {
@@ -705,7 +723,10 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("text-xs text-slate-500");
     expect(form).toContain("selected.subject");
     expect(form).toContain("selected.body");
-    expect(form).not.toMatch(/send email|mailto|clipboard/i);
+    expect(form).toContain("Save draft");
+    expect(form).toContain("Open in email client");
+    expect(form).toContain("buildMailtoHref");
+    expect(action).toContain("saveEmailDraftAction");
     expect(campaignDetailPage).toContain("EmailSequenceWorkspace");
   });
 });
@@ -1169,6 +1190,39 @@ describe.skipIf(!hasDatabase)(
       expect(created.subject).not.toContain("—");
       expect(created.body).not.toContain("—");
       expect(created.regenerated).toBe(false);
+      const persistedCreated = await prisma.emailDraft.findUniqueOrThrow({
+        where: { id: created.draftId },
+        select: { subject: true, body: true },
+      });
+      const { buildMailtoHref } = await import(
+        "@/lib/email-generation/email-body"
+      );
+      const deeplink = buildMailtoHref({
+        to: `alex-${suffix}@example.test`,
+        subject: persistedCreated.subject ?? "",
+        body: persistedCreated.body ?? "",
+      });
+      expect(deeplink).toContain("%0D%0A%0D%0A");
+      expect(new URL(deeplink).searchParams.get("body")).toBe(
+        "Hi Alex, quick question.\r\n\r\nWould a forecast audit be useful?",
+      );
+      const { updateEmailDraftContent } = await import(
+        "@/lib/email-generation/sequence"
+      );
+      await updateEmailDraftContent({
+        draftId: created.draftId,
+        userId: userAId,
+        subject: created.subject,
+        body: "First paragraph.\r\n\r\nSecond paragraph?",
+      });
+      expect(
+        (
+          await prisma.emailDraft.findUniqueOrThrow({
+            where: { id: created.draftId },
+            select: { body: true },
+          })
+        ).body,
+      ).toBe("First paragraph.\n\nSecond paragraph?");
 
       const regenerated = await generateEmailDraft(
         context,

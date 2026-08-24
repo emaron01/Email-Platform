@@ -23,6 +23,7 @@ import {
 import {
   markEmailDraftSent,
   nextSequencePosition,
+  updateEmailDraftContent,
 } from "@/lib/email-generation/sequence";
 import {
   classifyProspectReply,
@@ -239,6 +240,35 @@ export async function markEmailDraftSentAction(
     };
   } catch (error) {
     console.error("Failed to mark email draft as sent.", error);
+    return { ok: false, message: toSafeEmailGenerationError(error) };
+  }
+}
+
+export async function saveEmailDraftAction(input: {
+  emailDraftId: string;
+  subject: string;
+  body: string;
+}): Promise<GenerateEmailDraftActionResult> {
+  try {
+    const user = await requireCurrentUser();
+    const saved = await updateEmailDraftContent({
+      draftId: input.emailDraftId,
+      userId: user.id,
+      subject: input.subject,
+      body: input.body,
+    });
+    revalidateCampaign(saved.campaignId);
+    return {
+      ok: true,
+      message: "Draft saved.",
+      draftId: input.emailDraftId,
+      subject: saved.subject,
+      body: saved.body,
+      sequenceNumber: saved.sequenceNumber,
+      status: "DRAFT",
+    };
+  } catch (error) {
+    console.error("Failed to save email draft.", error);
     return { ok: false, message: toSafeEmailGenerationError(error) };
   }
 }

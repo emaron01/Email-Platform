@@ -8,11 +8,17 @@ import {
   generateEmailDraftAction,
   markEmailDraftSentAction,
   regenerateEmailDraftAction,
+  saveEmailDraftAction,
   type GenerateEmailDraftActionResult,
 } from "@/app/actions/email";
 import { ADDITIONAL_GUIDANCE_MAX_CHARS } from "@/lib/email-generation/prompt";
 import { PROSPECT_REPLY_MAX_CHARS } from "@/lib/email-generation/reply-contract";
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
+import {
+  buildMailtoHref,
+  EMAIL_BODY_MAX_CHARS,
+  EMAIL_SUBJECT_MAX_CHARS,
+} from "@/lib/email-generation/email-body";
 
 type SequenceDraft = {
   id: string;
@@ -52,7 +58,7 @@ export function EmailSequenceWorkspace({
   campaignContactId: string;
   contactName: string;
   contactDetails: string;
-  contactEmail: string;
+  contactEmail: string | null;
   contactStatus: string;
   initialDrafts: SequenceDraft[];
   offerWarnings: OfferConflict[];
@@ -124,9 +130,68 @@ export function EmailSequenceWorkspace({
     startTransition(async () => applyGenerated(await action()));
   }
 
+  function updateSelectedDraft(changes: Partial<SequenceDraft>) {
+    if (!selected) return;
+    setDrafts((current) =>
+      current.map((draft) =>
+        draft.id === selected.id ? { ...draft, ...changes } : draft,
+      ),
+    );
+  }
+
+  async function persistDraft(
+    draft: SequenceDraft,
+  ): Promise<GenerateEmailDraftActionResult> {
+    const saved = await saveEmailDraftAction({
+      emailDraftId: draft.id,
+      subject: draft.subject,
+      body: draft.body,
+    });
+    setResult(saved);
+    if (saved.ok && saved.subject && saved.body) {
+      setDrafts((current) =>
+        current.map((entry) =>
+          entry.id === draft.id
+            ? { ...entry, subject: saved.subject!, body: saved.body! }
+            : entry,
+        ),
+      );
+    }
+    return saved;
+  }
+
+  function saveDraft() {
+    if (!selected || selected.status === "SENT") return;
+    startTransition(async () => {
+      const saved = await persistDraft(selected);
+      if (saved.ok) router.refresh();
+    });
+  }
+
+  function openInEmailClient() {
+    if (!selected || !contactEmail) return;
+    startTransition(async () => {
+      let subject = selected.subject;
+      let body = selected.body;
+      if (selected.status !== "SENT") {
+        const saved = await persistDraft(selected);
+        if (!saved.ok || !saved.subject || !saved.body) return;
+        subject = saved.subject;
+        body = saved.body;
+      }
+      window.location.assign(
+        buildMailtoHref({ to: contactEmail, subject, body }),
+      );
+    });
+  }
+
   function markSent() {
     if (!selected) return;
     startTransition(async () => {
+      if (selected.status !== "SENT") {
+        const saved = await persistDraft(selected);
+        if (!saved.ok) return;
+      }
       const next = await markEmailDraftSentAction(selected.id);
       setResult(next);
       if (next.ok) {
@@ -151,7 +216,9 @@ export function EmailSequenceWorkspace({
       <div className="text-sm">
         <p className="font-medium text-slate-900">{contactName}</p>
         <p className="text-slate-600">{contactDetails}</p>
-        <p className="text-slate-500">{contactEmail}</p>
+        <p className="text-slate-500">
+          {contactEmail ?? "No email address"}
+        </p>
         <dl className="mt-3">
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Contact status
@@ -303,15 +370,41 @@ export function EmailSequenceWorkspace({
               <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">
                 Subject
               </p>
-              <p className="mt-1 text-sm font-medium text-slate-900">
-                {selected.subject}
-              </p>
+              {selected.status === "SENT" ? (
+                <p className="mt-1 text-sm font-medium text-slate-900">
+                  {selected.subject}
+                </p>
+              ) : (
+                <input
+                  type="text"
+                  value={selected.subject}
+                  onChange={(event) =>
+                    updateSelectedDraft({ subject: event.target.value })
+                  }
+                  maxLength={EMAIL_SUBJECT_MAX_CHARS}
+                  disabled={pending}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900"
+                />
+              )}
               <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">
                 Body
               </p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
-                {selected.body}
-              </p>
+              {selected.status === "SENT" ? (
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
+                  {selected.body}
+                </p>
+              ) : (
+                <textarea
+                  value={selected.body}
+                  onChange={(event) =>
+                    updateSelectedDraft({ body: event.target.value })
+                  }
+                  rows={10}
+                  maxLength={EMAIL_BODY_MAX_CHARS}
+                  disabled={pending}
+                  className="mt-1 w-full whitespace-pre-wrap rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                />
+              )}
             </article>
 
             {selected.status !== "SENT" ? (
@@ -335,6 +428,14 @@ export function EmailSequenceWorkspace({
                   <button
                     type="button"
                     disabled={pending}
+                    onClick={saveDraft}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium"
+                  >
+                    {pending ? "Saving…" : "Save draft"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending}
                     onClick={() =>
                       run(() =>
                         regenerateEmailDraftAction(
@@ -346,6 +447,19 @@ export function EmailSequenceWorkspace({
                     className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium"
                   >
                     {pending ? "Regenerating…" : "Regenerate"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending || !contactEmail}
+                    title={
+                      contactEmail
+                        ? "Save and open this draft in your email client."
+                        : "Add an email address to this contact first."
+                    }
+                    onClick={openInEmailClient}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
+                  >
+                    Open in email client
                   </button>
                   <button
                     type="button"
@@ -366,19 +480,34 @@ export function EmailSequenceWorkspace({
                 <p className="text-xs text-slate-500">
                   Sent emails are read-only.
                 </p>
-                <button
-                  type="button"
-                  disabled={!canAdd || pending}
-                  title={
-                    canAdd
-                      ? "Paste the prospect reply."
-                      : "Mark the current draft as sent before adding a reply."
-                  }
-                  onClick={() => setShowReplyBox((value) => !value)}
-                  className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
-                >
-                  Draft reply
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={pending || !contactEmail}
+                    title={
+                      contactEmail
+                        ? "Open this sent email in your email client."
+                        : "Add an email address to this contact first."
+                    }
+                    onClick={openInEmailClient}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
+                  >
+                    Open in email client
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canAdd || pending}
+                    title={
+                      canAdd
+                        ? "Paste the prospect reply."
+                        : "Mark the current draft as sent before adding a reply."
+                    }
+                    onClick={() => setShowReplyBox((value) => !value)}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
+                  >
+                    Draft reply
+                  </button>
+                </div>
               </div>
             )}
 

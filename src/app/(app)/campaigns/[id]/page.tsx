@@ -179,7 +179,7 @@ export default async function CampaignDetailPage({
                         .filter(Boolean)
                         .join(" · ") || "No role details"
                     }
-                    contactEmail={contact.email ?? "No email address"}
+                    contactEmail={contact.email}
                     contactStatus={campaignContact.status}
                     initialDrafts={campaignContact.emailDrafts
                       .filter(

@@ -15,6 +15,7 @@ import {
 import type { AiMessage } from "@/lib/ai/types";
 import { emailDraftGenerationSchema } from "@/lib/email-generation/contract";
 import { validateGeneratedEmailClaims } from "@/lib/email-generation/claim-validation";
+import { normalizeEmailBody } from "@/lib/email-generation/email-body";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import { EMAIL_GENERATION_PROMPT_VERSION } from "@/lib/email-generation/prompt";
 import { prisma } from "@/lib/prisma";
@@ -33,7 +34,7 @@ const SENDER_PLACEHOLDER_LINE =
   /^(?:\[(?:your )?(?:name|signature)\]|<your (?:name|signature)>|\{your (?:name|signature)\})[,.!\s]*$/i;
 
 export function sanitizeGeneratedEmailBody(value: string): string {
-  const lines = removeEmDashes(value).split(/\r?\n/);
+  const lines = normalizeEmailBody(removeEmDashes(value)).split("\n");
   const firstPossibleSignatureLine = Math.max(0, lines.length - 8);
 
   for (let index = firstPossibleSignatureLine; index < lines.length; index += 1) {

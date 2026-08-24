@@ -5,6 +5,11 @@ import { resolveActiveOrganization } from "@/lib/auth/session";
 import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
+import {
+  EMAIL_BODY_MAX_CHARS,
+  EMAIL_SUBJECT_MAX_CHARS,
+  normalizeEmailBody,
+} from "@/lib/email-generation/email-body";
 
 export function nextSequencePosition(context: EmailGenerationContext): number {
   const latest = context.sequence.at(-1);
@@ -93,5 +98,73 @@ export async function markEmailDraftSent(input: {
     campaignContactId: draft.campaignContactId,
     sequenceNumber: draft.sequenceNumber,
     sentAt,
+  };
+}
+
+export async function updateEmailDraftContent(input: {
+  draftId: string;
+  userId: string;
+  subject: string;
+  body: string;
+}): Promise<{
+  campaignId: string;
+  campaignContactId: string;
+  sequenceNumber: number;
+  subject: string;
+  body: string;
+}> {
+  const subject = input.subject.trim();
+  const body = normalizeEmailBody(input.body).trim();
+  if (!subject) throw new TenantError("Email subject is required.");
+  if (subject.length > EMAIL_SUBJECT_MAX_CHARS) {
+    throw new TenantError(
+      `Email subject must be ${EMAIL_SUBJECT_MAX_CHARS} characters or fewer.`,
+    );
+  }
+  if (!body) throw new TenantError("Email body is required.");
+  if (body.length > EMAIL_BODY_MAX_CHARS) {
+    throw new TenantError(
+      `Email body must be ${EMAIL_BODY_MAX_CHARS} characters or fewer.`,
+    );
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: input.userId } });
+  if (!user) throw new TenantError("User not found.");
+  const membership = await resolveActiveOrganization(user);
+  if (!membership) {
+    throw new TenantError("No active organization membership was found.");
+  }
+  const draft = await prisma.emailDraft.findFirst({
+    where: {
+      id: input.draftId,
+      organizationId: membership.organization.id,
+    },
+    select: {
+      id: true,
+      campaignContactId: true,
+      sequenceNumber: true,
+      status: true,
+      sentAt: true,
+      campaignContact: { select: { campaignId: true } },
+    },
+  });
+  if (!draft) {
+    throw new TenantError(
+      "Email draft does not belong to the active organization.",
+    );
+  }
+  if (draft.status === "SENT" || draft.sentAt) {
+    throw new TenantError("Sent emails are read-only and cannot be edited.");
+  }
+  await prisma.emailDraft.update({
+    where: { id: draft.id },
+    data: { subject, body, status: "DRAFT" },
+  });
+  return {
+    campaignId: draft.campaignContact.campaignId,
+    campaignContactId: draft.campaignContactId,
+    sequenceNumber: draft.sequenceNumber,
+    subject,
+    body,
   };
 }
