@@ -10,6 +10,7 @@ import {
   recordEmailClientIntentAction,
   regenerateEmailDraftAction,
   saveEmailDraftAction,
+  sendEmailDraftConnectedAction,
   type GenerateEmailDraftActionResult,
 } from "@/app/actions/email";
 import { ADDITIONAL_GUIDANCE_MAX_CHARS } from "@/lib/email-generation/prompt";
@@ -27,7 +28,13 @@ type SequenceDraft = {
   sequenceNumber: number;
   subject: string;
   body: string;
-  status: "DRAFT" | "APPROVED" | "SENT" | "SKIPPED" | "NOT_CREATED";
+  status:
+    | "DRAFT"
+    | "APPROVED"
+    | "SENDING"
+    | "SENT"
+    | "SKIPPED"
+    | "NOT_CREATED";
   kind: "INITIAL" | "FOLLOW_UP" | "REPLY";
   sentAt: string | null;
   replyClassification:
@@ -66,6 +73,7 @@ export function EmailSequenceWorkspace({
   initialDrafts,
   offerWarnings,
   emailDeeplinkMaxUrlLength,
+  mailboxConnection,
 }: {
   campaignContactId: string;
   contactName: string;
@@ -75,6 +83,10 @@ export function EmailSequenceWorkspace({
   initialDrafts: SequenceDraft[];
   offerWarnings: OfferConflict[];
   emailDeeplinkMaxUrlLength: number;
+  mailboxConnection: {
+    status: "CONNECTED" | "RECONNECT_REQUIRED";
+    mailboxAddress: string;
+  } | null;
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState(initialDrafts);
@@ -265,6 +277,28 @@ export function EmailSequenceWorkspace({
     });
   }
 
+  function sendConnected() {
+    if (!selected || selected.status === "SENT") return;
+    startTransition(async () => {
+      const sent = await sendEmailDraftConnectedAction({
+        emailDraftId: selected.id,
+        subject: selected.subject,
+        body: selected.body,
+      });
+      setResult(sent);
+      if (sent.ok && sent.sentAt) {
+        setDrafts((current) =>
+          current.map((draft) =>
+            draft.id === selected.id
+              ? { ...draft, status: "SENT", sentAt: sent.sentAt! }
+              : draft,
+          ),
+        );
+        router.refresh();
+      }
+    });
+  }
+
   return (
     <>
       <div className="text-sm">
@@ -380,6 +414,15 @@ export function EmailSequenceWorkspace({
                 contact was created automatically.
               </p>
             ) : null}
+            {result.recoveryAction === "RECONNECT" ||
+            result.recoveryAction === "ASK_ADMIN" ? (
+              <a
+                href="/settings/email"
+                className="mt-2 inline-block text-sm font-medium text-slate-900 underline"
+              >
+                Open email connection settings
+              </a>
+            ) : null}
           </div>
         ) : null}
 
@@ -424,7 +467,8 @@ export function EmailSequenceWorkspace({
               <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">
                 Subject
               </p>
-              {selected.status === "SENT" ? (
+              {selected.status === "SENT" ||
+              selected.status === "SENDING" ? (
                 <p className="mt-1 text-sm font-medium text-slate-900">
                   {selected.subject}
                 </p>
@@ -443,7 +487,8 @@ export function EmailSequenceWorkspace({
               <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">
                 Body
               </p>
-              {selected.status === "SENT" ? (
+              {selected.status === "SENT" ||
+              selected.status === "SENDING" ? (
                 <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
                   {selected.body}
                 </p>
@@ -461,7 +506,12 @@ export function EmailSequenceWorkspace({
               )}
             </article>
 
-            {selected.status !== "SENT" ? (
+            {selected.status === "SENDING" ? (
+              <p className="text-sm text-slate-600">
+                Microsoft send is in progress. This draft is temporarily
+                read-only.
+              </p>
+            ) : selected.status !== "SENT" ? (
               <div className="space-y-3">
                 <label className="block text-sm">
                   <span className="font-medium text-slate-700">
@@ -520,6 +570,21 @@ export function EmailSequenceWorkspace({
                   ))}
                   <button
                     type="button"
+                    disabled={
+                      pending || mailboxConnection?.status !== "CONNECTED"
+                    }
+                    title={
+                      mailboxConnection?.status === "CONNECTED"
+                        ? `Send from ${mailboxConnection.mailboxAddress}.`
+                        : "Connect Microsoft 365 in Email connection settings first."
+                    }
+                    onClick={sendConnected}
+                    className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    Send with Microsoft 365
+                  </button>
+                  <button
+                    type="button"
                     disabled={pending}
                     onClick={markSent}
                     className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
@@ -527,6 +592,14 @@ export function EmailSequenceWorkspace({
                     I sent this — mark as sent
                   </button>
                 </div>
+                {mailboxConnection?.status !== "CONNECTED" ? (
+                  <a
+                    href="/settings/email"
+                    className="text-xs font-medium text-slate-700 underline"
+                  >
+                    Connect Microsoft 365 to send directly
+                  </a>
+                ) : null}
                 <p className="text-xs text-slate-500">
                   This records your assertion that you sent the email. It is
                   not a delivery confirmation.

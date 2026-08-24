@@ -38,6 +38,8 @@ import {
   type EmailClient,
   type EmailClientBodyHandling,
 } from "@/lib/email-generation/email-body";
+import { sendEmailDraftWithConnectedMailbox } from "@/lib/mailbox/send";
+import { MailboxConnectionError } from "@/lib/mailbox/microsoft-oauth";
 
 export type GenerateEmailDraftActionResult = {
   ok: boolean;
@@ -56,6 +58,14 @@ export type GenerateEmailDraftActionResult = {
     | "NOT_INTERESTED";
   referralSuggested?: boolean;
   offerWarnings?: OfferConflict[];
+  sentAt?: string;
+  recoveryAction?:
+    | "RECONNECT"
+    | "ASK_ADMIN"
+    | "EDIT_DRAFT"
+    | "RETRY"
+    | "WAIT_RETRY"
+    | "CONTACT_SUPPORT";
 };
 
 function revalidateCampaign(campaignId: string): void {
@@ -312,6 +322,41 @@ export async function recordEmailClientIntentAction(input: {
     };
   } catch (error) {
     console.error("Failed to record email client intent.", error);
+    return { ok: false, message: toSafeEmailGenerationError(error) };
+  }
+}
+
+export async function sendEmailDraftConnectedAction(input: {
+  emailDraftId: string;
+  subject: string;
+  body: string;
+}): Promise<GenerateEmailDraftActionResult> {
+  try {
+    const user = await requireCurrentUser();
+    const sent = await sendEmailDraftWithConnectedMailbox({
+      draftId: input.emailDraftId,
+      userId: user.id,
+      subject: input.subject,
+      body: input.body,
+    });
+    revalidateCampaign(sent.campaignId);
+    return {
+      ok: true,
+      message:
+        "Microsoft accepted the message from your mailbox and will save it to Sent items.",
+      draftId: sent.draftId,
+      sequenceNumber: sent.sequenceNumber,
+      sentAt: sent.sentAt.toISOString(),
+    };
+  } catch (error) {
+    if (error instanceof MailboxConnectionError) {
+      return {
+        ok: false,
+        message: error.message,
+        recoveryAction: error.recovery,
+      };
+    }
+    console.error("Failed to send email with connected mailbox.", error);
     return { ok: false, message: toSafeEmailGenerationError(error) };
   }
 }

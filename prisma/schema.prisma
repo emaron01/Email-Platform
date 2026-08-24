@@ -44,6 +44,7 @@ enum EmailDraftStatus {
   NOT_CREATED
   DRAFT
   APPROVED
+  SENDING
   SENT
   SKIPPED
 }
@@ -70,6 +71,15 @@ enum ReplyClassification {
 enum EmailSentMethod {
   MANUAL_ASSERTION
   CONNECTED_PROVIDER
+}
+
+enum MailboxProvider {
+  MICROSOFT_365
+}
+
+enum MailboxConnectionStatus {
+  CONNECTED
+  RECONNECT_REQUIRED
 }
 
 enum ContactListSource {
@@ -390,6 +400,8 @@ model Organization {
   personaEvidenceBundles   PersonaEvidenceBundle[]
   personaSetupRuns         PersonaSetupRun[]
   voiceSamples             VoiceSample[]
+  mailboxConnections       MailboxConnection[]
+  mailboxOAuthStates       MailboxOAuthState[]
 
   @@index([status])
   @@index([createdAt])
@@ -420,6 +432,8 @@ model User {
   transactionalEmailEvents TransactionalEmailEvent[]
   voiceSamples             VoiceSample[]
   sentEmailDrafts          EmailDraft[]              @relation("EmailDraftSentBy")
+  mailboxConnections       MailboxConnection[]
+  mailboxOAuthStates       MailboxOAuthState[]
 
   @@index([platformRole])
   @@index([activeOrganizationId])
@@ -444,6 +458,53 @@ model VoiceSample {
   @@index([userId])
   @@index([organizationId, userId])
   @@index([organizationId, userId, createdAt])
+}
+
+model MailboxConnection {
+  id                    String                  @id @default(cuid())
+  organizationId        String
+  userId                String
+  provider              MailboxProvider
+  status                MailboxConnectionStatus @default(CONNECTED)
+  mailboxAddress        String
+  providerTenantId      String?
+  providerAccountId     String
+  encryptedAccessToken  String
+  encryptedRefreshToken String
+  accessTokenExpiresAt  DateTime
+  grantedScopesJson     Json
+  lastErrorCode         String?
+  connectedAt           DateTime                @default(now())
+  refreshedAt           DateTime?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, provider])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([organizationId, status])
+}
+
+model MailboxOAuthState {
+  id                    String          @id @default(cuid())
+  organizationId        String
+  userId                String
+  provider              MailboxProvider
+  stateHash             String          @unique
+  nonceHash             String
+  encryptedCodeVerifier String
+  returnPath            String
+  expiresAt             DateTime
+  createdAt             DateTime        @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId])
+  @@index([expiresAt])
 }
 
 model OrganizationMembership {
@@ -1397,25 +1458,27 @@ model CampaignContact {
 }
 
 model EmailDraft {
-  id                  String               @id @default(cuid())
-  organizationId      String
-  campaignContactId   String
-  sequenceNumber      Int
-  subject             String?
-  body                String?
-  status              EmailDraftStatus     @default(NOT_CREATED)
-  source              EmailDraftSource     @default(AI)
-  kind                EmailDraftKind       @default(INITIAL)
-  replyClassification ReplyClassification?
-  prospectReplyText   String?
-  referralSuggested   Boolean              @default(false)
-  inReplyToDraftId    String?
-  approvedAt          DateTime?
-  sentAt              DateTime?
-  sentMethod          EmailSentMethod?
-  sentByUserId        String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  id                   String               @id @default(cuid())
+  organizationId       String
+  campaignContactId    String
+  sequenceNumber       Int
+  subject              String?
+  body                 String?
+  status               EmailDraftStatus     @default(NOT_CREATED)
+  source               EmailDraftSource     @default(AI)
+  kind                 EmailDraftKind       @default(INITIAL)
+  replyClassification  ReplyClassification?
+  prospectReplyText    String?
+  referralSuggested    Boolean              @default(false)
+  inReplyToDraftId     String?
+  approvedAt           DateTime?
+  sentAt               DateTime?
+  sentMethod           EmailSentMethod?
+  sentByUserId         String?
+  sendAttemptId        String?
+  sendAttemptStartedAt DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
   organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campaignContact CampaignContact @relation(fields: [campaignContactId], references: [id], onDelete: Cascade)

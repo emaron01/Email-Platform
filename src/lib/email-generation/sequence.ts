@@ -158,6 +158,11 @@ export async function updateEmailDraftContent(input: {
   if (draft.status === "SENT" || draft.sentAt) {
     throw new TenantError("Sent emails are read-only and cannot be edited.");
   }
+  if (draft.status === "SENDING") {
+    throw new TenantError(
+      "This email is currently being sent and cannot be edited.",
+    );
+  }
   await prisma.emailDraft.update({
     where: { id: draft.id },
     data: { subject, body, status: "DRAFT" },

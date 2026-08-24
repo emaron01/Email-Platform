@@ -25,6 +25,7 @@ import {
 } from "@/lib/campaign/offer-validation";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { getEffectiveUsagePolicy } from "@/lib/usage/policy";
+import { getMailboxConnectionView } from "@/lib/mailbox/data";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -66,13 +67,18 @@ export default async function CampaignDetailPage({
   let availableContacts;
   let scoringRuns;
   let usagePolicy;
+  let mailboxConnection;
   try {
-    [campaign, availableContacts, scoringRuns, usagePolicy] =
+    [campaign, availableContacts, scoringRuns, usagePolicy, mailboxConnection] =
       await Promise.all([
       getCampaignDetail(id),
       searchAvailableCampaignContacts(id, query.q),
       listCompatibleScoringRuns(id),
         getEffectiveUsagePolicy({
+          organizationId: organization.id,
+          userId: user.id,
+        }),
+        getMailboxConnectionView({
           organizationId: organization.id,
           userId: user.id,
         }),
@@ -192,6 +198,14 @@ export default async function CampaignDetailPage({
                     contactStatus={campaignContact.status}
                     emailDeeplinkMaxUrlLength={
                       usagePolicy.emailDeeplinkMaxUrlLength
+                    }
+                    mailboxConnection={
+                      mailboxConnection
+                        ? {
+                            status: mailboxConnection.status,
+                            mailboxAddress: mailboxConnection.mailboxAddress,
+                          }
+                        : null
                     }
                     initialDrafts={campaignContact.emailDrafts
                       .filter(

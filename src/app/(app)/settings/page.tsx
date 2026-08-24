@@ -57,6 +57,17 @@ export default async function SettingsIndexPage() {
             Effective quotas, metering, and research depth.
           </p>
         </li>
+        <li>
+          <Link
+            href="/settings/email"
+            className="font-medium text-slate-900 underline-offset-2 hover:underline"
+          >
+            Email connection
+          </Link>
+          <p className="text-slate-600">
+            Connect your own Microsoft 365 mailbox for direct sending.
+          </p>
+        </li>
         {isAdmin ? (
           <li>
             <Link
