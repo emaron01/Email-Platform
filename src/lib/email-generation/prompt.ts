@@ -54,7 +54,7 @@ export function buildEmailPrompt(
         ? {
             emailLength: "LONG",
             instruction:
-              "Write exactly 3 short paragraphs separated by one blank line. Paragraph 1: problem, 2 sentences max. Paragraph 2: how Matthew solves it, 2-3 sentences max. Paragraph 3: offer and close question, 2 sentences max. Target 120-150 words.",
+              "Write exactly 3 short paragraphs separated by one blank line. Paragraph 1: problem, 2 sentences max. Paragraph 2: how the product solves it, 2-3 sentences max. Paragraph 3: offer and close question, 2 sentences max. Target 120-150 words.",
           }
         : {
             emailLength: "MEDIUM",

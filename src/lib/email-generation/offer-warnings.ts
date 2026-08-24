@@ -22,13 +22,5 @@ export function unacknowledgedOfferWarnings(
     offerText: campaignOfferText(context.campaign),
     claimsNotToMake: context.product.messaging.claimsNotToMake,
     terminologyToAvoid: context.product.messaging.terminologyToAvoid,
-    evidence: [
-      context.product.description,
-      context.product.valueProposition,
-      ...context.product.messaging.proofPoints,
-      ...context.product.messaging.supportedClaims,
-      ...context.persona.messaging.proofPoints,
-      ...context.persona.messagingNotes,
-    ].filter((value): value is string => Boolean(value)),
   });
 }

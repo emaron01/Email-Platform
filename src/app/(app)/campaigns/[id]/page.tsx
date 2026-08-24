@@ -96,7 +96,8 @@ export default async function CampaignDetailPage({
       ? storedOfferConflicts
       : detectDeterministicOfferConflicts({
           offerText: campaignOfferText(offer),
-          ...guardContext,
+          claimsNotToMake: guardContext.claimsNotToMake,
+          terminologyToAvoid: guardContext.terminologyToAvoid,
         });
   const offerConflictsAcknowledged =
     Boolean(campaign.offerConflictAcknowledgedAt) &&

@@ -57,7 +57,7 @@ describe("campaign contact management seams", () => {
     expect(action).toContain("offerConflictAcknowledgedHash");
     expect(action).toContain("offerConflictAcknowledgedAt");
     expect(validation).toContain("campaign_offer_validation");
-    expect(validation).toContain("semantic conflicts");
+    expect(validation).toContain("every factual assertion and commitment");
   });
 });
 

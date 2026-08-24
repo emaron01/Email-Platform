@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getEmailAiConfig, getEmailAiProvider } from "@/lib/ai";
+import type { AiProvider, AiStructuredResponse } from "@/lib/ai/types";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
@@ -76,16 +77,39 @@ function stringList(value: unknown): string[] {
   return typeof value === "string" && value.trim() ? [value.trim()] : [];
 }
 
+export function evidenceFragments(
+  value: unknown,
+  path = "evidence",
+): string[] {
+  if (typeof value === "string") {
+    return value.trim() ? [`${path}: ${value.trim()}`] : [];
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return [`${path}: ${String(value)}`];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((entry, index) =>
+      evidenceFragments(entry, `${path}[${index}]`),
+    );
+  }
+  if (!value || typeof value !== "object") return [];
+  return Object.entries(value as Record<string, unknown>).flatMap(
+    ([key, entry]) => evidenceFragments(entry, `${path}.${key}`),
+  );
+}
+
 export function campaignOfferGuardContext(input: {
   product: {
     description: string | null;
     valueProposition: string | null;
     messagingJson: unknown;
+    profileJson?: unknown;
   };
   persona: {
     messagingNotes: string | null;
     personaMessagingJson: unknown;
   };
+  normalizedEvidenceJson?: unknown;
 }): {
   claimsNotToMake: string[];
   terminologyToAvoid: string[];
@@ -103,6 +127,11 @@ export function campaignOfferGuardContext(input: {
       ...stringList(productMessaging.supportedClaims),
       ...stringList(personaMessaging.proofPoints),
       input.persona.messagingNotes,
+      ...evidenceFragments(input.product.profileJson, "productProfile"),
+      ...evidenceFragments(
+        input.normalizedEvidenceJson,
+        "approvedProductEvidence",
+      ),
     ].filter((value): value is string => Boolean(value?.trim())),
   };
 }
@@ -145,29 +174,6 @@ function normalized(value: string): string {
     .trim();
 }
 
-function durationTerms(value: string): string[] {
-  return Array.from(
-    value.matchAll(/\b(\d+)\s*[- ]?\s*(day|week|month|year)s?\b/gi),
-    (match) => `${match[1]} ${match[2].toLowerCase()}`,
-  );
-}
-
-function pricingTerms(value: string): string[] {
-  return Array.from(
-    value.matchAll(/\$\s?\d[\d,]*(?:\.\d{1,2})?/g),
-    (match) => match[0].replace(/\s/g, ""),
-  );
-}
-
-function audienceCountTerms(value: string): string[] {
-  return Array.from(
-    value.matchAll(
-      /\b\d+\s+(?:users?|seats?|reps?|representatives?|managers?|licenses?)\b/gi,
-    ),
-    (match) => match[0].toLowerCase(),
-  );
-}
-
 function conflictKey(conflict: OfferConflict): string {
   return `${conflict.code}:${normalized(conflict.message)}`;
 }
@@ -176,12 +182,9 @@ export function detectDeterministicOfferConflicts(input: {
   offerText: string;
   claimsNotToMake: string[];
   terminologyToAvoid: string[];
-  evidence: string[];
 }): OfferConflict[] {
   const conflicts: OfferConflict[] = [];
   const offerNormalized = normalized(input.offerText);
-  const evidenceText = input.evidence.join("\n");
-  const evidenceNormalized = normalized(evidenceText);
 
   for (const term of input.terminologyToAvoid) {
     if (term && offerNormalized.includes(normalized(term))) {
@@ -205,72 +208,42 @@ export function detectDeterministicOfferConflicts(input: {
     }
   }
 
-  const promisesCancellationForAccuracy =
-    /\bif\b[\s\S]{0,100}\bforecast accuracy\b[\s\S]{0,80}\b(?:does not|doesnt|fails? to|not)\b[\s\S]{0,40}\bimprov\w*\b[\s\S]{0,80}\bcancel\b/i.test(
-      input.offerText,
-    );
-  const accuracyGuaranteeProhibited = input.claimsNotToMake.some((claim) =>
-    /guarantee\w*[\s\S]*forecast accuracy|forecast accuracy[\s\S]*guarantee/i.test(
-      claim,
-    ),
-  );
-  if (promisesCancellationForAccuracy && accuracyGuaranteeProhibited) {
-    conflicts.push({
-      code: "CLAIM_CONFLICT",
-      message:
-        "Your offer promises cancellation if forecast accuracy does not improve. Your product materials prohibit guaranteed forecast-accuracy claims. Keep anyway?",
-      offerExcerpt: input.offerText,
-      evidenceExcerpt: input.claimsNotToMake.find((claim) =>
-        /forecast accuracy/i.test(claim),
-      ) ?? null,
-    });
-  }
-
-  const evidenceDurations = new Set(
-    durationTerms(evidenceText).map(normalized),
-  );
-  for (const duration of durationTerms(input.offerText)) {
-    if (
-      evidenceDurations.size > 0 &&
-      !evidenceDurations.has(normalized(duration))
-    ) {
-      conflicts.push({
-        code: "EVIDENCE_CONFLICT",
-        message: `Your offer says “${duration},” but product evidence supports ${Array.from(evidenceDurations).join(", ")}. Keep anyway?`,
-        offerExcerpt: duration,
-        evidenceExcerpt: durationTerms(evidenceText).join(", "),
-      });
-    }
-  }
-
-  for (const price of pricingTerms(input.offerText)) {
-    if (!evidenceNormalized.includes(normalized(price))) {
-      conflicts.push({
-        code: "EVIDENCE_CONFLICT",
-        message: `Your offer includes pricing of ${price}, which is not supported by the current product evidence. Keep anyway?`,
-        offerExcerpt: price,
-        evidenceExcerpt: null,
-      });
-    }
-  }
-
-  const evidenceCounts = new Set(
-    audienceCountTerms(evidenceText).map(normalized),
-  );
-  for (const count of audienceCountTerms(input.offerText)) {
-    if (evidenceCounts.size > 0 && !evidenceCounts.has(normalized(count))) {
-      conflicts.push({
-        code: "EVIDENCE_CONFLICT",
-        message: `Your offer says “${count},” while current product evidence describes ${Array.from(evidenceCounts).join(", ")}. Keep anyway?`,
-        offerExcerpt: count,
-        evidenceExcerpt: audienceCountTerms(evidenceText).join(", "),
-      });
-    }
-  }
-
   return Array.from(
     new Map(conflicts.map((conflict) => [conflictKey(conflict), conflict])).values(),
   );
+}
+
+export async function validateOfferSemantically(input: {
+  ai: AiProvider;
+  offerText: string;
+  claimsNotToMake: string[];
+  terminologyToAvoid: string[];
+  productEvidence: string[];
+}): Promise<AiStructuredResponse<z.infer<typeof offerValidationSchema>>> {
+  return input.ai.generateStructured({
+    messages: [
+      {
+        role: "system",
+        content:
+          "Validate an offer against the supplied product restrictions and evidence. Evaluate every factual assertion and commitment by meaning, without relying on exact wording or preselected categories. Report a conflict when an offer assertion is prohibited, uses avoided terminology, or contradicts a stated product fact. Do not infer a conflict merely because the evidence is silent. A newer offer may legitimately differ, so report specific warnings rather than rewriting or rejecting it. Return JSON only.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify(
+          {
+            offer: input.offerText,
+            claimsNotToMake: input.claimsNotToMake,
+            terminologyToAvoid: input.terminologyToAvoid,
+            productEvidence: input.productEvidence,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+    schema: offerValidationSchema,
+    schemaName: "campaign_offer_validation",
+  });
 }
 
 export async function validateCampaignOffer(input: {
@@ -287,6 +260,8 @@ export async function validateCampaignOffer(input: {
         description: true,
         valueProposition: true,
         messagingJson: true,
+        profileJson: true,
+        approvedEvidenceBundleId: true,
       },
     }),
     prisma.persona.findFirst({
@@ -303,8 +278,22 @@ export async function validateCampaignOffer(input: {
     );
   }
 
+  const approvedEvidence = product.approvedEvidenceBundleId
+    ? await prisma.productEvidenceBundle.findFirst({
+        where: {
+          id: product.approvedEvidenceBundleId,
+          organizationId: input.organizationId,
+          productId: input.productId,
+        },
+        select: { normalizedEvidenceJson: true },
+      })
+    : null;
   const { claimsNotToMake, terminologyToAvoid, evidence } =
-    campaignOfferGuardContext({ product, persona });
+    campaignOfferGuardContext({
+      product,
+      persona,
+      normalizedEvidenceJson: approvedEvidence?.normalizedEvidenceJson,
+    });
   const offerText = campaignOfferText(input.offer);
   const hash = campaignOfferValidationHash({
     offer: input.offer,
@@ -320,38 +309,18 @@ export async function validateCampaignOffer(input: {
     offerText,
     claimsNotToMake,
     terminologyToAvoid,
-    evidence,
   });
   const started = Date.now();
 
   try {
     getEmailAiConfig();
     const ai = getEmailAiProvider();
-    const response = await ai.generateStructured({
-      messages: [
-        {
-          role: "system",
-          content:
-            "You validate a campaign offer against product claim restrictions and evidence. Identify semantic conflicts, including paraphrases and conditional guarantees. A newer offer may legitimately differ, so report warnings rather than rewriting or rejecting it. Return JSON only.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify(
-            {
-              offer: offerText,
-              claimsNotToMake,
-              terminologyToAvoid,
-              productEvidence: evidence,
-              exampleConflict:
-                "If forecast accuracy does not improve, cancel semantically conflicts with a prohibition on guaranteed forecast-accuracy claims.",
-            },
-            null,
-            2,
-          ),
-        },
-      ],
-      schema: offerValidationSchema,
-      schemaName: "campaign_offer_validation",
+    const response = await validateOfferSemantically({
+      ai,
+      offerText,
+      claimsNotToMake,
+      terminologyToAvoid,
+      productEvidence: evidence,
     });
     const conflicts = Array.from(
       new Map(

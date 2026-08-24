@@ -9,6 +9,7 @@ import type {
 import { prisma } from "@/lib/prisma";
 import { resolveActiveOrganization } from "@/lib/auth/session";
 import { TenantError } from "@/lib/tenant/errors";
+import { evidenceFragments } from "@/lib/campaign/offer-validation";
 
 const CONTACT_RESEARCH_FRESHNESS_DAYS = 90;
 
@@ -97,6 +98,7 @@ export type EmailGenerationContext = {
     name: string;
     description: string | null;
     valueProposition: string | null;
+    evidence: string[];
     messaging: {
       primaryPositioning: string[];
       coreValueThemes: string[];
@@ -225,7 +227,7 @@ export async function loadEmailGenerationContext(
     );
   }
 
-  const [voiceSamples, contactResearch] = await Promise.all([
+  const [voiceSamples, contactResearch, approvedEvidence] = await Promise.all([
     prisma.voiceSample.findMany({
       where: { organizationId, userId },
       orderBy: { createdAt: "desc" },
@@ -244,6 +246,16 @@ export async function loadEmailGenerationContext(
         },
       },
     }),
+    campaign.product.approvedEvidenceBundleId
+      ? prisma.productEvidenceBundle.findFirst({
+          where: {
+            id: campaign.product.approvedEvidenceBundleId,
+            organizationId,
+            productId: campaign.product.id,
+          },
+          select: { normalizedEvidenceJson: true },
+        })
+      : Promise.resolve(null),
   ]);
   const freshContactResearch = isFreshContactResearch(contactResearch)
     ? contactResearch
@@ -292,6 +304,17 @@ export async function loadEmailGenerationContext(
       name: campaign.product.name,
       description: campaign.product.description,
       valueProposition: campaign.product.valueProposition,
+      evidence: [
+        campaign.product.description,
+        campaign.product.valueProposition,
+        ...stringList(productMessaging.proofPoints),
+        ...stringList(productMessaging.supportedClaims),
+        ...evidenceFragments(campaign.product.profileJson, "productProfile"),
+        ...evidenceFragments(
+          approvedEvidence?.normalizedEvidenceJson,
+          "approvedProductEvidence",
+        ),
+      ].filter((value): value is string => Boolean(value?.trim())),
       messaging: {
         primaryPositioning: stringList(
           productMessaging.primaryPositioning,

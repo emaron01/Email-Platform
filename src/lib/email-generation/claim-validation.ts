@@ -34,19 +34,6 @@ function normalized(value: string): string {
     .trim();
 }
 
-function offerSensitiveTerms(value: string): string[] {
-  const patterns = [
-    /\b\d+\s*[- ]?\s*(?:day|week|month|year)s?\b/gi,
-    /\$\s?\d[\d,]*(?:\.\d{1,2})?/g,
-    /\b\d+\s+(?:users?|seats?|reps?|representatives?|managers?|licenses?)\b/gi,
-    /\bfree\s+(?:trial|pilot|analysis)\b/gi,
-    /\b(?:trial|pilot|pricing|discount|cancel(?:lation)?|no obligation)\b/gi,
-  ];
-  return Array.from(
-    new Set(patterns.flatMap((pattern) => Array.from(value.matchAll(pattern), (match) => match[0]))),
-  );
-}
-
 export function deterministicClaimViolations(input: {
   body: string;
   claimsNotToMake: string[];
@@ -95,34 +82,6 @@ export function deterministicClaimViolations(input: {
     }
   }
 
-  if (
-    !input.offerConflictsAcknowledged &&
-    /\bif\b[\s\S]{0,100}\bforecast accuracy\b[\s\S]{0,80}\b(?:does not|doesnt|fails? to|not)\b[\s\S]{0,40}\bimprov\w*\b[\s\S]{0,80}\bcancel\b/i.test(
-      input.body,
-    )
-  ) {
-    violations.push({
-      type: "PROHIBITED_CLAIM",
-      description:
-        "Generated copy promises cancellation if forecast accuracy does not improve.",
-      matchedGuard:
-        input.claimsNotToMake.find((claim) => /forecast accuracy/i.test(claim)) ??
-        "Guaranteed forecast-accuracy claims",
-      bodyExcerpt: input.body,
-    });
-  }
-
-  for (const term of offerSensitiveTerms(input.body)) {
-    if (!offerNormalized.includes(normalized(term))) {
-      violations.push({
-        type: "INVENTED_OFFER_TERM",
-        description: `Generated copy introduced offer term “${term}” that is absent from the campaign offer.`,
-        matchedGuard: input.offerText || "No campaign offer is set.",
-        bodyExcerpt: term,
-      });
-    }
-  }
-
   return violations;
 }
 
@@ -152,7 +111,7 @@ export async function validateGeneratedEmailClaims(input: {
       {
         role: "system",
         content:
-          "You are a strict semantic compliance validator for outbound email. Detect paraphrases and implied guarantees, not only exact string matches. Also detect trial, pilot, duration, pricing, cancellation, or audience-size terms that are not present in the campaign offer. If an offer conflict was explicitly acknowledged, the exact campaign offer terms are allowed, but no additional terms may be invented. Return JSON only.",
+          "Validate generated outbound email by meaning, not only exact wording. Evaluate every assertion against the supplied restrictions, product evidence, persona guidance, and campaign offer without relying on preselected categories. Any assertion that changes what the sender is offering must be semantically supported by the campaign offer. If an offer conflict was explicitly acknowledged, the exact meaning of that offer is allowed, but no additional offer assertion may be invented. Return JSON only.",
       },
       {
         role: "user",
@@ -169,9 +128,10 @@ export async function validateGeneratedEmailClaims(input: {
             terminologyToAvoid:
               input.context.product.messaging.terminologyToAvoid,
             supportedClaims: input.context.product.messaging.supportedClaims,
+            productEvidence: input.context.product.evidence,
             personaMessagingNotes: input.context.persona.messagingNotes,
             instruction:
-              "Flag semantically equivalent prohibited claims. Example: “If forecast accuracy does not improve, cancel” conflicts with a prohibition on guaranteed forecast-accuracy claims unless that exact offer conflict was explicitly acknowledged.",
+              "Flag semantic equivalents of prohibited claims, contradictions with stated product facts, and generated offer assertions that are not supported by the campaign offer.",
           },
           null,
           2,

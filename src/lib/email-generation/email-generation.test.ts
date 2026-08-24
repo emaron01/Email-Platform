@@ -53,6 +53,7 @@ function contextFixture(
       name: "Forecast OS",
       description: "Forecasting software",
       valueProposition: "More reliable forecasts",
+      evidence: ["Published product fact: configurable workflow."],
       messaging: {
         primaryPositioning: ["A forecast operating system"],
         coreValueThemes: ["Consistency"],
@@ -198,7 +199,7 @@ describe("buildEmailPrompt", () => {
     ],
     [
       "LONG",
-      "Write exactly 3 short paragraphs separated by one blank line. Paragraph 1: problem, 2 sentences max. Paragraph 2: how Matthew solves it, 2-3 sentences max. Paragraph 3: offer and close question, 2 sentences max. Target 120-150 words.",
+      "Write exactly 3 short paragraphs separated by one blank line. Paragraph 1: problem, 2 sentences max. Paragraph 2: how the product solves it, 2-3 sentences max. Paragraph 3: offer and close question, 2 sentences max. Target 120-150 words.",
     ],
   ] as const)("uses the exact %s structure instruction", (emailLength, instruction) => {
     const base = contextFixture();
@@ -400,45 +401,146 @@ describe("sequence and claim guards", () => {
     expect(replyStrategy("NOT_INTERESTED")).toMatch(/stop selling/i);
   });
 
-  it("catches exact and semantic forecast-accuracy violations", async () => {
+  it("keeps the deterministic guard limited to product-supplied restrictions", async () => {
     const { deterministicClaimViolations } = await import(
       "@/lib/email-generation/claim-validation"
     );
-    const exact = deterministicClaimViolations({
-      body: "We guarantee forecast accuracy improvement.",
-      claimsNotToMake: ["forecast accuracy improvement"],
+    const violations = deterministicClaimViolations({
+      body: "We promise installation timelines.",
+      claimsNotToMake: ["promise installation timelines"],
       terminologyToAvoid: [],
       offerText: "",
       offerConflictsAcknowledged: false,
     });
-    expect(exact.some((violation) => violation.type === "PROHIBITED_CLAIM")).toBe(
-      true,
-    );
-
-    const productionExample = deterministicClaimViolations({
-      body: "If your forecast accuracy does not improve, cancel.",
-      claimsNotToMake: ["Guaranteed forecast accuracy or revenue lift"],
-      terminologyToAvoid: [],
-      offerText:
-        "If your forecast accuracy does not improve, cancel.",
-      offerConflictsAcknowledged: false,
-    });
     expect(
-      productionExample.some(
-        (violation) =>
-          violation.description ===
-          "Generated copy promises cancellation if forecast accuracy does not improve.",
-      ),
+      violations.some((violation) => violation.type === "PROHIBITED_CLAIM"),
     ).toBe(true);
   });
 
-  it("runs a semantic AI guard for paraphrased prohibited claims", async () => {
+  it("semantically flags unrelated physical-security offer claims", async () => {
+    const { validateOfferSemantically } = await import(
+      "@/lib/campaign/offer-validation"
+    );
+    const restrictions = [
+      "no published incident-reduction figures",
+      "do not promise installation timelines",
+    ];
+    const fixtures = [
+      {
+        offer: "We'll cut your incident rate or you don't pay.",
+        matchedGuard: restrictions[0],
+      },
+      {
+        offer: "Fully installed within 30 days, guaranteed.",
+        matchedGuard: restrictions[1],
+      },
+    ];
+
+    for (const fixture of fixtures) {
+      const generateStructured = vi.fn(async (request) => {
+        const serialized = JSON.stringify(request.messages);
+        expect(serialized).toContain(fixture.offer);
+        expect(serialized).toContain(fixture.matchedGuard);
+        expect(request.messages[0].content).toMatch(
+          /every factual assertion and commitment/i,
+        );
+        return {
+          data: {
+            conflicts: [
+              {
+                code: "CLAIM_CONFLICT" as const,
+                message: `Offer conflicts with: ${fixture.matchedGuard}`,
+                offerExcerpt: fixture.offer,
+                evidenceExcerpt: fixture.matchedGuard,
+              },
+            ],
+          },
+          rawText: "{}",
+          provider: "fixture",
+          model: "semantic-fixture",
+          modelUrlIdentifier: "semantic-fixture",
+        };
+      });
+      const response = await validateOfferSemantically({
+        ai: {
+          generateStructured:
+            generateStructured as unknown as import("@/lib/ai/types").AiProvider["generateStructured"],
+        },
+        offerText: fixture.offer,
+        claimsNotToMake: restrictions,
+        terminologyToAvoid: [],
+        productEvidence: [
+          "Published materials make no quantified safety-outcome claim.",
+          "Deployment timing is determined after an on-site assessment.",
+        ],
+      });
+      expect(response.data.conflicts).toHaveLength(1);
+      expect(response.data.conflicts[0].evidenceExcerpt).toBe(
+        fixture.matchedGuard,
+      );
+    }
+  });
+
+  it("compares sites, units, and hours without fixed term extractors", async () => {
+    const { evidenceFragments, validateOfferSemantically } = await import(
+      "@/lib/campaign/offer-validation"
+    );
+    const offer =
+      "Coverage includes 20 sites, 300 sensor units, and 120 service hours.";
+    const productEvidence = evidenceFragments(
+      {
+        standardPackage: {
+          sites: 12,
+          sensorUnits: 240,
+          serviceHours: 80,
+        },
+      },
+      "approvedProductEvidence",
+    );
+    const generateStructured = vi.fn(async (request) => {
+      expect(JSON.stringify(request.messages)).toContain(offer);
+      expect(JSON.stringify(request.messages)).toContain(
+        "approvedProductEvidence.standardPackage.sites: 12",
+      );
+      return {
+        data: {
+          conflicts: ["20 sites", "300 sensor units", "120 service hours"].map(
+            (offerExcerpt) => ({
+              code: "EVIDENCE_CONFLICT" as const,
+              message: `${offerExcerpt} contradicts the stated package scope.`,
+              offerExcerpt,
+              evidenceExcerpt: productEvidence.join("; "),
+            }),
+          ),
+        },
+        rawText: "{}",
+        provider: "fixture",
+        model: "semantic-fixture",
+        modelUrlIdentifier: "semantic-fixture",
+      };
+    });
+    const response = await validateOfferSemantically({
+      ai: {
+        generateStructured:
+          generateStructured as unknown as import("@/lib/ai/types").AiProvider["generateStructured"],
+      },
+      offerText: offer,
+      claimsNotToMake: [],
+      terminologyToAvoid: [],
+      productEvidence,
+    });
+    expect(response.data.conflicts.map((conflict) => conflict.offerExcerpt)).toEqual(
+      ["20 sites", "300 sensor units", "120 service hours"],
+    );
+  });
+
+  it("runs the same semantic guard on generated copy", async () => {
     const { validateGeneratedEmailClaims } = await import(
       "@/lib/email-generation/claim-validation"
     );
     const generateStructured = vi.fn(async (request) => {
       expect(JSON.stringify(request.messages)).toContain(
-        "If forecast accuracy does not improve, cancel",
+        "Fully installed within 30 days, guaranteed.",
       );
       return {
         data: {
@@ -447,10 +549,9 @@ describe("sequence and claim guards", () => {
             {
               type: "PROHIBITED_CLAIM" as const,
               description:
-                "Conditional cancellation implies guaranteed forecast-accuracy improvement.",
-              matchedGuard: "Guaranteed forecast accuracy or revenue lift",
-              bodyExcerpt:
-                "If your forecast accuracy does not improve, cancel.",
+                "The generated copy promises a fixed installation timeline.",
+              matchedGuard: "do not promise installation timelines",
+              bodyExcerpt: "Fully installed within 30 days, guaranteed.",
             },
           ],
         },
@@ -468,74 +569,93 @@ describe("sequence and claim guards", () => {
       context: contextFixture({
         campaign: {
           ...contextFixture().campaign,
-          offerDescription:
-            "If your forecast accuracy does not improve, cancel.",
+          offerDescription: "Security system assessment",
         },
         product: {
           ...contextFixture().product,
+          evidence: [
+            "Deployment timing is determined after an on-site assessment.",
+          ],
           messaging: {
             ...contextFixture().product.messaging,
-            claimsNotToMake: [
-              "Guaranteed forecast accuracy or revenue lift",
-            ],
+            claimsNotToMake: ["do not promise installation timelines"],
           },
         },
       }),
-      subject: "A lower-risk pilot",
-      body: "If your forecast accuracy does not improve, cancel.",
+      subject: "Physical security deployment",
+      body: "Fully installed within 30 days, guaranteed.",
     });
     expect(generateStructured).toHaveBeenCalledOnce();
     expect(
       result.violations.some(
         (violation) =>
           violation.description ===
-          "Conditional cancellation implies guaranteed forecast-accuracy improvement.",
+          "The generated copy promises a fixed installation timeline.",
       ),
     ).toBe(true);
   });
 
-  it("rejects trial and pricing terms when no campaign offer is set", async () => {
-    const { deterministicClaimViolations } = await import(
+  it("flags an invented offer assertion without a campaign offer", async () => {
+    const { validateGeneratedEmailClaims } = await import(
       "@/lib/email-generation/claim-validation"
     );
-    const violations = deterministicClaimViolations({
-      body: "Try our free 90-day trial for $500.",
-      claimsNotToMake: [],
-      terminologyToAvoid: [],
-      offerText: "",
-      offerConflictsAcknowledged: false,
+    const body = "The package includes 14 on-site inspection hours.";
+    const generateStructured = vi.fn(async () => ({
+      data: {
+        compliant: false,
+        violations: [
+          {
+            type: "INVENTED_OFFER_TERM" as const,
+            description:
+              "The generated package scope is absent from the campaign offer.",
+            matchedGuard: null,
+            bodyExcerpt: body,
+          },
+        ],
+      },
+      rawText: "{}",
+      provider: "fixture",
+      model: "semantic-fixture",
+      modelUrlIdentifier: "semantic-fixture",
+    }));
+    const result = await validateGeneratedEmailClaims({
+      ai: {
+        generateStructured:
+          generateStructured as unknown as import("@/lib/ai/types").AiProvider["generateStructured"],
+      },
+      context: contextFixture({
+        campaign: {
+          ...contextFixture().campaign,
+          offerName: null,
+          offerDescription: null,
+          offerCta: null,
+          offerNotes: null,
+        },
+      }),
+      subject: "Inspection coverage",
+      body,
     });
     expect(
-      violations.filter(
+      result.violations.some(
         (violation) => violation.type === "INVENTED_OFFER_TERM",
-      ).length,
-    ).toBeGreaterThan(0);
-  });
-
-  it("warns on the real 90-day cancellation offer at save time", async () => {
-    const { detectDeterministicOfferConflicts } = await import(
-      "@/lib/campaign/offer-validation"
-    );
-    const conflicts = detectDeterministicOfferConflicts({
-      offerText:
-        "Free 90 Day Analysis. 5 reps and 1 Manager for 90 Days. If your forecast accuracy does not improve, cancel.",
-      claimsNotToMake: ["Guaranteed forecast accuracy or revenue lift"],
-      terminologyToAvoid: [],
-      evidence: [
-        "A 30-day pilot is offered.",
-        "Starter pricing is $500 per month for up to 7 users.",
-      ],
-    });
-    expect(conflicts.map((conflict) => conflict.message)).toContain(
-      "Your offer promises cancellation if forecast accuracy does not improve. Your product materials prohibit guaranteed forecast-accuracy claims. Keep anyway?",
-    );
-    expect(
-      conflicts.some(
-        (conflict) =>
-          conflict.code === "EVIDENCE_CONFLICT" &&
-          conflict.message.includes("90 day"),
       ),
     ).toBe(true);
+  });
+
+  it("contains no fitted product vocabulary or fixed evidence extractors", () => {
+    const offerValidator = readFileSync(
+      "src/lib/campaign/offer-validation.ts",
+      "utf8",
+    );
+    const draftValidator = readFileSync(
+      "src/lib/email-generation/claim-validation.ts",
+      "utf8",
+    );
+    for (const source of [offerValidator, draftValidator]) {
+      expect(source).not.toMatch(
+        /forecast|accuracy|trial|roi|durationTerms|pricingTerms|audienceCountTerms|offerSensitiveTerms/i,
+      );
+    }
   });
 });
 
