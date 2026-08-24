@@ -28,9 +28,9 @@ enum CampaignStatus {
 }
 
 enum EmailLength {
-  ONE_PARAGRAPH
-  TWO_PARAGRAPH
-  THREE_PARAGRAPH
+  SHORT
+  MEDIUM
+  LONG
 }
 
 enum CampaignContactStatus {
@@ -51,6 +51,25 @@ enum EmailDraftStatus {
 enum EmailDraftSource {
   AI
   MANUAL
+}
+
+enum EmailDraftKind {
+  INITIAL
+  FOLLOW_UP
+  REPLY
+}
+
+enum ReplyClassification {
+  INTERESTED
+  OBJECTION
+  REFERRAL
+  NOT_NOW
+  NOT_INTERESTED
+}
+
+enum EmailSentMethod {
+  MANUAL_ASSERTION
+  CONNECTED_PROVIDER
 }
 
 enum ContactListSource {
@@ -138,6 +157,9 @@ enum UsageOperation {
   PERSONA_URL_RETRIEVAL
   VOICE_SAMPLE_SAVED
   EMAIL_DRAFT_CREATED
+  CAMPAIGN_OFFER_VALIDATED
+  EMAIL_DRAFT_SENT
+  EMAIL_REPLY_CLASSIFIED
 }
 
 enum CriterionDataType {
@@ -396,6 +418,7 @@ model User {
   adminAuditEvents         AdminAuditEvent[]
   transactionalEmailEvents TransactionalEmailEvent[]
   voiceSamples             VoiceSample[]
+  sentEmailDrafts          EmailDraft[]              @relation("EmailDraftSentBy")
 
   @@index([platformRole])
   @@index([activeOrganizationId])
@@ -1311,23 +1334,27 @@ model ContactScore {
 }
 
 model Campaign {
-  id               String         @id @default(cuid())
-  organizationId   String
-  name             String
-  productId        String
-  icpId            String
-  personaId        String
+  id                            String         @id @default(cuid())
+  organizationId                String
+  name                          String
+  productId                     String
+  icpId                         String
+  personaId                     String
   /// Legacy optional link to Offer table. New campaigns use offer* fields below.
-  offerId          String?
-  offerName        String?
-  offerDescription String?
-  offerCta         String?
-  offerNotes       String?
-  emailLength      EmailLength    @default(TWO_PARAGRAPH)
-  emailGuidance    String?
-  status           CampaignStatus @default(DRAFT)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  offerId                       String?
+  offerName                     String?
+  offerDescription              String?
+  offerCta                      String?
+  offerNotes                    String?
+  offerValidationJson           Json?
+  offerValidationHash           String?
+  offerConflictAcknowledgedHash String?
+  offerConflictAcknowledgedAt   DateTime?
+  emailLength                   EmailLength    @default(MEDIUM)
+  emailGuidance                 String?
+  status                        CampaignStatus @default(DRAFT)
+  createdAt                     DateTime       @default(now())
+  updatedAt                     DateTime       @updatedAt
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product      Product           @relation(fields: [productId], references: [id])
@@ -1368,26 +1395,38 @@ model CampaignContact {
 }
 
 model EmailDraft {
-  id                String           @id @default(cuid())
-  organizationId    String
-  campaignContactId String
-  sequenceNumber    Int
-  subject           String?
-  body              String?
-  status            EmailDraftStatus @default(NOT_CREATED)
-  source            EmailDraftSource @default(AI)
-  approvedAt        DateTime?
-  sentAt            DateTime?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  id                  String               @id @default(cuid())
+  organizationId      String
+  campaignContactId   String
+  sequenceNumber      Int
+  subject             String?
+  body                String?
+  status              EmailDraftStatus     @default(NOT_CREATED)
+  source              EmailDraftSource     @default(AI)
+  kind                EmailDraftKind       @default(INITIAL)
+  replyClassification ReplyClassification?
+  prospectReplyText   String?
+  referralSuggested   Boolean              @default(false)
+  inReplyToDraftId    String?
+  approvedAt          DateTime?
+  sentAt              DateTime?
+  sentMethod          EmailSentMethod?
+  sentByUserId        String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campaignContact CampaignContact @relation(fields: [campaignContactId], references: [id], onDelete: Cascade)
+  inReplyTo       EmailDraft?     @relation("EmailDraftReplies", fields: [inReplyToDraftId], references: [id], onDelete: SetNull)
+  replyDrafts     EmailDraft[]    @relation("EmailDraftReplies")
+  sentByUser      User?           @relation("EmailDraftSentBy", fields: [sentByUserId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, campaignContactId, sequenceNumber])
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([campaignContactId])
+  @@index([inReplyToDraftId])
+  @@index([sentByUserId])
   @@index([status])
 }
 

@@ -38,7 +38,12 @@ import {
   toSafeCrudDeleteError,
   type CrudDeleteResult,
 } from "@/lib/tenant/crud-delete";
-import { requireSetupDeletePermission } from "@/lib/auth/authz";
+import {
+  requireCurrentUser,
+  requireSetupDeletePermission,
+} from "@/lib/auth/authz";
+import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
+import { validateCampaignOffer } from "@/lib/campaign/offer-validation";
 
 function requiredString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -304,9 +309,52 @@ export async function createCampaignAction(
       };
     }
 
+    const [user, organizationId] = await Promise.all([
+      requireCurrentUser(),
+      requireOrganizationId(),
+    ]);
+    const offerValidation = await validateCampaignOffer({
+      organizationId,
+      userId: user.id,
+      productId: parsed.fields.productId,
+      personaId: parsed.fields.personaId,
+      offer: {
+        offerName: parsed.fields.offerName,
+        offerDescription: parsed.fields.offerDescription,
+        offerCta: parsed.fields.offerCta,
+        offerNotes: parsed.fields.offerNotes,
+      },
+    });
+    if (
+      offerValidation.conflicts.length > 0 &&
+      !parsed.values.acknowledgeOfferConflicts
+    ) {
+      return {
+        ok: false,
+        message: "Review the offer conflicts before creating this campaign.",
+        values: parsed.values,
+        offerConflicts: offerValidation.conflicts,
+        requiresOfferAcknowledgment: true,
+        semanticValidationCompleted:
+          offerValidation.semanticValidationCompleted,
+      };
+    }
+
     const campaign = await createCampaign({
       ...parsed.fields,
       contactIds: parsed.contactIds,
+      offerValidationJson: {
+        conflicts: offerValidation.conflicts,
+        semanticValidationCompleted:
+          offerValidation.semanticValidationCompleted,
+      },
+      offerValidationHash: offerValidation.hash,
+      offerConflictAcknowledgedHash:
+        offerValidation.conflicts.length > 0
+          ? offerValidation.hash
+          : null,
+      offerConflictAcknowledgedAt:
+        offerValidation.conflicts.length > 0 ? new Date() : null,
     });
     revalidatePath("/campaigns");
     revalidatePath("/");

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CampaignContactsManager } from "@/components/CampaignContactsManager";
 import { CampaignEmailSettingsForm } from "@/components/CampaignEmailSettingsForm";
-import { GenerateEmailDraftForm } from "@/components/GenerateEmailDraftForm";
+import { CampaignOfferForm } from "@/components/CampaignOfferForm";
+import { EmailSequenceWorkspace } from "@/components/EmailSequenceWorkspace";
 import {
   PageHeader,
   Panel,
@@ -16,6 +17,12 @@ import {
 import { TenantError } from "@/lib/tenant/errors";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { contactDisplayName, formatDate } from "@/lib/utils";
+import {
+  campaignOfferGuardContext,
+  campaignOfferText,
+  detectDeterministicOfferConflicts,
+  offerConflictsFromJson,
+} from "@/lib/campaign/offer-validation";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -71,6 +78,29 @@ export default async function CampaignDetailPage({
     campaign.offerDescription ?? campaign.offer?.description ?? null;
   const offerCta = campaign.offerCta ?? campaign.offer?.primaryCta ?? null;
   const offerNotes = campaign.offerNotes ?? campaign.offer?.notes ?? null;
+  const storedOfferConflicts = offerConflictsFromJson(
+    campaign.offerValidationJson,
+  );
+  const offer = {
+    offerName,
+    offerDescription,
+    offerCta,
+    offerNotes,
+  };
+  const guardContext = campaignOfferGuardContext({
+    product: campaign.product,
+    persona: campaign.persona,
+  });
+  const offerConflicts =
+    storedOfferConflicts.length > 0
+      ? storedOfferConflicts
+      : detectDeterministicOfferConflicts({
+          offerText: campaignOfferText(offer),
+          ...guardContext,
+        });
+  const offerConflictsAcknowledged =
+    Boolean(campaign.offerConflictAcknowledgedAt) &&
+    campaign.offerConflictAcknowledgedHash === campaign.offerValidationHash;
 
   return (
     <div className="space-y-6">
@@ -101,6 +131,18 @@ export default async function CampaignDetailPage({
       </Panel>
 
       <Panel
+        title="Campaign offer"
+        description="Offer claims are checked against current product materials when saved."
+      >
+        <CampaignOfferForm
+          campaignId={campaign.id}
+          offer={offer}
+          conflicts={offerConflicts}
+          conflictsAcknowledged={offerConflictsAcknowledged}
+        />
+      </Panel>
+
+      <Panel
         title="Email settings"
         description="Control the length and campaign-specific guidance used for generated drafts."
       >
@@ -113,65 +155,50 @@ export default async function CampaignDetailPage({
 
       <Panel
         title={`Attached contacts (${campaign.contacts.length})`}
-        description="Each contact has one first-email draft in this phase."
+        description="Build one email at a time, mark it sent, then add the next sequence position."
       >
         {campaign.contacts.length > 0 ? (
           <div className="space-y-4">
             {campaign.contacts.map((campaignContact) => {
               const contact = campaignContact.contact;
-              const draft = campaignContact.emailDrafts[0] ?? null;
-              const completeDraft =
-                draft?.subject && draft.body
-                  ? {
-                      draftId: draft.id,
-                      subject: draft.subject,
-                      body: draft.body,
-                    }
-                  : null;
 
               return (
                 <section
                   key={campaignContact.id}
                   className="grid gap-4 rounded-md border border-slate-200 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"
                 >
-                  <div className="text-sm">
-                    <p className="font-medium text-slate-900">
-                      {contactDisplayName(
-                        contact.firstName,
-                        contact.lastName,
-                      )}
-                    </p>
-                    <p className="text-slate-600">
-                      {[contact.title, contact.company]
+                  <EmailSequenceWorkspace
+                    campaignContactId={campaignContact.id}
+                    contactName={contactDisplayName(
+                      contact.firstName,
+                      contact.lastName,
+                    )}
+                    contactDetails={
+                      [contact.title, contact.company]
                         .filter(Boolean)
-                        .join(" · ") || "No role details"}
-                    </p>
-                    <p className="text-slate-500">
-                      {contact.email ?? "No email address"}
-                    </p>
-                    <dl className="mt-3 grid grid-cols-2 gap-3">
-                      <Meta
-                        label="Contact status"
-                        value={campaignContact.status}
-                      />
-                      <Meta
-                        label="Draft status"
-                        value={draft?.status ?? "NOT_CREATED"}
-                      />
-                    </dl>
-                  </div>
-
-                  {draft && !completeDraft ? (
-                    <p className="text-sm text-amber-700">
-                      This contact has a draft record without displayable
-                      content.
-                    </p>
-                  ) : (
-                    <GenerateEmailDraftForm
-                      campaignContactId={campaignContact.id}
-                      existingDraft={completeDraft}
-                    />
-                  )}
+                        .join(" · ") || "No role details"
+                    }
+                    contactEmail={contact.email ?? "No email address"}
+                    contactStatus={campaignContact.status}
+                    initialDrafts={campaignContact.emailDrafts
+                      .filter(
+                        (draft) => Boolean(draft.subject) && Boolean(draft.body),
+                      )
+                      .map((draft) => ({
+                        id: draft.id,
+                        sequenceNumber: draft.sequenceNumber,
+                        subject: draft.subject ?? "",
+                        body: draft.body ?? "",
+                        status: draft.status,
+                        kind: draft.kind,
+                        sentAt: draft.sentAt?.toISOString() ?? null,
+                        replyClassification: draft.replyClassification,
+                        referralSuggested: draft.referralSuggested,
+                      }))}
+                    offerWarnings={
+                      offerConflictsAcknowledged ? [] : offerConflicts
+                    }
+                  />
                 </section>
               );
             })}

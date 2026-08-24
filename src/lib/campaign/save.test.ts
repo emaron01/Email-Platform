@@ -31,7 +31,7 @@ describe("parseCampaignFormData", () => {
     );
     expect(parsed.fieldErrors).toEqual({});
     expect(parsed.fields.name).toBe("Q1 Outreach");
-    expect(parsed.fields.emailLength).toBe("TWO_PARAGRAPH");
+    expect(parsed.fields.emailLength).toBe("MEDIUM");
     expect(parsed.fields.emailGuidance).toBeNull();
     expect(parsed.contactIds).toEqual([]);
   });
@@ -49,21 +49,21 @@ describe("parseCampaignEmailSettingsFormData", () => {
   it("accepts a selected length and optional guidance", () => {
     const parsed = parseCampaignEmailSettingsFormData(
       formFrom({
-        emailLength: "THREE_PARAGRAPH",
+        emailLength: "LONG",
         emailGuidance: " Emphasize the free trial. ",
       }),
     );
 
     expect(parsed.fieldErrors).toEqual({});
     expect(parsed.fields).toEqual({
-      emailLength: "THREE_PARAGRAPH",
+      emailLength: "LONG",
       emailGuidance: "Emphasize the free trial.",
     });
   });
 
   it("defaults missing length and stores empty guidance as null", () => {
     const parsed = parseCampaignEmailSettingsFormData(formFrom({}));
-    expect(parsed.fields.emailLength).toBe("TWO_PARAGRAPH");
+    expect(parsed.fields.emailLength).toBe("MEDIUM");
     expect(parsed.fields.emailGuidance).toBeNull();
   });
 

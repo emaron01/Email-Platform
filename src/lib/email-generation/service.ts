@@ -1,5 +1,9 @@
 import "server-only";
 
+import type {
+  EmailDraftKind,
+  ReplyClassification,
+} from "@prisma/client";
 import {
   AiConfigError,
   AiProviderError,
@@ -10,6 +14,7 @@ import {
 } from "@/lib/ai";
 import type { AiMessage } from "@/lib/ai/types";
 import { emailDraftGenerationSchema } from "@/lib/email-generation/contract";
+import { validateGeneratedEmailClaims } from "@/lib/email-generation/claim-validation";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import { EMAIL_GENERATION_PROMPT_VERSION } from "@/lib/email-generation/prompt";
 import { prisma } from "@/lib/prisma";
@@ -39,6 +44,49 @@ export function sanitizeGeneratedEmailBody(value: string): string {
   }
 
   return lines.join("\n").trim();
+}
+
+function normalizedComparable(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/^(?:hi|hello|hey)\s+[^,]+,\s*/i, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function openingSentence(body: string): string {
+  return body
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .find(Boolean) ?? "";
+}
+
+function closingQuestion(body: string): string {
+  const questions = body.match(/[^.!?\n]*\?/g) ?? [];
+  return questions.at(-1)?.trim() ?? "";
+}
+
+export function assertFollowUpNovelty(
+  body: string,
+  priorEmails: Array<{ body: string | null }>,
+): void {
+  const opening = normalizedComparable(openingSentence(body));
+  const ask = normalizedComparable(closingQuestion(body));
+  for (const prior of priorEmails) {
+    if (!prior.body) continue;
+    const priorOpening = normalizedComparable(openingSentence(prior.body));
+    const priorAsk = normalizedComparable(closingQuestion(prior.body));
+    if (opening && opening === priorOpening) {
+      throw new AiValidationError(
+        "Follow-up repeated a prior email opening.",
+      );
+    }
+    if (ask && ask === priorAsk) {
+      throw new AiValidationError(
+        "Follow-up repeated a prior email closing ask.",
+      );
+    }
+  }
 }
 
 function sleep(ms: number): Promise<void> {
@@ -102,23 +150,61 @@ export function toSafeEmailGenerationError(error: unknown): string {
 
 export async function generateEmailDraft(
   context: EmailGenerationContext,
-  messages: [AiMessage, AiMessage],
+  messages: AiMessage[],
+  options: {
+    sequenceNumber?: number;
+    kind?: EmailDraftKind;
+    replyClassification?: ReplyClassification | null;
+    prospectReplyText?: string | null;
+    referralSuggested?: boolean;
+    inReplyToDraftId?: string | null;
+  } = {},
 ): Promise<{
   draftId: string;
   subject: string;
   body: string;
+  regenerated: boolean;
+  sequenceNumber: number;
+  kind: EmailDraftKind;
+  replyClassification: ReplyClassification | null;
+  referralSuggested: boolean;
 }> {
-  const existing = await prisma.emailDraft.findFirst({
+  const sequenceNumber = options.sequenceNumber ?? 1;
+  const kind = options.kind ?? (sequenceNumber === 1 ? "INITIAL" : "FOLLOW_UP");
+  if (!Number.isInteger(sequenceNumber) || sequenceNumber < 1) {
+    throw new TenantError("Email sequence position must be a positive integer.");
+  }
+  const existing = await prisma.emailDraft.findUnique({
     where: {
-      organizationId: context.organizationId,
-      campaignContactId: context.campaignContact.id,
+      organizationId_campaignContactId_sequenceNumber: {
+        organizationId: context.organizationId,
+        campaignContactId: context.campaignContact.id,
+        sequenceNumber,
+      },
     },
-    select: { id: true },
+    select: { id: true, status: true, sentAt: true },
   });
-  if (existing) {
-    throw new TenantError(
-      "An email draft already exists for this campaign contact.",
+  if (existing?.status === "SENT" || existing?.sentAt) {
+    throw new TenantError("Sent emails are read-only and cannot be regenerated.");
+  }
+  const regenerated = Boolean(existing);
+  if (sequenceNumber > 1) {
+    const previous = context.sequence.find(
+      (draft) => draft.sequenceNumber === sequenceNumber - 1,
     );
+    if (previous?.status !== "SENT" || !previous.sentAt) {
+      throw new TenantError(
+        `Email ${sequenceNumber - 1} must be marked as sent before Email ${sequenceNumber} can be generated.`,
+      );
+    }
+  }
+  if (kind === "REPLY") {
+    const source = context.sequence.find(
+      (draft) => draft.id === options.inReplyToDraftId,
+    );
+    if (source?.status !== "SENT" || !source.sentAt) {
+      throw new TenantError("Replies can only be drafted from a sent email.");
+    }
   }
 
   const started = Date.now();
@@ -151,16 +237,67 @@ export async function generateEmailDraft(
     );
     const subject = removeEmDashes(response.data.subject);
     const body = sanitizeGeneratedEmailBody(response.data.body);
+    const priorSentEmails = context.sequence.filter(
+      (draft) =>
+        draft.sequenceNumber < sequenceNumber &&
+        draft.status === "SENT" &&
+        draft.sentAt,
+    );
+    if (kind === "FOLLOW_UP") {
+      assertFollowUpNovelty(body, priorSentEmails);
+    }
+    const claimValidation = await validateGeneratedEmailClaims({
+      ai,
+      context,
+      subject,
+      body,
+    });
+    if (claimValidation.violations.length > 0) {
+      throw new AiValidationError(
+        "Generated email conflicts with product claims or offer evidence.",
+        {
+          issues: claimValidation.violations.map((violation) => ({
+            path: "body",
+            code: violation.type,
+            expected: violation.description,
+          })),
+          usage: claimValidation.response.usage,
+        },
+      );
+    }
 
-    const draft = await prisma.emailDraft.create({
-      data: {
+    const draft = await prisma.emailDraft.upsert({
+      where: {
+        organizationId_campaignContactId_sequenceNumber: {
+          organizationId: context.organizationId,
+          campaignContactId: context.campaignContact.id,
+          sequenceNumber,
+        },
+      },
+      create: {
         organizationId: context.organizationId,
         campaignContactId: context.campaignContact.id,
-        sequenceNumber: 1,
+        sequenceNumber,
         subject,
         body,
         status: "DRAFT",
         source: "AI",
+        kind,
+        replyClassification: options.replyClassification ?? null,
+        prospectReplyText: options.prospectReplyText?.trim() || null,
+        referralSuggested: options.referralSuggested ?? false,
+        inReplyToDraftId: options.inReplyToDraftId ?? null,
+      },
+      update: {
+        subject,
+        body,
+        status: "DRAFT",
+        source: "AI",
+        kind,
+        replyClassification: options.replyClassification ?? null,
+        prospectReplyText: options.prospectReplyText?.trim() || null,
+        referralSuggested: options.referralSuggested ?? false,
+        inReplyToDraftId: options.inReplyToDraftId ?? null,
       },
     });
 
@@ -173,8 +310,12 @@ export async function generateEmailDraft(
       operation: "EMAIL_DRAFT_CREATED",
       provider: response.provider,
       model: response.model,
-      inputTokens: response.usage?.inputTokens ?? null,
-      outputTokens: response.usage?.outputTokens ?? null,
+      inputTokens:
+        (response.usage?.inputTokens ?? 0) +
+          (claimValidation.response.usage?.inputTokens ?? 0) || null,
+      outputTokens:
+        (response.usage?.outputTokens ?? 0) +
+          (claimValidation.response.usage?.outputTokens ?? 0) || null,
       status: "SUCCESS",
       retryCount,
       durationMs: Date.now() - started,
@@ -186,6 +327,9 @@ export async function generateEmailDraft(
         promptVersion: EMAIL_GENERATION_PROMPT_VERSION,
         usedContactResearch: Boolean(context.contactResearch),
         usedVoiceSample: context.voiceSamples.length > 0,
+        regenerated,
+        kind,
+        claimValidationCompleted: true,
       },
     });
 
@@ -193,6 +337,11 @@ export async function generateEmailDraft(
       draftId: draft.id,
       subject,
       body,
+      regenerated,
+      sequenceNumber: draft.sequenceNumber,
+      kind: draft.kind,
+      replyClassification: draft.replyClassification,
+      referralSuggested: draft.referralSuggested,
     };
   } catch (error) {
     await recordUsageEvent({
@@ -209,6 +358,8 @@ export async function generateEmailDraft(
       durationMs: Date.now() - started,
       metadata: {
         campaignContactId: context.campaignContact.id,
+        sequenceNumber,
+        kind,
         promptVersion: EMAIL_GENERATION_PROMPT_VERSION,
         errorType:
           error instanceof Error ? error.constructor.name : "UnknownError",

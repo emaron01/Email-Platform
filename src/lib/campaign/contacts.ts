@@ -6,9 +6,24 @@ import { TenantError } from "@/lib/tenant/errors";
 import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
 
 const campaignDetailInclude = {
-  product: { select: { id: true, name: true } },
+  product: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      valueProposition: true,
+      messagingJson: true,
+    },
+  },
   icp: { select: { id: true, name: true } },
-  persona: { select: { id: true, name: true } },
+  persona: {
+    select: {
+      id: true,
+      name: true,
+      messagingNotes: true,
+      personaMessagingJson: true,
+    },
+  },
   offer: {
     select: {
       id: true,
@@ -35,15 +50,23 @@ const campaignDetailInclude = {
         },
       },
       emailDrafts: {
-        where: { sequenceNumber: 1 },
-        orderBy: { createdAt: "desc" as const },
-        take: 1,
+        orderBy: { sequenceNumber: "asc" as const },
         select: {
           id: true,
+          sequenceNumber: true,
           subject: true,
           body: true,
           status: true,
           source: true,
+          kind: true,
+          sentAt: true,
+          sentMethod: true,
+          replyClassification: true,
+          prospectReplyText: true,
+          referralSuggested: true,
+          inReplyToDraftId: true,
+          createdAt: true,
+          updatedAt: true,
         },
       },
     },

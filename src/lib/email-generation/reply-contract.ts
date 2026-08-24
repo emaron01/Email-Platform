@@ -1,0 +1,1 @@
+export const PROSPECT_REPLY_MAX_CHARS = 10_000;

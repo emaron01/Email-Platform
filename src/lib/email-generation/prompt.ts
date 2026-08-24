@@ -1,29 +1,33 @@
 import type { AiMessage } from "@/lib/ai/types";
+import type { ReplyClassification } from "@prisma/client";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "4";
+export const EMAIL_GENERATION_PROMPT_VERSION = "7";
+export const ADDITIONAL_GUIDANCE_MAX_CHARS = 200;
 
 const SYSTEM_PROMPT = `You write concise, credible one-to-one outbound emails.
 
 Use the supplied context in this strict priority order:
-1. Additional campaign instructions, when supplied. They override writing defaults.
-2. The campaign offer and call to action.
-3. Persona pain points and desired outcomes.
-4. Persona positioning, proof points, and objections.
-5. Supported product claims and terminology constraints.
-6. Fresh contact role research, when supplied.
-7. The first writing sample, when supplied, as the authoritative style reference.
+1. Per-contact regeneration instructions, when supplied. They override campaign guidance and writing defaults.
+2. Additional campaign instructions, when supplied. They override writing defaults.
+3. The campaign offer and call to action.
+4. Persona pain points and desired outcomes.
+5. Persona positioning, proof points, and objections.
+6. Supported product claims and terminology constraints.
+7. Fresh contact role research, when supplied.
+8. The first writing sample, when supplied, as the authoritative style reference.
 
-Never invent customer names, metrics, case studies, product capabilities, or facts about the recipient. Respect every claim and term listed under "do not use". If optional context is empty, continue without it.
-Additional campaign instructions may override writing and template defaults, including the default prohibition on bullets, but they cannot override factual constraints, the selected paragraph count, JSON-only output, the sign-off prohibition, or the em dash prohibition.
+Never invent customer names, metrics, case studies, product capabilities, offer terms, or facts about the recipient. Product claimsNotToMake, terminologyToAvoid, and persona messaging notes are hard constraints regardless of the priority list. Campaign offer terms are authoritative only when they appear in the supplied offer. If optional context is empty, continue without it.
+Per-contact regeneration instructions override additional campaign instructions and writing defaults, but they cannot override factual constraints, the selected emailStructure, JSON-only output, the sign-off prohibition, or the em dash prohibition.
+Additional campaign instructions may override writing and template defaults, including the default prohibition on bullets, but they cannot override factual constraints, the selected emailStructure, JSON-only output, the sign-off prohibition, or the em dash prohibition.
 
 Writing and structure rules:
-- Follow the exact paragraph count in emailStructure. Separate paragraphs with one blank line and do not put the greeting in its own paragraph.
+- Follow the emailStructure instruction exactly. It defines sentence count, paragraph count, word target, and purpose per paragraph. These constraints override your defaults.
 - When a writing sample is supplied, match its sentence length, approximate total length, conversational cadence, paragraph pacing, and closing style. Do not merely borrow its terminology.
 - The writing sample's structure overrides any default outbound email or marketing template structure, except that emailStructure overrides the sample's paragraph count.
 - Use the sample only as a style reference. Do not copy its recipient, claims, offer, or other facts.
 - Do not use bullet points or structured headers unless the additional campaign instructions explicitly request them.
-- Do not write more than four sentences in any paragraph.
+- No paragraph may exceed three sentences. Do not write run-on sentences.
 - Close the email with exactly one soft question. Do not place additional questions earlier in the email.
 - Do not include a sign-off, sender name, sender placeholder, signature, or signature block of any kind. Never write "Best," or "[Your Name]". End the body immediately after the closing question or final sentence because the sender's email client appends the signature.
 - Never use an em dash character in the subject, body, or reasoning. No exceptions. Use a period, comma, or rewrite the sentence instead.
@@ -35,15 +39,32 @@ Return JSON only. No markdown fences, no preamble, and no text after the JSON ob
 
 export function buildEmailPrompt(
   context: EmailGenerationContext,
+  additionalGuidance?: string | null,
 ): [AiMessage, AiMessage] {
   const firstVoiceSample = context.voiceSamples[0] ?? null;
-  const paragraphCount =
-    context.campaign.emailLength === "ONE_PARAGRAPH"
-      ? 1
-      : context.campaign.emailLength === "THREE_PARAGRAPH"
-        ? 3
-        : 2;
+  const regenerationGuidance = additionalGuidance?.trim() || null;
+  const emailStructure =
+    context.campaign.emailLength === "SHORT"
+      ? {
+          emailLength: "SHORT",
+          instruction:
+            "Write 2-3 sentences total. No paragraph breaks. One hook, one soft close question. Target 40-60 words.",
+        }
+      : context.campaign.emailLength === "LONG"
+        ? {
+            emailLength: "LONG",
+            instruction:
+              "Write exactly 3 short paragraphs separated by one blank line. Paragraph 1: problem, 2 sentences max. Paragraph 2: how Matthew solves it, 2-3 sentences max. Paragraph 3: offer and close question, 2 sentences max. Target 120-150 words.",
+          }
+        : {
+            emailLength: "MEDIUM",
+            instruction:
+              "Write exactly 2 short paragraphs separated by one blank line. Paragraph 1: problem or context, 2 sentences max. Paragraph 2: offer and close question, 2 sentences max. Target 80-100 words.",
+          };
   const userPayload = {
+    regenerationInstructions: regenerationGuidance
+      ? `Per-contact regeneration instruction that overrides campaign guidance: ${regenerationGuidance}`
+      : null,
     offer: {
       name: context.campaign.offerName,
       description: context.campaign.offerDescription,
@@ -53,11 +74,7 @@ export function buildEmailPrompt(
     additionalInstructions: context.campaign.emailGuidance
       ? `Additional instructions that override defaults: ${context.campaign.emailGuidance}`
       : null,
-    emailStructure: {
-      emailLength: context.campaign.emailLength,
-      requiredParagraphCount: paragraphCount,
-      instruction: `Write exactly ${paragraphCount} paragraph${paragraphCount === 1 ? "" : "s"}.`,
-    },
+    emailStructure,
     personaNeeds: {
       persona: context.persona.name,
       painPoints: context.persona.painPoints,
@@ -68,6 +85,7 @@ export function buildEmailPrompt(
       proofPoints: context.persona.messaging.proofPoints,
       likelyObjections: context.persona.messaging.objections,
       terminology: context.persona.profile.terminology,
+      messagingNotes: context.persona.messagingNotes,
       organizationalPressures:
         context.persona.profile.organizationalPressures,
     },
@@ -132,6 +150,134 @@ export function buildEmailPrompt(
     {
       role: "user",
       content: `Generate the first outbound email for this campaign contact.\n\n${JSON.stringify(userPayload, null, 2)}${voiceReference}`,
+    },
+  ];
+}
+
+export function followUpGuidance(sequenceNumber: number): string {
+  if (sequenceNumber === 2) {
+    return "Use a genuinely different angle or proof point from Email 1. Do not repeat its opener, framing, or ask.";
+  }
+  if (sequenceNumber === 3) {
+    return "Be shorter and more direct than Email 2. Introduce a new concrete reason to respond. Do not repeat a prior opener or ask.";
+  }
+  return "Write a brief close-out with its own useful reason to exist. Do not make “following up on my last email” the entire content, and do not repeat a prior opener or ask.";
+}
+
+export function buildFollowUpEmailPrompt(
+  context: EmailGenerationContext,
+  sequenceNumber: number,
+  additionalGuidance?: string | null,
+): AiMessage[] {
+  const messages = buildEmailPrompt(context, additionalGuidance);
+  const priorEmails = context.sequence
+    .filter(
+      (draft) =>
+        draft.sequenceNumber < sequenceNumber &&
+        draft.status === "SENT" &&
+        draft.subject &&
+        draft.body,
+    )
+    .map((draft) => ({
+      sequenceNumber: draft.sequenceNumber,
+      subject: draft.subject,
+      body: draft.body,
+      sentAt: draft.sentAt?.toISOString() ?? null,
+    }));
+  const previous = priorEmails.at(-1);
+
+  return [
+    {
+      role: "system",
+      content: `${messages[0].content}
+
+This is Email ${sequenceNumber} in an existing sequence. Every prior email is supplied verbatim. Do not repeat any prior opener, angle, framing, or closing ask. The new email must carry its own reason to exist and should be shorter than the immediately preceding email by default.
+For follow-ups, being shorter than the prior email and the position guidance override the campaign word target and default paragraph count. Keep paragraphs short and preserve all factual and claim guards.
+
+Position guidance: ${followUpGuidance(sequenceNumber)}`,
+    },
+    {
+      role: "user",
+      content: `${messages[1].content}
+
+SEQUENCE CONTEXT:
+${JSON.stringify(
+  {
+    currentPosition: sequenceNumber,
+    positionGuidance: followUpGuidance(sequenceNumber),
+    priorEmailsVerbatim: priorEmails,
+    previousEmailWordCount: previous?.body
+      ? previous.body.trim().split(/\s+/).length
+      : null,
+  },
+  null,
+  2,
+)}`,
+    },
+  ];
+}
+
+export function replyStrategy(
+  classification: ReplyClassification,
+): string {
+  switch (classification) {
+    case "INTERESTED":
+      return "Answer their interest directly, reinforce the most relevant value, and propose one concrete next step.";
+    case "OBJECTION":
+      return "Acknowledge the specific objection without defensiveness, answer it with supported evidence, and ask one low-pressure question.";
+    case "REFERRAL":
+      return "Thank the original contact, respond to them directly, and ask for an introduction or permission to contact the referred person. Do not pretend the referred person is already a contact.";
+    case "NOT_NOW":
+      return "Respect the timing, avoid continuing the pitch, and ask for a specific acceptable window to revisit.";
+    case "NOT_INTERESTED":
+      return "Respect the decline, stop selling, and close politely without manufacturing urgency or another pitch.";
+  }
+}
+
+export function buildReplyEmailPrompt(input: {
+  context: EmailGenerationContext;
+  sourceDraft: {
+    sequenceNumber: number;
+    subject: string;
+    body: string;
+  };
+  prospectReply: string;
+  classification: ReplyClassification;
+  additionalGuidance?: string | null;
+}): AiMessage[] {
+  const messages = buildEmailPrompt(
+    input.context,
+    input.additionalGuidance,
+  );
+  return [
+    {
+      role: "system",
+      content: `${messages[0].content}
+
+Draft a direct reply to the prospect. Classification: ${input.classification}.
+Required response strategy: ${replyStrategy(input.classification)}
+The pasted prospect reply and original sent email are authoritative and must be handled specifically. Do not restart the original outbound pitch.
+The classification strategy overrides outbound email length, offer, and closing-question defaults when they conflict. Keep every factual and claim guard.`,
+    },
+    {
+      role: "user",
+      content: `${messages[1].content}
+
+REPLY CONTEXT:
+${JSON.stringify(
+  {
+    classification: input.classification,
+    responseStrategy: replyStrategy(input.classification),
+    originalSentEmail: input.sourceDraft,
+    prospectReplyVerbatim: input.prospectReply,
+    referralInstruction:
+      input.classification === "REFERRAL"
+        ? "Reply to the original contact and flag that a new contact may need to be added. Do not create one."
+        : null,
+  },
+  null,
+  2,
+)}`,
     },
   ];
 }

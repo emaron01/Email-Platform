@@ -1,6 +1,11 @@
 import "server-only";
 
-import type { EmailLength } from "@prisma/client";
+import type {
+  EmailDraftKind,
+  EmailDraftStatus,
+  EmailLength,
+  ReplyClassification,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveActiveOrganization } from "@/lib/auth/session";
 import { TenantError } from "@/lib/tenant/errors";
@@ -70,6 +75,10 @@ export type EmailGenerationContext = {
     offerDescription: string | null;
     offerCta: string | null;
     offerNotes: string | null;
+    offerValidationJson: unknown;
+    offerValidationHash: string | null;
+    offerConflictAcknowledgedHash: string | null;
+    offerConflictAcknowledgedAt: Date | null;
     emailLength: EmailLength;
     emailGuidance: string | null;
   };
@@ -104,6 +113,7 @@ export type EmailGenerationContext = {
     name: string;
     painPoints: string[];
     desiredOutcomes: string[];
+    messagingNotes: string[];
     messaging: {
       positioning: string[];
       proofPoints: string[];
@@ -139,6 +149,19 @@ export type EmailGenerationContext = {
     sampleText: string;
     createdAt: Date;
   }>;
+  sequence: Array<{
+    id: string;
+    sequenceNumber: number;
+    kind: EmailDraftKind;
+    subject: string | null;
+    body: string | null;
+    status: EmailDraftStatus;
+    sentAt: Date | null;
+    replyClassification: ReplyClassification | null;
+    prospectReplyText: string | null;
+    referralSuggested: boolean;
+    inReplyToDraftId: string | null;
+  }>;
 };
 
 export async function loadEmailGenerationContext(
@@ -158,6 +181,22 @@ export async function loadEmailGenerationContext(
     where: { id: campaignContactId, organizationId },
     include: {
       contact: true,
+      emailDrafts: {
+        orderBy: { sequenceNumber: "asc" },
+        select: {
+          id: true,
+          sequenceNumber: true,
+          kind: true,
+          subject: true,
+          body: true,
+          status: true,
+          sentAt: true,
+          replyClassification: true,
+          prospectReplyText: true,
+          referralSuggested: true,
+          inReplyToDraftId: true,
+        },
+      },
       campaign: {
         include: {
           product: true,
@@ -229,6 +268,12 @@ export async function loadEmailGenerationContext(
       offerDescription: campaign.offerDescription,
       offerCta: campaign.offerCta,
       offerNotes: campaign.offerNotes,
+      offerValidationJson: campaign.offerValidationJson,
+      offerValidationHash: campaign.offerValidationHash,
+      offerConflictAcknowledgedHash:
+        campaign.offerConflictAcknowledgedHash,
+      offerConflictAcknowledgedAt:
+        campaign.offerConflictAcknowledgedAt,
       emailLength: campaign.emailLength,
       emailGuidance: campaign.emailGuidance,
     },
@@ -267,6 +312,7 @@ export async function loadEmailGenerationContext(
       name: campaign.persona.name,
       painPoints: lines(campaign.persona.painPoints),
       desiredOutcomes: lines(campaign.persona.desiredOutcomes),
+      messagingNotes: lines(campaign.persona.messagingNotes),
       messaging: {
         positioning: stringList(personaMessaging.positioning),
         proofPoints: stringList(personaMessaging.proofPoints),
@@ -305,5 +351,99 @@ export async function loadEmailGenerationContext(
         }
       : null,
     voiceSamples,
+    sequence: campaignContact.emailDrafts,
   };
+}
+
+export async function loadEmailReplyContext(
+  emailDraftId: string,
+  userId: string,
+): Promise<{
+  context: EmailGenerationContext;
+  sourceDraft: {
+    id: string;
+    campaignContactId: string;
+    sequenceNumber: number;
+    subject: string;
+    body: string;
+    status: EmailDraftStatus;
+    sentAt: Date;
+  };
+}> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new TenantError("User not found.");
+  const membership = await resolveActiveOrganization(user);
+  if (!membership) {
+    throw new TenantError("No active organization membership was found.");
+  }
+  const draft = await prisma.emailDraft.findFirst({
+    where: {
+      id: emailDraftId,
+      organizationId: membership.organization.id,
+    },
+    select: {
+      id: true,
+      campaignContactId: true,
+      sequenceNumber: true,
+      subject: true,
+      body: true,
+      status: true,
+      sentAt: true,
+    },
+  });
+  if (
+    !draft ||
+    !draft.subject ||
+    !draft.body ||
+    draft.status !== "SENT" ||
+    !draft.sentAt
+  ) {
+    throw new TenantError("Replies can only be drafted from a sent email.");
+  }
+  return {
+    context: await loadEmailGenerationContext(
+      draft.campaignContactId,
+      userId,
+    ),
+    sourceDraft: {
+      ...draft,
+      subject: draft.subject,
+      body: draft.body,
+      sentAt: draft.sentAt,
+    },
+  };
+}
+
+export async function loadExistingEmailDraftContext(
+  emailDraftId: string,
+  userId: string,
+): Promise<{
+  context: EmailGenerationContext;
+  draft: EmailGenerationContext["sequence"][number];
+}> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new TenantError("User not found.");
+  const membership = await resolveActiveOrganization(user);
+  if (!membership) {
+    throw new TenantError("No active organization membership was found.");
+  }
+  const row = await prisma.emailDraft.findFirst({
+    where: {
+      id: emailDraftId,
+      organizationId: membership.organization.id,
+    },
+    select: { campaignContactId: true },
+  });
+  if (!row) {
+    throw new TenantError(
+      "Email draft does not belong to the active organization.",
+    );
+  }
+  const context = await loadEmailGenerationContext(
+    row.campaignContactId,
+    userId,
+  );
+  const draft = context.sequence.find((entry) => entry.id === emailDraftId);
+  if (!draft) throw new TenantError("Email draft was not found.");
+  return { context, draft };
 }

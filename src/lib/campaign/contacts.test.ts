@@ -27,15 +27,37 @@ describe("campaign contact management seams", () => {
 
     expect(listPage).toContain("href={`/campaigns/${campaign.id}`}");
     expect(listPage).not.toContain("GenerateEmailDraftForm");
-    expect(detailPage).toContain("GenerateEmailDraftForm");
+    expect(detailPage).toContain("EmailSequenceWorkspace");
     expect(detailPage).toContain("CampaignContactsManager");
-    expect(detailPage).toContain("Draft status");
+    expect(detailPage).toContain("mark it sent");
     expect(manager).toContain("Search existing contacts");
     expect(manager).toContain("Bulk add from a scored run");
     expect(manager).toContain("campaign-contacts-status");
     expect(actions).toContain("addContactsToCampaignAction");
     expect(actions).toContain("addScoringRunContactsToCampaignAction");
     expect(actions).toContain("Promise<CampaignContactsActionResult>");
+  });
+
+  it("warns and records explicit offer conflict acknowledgment at save time", () => {
+    const form = readFileSync(
+      "src/components/CampaignOfferForm.tsx",
+      "utf8",
+    );
+    const action = readFileSync(
+      "src/app/actions/campaign-offer.ts",
+      "utf8",
+    );
+    const validation = readFileSync(
+      "src/lib/campaign/offer-validation.ts",
+      "utf8",
+    );
+    expect(form).toContain('name="acknowledgeOfferConflicts"');
+    expect(form).toContain("Keep this offer anyway");
+    expect(action).toContain("validateCampaignOffer");
+    expect(action).toContain("offerConflictAcknowledgedHash");
+    expect(action).toContain("offerConflictAcknowledgedAt");
+    expect(validation).toContain("campaign_offer_validation");
+    expect(validation).toContain("semantic conflicts");
   });
 });
 
@@ -374,13 +396,13 @@ describe.skipIf(!hasDatabase)(
 
       await updateCampaignEmailSettings({
         campaignId,
-        emailLength: "ONE_PARAGRAPH",
+        emailLength: "SHORT",
         emailGuidance: "Emphasize the free trial",
       });
       const updated = await prisma.campaign.findUniqueOrThrow({
         where: { id: campaignId },
       });
-      expect(updated.emailLength).toBe("ONE_PARAGRAPH");
+      expect(updated.emailLength).toBe("SHORT");
       expect(updated.emailGuidance).toBe("Emphasize the free trial");
 
       process.env.DEV_ORGANIZATION_ID = orgBId;
@@ -388,7 +410,7 @@ describe.skipIf(!hasDatabase)(
         await expect(
           updateCampaignEmailSettings({
             campaignId,
-            emailLength: "THREE_PARAGRAPH",
+            emailLength: "LONG",
             emailGuidance: null,
           }),
         ).rejects.toBeInstanceOf(TenantError);

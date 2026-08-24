@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { config } from "dotenv";
 import { readFileSync } from "node:fs";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
-import { buildEmailPrompt } from "@/lib/email-generation/prompt";
+import {
+  buildEmailPrompt,
+  buildFollowUpEmailPrompt,
+  buildReplyEmailPrompt,
+  replyStrategy,
+} from "@/lib/email-generation/prompt";
 import { TenantError } from "@/lib/tenant/errors";
 
 config({ path: ".env.local" });
@@ -26,7 +31,11 @@ function contextFixture(
       offerDescription: "A review of forecast process gaps",
       offerCta: "Reply with a time for a 20-minute review",
       offerNotes: null,
-      emailLength: "TWO_PARAGRAPH",
+      offerValidationJson: null,
+      offerValidationHash: null,
+      offerConflictAcknowledgedHash: null,
+      offerConflictAcknowledgedAt: null,
+      emailLength: "MEDIUM",
       emailGuidance: "Emphasize the free trial",
     },
     contact: {
@@ -60,6 +69,7 @@ function contextFixture(
       name: "CRO",
       painPoints: ["Forecast calls rely on anecdotes"],
       desiredOutcomes: ["A defensible commit"],
+      messagingNotes: ["Avoid guaranteed forecast-accuracy claims."],
       messaging: {
         positioning: ["Make forecast changes explainable"],
         proofPoints: ["Evidence at opportunity level"],
@@ -103,6 +113,7 @@ function contextFixture(
         createdAt: new Date(0),
       },
     ],
+    sequence: [],
     ...overrides,
   };
 }
@@ -116,6 +127,7 @@ describe("buildEmailPrompt", () => {
 
     const prompt = messages[1].content;
     const offer = prompt.indexOf('"offer"');
+    const regeneration = prompt.indexOf('"regenerationInstructions"');
     const instructions = prompt.indexOf('"additionalInstructions"');
     const structure = prompt.indexOf('"emailStructure"');
     const needs = prompt.indexOf('"personaNeeds"');
@@ -124,6 +136,7 @@ describe("buildEmailPrompt", () => {
     const contact = prompt.indexOf('"contactContext"');
     const voice = prompt.indexOf('"voiceStyle"');
     expect([
+      regeneration,
       offer,
       instructions,
       structure,
@@ -135,6 +148,7 @@ describe("buildEmailPrompt", () => {
     ]).toEqual(
       [
         ...[
+          regeneration,
           offer,
           instructions,
           structure,
@@ -150,15 +164,43 @@ describe("buildEmailPrompt", () => {
     );
     expect(prompt).toContain("FIRST VOICE SAMPLE");
     expect(prompt).not.toContain("SECOND VOICE SAMPLE");
+    expect(prompt).toContain("Avoid guaranteed forecast-accuracy claims.");
     expect(messages[0].content).toMatch(/JSON only/i);
     expect(messages[0].content).toMatch(/No markdown/i);
   });
 
+  it("places regeneration guidance above campaign guidance", () => {
+    const messages = buildEmailPrompt(
+      contextFixture(),
+      "Make the hook more direct",
+    );
+    const prompt = messages[1].content;
+    const regeneration = prompt.indexOf('"regenerationInstructions"');
+    const campaignGuidance = prompt.indexOf('"additionalInstructions"');
+
+    expect(regeneration).toBeLessThan(campaignGuidance);
+    expect(prompt).toContain(
+      "Per-contact regeneration instruction that overrides campaign guidance: Make the hook more direct",
+    );
+    expect(messages[0].content).toMatch(
+      /Per-contact regeneration instructions.*override campaign guidance/i,
+    );
+  });
+
   it.each([
-    ["ONE_PARAGRAPH", 1],
-    ["TWO_PARAGRAPH", 2],
-    ["THREE_PARAGRAPH", 3],
-  ] as const)("enforces %s as exactly %i paragraphs", (emailLength, count) => {
+    [
+      "SHORT",
+      "Write 2-3 sentences total. No paragraph breaks. One hook, one soft close question. Target 40-60 words.",
+    ],
+    [
+      "MEDIUM",
+      "Write exactly 2 short paragraphs separated by one blank line. Paragraph 1: problem or context, 2 sentences max. Paragraph 2: offer and close question, 2 sentences max. Target 80-100 words.",
+    ],
+    [
+      "LONG",
+      "Write exactly 3 short paragraphs separated by one blank line. Paragraph 1: problem, 2 sentences max. Paragraph 2: how Matthew solves it, 2-3 sentences max. Paragraph 3: offer and close question, 2 sentences max. Target 120-150 words.",
+    ],
+  ] as const)("uses the exact %s structure instruction", (emailLength, instruction) => {
     const base = contextFixture();
     const messages = buildEmailPrompt(
       contextFixture({
@@ -169,13 +211,12 @@ describe("buildEmailPrompt", () => {
       }),
     );
 
-    expect(messages[1].content).toContain(
-      `"requiredParagraphCount": ${count}`,
+    expect(messages[1].content).toContain(`"emailLength": "${emailLength}"`);
+    expect(messages[1].content).toContain(instruction);
+    expect(messages[1].content).not.toContain("requiredParagraphCount");
+    expect(messages[0].content).toMatch(
+      /Follow the emailStructure instruction exactly/i,
     );
-    expect(messages[1].content).toContain(
-      `Write exactly ${count} paragraph${count === 1 ? "" : "s"}.`,
-    );
-    expect(messages[0].content).toMatch(/exact paragraph count/i);
   });
 
   it("places prefixed campaign guidance immediately after the offer", () => {
@@ -201,7 +242,8 @@ describe("buildEmailPrompt", () => {
     expect(systemPrompt).toMatch(/closing style/i);
     expect(systemPrompt).toMatch(/structure overrides/i);
     expect(systemPrompt).toMatch(/do not use bullet points/i);
-    expect(systemPrompt).toMatch(/more than four sentences/i);
+    expect(systemPrompt).toMatch(/No paragraph may exceed three sentences/i);
+    expect(systemPrompt).toMatch(/Do not write run-on sentences/i);
     expect(systemPrompt).toMatch(/exactly one soft question/i);
     expect(systemPrompt).toMatch(/do not include a sign-off/i);
     expect(systemPrompt).toMatch(/signature block of any kind/i);
@@ -280,11 +322,239 @@ describe("generated email output", () => {
   });
 });
 
+describe("sequence and claim guards", () => {
+  const sentEmail = {
+    id: "draft_1",
+    sequenceNumber: 1,
+    kind: "INITIAL" as const,
+    subject: "Forecast visibility",
+    body: "Hi Alex, forecast calls can hide unsupported commits.\n\nWould a quick audit help?",
+    status: "SENT" as const,
+    sentAt: new Date("2026-08-24T12:00:00.000Z"),
+    replyClassification: null,
+    prospectReplyText: null,
+    referralSuggested: false,
+    inReplyToDraftId: null,
+  };
+
+  it("puts Email 1 verbatim into the Email 2 prompt", () => {
+    const messages = buildFollowUpEmailPrompt(
+      contextFixture({ sequence: [sentEmail] }),
+      2,
+    );
+    expect(messages[1].content).toContain(sentEmail.subject);
+    expect(messages[1].content).toContain(
+      JSON.stringify(sentEmail.body).slice(1, -1),
+    );
+    expect(messages[0].content).toMatch(/different angle or proof point/i);
+    expect(messages[0].content).toMatch(/shorter than/i);
+  });
+
+  it("does not expose Email 2 until Email 1 is marked sent", async () => {
+    const { nextSequencePosition } = await import(
+      "@/lib/email-generation/sequence"
+    );
+    expect(() =>
+      nextSequencePosition(
+        contextFixture({
+          sequence: [
+            { ...sentEmail, status: "DRAFT", sentAt: null },
+          ],
+        }),
+      ),
+    ).toThrow(/must be marked as sent/i);
+    expect(
+      nextSequencePosition(contextFixture({ sequence: [sentEmail] })),
+    ).toBe(2);
+  });
+
+  it("rejects a reused opening line or closing ask", async () => {
+    const { assertFollowUpNovelty } = await import(
+      "@/lib/email-generation/service"
+    );
+    expect(() =>
+      assertFollowUpNovelty(sentEmail.body, [sentEmail]),
+    ).toThrow(/opening|ask/i);
+    expect(() =>
+      assertFollowUpNovelty(
+        "A different proof point is that deal evidence stays visible.\n\nWorth comparing approaches?",
+        [sentEmail],
+      ),
+    ).not.toThrow();
+  });
+
+  it("defines materially different strategies for all five reply classes", () => {
+    const classifications = [
+      "INTERESTED",
+      "OBJECTION",
+      "REFERRAL",
+      "NOT_NOW",
+      "NOT_INTERESTED",
+    ] as const;
+    const strategies = classifications.map(replyStrategy);
+    expect(new Set(strategies).size).toBe(5);
+    expect(replyStrategy("INTERESTED")).toMatch(/next step/i);
+    expect(replyStrategy("OBJECTION")).toMatch(/objection/i);
+    expect(replyStrategy("REFERRAL")).toMatch(/introduction|referred/i);
+    expect(replyStrategy("NOT_NOW")).toMatch(/window to revisit/i);
+    expect(replyStrategy("NOT_INTERESTED")).toMatch(/stop selling/i);
+  });
+
+  it("catches exact and semantic forecast-accuracy violations", async () => {
+    const { deterministicClaimViolations } = await import(
+      "@/lib/email-generation/claim-validation"
+    );
+    const exact = deterministicClaimViolations({
+      body: "We guarantee forecast accuracy improvement.",
+      claimsNotToMake: ["forecast accuracy improvement"],
+      terminologyToAvoid: [],
+      offerText: "",
+      offerConflictsAcknowledged: false,
+    });
+    expect(exact.some((violation) => violation.type === "PROHIBITED_CLAIM")).toBe(
+      true,
+    );
+
+    const productionExample = deterministicClaimViolations({
+      body: "If your forecast accuracy does not improve, cancel.",
+      claimsNotToMake: ["Guaranteed forecast accuracy or revenue lift"],
+      terminologyToAvoid: [],
+      offerText:
+        "If your forecast accuracy does not improve, cancel.",
+      offerConflictsAcknowledged: false,
+    });
+    expect(
+      productionExample.some(
+        (violation) =>
+          violation.description ===
+          "Generated copy promises cancellation if forecast accuracy does not improve.",
+      ),
+    ).toBe(true);
+  });
+
+  it("runs a semantic AI guard for paraphrased prohibited claims", async () => {
+    const { validateGeneratedEmailClaims } = await import(
+      "@/lib/email-generation/claim-validation"
+    );
+    const generateStructured = vi.fn(async (request) => {
+      expect(JSON.stringify(request.messages)).toContain(
+        "If forecast accuracy does not improve, cancel",
+      );
+      return {
+        data: {
+          compliant: false,
+          violations: [
+            {
+              type: "PROHIBITED_CLAIM" as const,
+              description:
+                "Conditional cancellation implies guaranteed forecast-accuracy improvement.",
+              matchedGuard: "Guaranteed forecast accuracy or revenue lift",
+              bodyExcerpt:
+                "If your forecast accuracy does not improve, cancel.",
+            },
+          ],
+        },
+        rawText: "{}",
+        provider: "fixture",
+        model: "semantic-fixture",
+        modelUrlIdentifier: "semantic-fixture",
+      };
+    });
+    const result = await validateGeneratedEmailClaims({
+      ai: {
+        generateStructured:
+          generateStructured as unknown as import("@/lib/ai/types").AiProvider["generateStructured"],
+      },
+      context: contextFixture({
+        campaign: {
+          ...contextFixture().campaign,
+          offerDescription:
+            "If your forecast accuracy does not improve, cancel.",
+        },
+        product: {
+          ...contextFixture().product,
+          messaging: {
+            ...contextFixture().product.messaging,
+            claimsNotToMake: [
+              "Guaranteed forecast accuracy or revenue lift",
+            ],
+          },
+        },
+      }),
+      subject: "A lower-risk pilot",
+      body: "If your forecast accuracy does not improve, cancel.",
+    });
+    expect(generateStructured).toHaveBeenCalledOnce();
+    expect(
+      result.violations.some(
+        (violation) =>
+          violation.description ===
+          "Conditional cancellation implies guaranteed forecast-accuracy improvement.",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects trial and pricing terms when no campaign offer is set", async () => {
+    const { deterministicClaimViolations } = await import(
+      "@/lib/email-generation/claim-validation"
+    );
+    const violations = deterministicClaimViolations({
+      body: "Try our free 90-day trial for $500.",
+      claimsNotToMake: [],
+      terminologyToAvoid: [],
+      offerText: "",
+      offerConflictsAcknowledged: false,
+    });
+    expect(
+      violations.filter(
+        (violation) => violation.type === "INVENTED_OFFER_TERM",
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("warns on the real 90-day cancellation offer at save time", async () => {
+    const { detectDeterministicOfferConflicts } = await import(
+      "@/lib/campaign/offer-validation"
+    );
+    const conflicts = detectDeterministicOfferConflicts({
+      offerText:
+        "Free 90 Day Analysis. 5 reps and 1 Manager for 90 Days. If your forecast accuracy does not improve, cancel.",
+      claimsNotToMake: ["Guaranteed forecast accuracy or revenue lift"],
+      terminologyToAvoid: [],
+      evidence: [
+        "A 30-day pilot is offered.",
+        "Starter pricing is $500 per month for up to 7 users.",
+      ],
+    });
+    expect(conflicts.map((conflict) => conflict.message)).toContain(
+      "Your offer promises cancellation if forecast accuracy does not improve. Your product materials prohibit guaranteed forecast-accuracy claims. Keep anyway?",
+    );
+    expect(
+      conflicts.some(
+        (conflict) =>
+          conflict.code === "EVIDENCE_CONFLICT" &&
+          conflict.message.includes("90 day"),
+      ),
+    ).toBe(true);
+  });
+});
+
 describe("email generation action and UI seams", () => {
+  it("rejects regeneration guidance over 200 characters before generation", async () => {
+    const { generateEmailDraftAction } = await import("@/app/actions/email");
+    const result = await generateEmailDraftAction(
+      "campaign_contact_1",
+      "x".repeat(201),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/200 characters or fewer/i);
+  });
+
   it("returns a typed result and renders the generated draft inline", () => {
     const action = readFileSync("src/app/actions/email.ts", "utf8");
     const form = readFileSync(
-      "src/components/GenerateEmailDraftForm.tsx",
+      "src/components/EmailSequenceWorkspace.tsx",
       "utf8",
     );
     const campaignDetailPage = readFileSync(
@@ -299,16 +569,24 @@ describe("email generation action and UI seams", () => {
     expect(action).toContain("buildEmailPrompt");
     expect(action).toContain("generateEmailDraft");
     expect(action).toContain("requireVerifiedForAiSpend");
+    expect(action).toContain("ADDITIONAL_GUIDANCE_MAX_CHARS");
     expect(form).toContain("Generate Email");
-    expect(form).toContain("email-generation-status");
+    expect(form).toContain("+ Add to sequence");
+    expect(form).toContain("I sent this — mark as sent");
+    expect(form).toContain("not a delivery confirmation");
+    expect(form).toContain("Draft reply");
+    expect(form).toContain("What should change?");
+    expect(form).toContain("Regenerate");
+    expect(form).toContain("maxLength={ADDITIONAL_GUIDANCE_MAX_CHARS}");
+    expect(form).toContain("email-sequence-status");
     expect(form).toContain(
       "Make sure your signature is set in your Outlook or Gmail client",
     );
     expect(form).toContain("text-xs text-slate-500");
-    expect(form).toContain("result.subject");
-    expect(form).toContain("result.body");
+    expect(form).toContain("selected.subject");
+    expect(form).toContain("selected.body");
     expect(form).not.toMatch(/send email|mailto|clipboard/i);
-    expect(campaignDetailPage).toContain("GenerateEmailDraftForm");
+    expect(campaignDetailPage).toContain("EmailSequenceWorkspace");
   });
 });
 
@@ -326,9 +604,11 @@ describe.skipIf(!hasDatabase)(
     let organizationId = "";
     let userAId = "";
     let userBId = "";
+    let campaignId = "";
     let campaignContactId = "";
     let foreignCampaignContactId = "";
     let contactId = "";
+    let contactListId = "";
 
     beforeAll(async () => {
       const { PrismaClient } = await import("@prisma/client");
@@ -397,6 +677,7 @@ describe.skipIf(!hasDatabase)(
           name: "CRO",
           painPoints: "Unreliable commits",
           desiredOutcomes: "Defensible forecasts",
+          messagingNotes: "Avoid guaranteed claims",
           personaMessagingJson: {
             positioning: ["Explain forecast movement"],
             proofPoints: ["Opportunity evidence"],
@@ -413,6 +694,7 @@ describe.skipIf(!hasDatabase)(
           totalContacts: 1,
         },
       });
+      contactListId = list.id;
       const contact = await prisma.contact.create({
         data: {
           organizationId,
@@ -433,10 +715,11 @@ describe.skipIf(!hasDatabase)(
           personaId: persona.id,
           offerName: "Forecast audit",
           offerCta: "Reply to book 20 minutes",
-          emailLength: "THREE_PARAGRAPH",
+          emailLength: "LONG",
           emailGuidance: "Emphasize the free trial",
         },
       });
+      campaignId = campaign.id;
       const campaignContact = await prisma.campaignContact.create({
         data: {
           organizationId,
@@ -577,7 +860,10 @@ describe.skipIf(!hasDatabase)(
         "Explain forecast movement",
       ]);
       expect(context.persona.profile.terminology).toEqual(["commit"]);
-      expect(context.campaign.emailLength).toBe("THREE_PARAGRAPH");
+      expect(context.persona.messagingNotes).toEqual([
+        "Avoid guaranteed claims",
+      ]);
+      expect(context.campaign.emailLength).toBe("LONG");
       expect(context.campaign.emailGuidance).toBe(
         "Emphasize the free trial",
       );
@@ -638,7 +924,7 @@ describe.skipIf(!hasDatabase)(
       ).rejects.toBeInstanceOf(TenantError);
     });
 
-    it("calls gpt-5.6-luna, creates one AI draft, and records usage", async () => {
+    it("calls gpt-5.6-luna and replaces the sequence-one draft on regeneration", async () => {
       if (!ready) return;
       const { clearAiProviderCache } = await import("@/lib/ai/provider");
       const { loadEmailGenerationContext } = await import(
@@ -655,6 +941,7 @@ describe.skipIf(!hasDatabase)(
       process.env.EMAIL_AI_API_KEY = "email-test-secret";
       process.env.EMAIL_AI_MAX_RETRIES = "0";
       clearAiProviderCache();
+      let generationCount = 0;
 
       vi.stubGlobal(
         "fetch",
@@ -663,6 +950,60 @@ describe.skipIf(!hasDatabase)(
           expect(request.model).toBe("gpt-5.6-luna");
           expect(request.tools).toBeUndefined();
           expect(request.temperature).toBeUndefined();
+          if (
+            JSON.stringify(request).includes(
+              "prospect_reply_classification",
+            )
+          ) {
+            return new Response(
+              JSON.stringify({
+                output: [
+                  {
+                    type: "message",
+                    content: [
+                      {
+                        type: "output_text",
+                        text: JSON.stringify({
+                          classification: "REFERRAL",
+                          referralSuggested: true,
+                          referralDetails: "Jane owns forecasting.",
+                          reasoning: "The prospect directed the rep to Jane.",
+                        }),
+                      },
+                    ],
+                  },
+                ],
+                usage: { input_tokens: 4, output_tokens: 3 },
+              }),
+              { status: 200 },
+            );
+          }
+          if (JSON.stringify(request).includes("email_claim_validation")) {
+            return new Response(
+              JSON.stringify({
+                output: [
+                  {
+                    type: "message",
+                    content: [
+                      {
+                        type: "output_text",
+                        text: JSON.stringify({
+                          compliant: true,
+                          violations: [],
+                        }),
+                      },
+                    ],
+                  },
+                ],
+                usage: { input_tokens: 3, output_tokens: 2 },
+              }),
+              { status: 200 },
+            );
+          }
+          generationCount += 1;
+          if (generationCount === 2) {
+            expect(JSON.stringify(request)).toContain("Make it shorter");
+          }
           return new Response(
             JSON.stringify({
               output: [
@@ -672,8 +1013,14 @@ describe.skipIf(!hasDatabase)(
                     {
                       type: "output_text",
                       text: JSON.stringify({
-                        subject: "A forecast—without the guesswork",
-                        body: "Hi Alex—quick question.\n\nWould a forecast audit be useful?\n\nBest,\n[Your Name]",
+                        subject:
+                          generationCount === 1
+                            ? "A forecast—without the guesswork"
+                            : "A shorter forecast note",
+                        body:
+                          generationCount === 1
+                            ? "Hi Alex—quick question.\n\nWould a forecast audit be useful?\n\nBest,\n[Your Name]"
+                            : "Hi Alex, would a forecast audit help?",
                         reasoning: "Connects the offer to forecast ownership.",
                       }),
                     },
@@ -701,19 +1048,27 @@ describe.skipIf(!hasDatabase)(
       );
       expect(created.subject).not.toContain("—");
       expect(created.body).not.toContain("—");
+      expect(created.regenerated).toBe(false);
 
-      const draft = await prisma.emailDraft.findUniqueOrThrow({
+      const regenerated = await generateEmailDraft(
+        context,
+        buildEmailPrompt(context, "Make it shorter"),
+      );
+      expect(regenerated.regenerated).toBe(true);
+      expect(regenerated.draftId).toBe(created.draftId);
+      expect(regenerated.subject).toBe("A shorter forecast note");
+
+      const drafts = await prisma.emailDraft.findMany({
         where: {
-          organizationId_campaignContactId_sequenceNumber: {
-            organizationId,
-            campaignContactId,
-            sequenceNumber: 1,
-          },
+          organizationId,
+          campaignContactId,
         },
       });
+      expect(drafts).toHaveLength(1);
+      const [draft] = drafts;
       expect(draft.status).toBe("DRAFT");
       expect(draft.source).toBe("AI");
-      expect(draft.subject).toBe("A forecast, without the guesswork");
+      expect(draft.subject).toBe("A shorter forecast note");
       expect(draft.body).not.toContain("—");
 
       const event = await prisma.usageEvent.findFirstOrThrow({
@@ -727,10 +1082,114 @@ describe.skipIf(!hasDatabase)(
       expect(event.category).toBe("EMAIL_GENERATION");
       expect(event.status).toBe("SUCCESS");
       expect(event.model).toBe("gpt-5.6-luna");
-      expect(event.inputTokens).toBe(20);
+      expect(event.inputTokens).toBe(23);
+      expect(JSON.stringify(event.metadata)).toContain('"regenerated":true');
       expect(JSON.stringify(event.metadata)).not.toContain(
         "Connects the offer",
       );
+
+      await expect(
+        generateEmailDraft(context, buildEmailPrompt(context), {
+          sequenceNumber: 2,
+          kind: "FOLLOW_UP",
+        }),
+      ).rejects.toThrow(/Email 1 must be marked as sent/i);
+
+      const { markEmailDraftSent } = await import(
+        "@/lib/email-generation/sequence"
+      );
+      await markEmailDraftSent({
+        draftId: created.draftId,
+        userId: userAId,
+      });
+      const sentContext = await loadEmailGenerationContext(
+        campaignContactId,
+        userAId,
+      );
+      expect(sentContext.sequence[0].status).toBe("SENT");
+      expect(sentContext.sequence[0].sentAt).toBeInstanceOf(Date);
+      await expect(
+        generateEmailDraft(sentContext, buildEmailPrompt(sentContext)),
+      ).rejects.toThrow(/read-only/i);
+
+      const { classifyProspectReply } = await import(
+        "@/lib/email-generation/reply"
+      );
+      const sourceDraft = sentContext.sequence[0];
+      const prospectReply =
+        "Jane owns forecasting now. Please speak with her instead.";
+      const classification = await classifyProspectReply({
+        context: sentContext,
+        sourceDraft: {
+          subject: sourceDraft.subject ?? "",
+          body: sourceDraft.body ?? "",
+        },
+        prospectReply,
+      });
+      expect(classification.classification).toBe("REFERRAL");
+      const contactCountBeforeReferral = await prisma.contact.count({
+        where: { organizationId },
+      });
+      const replyDraft = await generateEmailDraft(
+        sentContext,
+        buildReplyEmailPrompt({
+          context: sentContext,
+          sourceDraft: {
+            sequenceNumber: sourceDraft.sequenceNumber,
+            subject: sourceDraft.subject ?? "",
+            body: sourceDraft.body ?? "",
+          },
+          prospectReply,
+          classification: classification.classification,
+        }),
+        {
+          sequenceNumber: 2,
+          kind: "REPLY",
+          replyClassification: classification.classification,
+          prospectReplyText: prospectReply,
+          referralSuggested: classification.referralSuggested,
+          inReplyToDraftId: sourceDraft.id,
+        },
+      );
+      expect(replyDraft.kind).toBe("REPLY");
+      expect(replyDraft.replyClassification).toBe("REFERRAL");
+      expect(replyDraft.referralSuggested).toBe(true);
+      expect(
+        await prisma.contact.count({ where: { organizationId } }),
+      ).toBe(contactCountBeforeReferral);
+
+      const secondContact = await prisma.contact.create({
+        data: {
+          organizationId,
+          contactListId: contactListId,
+          firstName: "Second",
+          lastName: "Contact",
+          email: `second-${suffix}@example.com`,
+        },
+      });
+      const secondCampaignContact = await prisma.campaignContact.create({
+        data: {
+          organizationId,
+          campaignId,
+          contactId: secondContact.id,
+          status: "SELECTED",
+        },
+      });
+      await prisma.emailDraft.create({
+        data: {
+          organizationId,
+          campaignContactId: secondCampaignContact.id,
+          sequenceNumber: 1,
+          subject: "Independent sequence",
+          body: "Each campaign contact can begin at Email 1.",
+          status: "DRAFT",
+        },
+      });
+      expect(
+        await prisma.emailDraft.count({
+          where: { organizationId, sequenceNumber: 1 },
+        }),
+      ).toBe(2);
     });
   },
 );

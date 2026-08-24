@@ -14,9 +14,9 @@ import { SubmitButton } from "@/components/ui";
 const initial: CampaignEmailSettingsActionResult | null = null;
 
 function emailLengthLabel(value: CampaignEmailLength): string {
-  if (value === "ONE_PARAGRAPH") return "One paragraph";
-  if (value === "TWO_PARAGRAPH") return "Two paragraphs";
-  return "Three paragraphs";
+  if (value === "SHORT") return "Short";
+  if (value === "MEDIUM") return "Medium";
+  return "Long";
 }
 
 export function CampaignEmailSettingsForm({
