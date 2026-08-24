@@ -1,6 +1,33 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
+
+describe("connected-send production language", () => {
+  it("contains no product-specific vocabulary", () => {
+    const files = [
+      "src/lib/mailbox/crypto.ts",
+      "src/lib/mailbox/data.ts",
+      "src/lib/mailbox/microsoft-config.ts",
+      "src/lib/mailbox/microsoft-graph.ts",
+      "src/lib/mailbox/microsoft-oauth.ts",
+      "src/lib/mailbox/provider.ts",
+      "src/lib/mailbox/send.ts",
+      "src/app/actions/mailbox.ts",
+      "src/app/api/mailbox/microsoft/connect/route.ts",
+      "src/app/api/mailbox/microsoft/callback/route.ts",
+      "src/app/(app)/settings/email/page.tsx",
+      "src/components/MailboxConnectionPanel.tsx",
+    ];
+    const source = files
+      .map((file) => readFileSync(join(process.cwd(), file), "utf8"))
+      .join("\n");
+    expect(source).not.toMatch(
+      /SalesForecaster|forecast audit|forecast accuracy|revenue intelligence/i,
+    );
+  });
+});
 
 describe("mailbox secret encryption", () => {
   it("authenticates ciphertext against its user scope", async () => {
@@ -312,6 +339,21 @@ describe.skipIf(!hasDatabase)(
     it("keeps a rejected Graph send editable and unsent", async () => {
       const emailDraft = await draft();
       await connect(userAId, new Date(Date.now() + 60 * 60 * 1000));
+      await prisma.userUsageOverride.upsert({
+        where: {
+          organizationId_userId: { organizationId, userId: userAId },
+        },
+        create: {
+          organizationId,
+          userId: userAId,
+          dailyEmailSendWarningLimit: 1,
+          dailyEmailSendLimit: 2,
+        },
+        update: {
+          dailyEmailSendWarningLimit: 1,
+          dailyEmailSendLimit: 2,
+        },
+      });
       vi.stubGlobal(
         "fetch",
         vi.fn().mockResolvedValue(
@@ -348,22 +390,19 @@ describe.skipIf(!hasDatabase)(
       expect(saved.body).toBe("First paragraph.\n\nSecond paragraph.");
     });
 
-    it("marks sent only after a successful Graph response", async () => {
+    it("marks sent and records IDs only after a provider response", async () => {
       const emailDraft = await draft();
       await connect(userAId, new Date(Date.now() + 60 * 60 * 1000));
-      const acceptedAt = "Mon, 24 Aug 2026 20:40:00 GMT";
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue(
-          new Response(null, {
-            status: 202,
-            headers: {
-              date: acceptedAt,
-              "request-id": "graph-request-123",
-            },
-          }),
-        ),
-      );
+      const acceptedAt = new Date("2026-08-24T20:40:00.000Z");
+      const provider = {
+        id: "MICROSOFT_365" as const,
+        send: vi.fn().mockResolvedValue({
+          provider: "MICROSOFT_365" as const,
+          acceptedAt,
+          providerMessageId: "provider-message-123",
+          providerRequestId: "graph-request-123",
+        }),
+      };
       const { sendEmailDraftWithConnectedMailbox } = await import(
         "@/lib/mailbox/send"
       );
@@ -372,9 +411,17 @@ describe.skipIf(!hasDatabase)(
         userId: userAId,
         subject: "Final subject",
         body: "First paragraph.\n\nSecond paragraph.",
+        provider,
       });
       expect(sent.sentAt.toISOString()).toBe("2026-08-24T20:40:00.000Z");
       expect(sent.providerRequestId).toBe("graph-request-123");
+      expect(sent.providerMessageId).toBe("provider-message-123");
+      expect(sent.sendUsage).toMatchObject({
+        used: 1,
+        warningLimit: 1,
+        limit: 2,
+        warning: true,
+      });
       expect(
         await prisma.emailDraft.findUniqueOrThrow({
           where: { id: emailDraft.id },
@@ -387,10 +434,79 @@ describe.skipIf(!hasDatabase)(
         }),
       ).toEqual({
         status: "SENT",
-        sentAt: new Date(acceptedAt),
+        sentAt: acceptedAt,
         sentMethod: "CONNECTED_PROVIDER",
         sentByUserId: userAId,
       });
+      expect(
+        await prisma.emailSendRecord.findFirstOrThrow({
+          where: { emailDraftId: emailDraft.id, method: "MICROSOFT_GRAPH" },
+          select: {
+            generatedBody: true,
+            finalBody: true,
+            providerMessageId: true,
+            providerRequestId: true,
+            occurredAt: true,
+          },
+        }),
+      ).toEqual({
+        generatedBody: "Original body",
+        finalBody: "First paragraph.\n\nSecond paragraph.",
+        providerMessageId: "provider-message-123",
+        providerRequestId: "graph-request-123",
+        occurredAt: acceptedAt,
+      });
+    });
+
+    it("blocks at the DB-backed send limit without a partial send", async () => {
+      const emailDraft = await draft();
+      await prisma.userUsageOverride.upsert({
+        where: {
+          organizationId_userId: { organizationId, userId: userAId },
+        },
+        create: {
+          organizationId,
+          userId: userAId,
+          dailyEmailSendWarningLimit: 1,
+          dailyEmailSendLimit: 1,
+        },
+        update: {
+          dailyEmailSendWarningLimit: 1,
+          dailyEmailSendLimit: 1,
+        },
+      });
+      const provider = {
+        id: "MICROSOFT_365" as const,
+        send: vi.fn(),
+      };
+      const { sendEmailDraftWithConnectedMailbox } = await import(
+        "@/lib/mailbox/send"
+      );
+      await expect(
+        sendEmailDraftWithConnectedMailbox({
+          draftId: emailDraft.id,
+          userId: userAId,
+          subject: "Limit subject",
+          body: "Limit body",
+          provider,
+        }),
+      ).rejects.toMatchObject({
+        resource: "EMAIL_SEND",
+        used: 1,
+        limit: 1,
+      });
+      expect(provider.send).not.toHaveBeenCalled();
+      expect(
+        await prisma.emailDraft.findUniqueOrThrow({
+          where: { id: emailDraft.id },
+          select: { status: true, sentAt: true },
+        }),
+      ).toEqual({ status: "DRAFT", sentAt: null });
+      expect(
+        await prisma.emailSendRecord.count({
+          where: { emailDraftId: emailDraft.id },
+        }),
+      ).toBe(0);
     });
   },
 );

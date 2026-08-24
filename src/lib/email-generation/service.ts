@@ -21,6 +21,10 @@ import { EMAIL_GENERATION_PROMPT_VERSION } from "@/lib/email-generation/prompt";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
+import {
+  assertUsageAllowed,
+  UsageQuotaError,
+} from "@/lib/usage/quota";
 
 export const EMAIL_GENERATION_MODEL = "gpt-5.6-luna";
 
@@ -128,6 +132,7 @@ async function withRetries<T>(
 
 export function toSafeEmailGenerationError(error: unknown): string {
   if (error instanceof TenantError) return error.message;
+  if (error instanceof UsageQuotaError) return error.message;
   if (
     error instanceof Error &&
     error.message === "Verify your email address to continue with this action."
@@ -214,6 +219,11 @@ export async function generateEmailDraft(
   let model: string | null = null;
 
   try {
+    await assertUsageAllowed({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      resource: "EMAIL_GENERATION",
+    });
     const config = getEmailAiConfig();
     if (config.model !== EMAIL_GENERATION_MODEL) {
       throw new AiConfigError(
@@ -281,6 +291,7 @@ export async function generateEmailDraft(
         sequenceNumber,
         subject,
         body,
+        generatedBody: body,
         status: "DRAFT",
         source: "AI",
         kind,
@@ -292,6 +303,7 @@ export async function generateEmailDraft(
       update: {
         subject,
         body,
+        generatedBody: body,
         status: "DRAFT",
         source: "AI",
         kind,

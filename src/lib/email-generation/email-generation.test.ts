@@ -1269,6 +1269,32 @@ describe.skipIf(!hasDatabase)(
           },
         }),
       ).toBe(1);
+      expect(
+        await prisma.emailSendRecord.findFirstOrThrow({
+          where: {
+            organizationId,
+            emailDraftId: created.draftId,
+            method: "DEEPLINK_INTENT",
+          },
+          select: {
+            recipient: true,
+            subject: true,
+            generatedBody: true,
+            finalBody: true,
+            sentByUserId: true,
+            providerMessageId: true,
+          },
+        }),
+      ).toEqual({
+        recipient: `alex-${suffix}@example.test`,
+        subject: "A forecast, without the guesswork",
+        generatedBody:
+          "Hi Alex, quick question.\n\nWould a forecast audit be useful?",
+        finalBody:
+          "Hi Alex, quick question.\n\nWould a forecast audit be useful?",
+        sentByUserId: userAId,
+        providerMessageId: null,
+      });
       const { updateEmailDraftContent } = await import(
         "@/lib/email-generation/sequence"
       );

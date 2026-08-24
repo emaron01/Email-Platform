@@ -74,6 +74,7 @@ export function EmailSequenceWorkspace({
   offerWarnings,
   emailDeeplinkMaxUrlLength,
   mailboxConnection,
+  dailySendUsage,
 }: {
   campaignContactId: string;
   contactName: string;
@@ -87,6 +88,11 @@ export function EmailSequenceWorkspace({
     status: "CONNECTED" | "RECONNECT_REQUIRED";
     mailboxAddress: string;
   } | null;
+  dailySendUsage: {
+    used: number;
+    warningLimit: number;
+    limit: number;
+  };
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState(initialDrafts);
@@ -599,6 +605,12 @@ export function EmailSequenceWorkspace({
                   >
                     Connect Microsoft 365 to send directly
                   </a>
+                ) : null}
+                {dailySendUsage.used >= dailySendUsage.warningLimit ? (
+                  <p className="text-xs font-medium text-amber-700">
+                    Daily send warning: {dailySendUsage.used} of{" "}
+                    {dailySendUsage.limit} sends used.
+                  </p>
                 ) : null}
                 <p className="text-xs text-slate-500">
                   This records your assertion that you sent the email. It is

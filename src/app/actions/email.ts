@@ -59,6 +59,12 @@ export type GenerateEmailDraftActionResult = {
   referralSuggested?: boolean;
   offerWarnings?: OfferConflict[];
   sentAt?: string;
+  sendUsage?: {
+    used: number;
+    warningLimit: number;
+    limit: number;
+    warning: boolean;
+  };
   recoveryAction?:
     | "RECONNECT"
     | "ASK_ADMIN"
@@ -249,10 +255,13 @@ export async function markEmailDraftSentAction(
     return {
       ok: true,
       message:
-        "Marked as sent based on your confirmation. This is not a delivery confirmation.",
+        marked.sendUsage?.warning
+          ? `Marked as sent. Daily send warning: ${marked.sendUsage.used} of ${marked.sendUsage.limit} sends used. This is not a delivery confirmation.`
+          : "Marked as sent based on your confirmation. This is not a delivery confirmation.",
       draftId: emailDraftId,
       sequenceNumber: marked.sequenceNumber,
       status: "SENT",
+      sendUsage: marked.sendUsage,
     };
   } catch (error) {
     console.error("Failed to mark email draft as sent.", error);
@@ -343,10 +352,13 @@ export async function sendEmailDraftConnectedAction(input: {
     return {
       ok: true,
       message:
-        "Microsoft accepted the message from your mailbox and will save it to Sent items.",
+        sent.sendUsage.warning
+          ? `Microsoft accepted the message. Daily send warning: ${sent.sendUsage.used} of ${sent.sendUsage.limit} sends used.`
+          : "Microsoft accepted the message from your mailbox and will save it to Sent items.",
       draftId: sent.draftId,
       sequenceNumber: sent.sequenceNumber,
       sentAt: sent.sentAt.toISOString(),
+      sendUsage: sent.sendUsage,
     };
   } catch (error) {
     if (error instanceof MailboxConnectionError) {

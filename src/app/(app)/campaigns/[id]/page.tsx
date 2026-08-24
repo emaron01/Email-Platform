@@ -26,6 +26,7 @@ import {
 import { requireCurrentUser } from "@/lib/auth/session";
 import { getEffectiveUsagePolicy } from "@/lib/usage/policy";
 import { getMailboxConnectionView } from "@/lib/mailbox/data";
+import { getDailyEmailSendUsage } from "@/lib/usage/quota";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -68,9 +69,16 @@ export default async function CampaignDetailPage({
   let scoringRuns;
   let usagePolicy;
   let mailboxConnection;
+  let dailySendUsage;
   try {
-    [campaign, availableContacts, scoringRuns, usagePolicy, mailboxConnection] =
-      await Promise.all([
+    [
+      campaign,
+      availableContacts,
+      scoringRuns,
+      usagePolicy,
+      mailboxConnection,
+      dailySendUsage,
+    ] = await Promise.all([
       getCampaignDetail(id),
       searchAvailableCampaignContacts(id, query.q),
       listCompatibleScoringRuns(id),
@@ -79,6 +87,10 @@ export default async function CampaignDetailPage({
           userId: user.id,
         }),
         getMailboxConnectionView({
+          organizationId: organization.id,
+          userId: user.id,
+        }),
+        getDailyEmailSendUsage({
           organizationId: organization.id,
           userId: user.id,
         }),
@@ -207,6 +219,11 @@ export default async function CampaignDetailPage({
                           }
                         : null
                     }
+                    dailySendUsage={{
+                      used: dailySendUsage.used,
+                      warningLimit: dailySendUsage.warningLimit,
+                      limit: dailySendUsage.limit,
+                    }}
                     initialDrafts={campaignContact.emailDrafts
                       .filter(
                         (draft) => Boolean(draft.subject) && Boolean(draft.body),

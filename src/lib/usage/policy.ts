@@ -11,10 +11,14 @@ export type PolicySource = "ORGANIZATION" | "USER_OVERRIDE";
 export type EffectiveUsagePolicy = {
   activeResearchedCompanyLimit: number;
   dailyEmailGenerationLimit: number;
+  dailyEmailSendWarningLimit: number;
+  dailyEmailSendLimit: number;
   emailDeeplinkMaxUrlLength: number;
   sources: {
     activeResearchedCompanyLimit: PolicySource;
     dailyEmailGenerationLimit: PolicySource;
+    dailyEmailSendWarningLimit: PolicySource;
+    dailyEmailSendLimit: PolicySource;
     emailDeeplinkMaxUrlLength: PolicySource;
   };
 };
@@ -52,6 +56,9 @@ export async function ensureOrganizationPolicies(
         DEFAULT_USAGE_POLICY_VALUES.activeResearchedCompanyLimit,
       dailyEmailGenerationLimit:
         DEFAULT_USAGE_POLICY_VALUES.dailyEmailGenerationLimit,
+      dailyEmailSendWarningLimit:
+        DEFAULT_USAGE_POLICY_VALUES.dailyEmailSendWarningLimit,
+      dailyEmailSendLimit: DEFAULT_USAGE_POLICY_VALUES.dailyEmailSendLimit,
       emailDeeplinkMaxUrlLength:
         DEFAULT_USAGE_POLICY_VALUES.emailDeeplinkMaxUrlLength,
     },
@@ -123,10 +130,17 @@ export async function getEffectiveUsagePolicy(input: {
   const dailyEmailGenerationLimit =
     override?.dailyEmailGenerationLimit ??
     orgPolicy.dailyEmailGenerationLimit;
+  const dailyEmailSendWarningLimit =
+    override?.dailyEmailSendWarningLimit ??
+    orgPolicy.dailyEmailSendWarningLimit;
+  const dailyEmailSendLimit =
+    override?.dailyEmailSendLimit ?? orgPolicy.dailyEmailSendLimit;
 
   return {
     activeResearchedCompanyLimit,
     dailyEmailGenerationLimit,
+    dailyEmailSendWarningLimit,
+    dailyEmailSendLimit,
     emailDeeplinkMaxUrlLength: orgPolicy.emailDeeplinkMaxUrlLength,
     sources: {
       activeResearchedCompanyLimit:
@@ -135,6 +149,14 @@ export async function getEffectiveUsagePolicy(input: {
           : "ORGANIZATION",
       dailyEmailGenerationLimit:
         override?.dailyEmailGenerationLimit != null
+          ? "USER_OVERRIDE"
+          : "ORGANIZATION",
+      dailyEmailSendWarningLimit:
+        override?.dailyEmailSendWarningLimit != null
+          ? "USER_OVERRIDE"
+          : "ORGANIZATION",
+      dailyEmailSendLimit:
+        override?.dailyEmailSendLimit != null
           ? "USER_OVERRIDE"
           : "ORGANIZATION",
       emailDeeplinkMaxUrlLength: "ORGANIZATION",

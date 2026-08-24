@@ -73,6 +73,11 @@ enum EmailSentMethod {
   CONNECTED_PROVIDER
 }
 
+enum EmailSendRecordMethod {
+  DEEPLINK_INTENT
+  MICROSOFT_GRAPH
+}
+
 enum MailboxProvider {
   MICROSOFT_365
 }
@@ -251,6 +256,7 @@ enum UsageEventStatus {
 
 enum UsageResource {
   EMAIL_GENERATION
+  EMAIL_SEND
   ACTIVE_RESEARCHED_COMPANY
 }
 
@@ -402,6 +408,7 @@ model Organization {
   voiceSamples             VoiceSample[]
   mailboxConnections       MailboxConnection[]
   mailboxOAuthStates       MailboxOAuthState[]
+  emailSendRecords         EmailSendRecord[]
 
   @@index([status])
   @@index([createdAt])
@@ -434,6 +441,7 @@ model User {
   sentEmailDrafts          EmailDraft[]              @relation("EmailDraftSentBy")
   mailboxConnections       MailboxConnection[]
   mailboxOAuthStates       MailboxOAuthState[]
+  emailSendRecords         EmailSendRecord[]
 
   @@index([platformRole])
   @@index([activeOrganizationId])
@@ -549,6 +557,8 @@ model OrganizationUsagePolicy {
   organizationId               String   @unique
   activeResearchedCompanyLimit Int
   dailyEmailGenerationLimit    Int
+  dailyEmailSendWarningLimit   Int      @default(150)
+  dailyEmailSendLimit          Int      @default(250)
   emailDeeplinkMaxUrlLength    Int      @default(1800)
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
@@ -591,6 +601,8 @@ model UserUsageOverride {
   userId                       String
   activeResearchedCompanyLimit Int?
   dailyEmailGenerationLimit    Int?
+  dailyEmailSendWarningLimit   Int?
+  dailyEmailSendLimit          Int?
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 
@@ -1445,10 +1457,11 @@ model CampaignContact {
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  campaign     Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact      Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
   emailDrafts  EmailDraft[]
+  sendRecords  EmailSendRecord[]
 
   @@unique([organizationId, campaignId, contactId])
   @@index([organizationId])
@@ -1464,6 +1477,7 @@ model EmailDraft {
   sequenceNumber       Int
   subject              String?
   body                 String?
+  generatedBody        String?
   status               EmailDraftStatus     @default(NOT_CREATED)
   source               EmailDraftSource     @default(AI)
   kind                 EmailDraftKind       @default(INITIAL)
@@ -1480,11 +1494,12 @@ model EmailDraft {
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
-  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  campaignContact CampaignContact @relation(fields: [campaignContactId], references: [id], onDelete: Cascade)
-  inReplyTo       EmailDraft?     @relation("EmailDraftReplies", fields: [inReplyToDraftId], references: [id], onDelete: SetNull)
-  replyDrafts     EmailDraft[]    @relation("EmailDraftReplies")
-  sentByUser      User?           @relation("EmailDraftSentBy", fields: [sentByUserId], references: [id], onDelete: SetNull)
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaignContact CampaignContact   @relation(fields: [campaignContactId], references: [id], onDelete: Cascade)
+  inReplyTo       EmailDraft?       @relation("EmailDraftReplies", fields: [inReplyToDraftId], references: [id], onDelete: SetNull)
+  replyDrafts     EmailDraft[]      @relation("EmailDraftReplies")
+  sentByUser      User?             @relation("EmailDraftSentBy", fields: [sentByUserId], references: [id], onDelete: SetNull)
+  sendRecords     EmailSendRecord[]
 
   @@unique([organizationId, campaignContactId, sequenceNumber])
   @@index([organizationId])
@@ -1493,6 +1508,34 @@ model EmailDraft {
   @@index([inReplyToDraftId])
   @@index([sentByUserId])
   @@index([status])
+}
+
+model EmailSendRecord {
+  id                String                @id @default(cuid())
+  organizationId    String
+  emailDraftId      String
+  campaignContactId String
+  recipient         String
+  subject           String
+  generatedBody     String
+  finalBody         String
+  sentByUserId      String
+  method            EmailSendRecordMethod
+  occurredAt        DateTime              @default(now())
+  providerMessageId String?
+  providerRequestId String?
+  createdAt         DateTime              @default(now())
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emailDraft      EmailDraft      @relation(fields: [emailDraftId], references: [id], onDelete: Cascade)
+  campaignContact CampaignContact @relation(fields: [campaignContactId], references: [id], onDelete: Cascade)
+  sentByUser      User            @relation(fields: [sentByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, occurredAt])
+  @@index([organizationId, sentByUserId, occurredAt])
+  @@index([emailDraftId])
+  @@index([campaignContactId])
+  @@index([providerMessageId])
 }
 
 model AuthUser {

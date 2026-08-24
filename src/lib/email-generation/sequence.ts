@@ -12,6 +12,10 @@ import {
   type EmailClient,
   type EmailClientBodyHandling,
 } from "@/lib/email-generation/email-body";
+import {
+  releaseDailyEmailSendReservation,
+  reserveDailyEmailSend,
+} from "@/lib/usage/quota";
 
 export function nextSequencePosition(context: EmailGenerationContext): number {
   const latest = context.sequence.at(-1);
@@ -34,6 +38,12 @@ export async function markEmailDraftSent(input: {
   campaignContactId: string;
   sequenceNumber: number;
   sentAt: Date;
+  sendUsage?: {
+    used: number;
+    warningLimit: number;
+    limit: number;
+    warning: boolean;
+  };
 }> {
   const user = await prisma.user.findUnique({ where: { id: input.userId } });
   if (!user) throw new TenantError("User not found.");
@@ -71,35 +81,58 @@ export async function markEmailDraftSent(input: {
   }
 
   const sentAt = new Date();
-  await prisma.emailDraft.update({
-    where: { id: draft.id },
-    data: {
-      status: "SENT",
-      sentAt,
-      sentMethod: "MANUAL_ASSERTION",
-      sentByUserId: input.userId,
-    },
-  });
-  await recordUsageEvent({
+  const reservation = await reserveDailyEmailSend({
     organizationId,
     userId: input.userId,
-    campaignId: draft.campaignContact.campaignId,
-    contactId: draft.campaignContact.contactId,
-    category: "EMAIL_GENERATION",
-    operation: "EMAIL_DRAFT_SENT",
-    status: "SUCCESS",
-    metadata: {
-      draftId: draft.id,
-      sequenceNumber: draft.sequenceNumber,
-      sentMethod: "MANUAL_ASSERTION",
-      deliveryConfirmed: false,
-    },
   });
+  try {
+    await prisma.emailDraft.update({
+      where: { id: draft.id },
+      data: {
+        status: "SENT",
+        sentAt,
+        sentMethod: "MANUAL_ASSERTION",
+        sentByUserId: input.userId,
+      },
+    });
+  } catch (error) {
+    await releaseDailyEmailSendReservation({
+      organizationId,
+      userId: input.userId,
+      periodKey: reservation.periodKey,
+    });
+    throw error;
+  }
+  try {
+    await recordUsageEvent({
+      organizationId,
+      userId: input.userId,
+      campaignId: draft.campaignContact.campaignId,
+      contactId: draft.campaignContact.contactId,
+      category: "EMAIL_GENERATION",
+      operation: "EMAIL_DRAFT_SENT",
+      status: "SUCCESS",
+      metadata: {
+        draftId: draft.id,
+        sequenceNumber: draft.sequenceNumber,
+        sentMethod: "MANUAL_ASSERTION",
+        deliveryConfirmed: false,
+      },
+    });
+  } catch (usageError) {
+    console.error("Failed to record manual-send usage.", usageError);
+  }
   return {
     campaignId: draft.campaignContact.campaignId,
     campaignContactId: draft.campaignContactId,
     sequenceNumber: draft.sequenceNumber,
     sentAt,
+    sendUsage: {
+      used: reservation.used,
+      warningLimit: reservation.warningLimit,
+      limit: reservation.limit,
+      warning: reservation.warning,
+    },
   };
 }
 
@@ -196,9 +229,17 @@ export async function recordEmailClientIntent(input: {
     where: { id: input.draftId, organizationId },
     select: {
       id: true,
+      campaignContactId: true,
       sequenceNumber: true,
+      subject: true,
+      body: true,
+      generatedBody: true,
       campaignContact: {
-        select: { campaignId: true, contactId: true },
+        select: {
+          campaignId: true,
+          contactId: true,
+          contact: { select: { email: true } },
+        },
       },
     },
   });
@@ -207,7 +248,27 @@ export async function recordEmailClientIntent(input: {
       "Email draft does not belong to the active organization.",
     );
   }
-  await recordUsageEvent({
+  const recipient = draft.campaignContact.contact.email?.trim();
+  if (!draft.subject || !draft.body || !recipient) {
+    throw new TenantError(
+      "A recipient, subject, and body are required before opening an email client.",
+    );
+  }
+  await prisma.emailSendRecord.create({
+    data: {
+      organizationId,
+      emailDraftId: draft.id,
+      campaignContactId: draft.campaignContactId,
+      recipient,
+      subject: draft.subject,
+      generatedBody: draft.generatedBody ?? draft.body,
+      finalBody: draft.body,
+      sentByUserId: input.userId,
+      method: "DEEPLINK_INTENT",
+    },
+  });
+  try {
+    await recordUsageEvent({
     organizationId,
     userId: input.userId,
     campaignId: draft.campaignContact.campaignId,
@@ -222,7 +283,10 @@ export async function recordEmailClientIntent(input: {
       bodyHandling: input.bodyHandling,
       markedSent: false,
     },
-  });
+    });
+  } catch (usageError) {
+    console.error("Failed to record email-client intent usage.", usageError);
+  }
   return {
     campaignId: draft.campaignContact.campaignId,
     sequenceNumber: draft.sequenceNumber,

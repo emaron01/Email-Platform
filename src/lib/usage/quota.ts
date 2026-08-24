@@ -167,3 +167,141 @@ export async function getDailyEmailUsage(input: {
     periodKey,
   };
 }
+
+export type DailyEmailSendUsage = {
+  used: number;
+  warningLimit: number;
+  limit: number;
+  periodKey: string;
+  warning: boolean;
+};
+
+export async function reserveDailyEmailSend(input: {
+  organizationId: string;
+  userId: string;
+}): Promise<DailyEmailSendUsage> {
+  const policy = await getEffectiveUsagePolicy(input);
+  const org = await prisma.organization.findUniqueOrThrow({
+    where: { id: input.organizationId },
+    select: { timezone: true },
+  });
+  const periodKey = getOrganizationDayKey(org.timezone);
+  const resource: UsageResource = "EMAIL_SEND";
+  const limit = policy.dailyEmailSendLimit;
+  if (limit <= 0) {
+    throw new UsageQuotaError(
+      `Daily send limit reached: 0 of ${limit}. Try again tomorrow or ask an administrator to adjust your limit.`,
+      "EMAIL_SEND",
+      0,
+      limit,
+    );
+  }
+  const lockKey = `${input.organizationId}:${input.userId}:${resource}:${periodKey}`;
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+    const existing = await tx.usageQuotaLedger.findUnique({
+      where: {
+        organizationId_userId_resource_periodKey: {
+          organizationId: input.organizationId,
+          userId: input.userId,
+          resource,
+          periodKey,
+        },
+      },
+    });
+    const consumed = existing?.consumed ?? 0;
+    if (consumed >= limit) {
+      return { allowed: false as const, consumed };
+    }
+    const used = existing
+      ? (
+          await tx.usageQuotaLedger.update({
+            where: { id: existing.id },
+            data: { consumed: { increment: 1 } },
+          })
+        ).consumed
+      : (
+          await tx.usageQuotaLedger.create({
+            data: {
+              organizationId: input.organizationId,
+              userId: input.userId,
+              resource,
+              periodKey,
+              consumed: 1,
+            },
+          })
+        ).consumed;
+    return { allowed: true as const, consumed: used };
+  });
+  if (!result.allowed) {
+    throw new UsageQuotaError(
+      `Daily send limit reached: ${result.consumed} of ${limit}. No email was sent. Try again tomorrow or ask an administrator to adjust your limit.`,
+      "EMAIL_SEND",
+      result.consumed,
+      limit,
+    );
+  }
+  return {
+    used: result.consumed,
+    warningLimit: policy.dailyEmailSendWarningLimit,
+    limit,
+    periodKey,
+    warning: result.consumed >= policy.dailyEmailSendWarningLimit,
+  };
+}
+
+export async function releaseDailyEmailSendReservation(input: {
+  organizationId: string;
+  userId: string;
+  periodKey: string;
+}): Promise<void> {
+  const lockKey = `${input.organizationId}:${input.userId}:EMAIL_SEND:${input.periodKey}`;
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+    const row = await tx.usageQuotaLedger.findUnique({
+      where: {
+        organizationId_userId_resource_periodKey: {
+          organizationId: input.organizationId,
+          userId: input.userId,
+          resource: "EMAIL_SEND",
+          periodKey: input.periodKey,
+        },
+      },
+    });
+    if (!row || row.consumed <= 0) return;
+    await tx.usageQuotaLedger.update({
+      where: { id: row.id },
+      data: { consumed: { decrement: 1 } },
+    });
+  });
+}
+
+export async function getDailyEmailSendUsage(input: {
+  organizationId: string;
+  userId: string;
+}): Promise<DailyEmailSendUsage> {
+  const policy = await getEffectiveUsagePolicy(input);
+  const org = await prisma.organization.findUniqueOrThrow({
+    where: { id: input.organizationId },
+    select: { timezone: true },
+  });
+  const periodKey = getOrganizationDayKey(org.timezone);
+  const row = await prisma.usageQuotaLedger.findUnique({
+    where: {
+      organizationId_userId_resource_periodKey: {
+        organizationId: input.organizationId,
+        userId: input.userId,
+        resource: "EMAIL_SEND",
+        periodKey,
+      },
+    },
+  });
+  const used = row?.consumed ?? 0;
+  return {
+    used,
+    warningLimit: policy.dailyEmailSendWarningLimit,
+    limit: policy.dailyEmailSendLimit,
+    periodKey,
+    warning: used >= policy.dailyEmailSendWarningLimit,
+  };
+}

@@ -8,6 +8,8 @@
 export const DEFAULT_USAGE_POLICY_VALUES = {
   activeResearchedCompanyLimit: 100,
   dailyEmailGenerationLimit: 35,
+  dailyEmailSendWarningLimit: 150,
+  dailyEmailSendLimit: 250,
   emailDeeplinkMaxUrlLength: 1800,
 } as const;
 

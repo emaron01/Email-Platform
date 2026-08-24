@@ -132,6 +132,26 @@ export default async function OrganizationSettingsPage() {
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
             />
           </label>
+          <label className="text-sm">
+            Daily send warning
+            <input
+              name="dailyEmailSendWarningLimit"
+              type="number"
+              min={0}
+              defaultValue={usagePolicy.dailyEmailSendWarningLimit}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+            />
+          </label>
+          <label className="text-sm">
+            Daily send block
+            <input
+              name="dailyEmailSendLimit"
+              type="number"
+              min={0}
+              defaultValue={usagePolicy.dailyEmailSendLimit}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+            />
+          </label>
           <button
             type="submit"
             className="sm:col-span-2 w-fit rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
@@ -209,7 +229,7 @@ export default async function OrganizationSettingsPage() {
                 </p>
                 <ActionFeedbackForm
                   action={upsertUserUsageOverrideAction}
-                  className="mt-3 grid gap-2 sm:grid-cols-3"
+                  className="mt-3 grid gap-2 sm:grid-cols-5"
                   testId={`user-override-form-${m.userId}`}
                 >
                   <input type="hidden" name="userId" value={m.userId} />
@@ -225,12 +245,34 @@ export default async function OrganizationSettingsPage() {
                     />
                   </label>
                   <label className="text-xs text-slate-600">
-                    Daily emails
+                    Daily generations
                     <input
                       name="dailyEmailGenerationLimit"
                       type="number"
                       min={0}
                       defaultValue={ov?.dailyEmailGenerationLimit ?? ""}
+                      placeholder="inherit"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="text-xs text-slate-600">
+                    Send warning
+                    <input
+                      name="dailyEmailSendWarningLimit"
+                      type="number"
+                      min={0}
+                      defaultValue={ov?.dailyEmailSendWarningLimit ?? ""}
+                      placeholder="inherit"
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                  <label className="text-xs text-slate-600">
+                    Send block
+                    <input
+                      name="dailyEmailSendLimit"
+                      type="number"
+                      min={0}
+                      defaultValue={ov?.dailyEmailSendLimit ?? ""}
                       placeholder="inherit"
                       className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
                     />

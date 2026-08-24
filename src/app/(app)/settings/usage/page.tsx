@@ -14,7 +14,10 @@ import {
   ensureOrganizationPolicies,
   getEffectiveUsagePolicy,
 } from "@/lib/usage/policy";
-import { getDailyEmailUsage } from "@/lib/usage/quota";
+import {
+  getDailyEmailSendUsage,
+  getDailyEmailUsage,
+} from "@/lib/usage/quota";
 import { prisma } from "@/lib/prisma";
 
 function parseWindow(value: string | undefined): UsageAggregateWindow {
@@ -37,7 +40,8 @@ export default async function UsageSettingsPage({
   const window = parseWindow(params.window);
   const isAdmin = canManageOrganizationPolicy(membership.role);
 
-  const [policy, activeCompanies, emailUsage, aggregates] = await Promise.all([
+  const [policy, activeCompanies, emailUsage, sendUsage, aggregates] =
+    await Promise.all([
     getEffectiveUsagePolicy({
       organizationId: organization.id,
       userId: user.id,
@@ -47,12 +51,16 @@ export default async function UsageSettingsPage({
       organizationId: organization.id,
       userId: user.id,
     }),
+    getDailyEmailSendUsage({
+      organizationId: organization.id,
+      userId: user.id,
+    }),
     aggregateUsage({
       organizationId: organization.id,
       timezone: organization.timezone,
       window,
     }),
-  ]);
+    ]);
 
   const byUser = isAdmin
     ? await aggregateUsageByUser({
@@ -93,7 +101,7 @@ export default async function UsageSettingsPage({
         </p>
       </div>
 
-      <section className="grid gap-4 sm:grid-cols-2">
+      <section className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-md border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-medium text-slate-900">
             Active researched companies
@@ -121,6 +129,20 @@ export default async function UsageSettingsPage({
           <p className="mt-1 text-xs text-slate-500">
             Day {emailUsage.periodKey} · Source:{" "}
             {policy.sources.dailyEmailGenerationLimit}
+          </p>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-white p-4">
+          <h2 className="text-sm font-medium text-slate-900">
+            Emails sent today
+          </h2>
+          <p className="mt-2 text-2xl font-semibold tabular-nums">
+            {sendUsage.used}{" "}
+            <span className="text-base font-normal text-slate-500">
+              / {sendUsage.limit}
+            </span>
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Warning at {sendUsage.warningLimit} · Day {sendUsage.periodKey}
           </p>
         </div>
       </section>
