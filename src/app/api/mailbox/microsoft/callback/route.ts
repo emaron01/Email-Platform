@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/auth/session";
+import { assertAccountCapability } from "@/lib/auth/account-policy";
 import {
   completeMicrosoftMailboxConnection,
   MailboxConnectionError,
@@ -41,6 +42,7 @@ export async function GET(request: Request) {
       requireCurrentUser(),
       requireOrganization(),
     ]);
+    assertAccountCapability(user, "OUTBOUND_EMAIL");
     const connected = await completeMicrosoftMailboxConnection({
       organizationId: organization.id,
       userId: user.id,

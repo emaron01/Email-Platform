@@ -12,6 +12,7 @@ import {
   type ConnectedEmailProvider,
 } from "@/lib/mailbox/provider";
 import { resolveActiveOrganization } from "@/lib/auth/session";
+import { assertAccountCapability } from "@/lib/auth/account-policy";
 import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
 import {
@@ -59,6 +60,7 @@ export async function sendEmailDraftWithConnectedMailbox(input: {
   }
   const user = await prisma.user.findUnique({ where: { id: input.userId } });
   if (!user) throw new TenantError("User not found.");
+  assertAccountCapability(user, "OUTBOUND_EMAIL");
   const membership = await resolveActiveOrganization(user);
   if (!membership) {
     throw new TenantError("No active organization membership was found.");

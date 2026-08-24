@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/auth/session";
+import { assertAccountCapability } from "@/lib/auth/account-policy";
 import { beginMicrosoftMailboxConnection } from "@/lib/mailbox/microsoft-oauth";
 import { requireOrganization } from "@/lib/tenant/getCurrentOrganization";
 
@@ -10,6 +11,7 @@ export async function GET(request: Request) {
       requireOrganization(),
     ]);
     const returnPath = new URL(request.url).searchParams.get("returnTo");
+    assertAccountCapability(user, "OUTBOUND_EMAIL");
     const authorizationUrl = await beginMicrosoftMailboxConnection({
       organizationId: organization.id,
       userId: user.id,

@@ -87,6 +87,10 @@ describe.skipIf(!hasDatabase)(
       });
       organizationId = primary.organization.id;
       userAId = primary.user.id;
+      await prisma.user.update({
+        where: { id: userAId },
+        data: { emailVerifiedAt: new Date() },
+      });
       const userB = await prisma.user.create({
         data: {
           email: `mailbox-b-${suffix}@example.test`,
@@ -252,6 +256,29 @@ describe.skipIf(!hasDatabase)(
         code: "RECONNECT_REQUIRED",
         recovery: "RECONNECT",
       });
+    });
+
+    it("requires a verified account before connected sending", async () => {
+      const emailDraft = await draft();
+      const provider = {
+        id: "MICROSOFT_365" as const,
+        send: vi.fn(),
+      };
+      const { sendEmailDraftWithConnectedMailbox } = await import(
+        "@/lib/mailbox/send"
+      );
+      await expect(
+        sendEmailDraftWithConnectedMailbox({
+          draftId: emailDraft.id,
+          userId: userBId,
+          subject: "Subject",
+          body: "Body",
+          provider,
+        }),
+      ).rejects.toThrow(
+        "Verify your email address to continue with this action.",
+      );
+      expect(provider.send).not.toHaveBeenCalled();
     });
 
     it("refreshes an expired access token", async () => {
