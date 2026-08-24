@@ -19,10 +19,7 @@ export type UserMenuLink = {
   label: string;
   /** Shown in tests / a11y as distinct action ids */
   id:
-    | "account_settings"
-    | "organization_settings"
-    | "platform_admin"
-    | "log_out";
+    "account_settings" | "organization_settings" | "platform_admin" | "log_out";
 };
 
 export type UserMenuModel = {
@@ -142,10 +139,8 @@ export function buildSidebarNavItems(input: {
   }
 
   const items: SidebarNavItem[] = [
-    { href: "/", label: "Dashboard" },
+    { href: "/", label: "Home" },
     { href: "/setup", label: "Setup" },
-    { href: "/lists", label: "Lists" },
-    { href: "/contacts", label: "Contacts" },
     { href: "/campaigns", label: "Campaigns" },
     { href: "/settings/voice", label: "Your Voice" },
     { href: "/settings/email", label: "Email Connection" },

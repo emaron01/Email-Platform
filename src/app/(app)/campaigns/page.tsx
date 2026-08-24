@@ -1,10 +1,5 @@
 import Link from "next/link";
-import {
-  EmptyState,
-  PageHeader,
-  Panel,
-  TenantMissing,
-} from "@/components/ui";
+import { EmptyState, PageHeader, Panel, TenantMissing } from "@/components/ui";
 import { NewCampaignForm } from "@/components/NewCampaignForm";
 import {
   listCampaigns,
@@ -14,6 +9,7 @@ import {
 } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { formatDate } from "@/lib/utils";
+import { getHomeWorkflow } from "@/lib/workflow/home";
 
 export default async function CampaignsPage() {
   const organization = await getCurrentOrganization();
@@ -30,22 +26,19 @@ export default async function CampaignsPage() {
     );
   }
 
-  const [campaigns, products, icps, personas] = await Promise.all([
+  const [campaigns, products, icps, personas, workflow] = await Promise.all([
     listCampaigns(),
     listProducts(),
     listIcps(),
     listPersonas(),
+    getHomeWorkflow(organization.id),
   ]);
 
   const readyProducts = products.filter((product) => {
-    const hasIcp = icps.some((icp) => icp.productId === product.id);
-    const hasPersona = personas.some(
-      (persona) => persona.productId === product.id,
-    );
-    return hasIcp && hasPersona;
+    return workflow.completeProductIds.includes(product.id);
   });
 
-  const canCreate = readyProducts.length > 0;
+  const canCreate = workflow.setupComplete && readyProducts.length > 0;
 
   return (
     <div>
@@ -78,8 +71,8 @@ export default async function CampaignsPage() {
             />
           ) : (
             <p className="text-sm text-slate-600">
-              Add a Product with at least one ICP and one Persona on the Setup
-              page before creating a campaign.
+              Finish setup first: approve a Product, interpret at least one ICP
+              with criteria, and save a Persona for that Product.
             </p>
           )}
         </Panel>

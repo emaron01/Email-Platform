@@ -28,13 +28,7 @@ type SequenceDraft = {
   sequenceNumber: number;
   subject: string;
   body: string;
-  status:
-    | "DRAFT"
-    | "APPROVED"
-    | "SENDING"
-    | "SENT"
-    | "SKIPPED"
-    | "NOT_CREATED";
+  status: "DRAFT" | "APPROVED" | "SENDING" | "SENT" | "SKIPPED" | "NOT_CREATED";
   kind: "INITIAL" | "FOLLOW_UP" | "REPLY";
   sentAt: string | null;
   replyClassification:
@@ -75,6 +69,7 @@ export function EmailSequenceWorkspace({
   emailDeeplinkMaxUrlLength,
   mailboxConnection,
   dailySendUsage,
+  mode,
 }: {
   campaignContactId: string;
   contactName: string;
@@ -93,14 +88,16 @@ export function EmailSequenceWorkspace({
     warningLimit: number;
     limit: number;
   };
+  mode: "EMAILS" | "SEND";
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState(initialDrafts);
   const [selectedId, setSelectedId] = useState<string | null>(
     initialDrafts.at(-1)?.id ?? null,
   );
-  const [result, setResult] =
-    useState<GenerateEmailDraftActionResult | null>(null);
+  const [result, setResult] = useState<GenerateEmailDraftActionResult | null>(
+    null,
+  );
   const [regenerationGuidance, setRegenerationGuidance] = useState("");
   const [replyText, setReplyText] = useState("");
   const [showReplyBox, setShowReplyBox] = useState(false);
@@ -310,9 +307,7 @@ export function EmailSequenceWorkspace({
       <div className="text-sm">
         <p className="font-medium text-slate-900">{contactName}</p>
         <p className="text-slate-600">{contactDetails}</p>
-        <p className="text-slate-500">
-          {contactEmail ?? "No email address"}
-        </p>
+        <p className="text-slate-500">{contactEmail ?? "No email address"}</p>
         <dl className="mt-3">
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Contact status
@@ -344,7 +339,9 @@ export function EmailSequenceWorkspace({
                   }`}
                 >
                   <span>
-                    <span className="font-medium">Email {draft.sequenceNumber}</span>{" "}
+                    <span className="font-medium">
+                      Email {draft.sequenceNumber}
+                    </span>{" "}
                     <span
                       className={
                         draft.status === "SENT"
@@ -368,18 +365,20 @@ export function EmailSequenceWorkspace({
               );
             })}
           </div>
-          <button
-            type="button"
-            disabled={!canAdd || pending}
-            title={canAdd ? "Generate the next email." : addDisabledReason}
-            onClick={() =>
-              run(() => addFollowUpEmailAction(campaignContactId))
-            }
-            className="mt-3 text-sm font-medium text-slate-900 disabled:cursor-not-allowed disabled:text-slate-400"
-          >
-            + Add to sequence
-          </button>
-          {!canAdd ? (
+          {mode === "SEND" ? (
+            <button
+              type="button"
+              disabled={!canAdd || pending}
+              title={canAdd ? "Generate the next email." : addDisabledReason}
+              onClick={() =>
+                run(() => addFollowUpEmailAction(campaignContactId))
+              }
+              className="mt-3 text-sm font-medium text-slate-900 disabled:cursor-not-allowed disabled:text-slate-400"
+            >
+              + Add to sequence
+            </button>
+          ) : null}
+          {mode === "SEND" && !canAdd ? (
             <p className="mt-1 text-xs text-slate-500">{addDisabledReason}</p>
           ) : null}
         </div>
@@ -473,8 +472,7 @@ export function EmailSequenceWorkspace({
               <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">
                 Subject
               </p>
-              {selected.status === "SENT" ||
-              selected.status === "SENDING" ? (
+              {selected.status === "SENT" || selected.status === "SENDING" ? (
                 <p className="mt-1 text-sm font-medium text-slate-900">
                   {selected.subject}
                 </p>
@@ -493,8 +491,7 @@ export function EmailSequenceWorkspace({
               <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">
                 Body
               </p>
-              {selected.status === "SENT" ||
-              selected.status === "SENDING" ? (
+              {selected.status === "SENT" || selected.status === "SENDING" ? (
                 <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
                   {selected.body}
                 </p>
@@ -558,47 +555,52 @@ export function EmailSequenceWorkspace({
                   >
                     {pending ? "Regenerating…" : "Regenerate"}
                   </button>
-                  {EMAIL_CLIENT_OPTIONS.map((option) => (
-                    <button
-                      key={option.client}
-                      type="button"
-                      disabled={pending || !contactEmail}
-                      title={
-                        contactEmail
-                          ? `Save and open in ${option.label}.`
-                          : "Add an email address to this contact first."
-                      }
-                      onClick={() => openInEmailClient(option.client)}
-                      className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
-                    >
-                      Open in {option.label}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    disabled={
-                      pending || mailboxConnection?.status !== "CONNECTED"
-                    }
-                    title={
-                      mailboxConnection?.status === "CONNECTED"
-                        ? `Send from ${mailboxConnection.mailboxAddress}.`
-                        : "Connect Microsoft 365 in Email connection settings first."
-                    }
-                    onClick={sendConnected}
-                    className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    Send with Microsoft 365
-                  </button>
-                  <button
-                    type="button"
-                    disabled={pending}
-                    onClick={markSent}
-                    className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                  >
-                    I sent this — mark as sent
-                  </button>
+                  {mode === "SEND" ? (
+                    <>
+                      {EMAIL_CLIENT_OPTIONS.map((option) => (
+                        <button
+                          key={option.client}
+                          type="button"
+                          disabled={pending || !contactEmail}
+                          title={
+                            contactEmail
+                              ? `Save and open in ${option.label}.`
+                              : "Add an email address to this contact first."
+                          }
+                          onClick={() => openInEmailClient(option.client)}
+                          className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
+                        >
+                          Open in {option.label}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        disabled={
+                          pending || mailboxConnection?.status !== "CONNECTED"
+                        }
+                        title={
+                          mailboxConnection?.status === "CONNECTED"
+                            ? `Send from ${mailboxConnection.mailboxAddress}.`
+                            : "Connect Microsoft 365 in Email connection settings first."
+                        }
+                        onClick={sendConnected}
+                        className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        Send with Microsoft 365
+                      </button>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={markSent}
+                        className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                      >
+                        I sent this — mark as sent
+                      </button>
+                    </>
+                  ) : null}
                 </div>
-                {mailboxConnection?.status !== "CONNECTED" ? (
+                {mode === "SEND" &&
+                mailboxConnection?.status !== "CONNECTED" ? (
                   <a
                     href="/settings/email"
                     className="text-xs font-medium text-slate-700 underline"
@@ -606,57 +608,62 @@ export function EmailSequenceWorkspace({
                     Connect Microsoft 365 to send directly
                   </a>
                 ) : null}
-                {dailySendUsage.used >= dailySendUsage.warningLimit ? (
+                {mode === "SEND" &&
+                dailySendUsage.used >= dailySendUsage.warningLimit ? (
                   <p className="text-xs font-medium text-amber-700">
                     Daily send warning: {dailySendUsage.used} of{" "}
                     {dailySendUsage.limit} sends used.
                   </p>
                 ) : null}
-                <p className="text-xs text-slate-500">
-                  This records your assertion that you sent the email. It is
-                  not a delivery confirmation.
-                </p>
+                {mode === "SEND" ? (
+                  <p className="text-xs text-slate-500">
+                    This records your assertion that you sent the email. It is
+                    not a delivery confirmation.
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-2">
                 <p className="text-xs text-slate-500">
                   Sent emails are read-only.
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {EMAIL_CLIENT_OPTIONS.map((option) => (
+                {mode === "SEND" ? (
+                  <div className="flex flex-wrap gap-2">
+                    {EMAIL_CLIENT_OPTIONS.map((option) => (
+                      <button
+                        key={option.client}
+                        type="button"
+                        disabled={pending || !contactEmail}
+                        title={
+                          contactEmail
+                            ? `Open this sent email in ${option.label}.`
+                            : "Add an email address to this contact first."
+                        }
+                        onClick={() => openInEmailClient(option.client)}
+                        className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
+                      >
+                        Open in {option.label}
+                      </button>
+                    ))}
                     <button
-                      key={option.client}
                       type="button"
-                      disabled={pending || !contactEmail}
+                      disabled={!canAdd || pending}
                       title={
-                        contactEmail
-                          ? `Open this sent email in ${option.label}.`
-                          : "Add an email address to this contact first."
+                        canAdd
+                          ? "Paste the prospect reply."
+                          : "Mark the current draft as sent before adding a reply."
                       }
-                      onClick={() => openInEmailClient(option.client)}
+                      onClick={() => setShowReplyBox((value) => !value)}
                       className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
                     >
-                      Open in {option.label}
+                      Draft reply
                     </button>
-                  ))}
-                  <button
-                    type="button"
-                    disabled={!canAdd || pending}
-                    title={
-                      canAdd
-                        ? "Paste the prospect reply."
-                        : "Mark the current draft as sent before adding a reply."
-                    }
-                    onClick={() => setShowReplyBox((value) => !value)}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
-                  >
-                    Draft reply
-                  </button>
-                </div>
+                  </div>
+                ) : null}
               </div>
             )}
 
-            {showReplyBox && selected.status === "SENT" ? (
+            {mode === "SEND" && showReplyBox && selected.status === "SENT" ? (
               <div className="space-y-2 rounded-md border border-slate-200 p-3">
                 <label className="block text-sm">
                   <span className="font-medium text-slate-700">
@@ -678,7 +685,9 @@ export function EmailSequenceWorkspace({
                   }
                   className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
                 >
-                  {pending ? "Classifying and drafting…" : "Classify and draft reply"}
+                  {pending
+                    ? "Classifying and drafting…"
+                    : "Classify and draft reply"}
                 </button>
               </div>
             ) : null}

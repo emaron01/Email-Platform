@@ -1,9 +1,15 @@
 import "server-only";
 
-import type { Prisma } from "@prisma/client";
+import type { Prisma, QualificationBucket } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
+import {
+  firstUnresolvedCriterion,
+  firstUnresolvedDimension,
+  scoreLabelToBucket,
+} from "@/lib/workflow/qualification";
+import type { QualificationBucketRow } from "@/components/QualificationBuckets";
 
 const campaignDetailInclude = {
   product: {
@@ -47,6 +53,7 @@ const campaignDetailInclude = {
           email: true,
           title: true,
           company: true,
+          companyId: true,
         },
       },
       emailDrafts: {
@@ -95,6 +102,212 @@ export type CompatibleScoringRun = {
   completedScoreCount: number;
 };
 
+export type CampaignQualificationView = {
+  scoringRunId: string | null;
+  companyRows: QualificationBucketRow[];
+  contactRows: QualificationBucketRow[];
+};
+
+export async function getCampaignQualificationView(
+  campaignId: string,
+): Promise<CampaignQualificationView> {
+  const organizationId = await requireOrganizationId();
+  const campaign = await requireCampaignForOrganization(
+    campaignId,
+    organizationId,
+  );
+  const attachedContacts = await prisma.campaignContact.findMany({
+    where: { organizationId, campaignId },
+    select: { contactId: true },
+  });
+  const attachedContactIds = attachedContacts.map((row) => row.contactId);
+  if (attachedContactIds.length === 0) {
+    return { scoringRunId: null, companyRows: [], contactRows: [] };
+  }
+  const compatibleRuns = await prisma.scoringRun.findMany({
+    where: {
+      organizationId,
+      productId: campaign.productId,
+      icpId: campaign.icpId,
+      personaId: campaign.personaId,
+      status: { in: ["COMPLETED", "PARTIAL"] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      _count: {
+        select: {
+          scores: {
+            where: {
+              contactId: { in: attachedContactIds },
+              scoringStatus: "COMPLETED",
+            },
+          },
+        },
+      },
+    },
+  });
+  const selectedRun = compatibleRuns
+    .filter((candidate) => candidate._count.scores > 0)
+    .sort((left, right) => right._count.scores - left._count.scores)[0];
+  if (!selectedRun) {
+    return { scoringRunId: null, companyRows: [], contactRows: [] };
+  }
+  const run = await prisma.scoringRun.findFirst({
+    where: {
+      id: selectedRun.id,
+      organizationId,
+    },
+    include: {
+      icp: {
+        include: {
+          criteria: {
+            select: { id: true, name: true, researchGuidance: true },
+          },
+        },
+      },
+      persona: {
+        include: {
+          criteria: {
+            select: { id: true, name: true, researchGuidance: true },
+          },
+        },
+      },
+      scores: {
+        where: {
+          contactId: { in: attachedContactIds },
+          scoringStatus: "COMPLETED",
+        },
+        include: {
+          contact: {
+            include: {
+              companyRecord: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      qualificationOverrides: true,
+    },
+  });
+  if (!run) {
+    return { scoringRunId: null, companyRows: [], contactRows: [] };
+  }
+  const guidance = new Map<string, string | null>();
+  for (const criterion of [...run.icp.criteria, ...run.persona.criteria]) {
+    guidance.set(criterion.id, criterion.researchGuidance);
+    guidance.set(
+      criterion.name.trim().toLowerCase(),
+      criterion.researchGuidance,
+    );
+  }
+  const override = new Map(
+    run.qualificationOverrides.map((row) => [
+      `${row.targetType}:${row.targetId}`,
+      row.bucket,
+    ]),
+  );
+  const contactRows: QualificationBucketRow[] = run.scores.map((score) => {
+    const unresolved =
+      firstUnresolvedCriterion(score.criterionAssessments) ??
+      firstUnresolvedDimension(score.assessmentData);
+    const inferred = scoreLabelToBucket(score.scoreLabel);
+    const bucket = override.get(`CONTACT:${score.contactId}`) ?? inferred;
+    const name =
+      [score.contact.firstName, score.contact.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim() ||
+      score.contact.email ||
+      "Unnamed contact";
+    return {
+      id: score.contactId,
+      companyId: score.contact.companyId,
+      targetType: "CONTACT",
+      name,
+      bucket,
+      unresolvedCriterion: unresolved
+        ? `${unresolved.reasoning.replace(/[.]+$/, "")} · Research this contact`
+        : bucket === "NEEDS_REVIEW"
+          ? "Qualification is incomplete · Review this contact"
+          : null,
+      researchGuidance: unresolved?.criterionId
+        ? (guidance.get(unresolved.criterionId) ?? null)
+        : unresolved
+          ? (guidance.get(unresolved.name.trim().toLowerCase()) ?? null)
+          : null,
+      researchHref: `/scoring/${run.id}#contact-${score.contactId}`,
+      canOverride: true,
+    };
+  });
+
+  const grouped = new Map<
+    string,
+    {
+      id: string;
+      name: string;
+      canOverride: boolean;
+      buckets: QualificationBucket[];
+      unresolved: ReturnType<typeof firstUnresolvedCriterion>;
+    }
+  >();
+  for (const score of run.scores) {
+    const companyId = score.contact.companyRecord?.id ?? null;
+    const name =
+      score.contact.companyRecord?.name ??
+      score.contact.company?.trim() ??
+      "Company not provided";
+    const key = companyId ? `id:${companyId}` : `name:${name.toLowerCase()}`;
+    const entry = grouped.get(key) ?? {
+      id: companyId ?? key,
+      name,
+      canOverride: Boolean(companyId),
+      buckets: [],
+      unresolved: null,
+    };
+    entry.buckets.push(scoreLabelToBucket(score.scoreLabel));
+    entry.unresolved ??=
+      firstUnresolvedCriterion(score.criterionAssessments) ??
+      firstUnresolvedDimension(score.assessmentData);
+    grouped.set(key, entry);
+  }
+  const companyRows: QualificationBucketRow[] = [...grouped.values()].map(
+    (entry) => {
+      const inferred: QualificationBucket = entry.buckets.every(
+        (bucket) => bucket === "EXCLUDED",
+      )
+        ? "EXCLUDED"
+        : entry.buckets.some((bucket) => bucket === "NEEDS_REVIEW")
+          ? "NEEDS_REVIEW"
+          : "GOOD";
+      const bucket =
+        (entry.canOverride ? override.get(`COMPANY:${entry.id}`) : undefined) ??
+        inferred;
+      return {
+        id: entry.id,
+        targetType: "COMPANY",
+        name: entry.name,
+        bucket,
+        unresolvedCriterion: entry.unresolved
+          ? `${entry.unresolved.reasoning.replace(/[.]+$/, "")} · Research this company`
+          : bucket === "NEEDS_REVIEW"
+            ? "Company qualification is incomplete · Research this company"
+            : null,
+        researchGuidance: entry.unresolved?.criterionId
+          ? (guidance.get(entry.unresolved.criterionId) ?? null)
+          : entry.unresolved
+            ? (guidance.get(entry.unresolved.name.trim().toLowerCase()) ?? null)
+            : null,
+        researchHref: entry.canOverride
+          ? `/companies/${entry.id}`
+          : `/scoring/${run.id}`,
+        canOverride: entry.canOverride,
+      };
+    },
+  );
+  return { scoringRunId: run.id, companyRows, contactRows };
+}
+
 async function requireCampaignForOrganization(
   campaignId: string,
   organizationId: string,
@@ -114,9 +327,7 @@ async function requireCampaignForOrganization(
     },
   });
   if (!campaign) {
-    throw new TenantError(
-      "Campaign was not found in the active organization.",
-    );
+    throw new TenantError("Campaign was not found in the active organization.");
   }
   return campaign;
 }
@@ -130,9 +341,7 @@ export async function getCampaignDetail(
     include: campaignDetailInclude,
   });
   if (!campaign) {
-    throw new TenantError(
-      "Campaign was not found in the active organization.",
-    );
+    throw new TenantError("Campaign was not found in the active organization.");
   }
   return campaign;
 }
@@ -172,11 +381,7 @@ export async function searchAvailableCampaignContacts(
       company: true,
       contactList: { select: { id: true, name: true } },
     },
-    orderBy: [
-      { lastName: "asc" },
-      { firstName: "asc" },
-      { createdAt: "asc" },
-    ],
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { createdAt: "asc" }],
     take: 50,
   });
 }

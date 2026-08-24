@@ -8,10 +8,7 @@ config();
 
 describe("campaign contact management seams", () => {
   it("routes campaign rows to detail and renders generation there only", () => {
-    const listPage = readFileSync(
-      "src/app/(app)/campaigns/page.tsx",
-      "utf8",
-    );
+    const listPage = readFileSync("src/app/(app)/campaigns/page.tsx", "utf8");
     const detailPage = readFileSync(
       "src/app/(app)/campaigns/[id]/page.tsx",
       "utf8",
@@ -29,7 +26,10 @@ describe("campaign contact management seams", () => {
     expect(listPage).not.toContain("GenerateEmailDraftForm");
     expect(detailPage).toContain("EmailSequenceWorkspace");
     expect(detailPage).toContain("CampaignContactsManager");
-    expect(detailPage).toContain("mark it sent");
+    expect(detailPage).toContain(
+      'mode={currentStage === "emails" ? "EMAILS" : "SEND"}',
+    );
+    expect(detailPage).toContain("mark external sends");
     expect(manager).toContain("Search existing contacts");
     expect(manager).toContain("Bulk add from a scored run");
     expect(manager).toContain("campaign-contacts-status");
@@ -39,14 +39,8 @@ describe("campaign contact management seams", () => {
   });
 
   it("warns and records explicit offer conflict acknowledgment at save time", () => {
-    const form = readFileSync(
-      "src/components/CampaignOfferForm.tsx",
-      "utf8",
-    );
-    const action = readFileSync(
-      "src/app/actions/campaign-offer.ts",
-      "utf8",
-    );
+    const form = readFileSync("src/components/CampaignOfferForm.tsx", "utf8");
+    const action = readFileSync("src/app/actions/campaign-offer.ts", "utf8");
     const validation = readFileSync(
       "src/lib/campaign/offer-validation.ts",
       "utf8",
@@ -297,9 +291,8 @@ describe.skipIf(!hasDatabase)(
 
     it("searches only unattached contacts in the active organization", async () => {
       if (!ready) return;
-      const { searchAvailableCampaignContacts } = await import(
-        "@/lib/campaign/contacts"
-      );
+      const { searchAvailableCampaignContacts } =
+        await import("@/lib/campaign/contacts");
       const all = await searchAvailableCampaignContacts(campaignId);
       expect(all.map((contact) => contact.id)).toEqual(
         expect.arrayContaining([contactA2Id, contactA3Id]),
@@ -316,9 +309,8 @@ describe.skipIf(!hasDatabase)(
 
     it("adds selected contacts as SELECTED and is duplicate-safe", async () => {
       if (!ready) return;
-      const { addContactsToCampaign, getCampaignDetail } = await import(
-        "@/lib/campaign/contacts"
-      );
+      const { addContactsToCampaign, getCampaignDetail } =
+        await import("@/lib/campaign/contacts");
       expect(
         await addContactsToCampaign({
           campaignId,
@@ -342,17 +334,15 @@ describe.skipIf(!hasDatabase)(
 
     it("bulk adds completed contacts from a compatible scoring run", async () => {
       if (!ready) return;
-      const {
-        addScoringRunContactsToCampaign,
-        listCompatibleScoringRuns,
-      } = await import("@/lib/campaign/contacts");
+      const { addScoringRunContactsToCampaign, listCompatibleScoringRuns } =
+        await import("@/lib/campaign/contacts");
 
       const runs = await listCompatibleScoringRuns(campaignId);
       expect(runs.map((run) => run.id)).toContain(scoringRunId);
       expect(runs.map((run) => run.id)).not.toContain(incompatibleRunId);
-      expect(runs.find((run) => run.id === scoringRunId)?.completedScoreCount).toBe(
-        2,
-      );
+      expect(
+        runs.find((run) => run.id === scoringRunId)?.completedScoreCount,
+      ).toBe(2);
 
       // contact A2 was added manually; only A3 is newly inserted.
       expect(
@@ -370,10 +360,8 @@ describe.skipIf(!hasDatabase)(
 
     it("rejects foreign contacts and incompatible scoring runs", async () => {
       if (!ready) return;
-      const {
-        addContactsToCampaign,
-        addScoringRunContactsToCampaign,
-      } = await import("@/lib/campaign/contacts");
+      const { addContactsToCampaign, addScoringRunContactsToCampaign } =
+        await import("@/lib/campaign/contacts");
       await expect(
         addContactsToCampaign({
           campaignId,
@@ -390,9 +378,8 @@ describe.skipIf(!hasDatabase)(
 
     it("updates campaign email settings only in the active organization", async () => {
       if (!ready) return;
-      const { updateCampaignEmailSettings } = await import(
-        "@/lib/campaign/settings"
-      );
+      const { updateCampaignEmailSettings } =
+        await import("@/lib/campaign/settings");
 
       await updateCampaignEmailSettings({
         campaignId,

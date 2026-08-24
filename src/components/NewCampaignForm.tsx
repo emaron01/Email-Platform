@@ -57,7 +57,7 @@ export function NewCampaignForm({
 
   useEffect(() => {
     if (!state?.ok) return;
-    router.push("/campaigns");
+    router.push(state.campaignId ? `/campaigns/${state.campaignId}` : "/");
     router.refresh();
   }, [state, router]);
 

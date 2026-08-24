@@ -192,7 +192,11 @@ export function ScoreReportClient({
   useEffect(() => {
     if (!campaignState?.ok) return;
     setShowCampaign(false);
-    router.push("/campaigns");
+    router.push(
+      campaignState.campaignId
+        ? `/campaigns/${campaignState.campaignId}`
+        : "/campaigns",
+    );
     router.refresh();
   }, [campaignState, router]);
 
@@ -232,7 +236,9 @@ export function ScoreReportClient({
           <SecondaryButton onClick={selectAllVisible}>
             Select all visible
           </SecondaryButton>
-          <SecondaryButton onClick={clearSelection}>Clear selection</SecondaryButton>
+          <SecondaryButton onClick={clearSelection}>
+            Clear selection
+          </SecondaryButton>
           <PrimaryButton
             disabled={selected.size === 0}
             onClick={() => setShowCampaign(true)}
@@ -265,7 +271,9 @@ export function ScoreReportClient({
             {rows.map((row) => {
               const open = expandedId === row.id;
               const companyResearch = row.contact.companyRecord?.research?.[0];
-              const researchLabel = companyResearchLabel(companyResearch?.status);
+              const researchLabel = companyResearchLabel(
+                companyResearch?.status,
+              );
               return (
                 <Fragment key={row.id}>
                   <tr className="align-top">
@@ -332,9 +340,7 @@ export function ScoreReportClient({
                       <button
                         type="button"
                         className="text-sm font-medium text-slate-900 underline"
-                        onClick={() =>
-                          setExpandedId(open ? null : row.id)
-                        }
+                        onClick={() => setExpandedId(open ? null : row.id)}
                       >
                         {open ? "Hide" : "View"}
                       </button>
@@ -436,10 +442,7 @@ export function ScoreReportClient({
                               value={`Research: ${researchLabel}`}
                             />
                             <div className="md:col-span-2">
-                              <Detail
-                                label="Reasoning"
-                                value={row.reasoning}
-                              />
+                              <Detail label="Reasoning" value={row.reasoning} />
                             </div>
                             {row.scoringError ? (
                               <div className="md:col-span-2">
@@ -547,7 +550,11 @@ export function ScoreReportClient({
                 name="offerName"
                 placeholder="Free Forecast Audit"
               />
-              <Field label="Primary CTA" name="offerCta" placeholder="Book a demo" />
+              <Field
+                label="Primary CTA"
+                name="offerCta"
+                placeholder="Book a demo"
+              />
               <Field
                 label="Offer Description"
                 name="offerDescription"
@@ -626,13 +633,7 @@ export function ScoreReportClient({
   );
 }
 
-function Detail({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null;
-}) {
+function Detail({ label, value }: { label: string; value: string | null }) {
   return (
     <div>
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">

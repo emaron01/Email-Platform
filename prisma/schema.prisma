@@ -115,6 +115,17 @@ enum ScoreLabel {
   DISQUALIFIED
 }
 
+enum QualificationBucket {
+  GOOD
+  NEEDS_REVIEW
+  EXCLUDED
+}
+
+enum QualificationOverrideTarget {
+  COMPANY
+  CONTACT
+}
+
 enum ResearchStatus {
   NOT_STARTED
   IN_PROGRESS
@@ -394,10 +405,11 @@ model Organization {
   userUsageOverrides       UserUsageOverride[]
   usageEvents              UsageEvent[]
   usageQuotaLedgers        UsageQuotaLedger[]
+  qualificationOverrides   QualificationBucketOverride[]
   invitations              OrganizationInvitation[]
   billingProfile           OrganizationBillingProfile?
   transactionalEmailEvents TransactionalEmailEvent[]
-  activeForUsers           User[]                      @relation("ActiveOrganization")
+  activeForUsers           User[]                        @relation("ActiveOrganization")
   productSources           ProductSource[]
   productSourceBlobs       ProductSourceBlob[]
   productEvidenceBundles   ProductEvidenceBundle[]
@@ -428,17 +440,18 @@ model User {
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
-  activeOrganization       Organization?             @relation("ActiveOrganization", fields: [activeOrganizationId], references: [id], onDelete: SetNull)
+  activeOrganization       Organization?                 @relation("ActiveOrganization", fields: [activeOrganizationId], references: [id], onDelete: SetNull)
   memberships              OrganizationMembership[]
   usageOverrides           UserUsageOverride[]
   usageEvents              UsageEvent[]
   usageQuotaLedgers        UsageQuotaLedger[]
-  invitationsSent          OrganizationInvitation[]  @relation("InvitedBy")
-  companyResearchInitiated CompanyResearch[]         @relation("ResearchInitiatedBy")
+  qualificationOverrides   QualificationBucketOverride[]
+  invitationsSent          OrganizationInvitation[]      @relation("InvitedBy")
+  companyResearchInitiated CompanyResearch[]             @relation("ResearchInitiatedBy")
   adminAuditEvents         AdminAuditEvent[]
   transactionalEmailEvents TransactionalEmailEvent[]
   voiceSamples             VoiceSample[]
-  sentEmailDrafts          EmailDraft[]              @relation("EmailDraftSentBy")
+  sentEmailDrafts          EmailDraft[]                  @relation("EmailDraftSentBy")
   mailboxConnections       MailboxConnection[]
   mailboxOAuthStates       MailboxOAuthState[]
   emailSendRecords         EmailSendRecord[]
@@ -1331,12 +1344,13 @@ model ScoringRun {
   updatedAt       DateTime         @updatedAt
   completedAt     DateTime?
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contactList  ContactList    @relation(fields: [contactListId], references: [id], onDelete: Cascade)
-  product      Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
-  icp          Icp            @relation(fields: [icpId], references: [id], onDelete: Restrict)
-  persona      Persona        @relation(fields: [personaId], references: [id], onDelete: Restrict)
-  scores       ContactScore[]
+  organization           Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactList            ContactList                   @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+  product                Product                       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  icp                    Icp                           @relation(fields: [icpId], references: [id], onDelete: Restrict)
+  persona                Persona                       @relation(fields: [personaId], references: [id], onDelete: Restrict)
+  scores                 ContactScore[]
+  qualificationOverrides QualificationBucketOverride[]
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
@@ -1406,6 +1420,27 @@ model ContactScore {
   @@index([organizationId, scoreLabel])
   @@index([organizationId, researchStatus])
   @@index([organizationId, scoringStatus])
+}
+
+model QualificationBucketOverride {
+  id             String                      @id @default(cuid())
+  organizationId String
+  scoringRunId   String
+  targetType     QualificationOverrideTarget
+  targetId       String
+  bucket         QualificationBucket
+  overriddenById String
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  scoringRun   ScoringRun   @relation(fields: [scoringRunId], references: [id], onDelete: Cascade)
+  overriddenBy User         @relation(fields: [overriddenById], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, scoringRunId, targetType, targetId])
+  @@index([organizationId])
+  @@index([scoringRunId])
+  @@index([overriddenById])
 }
 
 model Campaign {
