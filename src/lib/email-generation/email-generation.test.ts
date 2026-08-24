@@ -782,6 +782,9 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("Gmail");
     expect(form).toContain("buildEmailClientLaunch");
     expect(form).toContain("recordEmailClientIntentAction");
+    expect(form).toContain("Opened");
+    expect(form).toContain("Sent");
+    expect(campaignDetailPage).toContain("handoffAt");
     expect(action).toContain("saveEmailDraftAction");
     expect(campaignDetailPage).toContain("EmailSequenceWorkspace");
   });
@@ -1265,12 +1268,13 @@ describe.skipIf(!hasDatabase)(
       const { recordEmailClientIntent } = await import(
         "@/lib/email-generation/sequence"
       );
-      await recordEmailClientIntent({
+      const handoff = await recordEmailClientIntent({
         draftId: created.draftId,
         userId: userAId,
         client: "OUTLOOK_DESKTOP",
         bodyHandling: "PREFILLED",
       });
+      expect(handoff.occurredAt).toBeInstanceOf(Date);
       const afterIntent = await prisma.emailDraft.findUniqueOrThrow({
         where: { id: created.draftId },
         select: { status: true, sentAt: true },

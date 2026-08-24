@@ -419,6 +419,9 @@ export default async function CampaignDetailPage({
                           status: draft.status,
                           kind: draft.kind,
                           sentAt: draft.sentAt?.toISOString() ?? null,
+                          handoffAt:
+                            draft.sendRecords[0]?.occurredAt.toISOString() ??
+                            null,
                           replyClassification: draft.replyClassification,
                           referralSuggested: draft.referralSuggested,
                         }))}

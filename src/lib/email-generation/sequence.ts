@@ -20,7 +20,9 @@ import {
 export function nextSequencePosition(context: EmailGenerationContext): number {
   const latest = context.sequence.at(-1);
   if (!latest) {
-    throw new TenantError("Generate the initial email before adding a follow-up.");
+    throw new TenantError(
+      "Generate the initial email before adding a follow-up.",
+    );
   }
   if (latest.status !== "SENT" || !latest.sentAt) {
     throw new TenantError(
@@ -217,6 +219,7 @@ export async function recordEmailClientIntent(input: {
 }): Promise<{
   campaignId: string;
   sequenceNumber: number;
+  occurredAt: Date;
 }> {
   const user = await prisma.user.findUnique({ where: { id: input.userId } });
   if (!user) throw new TenantError("User not found.");
@@ -254,7 +257,7 @@ export async function recordEmailClientIntent(input: {
       "A recipient, subject, and body are required before opening an email client.",
     );
   }
-  await prisma.emailSendRecord.create({
+  const sendRecord = await prisma.emailSendRecord.create({
     data: {
       organizationId,
       emailDraftId: draft.id,
@@ -269,20 +272,20 @@ export async function recordEmailClientIntent(input: {
   });
   try {
     await recordUsageEvent({
-    organizationId,
-    userId: input.userId,
-    campaignId: draft.campaignContact.campaignId,
-    contactId: draft.campaignContact.contactId,
-    category: "EMAIL_GENERATION",
-    operation: "EMAIL_DEEPLINK_OPENED",
-    status: "SUCCESS",
-    metadata: {
-      draftId: draft.id,
-      sequenceNumber: draft.sequenceNumber,
-      client: input.client,
-      bodyHandling: input.bodyHandling,
-      markedSent: false,
-    },
+      organizationId,
+      userId: input.userId,
+      campaignId: draft.campaignContact.campaignId,
+      contactId: draft.campaignContact.contactId,
+      category: "EMAIL_GENERATION",
+      operation: "EMAIL_DEEPLINK_OPENED",
+      status: "SUCCESS",
+      metadata: {
+        draftId: draft.id,
+        sequenceNumber: draft.sequenceNumber,
+        client: input.client,
+        bodyHandling: input.bodyHandling,
+        markedSent: false,
+      },
     });
   } catch (usageError) {
     console.error("Failed to record email-client intent usage.", usageError);
@@ -290,5 +293,6 @@ export async function recordEmailClientIntent(input: {
   return {
     campaignId: draft.campaignContact.campaignId,
     sequenceNumber: draft.sequenceNumber,
+    occurredAt: sendRecord.occurredAt,
   };
 }

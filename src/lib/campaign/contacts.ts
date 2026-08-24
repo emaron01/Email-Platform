@@ -68,6 +68,12 @@ const campaignDetailInclude = {
           kind: true,
           sentAt: true,
           sentMethod: true,
+          sendRecords: {
+            where: { method: "DEEPLINK_INTENT" as const },
+            orderBy: { occurredAt: "desc" as const },
+            take: 1,
+            select: { occurredAt: true },
+          },
           replyClassification: true,
           prospectReplyText: true,
           referralSuggested: true,

@@ -31,6 +31,7 @@ type SequenceDraft = {
   status: "DRAFT" | "APPROVED" | "SENDING" | "SENT" | "SKIPPED" | "NOT_CREATED";
   kind: "INITIAL" | "FOLLOW_UP" | "REPLY";
   sentAt: string | null;
+  handoffAt: string | null;
   replyClassification:
     | "INTERESTED"
     | "OBJECTION"
@@ -50,12 +51,19 @@ const EMAIL_CLIENT_OPTIONS: Array<{
   { client: "GMAIL_WEB", label: "Gmail" },
 ];
 
-function sentDate(value: string | null): string {
+function sequenceDate(value: string | null): string {
   if (!value) return "";
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
+    year: "numeric",
   }).format(new Date(value));
+}
+
+function sequenceActivity(draft: SequenceDraft): string {
+  if (draft.sentAt) return `Sent ${sequenceDate(draft.sentAt)}`;
+  if (draft.handoffAt) return `Opened ${sequenceDate(draft.handoffAt)}`;
+  return "";
 }
 
 export function EmailSequenceWorkspace({
@@ -134,6 +142,7 @@ export function EmailSequenceWorkspace({
       status: next.status ?? "DRAFT",
       kind: next.kind,
       sentAt: null,
+      handoffAt: null,
       replyClassification: next.replyClassification ?? null,
       referralSuggested: next.referralSuggested ?? false,
     };
@@ -250,6 +259,9 @@ export function EmailSequenceWorkspace({
       });
       setResult(recorded);
       if (!recorded.ok) return;
+      if (recorded.handoffAt) {
+        updateSelectedDraft({ handoffAt: recorded.handoffAt });
+      }
       window.location.assign(href);
     });
   }
@@ -323,6 +335,7 @@ export function EmailSequenceWorkspace({
             {drafts.map((draft) => {
               const isSelected = draft.id === selected?.id;
               const isCurrent = draft.id === latest?.id;
+              const activity = sequenceActivity(draft);
               return (
                 <button
                   key={draft.id}
@@ -351,7 +364,7 @@ export function EmailSequenceWorkspace({
                     >
                       {draft.status}
                     </span>
-                    {draft.sentAt ? ` · ${sentDate(draft.sentAt)}` : ""}
+                    {activity ? ` · ${activity}` : ""}
                   </span>
                   <span className="text-slate-500">
                     {isSelected

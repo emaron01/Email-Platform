@@ -51,14 +51,11 @@ export type GenerateEmailDraftActionResult = {
   kind?: "INITIAL" | "FOLLOW_UP" | "REPLY";
   status?: "DRAFT" | "SENT";
   replyClassification?:
-    | "INTERESTED"
-    | "OBJECTION"
-    | "REFERRAL"
-    | "NOT_NOW"
-    | "NOT_INTERESTED";
+    "INTERESTED" | "OBJECTION" | "REFERRAL" | "NOT_NOW" | "NOT_INTERESTED";
   referralSuggested?: boolean;
   offerWarnings?: OfferConflict[];
   sentAt?: string;
+  handoffAt?: string;
   sendUsage?: {
     used: number;
     warningLimit: number;
@@ -143,8 +140,10 @@ export async function regenerateEmailDraftAction(
 
   try {
     const user = await requireVerifiedForAiSpend();
-    const { context, draft: existing } =
-      await loadExistingEmailDraftContext(emailDraftId, user.id);
+    const { context, draft: existing } = await loadExistingEmailDraftContext(
+      emailDraftId,
+      user.id,
+    );
     let messages: AiMessage[];
     if (existing.kind === "INITIAL") {
       messages = buildEmailPrompt(context, normalizedGuidance);
@@ -254,10 +253,9 @@ export async function markEmailDraftSentAction(
     revalidateCampaign(marked.campaignId);
     return {
       ok: true,
-      message:
-        marked.sendUsage?.warning
-          ? `Marked as sent. Daily send warning: ${marked.sendUsage.used} of ${marked.sendUsage.limit} sends used. This is not a delivery confirmation.`
-          : "Marked as sent based on your confirmation. This is not a delivery confirmation.",
+      message: marked.sendUsage?.warning
+        ? `Marked as sent. Daily send warning: ${marked.sendUsage.used} of ${marked.sendUsage.limit} sends used. This is not a delivery confirmation.`
+        : "Marked as sent based on your confirmation. This is not a delivery confirmation.",
       draftId: emailDraftId,
       sequenceNumber: marked.sequenceNumber,
       status: "SENT",
@@ -306,10 +304,7 @@ export async function recordEmailClientIntentAction(input: {
   if (!EMAIL_CLIENTS.includes(input.client)) {
     return { ok: false, message: "Select a supported email client." };
   }
-  if (
-    input.bodyHandling !== "PREFILLED" &&
-    input.bodyHandling !== "COPIED"
-  ) {
+  if (input.bodyHandling !== "PREFILLED" && input.bodyHandling !== "COPIED") {
     return { ok: false, message: "Invalid email handoff mode." };
   }
   try {
@@ -328,6 +323,7 @@ export async function recordEmailClientIntentAction(input: {
           : "Email client opened. This did not mark the email as sent.",
       draftId: input.emailDraftId,
       sequenceNumber: recorded.sequenceNumber,
+      handoffAt: recorded.occurredAt.toISOString(),
     };
   } catch (error) {
     console.error("Failed to record email client intent.", error);
@@ -351,10 +347,9 @@ export async function sendEmailDraftConnectedAction(input: {
     revalidateCampaign(sent.campaignId);
     return {
       ok: true,
-      message:
-        sent.sendUsage.warning
-          ? `Microsoft accepted the message. Daily send warning: ${sent.sendUsage.used} of ${sent.sendUsage.limit} sends used.`
-          : "Microsoft accepted the message from your mailbox and will save it to Sent items.",
+      message: sent.sendUsage.warning
+        ? `Microsoft accepted the message. Daily send warning: ${sent.sendUsage.used} of ${sent.sendUsage.limit} sends used.`
+        : "Microsoft accepted the message from your mailbox and will save it to Sent items.",
       draftId: sent.draftId,
       sequenceNumber: sent.sequenceNumber,
       sentAt: sent.sentAt.toISOString(),
