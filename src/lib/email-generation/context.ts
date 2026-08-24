@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { EmailLength } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveActiveOrganization } from "@/lib/auth/session";
 import { TenantError } from "@/lib/tenant/errors";
@@ -69,6 +70,8 @@ export type EmailGenerationContext = {
     offerDescription: string | null;
     offerCta: string | null;
     offerNotes: string | null;
+    emailLength: EmailLength;
+    emailGuidance: string | null;
   };
   contact: {
     id: string;
@@ -226,6 +229,8 @@ export async function loadEmailGenerationContext(
       offerDescription: campaign.offerDescription,
       offerCta: campaign.offerCta,
       offerNotes: campaign.offerNotes,
+      emailLength: campaign.emailLength,
+      emailGuidance: campaign.emailGuidance,
     },
     contact: {
       id: contact.id,

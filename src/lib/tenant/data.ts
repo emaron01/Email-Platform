@@ -6,6 +6,7 @@ import type {
   Contact,
   ContactList,
   ContactScore,
+  EmailLength,
   Icp,
   Offer,
   Persona,
@@ -683,6 +684,8 @@ export async function createCampaign(input: {
   offerDescription?: string | null;
   offerCta?: string | null;
   offerNotes?: string | null;
+  emailLength?: EmailLength;
+  emailGuidance?: string | null;
   contactIds?: string[];
   status?: CampaignStatus;
 }): Promise<Campaign> {
@@ -751,6 +754,8 @@ export async function createCampaign(input: {
         offerDescription: input.offerDescription?.trim() || null,
         offerCta: input.offerCta?.trim() || null,
         offerNotes: input.offerNotes?.trim() || null,
+        emailLength: input.emailLength ?? "TWO_PARAGRAPH",
+        emailGuidance: input.emailGuidance?.trim() || null,
         status: input.status ?? "DRAFT",
       },
     });

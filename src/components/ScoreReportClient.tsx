@@ -4,7 +4,12 @@ import Link from "next/link";
 import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createCampaignAction } from "@/app/actions";
-import type { CampaignActionResult } from "@/lib/campaign/save";
+import {
+  DEFAULT_EMAIL_LENGTH,
+  EMAIL_GUIDANCE_MAX_CHARS,
+  EMAIL_LENGTH_OPTIONS,
+  type CampaignActionResult,
+} from "@/lib/campaign/save";
 import {
   Field,
   PrimaryButton,
@@ -526,6 +531,55 @@ export function ScoreReportClient({
                 as="textarea"
               />
               <Field label="Offer Notes" name="offerNotes" as="textarea" />
+              <fieldset>
+                <legend className="text-sm font-medium text-slate-700">
+                  Email length
+                </legend>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  {EMAIL_LENGTH_OPTIONS.map((value) => (
+                    <label
+                      key={value}
+                      className="flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                    >
+                      <input
+                        type="radio"
+                        name="emailLength"
+                        value={value}
+                        defaultChecked={
+                          (campaignState && !campaignState.ok
+                            ? campaignState.values?.emailLength
+                            : DEFAULT_EMAIL_LENGTH) === value
+                        }
+                      />
+                      {value === "ONE_PARAGRAPH"
+                        ? "One paragraph"
+                        : value === "TWO_PARAGRAPH"
+                          ? "Two paragraphs"
+                          : "Three paragraphs"}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <label className="block text-sm">
+                <span className="font-medium text-slate-700">
+                  Email guidance
+                </span>
+                <textarea
+                  name="emailGuidance"
+                  rows={3}
+                  maxLength={EMAIL_GUIDANCE_MAX_CHARS}
+                  defaultValue={
+                    campaignState && !campaignState.ok
+                      ? campaignState.values?.emailGuidance
+                      : undefined
+                  }
+                  placeholder="Emphasize the free trial"
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 placeholder:text-slate-400 focus:ring-2"
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  Optional, up to {EMAIL_GUIDANCE_MAX_CHARS} characters.
+                </span>
+              </label>
               <div className="flex gap-2">
                 <SubmitButton disabled={campaignPending}>
                   {campaignPending ? "Creating…" : "Create campaign"}

@@ -4,6 +4,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
+  EMAIL_GUIDANCE_MAX_CHARS,
+  parseCampaignEmailSettingsFormData,
   parseCampaignFormData,
   toSafeCampaignActionError,
 } from "@/lib/campaign/save";
@@ -29,6 +31,8 @@ describe("parseCampaignFormData", () => {
     );
     expect(parsed.fieldErrors).toEqual({});
     expect(parsed.fields.name).toBe("Q1 Outreach");
+    expect(parsed.fields.emailLength).toBe("TWO_PARAGRAPH");
+    expect(parsed.fields.emailGuidance).toBeNull();
     expect(parsed.contactIds).toEqual([]);
   });
 
@@ -38,6 +42,41 @@ describe("parseCampaignFormData", () => {
     );
     expect(parsed.fieldErrors.icpId).toBe("ICP is required.");
     expect(parsed.fieldErrors.personaId).toBe("Persona is required.");
+  });
+});
+
+describe("parseCampaignEmailSettingsFormData", () => {
+  it("accepts a selected length and optional guidance", () => {
+    const parsed = parseCampaignEmailSettingsFormData(
+      formFrom({
+        emailLength: "THREE_PARAGRAPH",
+        emailGuidance: " Emphasize the free trial. ",
+      }),
+    );
+
+    expect(parsed.fieldErrors).toEqual({});
+    expect(parsed.fields).toEqual({
+      emailLength: "THREE_PARAGRAPH",
+      emailGuidance: "Emphasize the free trial.",
+    });
+  });
+
+  it("defaults missing length and stores empty guidance as null", () => {
+    const parsed = parseCampaignEmailSettingsFormData(formFrom({}));
+    expect(parsed.fields.emailLength).toBe("TWO_PARAGRAPH");
+    expect(parsed.fields.emailGuidance).toBeNull();
+  });
+
+  it("rejects invalid lengths and guidance over 500 characters", () => {
+    const parsed = parseCampaignEmailSettingsFormData(
+      formFrom({
+        emailLength: "FIVE_PARAGRAPH",
+        emailGuidance: "x".repeat(EMAIL_GUIDANCE_MAX_CHARS + 1),
+      }),
+    );
+
+    expect(parsed.fieldErrors.emailLength).toMatch(/valid email length/i);
+    expect(parsed.fieldErrors.emailGuidance).toMatch(/500 characters or fewer/i);
   });
 });
 
@@ -55,6 +94,18 @@ describe("campaign save UI seam", () => {
   it("wires useActionState result into visible status", () => {
     const formSrc = readFileSync("src/components/NewCampaignForm.tsx", "utf8");
     const scoreReport = readFileSync("src/components/ScoreReportClient.tsx", "utf8");
+    const settingsForm = readFileSync(
+      "src/components/CampaignEmailSettingsForm.tsx",
+      "utf8",
+    );
+    const settingsAction = readFileSync(
+      "src/app/actions/campaign-email-settings.ts",
+      "utf8",
+    );
+    const detailPage = readFileSync(
+      "src/app/(app)/campaigns/[id]/page.tsx",
+      "utf8",
+    );
     const actionsSrc = readFileSync("src/app/actions.ts", "utf8");
 
     expect(actionsSrc).toMatch(
@@ -64,5 +115,15 @@ describe("campaign save UI seam", () => {
     expect(formSrc).toContain('data-testid="campaign-action-status"');
     expect(scoreReport).toContain("useActionState");
     expect(scoreReport).toContain('data-testid="campaign-action-status"');
+    expect(formSrc).toContain('name="emailLength"');
+    expect(formSrc).toContain('name="emailGuidance"');
+    expect(scoreReport).toContain('name="emailLength"');
+    expect(scoreReport).toContain('name="emailGuidance"');
+    expect(settingsForm).toContain("updateCampaignEmailSettingsAction");
+    expect(settingsForm).toContain("campaign-email-settings-status");
+    expect(settingsAction).toContain(
+      "export async function updateCampaignEmailSettingsAction",
+    );
+    expect(detailPage).toContain("CampaignEmailSettingsForm");
   });
 });

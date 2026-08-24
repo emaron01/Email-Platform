@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CampaignContactsManager } from "@/components/CampaignContactsManager";
+import { CampaignEmailSettingsForm } from "@/components/CampaignEmailSettingsForm";
 import { GenerateEmailDraftForm } from "@/components/GenerateEmailDraftForm";
 import {
   PageHeader,
@@ -97,6 +98,17 @@ export default async function CampaignDetailPage({
           <Meta label="Offer description" value={offerDescription} />
           <Meta label="Offer notes" value={offerNotes} />
         </dl>
+      </Panel>
+
+      <Panel
+        title="Email settings"
+        description="Control the length and campaign-specific guidance used for generated drafts."
+      >
+        <CampaignEmailSettingsForm
+          campaignId={campaign.id}
+          emailLength={campaign.emailLength}
+          emailGuidance={campaign.emailGuidance}
+        />
       </Panel>
 
       <Panel

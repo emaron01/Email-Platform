@@ -365,5 +365,36 @@ describe.skipIf(!hasDatabase)(
         }),
       ).rejects.toBeInstanceOf(TenantError);
     });
+
+    it("updates campaign email settings only in the active organization", async () => {
+      if (!ready) return;
+      const { updateCampaignEmailSettings } = await import(
+        "@/lib/campaign/settings"
+      );
+
+      await updateCampaignEmailSettings({
+        campaignId,
+        emailLength: "ONE_PARAGRAPH",
+        emailGuidance: "Emphasize the free trial",
+      });
+      const updated = await prisma.campaign.findUniqueOrThrow({
+        where: { id: campaignId },
+      });
+      expect(updated.emailLength).toBe("ONE_PARAGRAPH");
+      expect(updated.emailGuidance).toBe("Emphasize the free trial");
+
+      process.env.DEV_ORGANIZATION_ID = orgBId;
+      try {
+        await expect(
+          updateCampaignEmailSettings({
+            campaignId,
+            emailLength: "THREE_PARAGRAPH",
+            emailGuidance: null,
+          }),
+        ).rejects.toBeInstanceOf(TenantError);
+      } finally {
+        process.env.DEV_ORGANIZATION_ID = orgAId;
+      }
+    });
   },
 );

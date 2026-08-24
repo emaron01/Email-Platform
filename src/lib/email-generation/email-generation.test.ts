@@ -26,6 +26,8 @@ function contextFixture(
       offerDescription: "A review of forecast process gaps",
       offerCta: "Reply with a time for a 20-minute review",
       offerNotes: null,
+      emailLength: "TWO_PARAGRAPH",
+      emailGuidance: "Emphasize the free trial",
     },
     contact: {
       id: "contact_1",
@@ -114,13 +116,35 @@ describe("buildEmailPrompt", () => {
 
     const prompt = messages[1].content;
     const offer = prompt.indexOf('"offer"');
+    const instructions = prompt.indexOf('"additionalInstructions"');
+    const structure = prompt.indexOf('"emailStructure"');
     const needs = prompt.indexOf('"personaNeeds"');
     const persona = prompt.indexOf('"personaMessaging"');
     const product = prompt.indexOf('"productMessaging"');
     const contact = prompt.indexOf('"contactContext"');
     const voice = prompt.indexOf('"voiceStyle"');
-    expect([offer, needs, persona, product, contact, voice]).toEqual(
-      [...[offer, needs, persona, product, contact, voice]].sort(
+    expect([
+      offer,
+      instructions,
+      structure,
+      needs,
+      persona,
+      product,
+      contact,
+      voice,
+    ]).toEqual(
+      [
+        ...[
+          offer,
+          instructions,
+          structure,
+          needs,
+          persona,
+          product,
+          contact,
+          voice,
+        ],
+      ].sort(
         (a, b) => a - b,
       ),
     );
@@ -128,6 +152,43 @@ describe("buildEmailPrompt", () => {
     expect(prompt).not.toContain("SECOND VOICE SAMPLE");
     expect(messages[0].content).toMatch(/JSON only/i);
     expect(messages[0].content).toMatch(/No markdown/i);
+  });
+
+  it.each([
+    ["ONE_PARAGRAPH", 1],
+    ["TWO_PARAGRAPH", 2],
+    ["THREE_PARAGRAPH", 3],
+  ] as const)("enforces %s as exactly %i paragraphs", (emailLength, count) => {
+    const base = contextFixture();
+    const messages = buildEmailPrompt(
+      contextFixture({
+        campaign: {
+          ...base.campaign,
+          emailLength,
+        },
+      }),
+    );
+
+    expect(messages[1].content).toContain(
+      `"requiredParagraphCount": ${count}`,
+    );
+    expect(messages[1].content).toContain(
+      `Write exactly ${count} paragraph${count === 1 ? "" : "s"}.`,
+    );
+    expect(messages[0].content).toMatch(/exact paragraph count/i);
+  });
+
+  it("places prefixed campaign guidance immediately after the offer", () => {
+    const prompt = buildEmailPrompt(contextFixture())[1].content;
+    const offer = prompt.indexOf('"offer"');
+    const guidance = prompt.indexOf('"additionalInstructions"');
+    const persona = prompt.indexOf('"personaNeeds"');
+
+    expect(offer).toBeLessThan(guidance);
+    expect(guidance).toBeLessThan(persona);
+    expect(prompt).toContain(
+      "Additional instructions that override defaults: Emphasize the free trial",
+    );
   });
 
   it("uses the first voice sample as the structural reference", () => {
@@ -372,6 +433,8 @@ describe.skipIf(!hasDatabase)(
           personaId: persona.id,
           offerName: "Forecast audit",
           offerCta: "Reply to book 20 minutes",
+          emailLength: "THREE_PARAGRAPH",
+          emailGuidance: "Emphasize the free trial",
         },
       });
       const campaignContact = await prisma.campaignContact.create({
@@ -514,6 +577,10 @@ describe.skipIf(!hasDatabase)(
         "Explain forecast movement",
       ]);
       expect(context.persona.profile.terminology).toEqual(["commit"]);
+      expect(context.campaign.emailLength).toBe("THREE_PARAGRAPH");
+      expect(context.campaign.emailGuidance).toBe(
+        "Emphasize the free trial",
+      );
       expect(context.voiceSamples.map((sample) => sample.label)).toEqual([
         "Newest",
         "Older",

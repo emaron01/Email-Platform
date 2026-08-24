@@ -27,6 +27,12 @@ enum CampaignStatus {
   COMPLETED
 }
 
+enum EmailLength {
+  ONE_PARAGRAPH
+  TWO_PARAGRAPH
+  THREE_PARAGRAPH
+}
+
 enum CampaignContactStatus {
   PENDING
   SELECTED
@@ -327,40 +333,40 @@ model Organization {
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
-  memberships      OrganizationMembership[]
-  products         Product[]
-  offers           Offer[]
-  icps             Icp[]
-  personas         Persona[]
-  contactLists     ContactList[]
-  contacts         Contact[]
-  companies        Company[]
-  companyResearch  CompanyResearch[]
-  contactResearch  ContactResearch[]
-  icpCriteria      IcpCriterion[]
-  personaCriteria  PersonaCriterion[]
-  contactScores    ContactScore[]
-  scoringRuns      ScoringRun[]
-  campaigns        Campaign[]
-  campaignContacts CampaignContact[]
-  emailDrafts      EmailDraft[]
-  usagePolicy      OrganizationUsagePolicy?
-  researchPolicy   ResearchPolicy?
-  userUsageOverrides UserUsageOverride[]
-  usageEvents      UsageEvent[]
-  usageQuotaLedgers UsageQuotaLedger[]
-  invitations                  OrganizationInvitation[]
-  billingProfile               OrganizationBillingProfile?
-  transactionalEmailEvents     TransactionalEmailEvent[]
-  activeForUsers               User[]                     @relation("ActiveOrganization")
-  productSources               ProductSource[]
-  productSourceBlobs           ProductSourceBlob[]
-  productEvidenceBundles       ProductEvidenceBundle[]
-  productSetupRuns             ProductSetupRun[]
-  personaSources               PersonaSource[]
-  personaEvidenceBundles       PersonaEvidenceBundle[]
-  personaSetupRuns             PersonaSetupRun[]
-  voiceSamples                 VoiceSample[]
+  memberships              OrganizationMembership[]
+  products                 Product[]
+  offers                   Offer[]
+  icps                     Icp[]
+  personas                 Persona[]
+  contactLists             ContactList[]
+  contacts                 Contact[]
+  companies                Company[]
+  companyResearch          CompanyResearch[]
+  contactResearch          ContactResearch[]
+  icpCriteria              IcpCriterion[]
+  personaCriteria          PersonaCriterion[]
+  contactScores            ContactScore[]
+  scoringRuns              ScoringRun[]
+  campaigns                Campaign[]
+  campaignContacts         CampaignContact[]
+  emailDrafts              EmailDraft[]
+  usagePolicy              OrganizationUsagePolicy?
+  researchPolicy           ResearchPolicy?
+  userUsageOverrides       UserUsageOverride[]
+  usageEvents              UsageEvent[]
+  usageQuotaLedgers        UsageQuotaLedger[]
+  invitations              OrganizationInvitation[]
+  billingProfile           OrganizationBillingProfile?
+  transactionalEmailEvents TransactionalEmailEvent[]
+  activeForUsers           User[]                      @relation("ActiveOrganization")
+  productSources           ProductSource[]
+  productSourceBlobs       ProductSourceBlob[]
+  productEvidenceBundles   ProductEvidenceBundle[]
+  productSetupRuns         ProductSetupRun[]
+  personaSources           PersonaSource[]
+  personaEvidenceBundles   PersonaEvidenceBundle[]
+  personaSetupRuns         PersonaSetupRun[]
+  voiceSamples             VoiceSample[]
 
   @@index([status])
   @@index([createdAt])
@@ -380,16 +386,16 @@ model User {
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
-  activeOrganization           Organization?            @relation("ActiveOrganization", fields: [activeOrganizationId], references: [id], onDelete: SetNull)
-  memberships                  OrganizationMembership[]
-  usageOverrides               UserUsageOverride[]
-  usageEvents                  UsageEvent[]
-  usageQuotaLedgers            UsageQuotaLedger[]
-  invitationsSent              OrganizationInvitation[] @relation("InvitedBy")
-  companyResearchInitiated     CompanyResearch[]        @relation("ResearchInitiatedBy")
-  adminAuditEvents             AdminAuditEvent[]
-  transactionalEmailEvents     TransactionalEmailEvent[]
-  voiceSamples                 VoiceSample[]
+  activeOrganization       Organization?             @relation("ActiveOrganization", fields: [activeOrganizationId], references: [id], onDelete: SetNull)
+  memberships              OrganizationMembership[]
+  usageOverrides           UserUsageOverride[]
+  usageEvents              UsageEvent[]
+  usageQuotaLedgers        UsageQuotaLedger[]
+  invitationsSent          OrganizationInvitation[]  @relation("InvitedBy")
+  companyResearchInitiated CompanyResearch[]         @relation("ResearchInitiatedBy")
+  adminAuditEvents         AdminAuditEvent[]
+  transactionalEmailEvents TransactionalEmailEvent[]
+  voiceSamples             VoiceSample[]
 
   @@index([platformRole])
   @@index([activeOrganizationId])
@@ -397,15 +403,15 @@ model User {
 
 /// Pasted writing samples for one user inside one organization. Never org-wide.
 model VoiceSample {
-  id             String                 @id @default(cuid())
+  id             String                @id @default(cuid())
   organizationId String
   userId         String
   label          String
   sampleText     String
-  provenance     VoiceSampleProvenance  @default(PASTED)
-  active         Boolean                @default(true)
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  provenance     VoiceSampleProvenance @default(PASTED)
+  active         Boolean               @default(true)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -466,28 +472,28 @@ model OrganizationUsagePolicy {
 
 /// Organization-level research depth / freshness. Editable; not hard-coded forever.
 model ResearchPolicy {
-  id                          String   @id @default(cuid())
-  organizationId              String   @unique
-  maxSearchQueriesPerCompany  Int
-  maxSourcesPerCompany        Int
-  researchFreshnessDays       Int
+  id                                 String   @id @default(cuid())
+  organizationId                     String   @unique
+  maxSearchQueriesPerCompany         Int
+  maxSourcesPerCompany               Int
+  researchFreshnessDays              Int
   /// Progressive contact-role research limits (criteria-aware; not hard-coded forever).
-  maxSearchQueriesPerContact  Int      @default(2)
-  maxSourcesPerContact        Int      @default(6)
-  contactResearchFreshnessDays Int     @default(90)
+  maxSearchQueriesPerContact         Int      @default(2)
+  maxSourcesPerContact               Int      @default(6)
+  contactResearchFreshnessDays       Int      @default(90)
   /// Product URL/web source reacquisition freshness. Default written at create: 120.
-  productSourceResearchFreshnessDays Int @default(120)
-  maxSearchQueriesPerProduct  Int      @default(3)
-  maxSourcesPerProduct        Int      @default(12)
-  maxSearchQueriesPerPersona  Int      @default(2)
-  maxSourcesPerPersona        Int      @default(8)
-  personaResearchFreshnessDays Int     @default(90)
+  productSourceResearchFreshnessDays Int      @default(120)
+  maxSearchQueriesPerProduct         Int      @default(3)
+  maxSourcesPerProduct               Int      @default(12)
+  maxSearchQueriesPerPersona         Int      @default(2)
+  maxSourcesPerPersona               Int      @default(8)
+  personaResearchFreshnessDays       Int      @default(90)
   /// Max criteria projected from Persona AI signal arrays before review cap.
-  maxProjectedPersonaCriteria Int      @default(15)
+  maxProjectedPersonaCriteria        Int      @default(15)
   /// Max TARGETED_SEARCH ICP criteria per ICP (enforce at save — never silently drop).
-  maxTargetedSearchCriteriaPerIcp Int  @default(3)
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @updatedAt
+  maxTargetedSearchCriteriaPerIcp    Int      @default(3)
+  createdAt                          DateTime @default(now())
+  updatedAt                          DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
@@ -594,42 +600,42 @@ model OrganizationInvitation {
 }
 
 model Product {
-  id                String   @id @default(cuid())
-  organizationId    String
-  name              String
-  description       String?
-  valueProposition  String?
-  averageOrderValue Decimal? @db.Decimal(12, 2)
-  websiteUrl        String?
+  id                       String                @id @default(cuid())
+  organizationId           String
+  name                     String
+  description              String?
+  valueProposition         String?
+  averageOrderValue        Decimal?              @db.Decimal(12, 2)
+  websiteUrl               String?
   /// Assisted-setup approval. Downstream scoring uses APPROVED authoritative fields.
-  approvalStatus    ProductApprovalStatus @default(NOT_STARTED)
-  setupStatus       ProductSetupStatus    @default(NOT_STARTED)
-  approvedAt        DateTime?
-  approvedByUserId  String?
+  approvalStatus           ProductApprovalStatus @default(NOT_STARTED)
+  setupStatus              ProductSetupStatus    @default(NOT_STARTED)
+  approvedAt               DateTime?
+  approvedByUserId         String?
   approvedEvidenceBundleId String?
   approvedSetupRunId       String?
   /// Extended approved product profile (problems, capabilities, etc.).
-  profileJson       Json?
+  profileJson              Json?
   /// Approved product messaging guidance (not scoring evidence).
-  messagingJson     Json?
+  messagingJson            Json?
   /// Field paths the user edited — protected from silent overwrite.
-  manuallyEditedFields Json?
+  manuallyEditedFields     Json?
   /// Soft-archive: hidden from setup UI; preserves ScoringRun FK history.
-  archivedAt        DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  archivedAt               DateTime?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  icps         Icp[]
-  personas     Persona[]
-  campaigns    Campaign[]
-  scoringRuns  ScoringRun[]
-  sources      ProductSource[]
-  evidenceBundles ProductEvidenceBundle[]
-  setupRuns    ProductSetupRun[]
-  personaSources PersonaSource[]
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  icps                   Icp[]
+  personas               Persona[]
+  campaigns              Campaign[]
+  scoringRuns            ScoringRun[]
+  sources                ProductSource[]
+  evidenceBundles        ProductEvidenceBundle[]
+  setupRuns              ProductSetupRun[]
+  personaSources         PersonaSource[]
   personaEvidenceBundles PersonaEvidenceBundle[]
-  personaSetupRuns PersonaSetupRun[]
+  personaSetupRuns       PersonaSetupRun[]
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
@@ -656,24 +662,24 @@ model Offer {
 }
 
 model Icp {
-  id                   String   @id @default(cuid())
-  organizationId       String
-  productId            String
-  name                 String
-  description          String?
+  id                          String    @id @default(cuid())
+  organizationId              String
+  productId                   String
+  name                        String
+  description                 String?
   /// Authoritative natural-language ICP definition (preserved; never overwritten by AI).
-  definition           String?
-  additionalContext    String?
-  targetIndustries     Json?
-  minEmployees         Int?
-  maxEmployees         Int?
-  minRevenue           Decimal? @db.Decimal(14, 2)
-  maxRevenue           Decimal? @db.Decimal(14, 2)
-  targetGeographies    Json?
-  requiredTechnologies Json?
-  positiveSignals      Json?
-  negativeSignals      Json?
-  notes                String?
+  definition                  String?
+  additionalContext           String?
+  targetIndustries            Json?
+  minEmployees                Int?
+  maxEmployees                Int?
+  minRevenue                  Decimal?  @db.Decimal(14, 2)
+  maxRevenue                  Decimal?  @db.Decimal(14, 2)
+  targetGeographies           Json?
+  requiredTechnologies        Json?
+  positiveSignals             Json?
+  negativeSignals             Json?
+  notes                       String?
   interpretationVersion       Int       @default(1)
   interpretationPromptVersion String?
   lastInterpretedAt           DateTime?
@@ -682,9 +688,9 @@ model Icp {
   /// Explicitly named facts/constraints that could not be determined from the definition.
   interpretationUndetermined  String?
   /// Soft-archive: hidden from setup UI; preserves ScoringRun FK history.
-  archivedAt           DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  archivedAt                  DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product      Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -702,39 +708,39 @@ model Icp {
 
 /// Tenant-owned structured ICP criterion (AI-interpreted and/or manually edited).
 model IcpCriterion {
-  id                String              @id @default(cuid())
-  organizationId    String
-  icpId             String
-  name              String
-  description       String?
-  criterionType     String
-  dataType          CriterionDataType
-  operator          CriterionOperator
-  targetValue       Json?
-  minValue          Json?
-  maxValue          Json?
-  allowedValues     Json?
-  importance        CriterionImportance @default(MEDIUM)
-  isRequired        Boolean             @default(false)
-  isDisqualifier    Boolean             @default(false)
-  researchGuidance  String?
-  source            CriterionSource     @default(AI_INTERPRETED)
-  confidence        ResearchConfidence?
+  id                                String                  @id @default(cuid())
+  organizationId                    String
+  icpId                             String
+  name                              String
+  description                       String?
+  criterionType                     String
+  dataType                          CriterionDataType
+  operator                          CriterionOperator
+  targetValue                       Json?
+  minValue                          Json?
+  maxValue                          Json?
+  allowedValues                     Json?
+  importance                        CriterionImportance     @default(MEDIUM)
+  isRequired                        Boolean                 @default(false)
+  isDisqualifier                    Boolean                 @default(false)
+  researchGuidance                  String?
+  source                            CriterionSource         @default(AI_INTERPRETED)
+  confidence                        ResearchConfidence?
   /// Where evidence is expected; app owns default (missing/unrecognized → TARGETED_SEARCH).
-  evidenceClass     CriterionEvidenceClass @default(TARGETED_SEARCH)
+  evidenceClass                     CriterionEvidenceClass  @default(TARGETED_SEARCH)
   /// When true, reinterpret preserves this evidenceClass even if the AI proposes another.
-  evidenceClassLocked Boolean           @default(false)
+  evidenceClassLocked               Boolean                 @default(false)
   /// Required for TARGETED_SEARCH before the criterion is considered approved for scoring setup.
-  targetedSearchDecision TargetedSearchDecision?
+  targetedSearchDecision            TargetedSearchDecision?
   /// Fingerprint of name/description/type/class/operator/targets at approval time.
   /// Cleared (decision null) when the criterion changes materially.
   targetedSearchDecisionFingerprint String?
-  targetedSearchDecidedAt DateTime?
+  targetedSearchDecidedAt           DateTime?
   /// When true, reinterpret must not overwrite this row without explicit user action.
-  manuallyEdited    Boolean             @default(false)
-  sortOrder         Int                 @default(0)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  manuallyEdited                    Boolean                 @default(false)
+  sortOrder                         Int                     @default(0)
+  createdAt                         DateTime                @default(now())
+  updatedAt                         DateTime                @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   icp          Icp          @relation(fields: [icpId], references: [id], onDelete: Cascade)
@@ -747,42 +753,42 @@ model IcpCriterion {
 }
 
 model Persona {
-  id               String   @id @default(cuid())
-  organizationId   String
-  productId        String
-  name             String
+  id                          String                @id @default(cuid())
+  organizationId              String
+  productId                   String
+  name                        String
   /// Authoritative natural-language persona / buyer-role definition (preserved).
-  definition       String?
-  additionalContext String?
-  targetTitles     Json?
-  department       String?
-  seniority        String?
-  responsibilities String?
-  painPoints       String?
-  desiredOutcomes  String?
-  messagingNotes   String?
-  interpretationVersion       Int       @default(1)
+  definition                  String?
+  additionalContext           String?
+  targetTitles                Json?
+  department                  String?
+  seniority                   String?
+  responsibilities            String?
+  painPoints                  String?
+  desiredOutcomes             String?
+  messagingNotes              String?
+  interpretationVersion       Int                   @default(1)
   interpretationPromptVersion String?
   lastInterpretedAt           DateTime?
-  approvalStatus   ProductApprovalStatus @default(NOT_STARTED)
-  approvedAt       DateTime?
-  approvedByUserId String?
-  approvedEvidenceBundleId String?
-  approvedSetupRunId       String?
-  manuallyEditedFields Json?
+  approvalStatus              ProductApprovalStatus @default(NOT_STARTED)
+  approvedAt                  DateTime?
+  approvedByUserId            String?
+  approvedEvidenceBundleId    String?
+  approvedSetupRunId          String?
+  manuallyEditedFields        Json?
   /// Links to a suggested buyer role key from a product setup run (optional).
-  suggestionKey    String?
-  whyThisPersonaMatters String?
+  suggestionKey               String?
+  whyThisPersonaMatters       String?
   /// Persona-specific messaging (not scoring evidence).
-  personaMessagingJson Json?
+  personaMessagingJson        Json?
   /// Extended approved persona profile from staged Persona synthesis.
-  profileJson      Json?
-  setupStatus      PersonaSetupStatus @default(NOT_STARTED)
-  approvedPersonaSetupRunId String?
+  profileJson                 Json?
+  setupStatus                 PersonaSetupStatus    @default(NOT_STARTED)
+  approvedPersonaSetupRunId   String?
   /// Soft-archive: hidden from setup UI; preserves ScoringRun FK history.
-  archivedAt       DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  archivedAt                  DateTime?
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
 
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product      Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -823,8 +829,8 @@ model ProductSource {
   freshnessExpiresAt DateTime?
   metadataJson       Json?
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product      Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
   blob         ProductSourceBlob?
 
   @@unique([organizationId, productId, contentHash])
@@ -851,25 +857,25 @@ model ProductSourceBlob {
 
 /// Versioned product evidence bundle — reusable acquisition asset.
 model ProductEvidenceBundle {
-  id                      String            @id @default(cuid())
-  organizationId          String
-  productId               String
-  version                 Int
-  parentBundleId          String?
-  correlationId           String
-  status                  ProductSetupStatus @default(ACQUIRING)
-  createdByUserId         String?
-  createdAt               DateTime           @default(now())
-  normalizedEvidenceJson  Json?
-  sourceIdsJson           Json
-  urlResearchPerformed    Boolean            @default(false)
-  webSearchQueriesUsed    Int                @default(0)
+  id                     String             @id @default(cuid())
+  organizationId         String
+  productId              String
+  version                Int
+  parentBundleId         String?
+  correlationId          String
+  status                 ProductSetupStatus @default(ACQUIRING)
+  createdByUserId        String?
+  createdAt              DateTime           @default(now())
+  normalizedEvidenceJson Json?
+  sourceIdsJson          Json
+  urlResearchPerformed   Boolean            @default(false)
+  webSearchQueriesUsed   Int                @default(0)
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product      Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
-  setupRuns    ProductSetupRun[]
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product                Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+  setupRuns              ProductSetupRun[]
   personaEvidenceBundles PersonaEvidenceBundle[]
-  personaSetupRuns PersonaSetupRun[]
+  personaSetupRuns       PersonaSetupRun[]
 
   @@unique([organizationId, productId, version])
   @@index([organizationId])
@@ -880,7 +886,7 @@ model ProductEvidenceBundle {
 /// One Product synthesis workflow over an evidence bundle (Product draft + suggested buyer roles).
 /// Historical runs may still contain personaDraftsJson from pre-split prompt versions.
 model ProductSetupRun {
-  id                     String            @id @default(cuid())
+  id                     String             @id @default(cuid())
   organizationId         String
   productId              String
   evidenceBundleId       String
@@ -897,11 +903,11 @@ model ProductSetupRun {
   aiModel                String?
   errorSafe              String?
   createdByUserId        String?
-  createdAt              DateTime          @default(now())
+  createdAt              DateTime           @default(now())
   completedAt            DateTime?
 
-  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product        Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product        Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
   evidenceBundle ProductEvidenceBundle @relation(fields: [evidenceBundleId], references: [id], onDelete: Restrict)
 
   @@index([organizationId])
@@ -951,23 +957,23 @@ model PersonaSource {
 
 /// Compact persona research evidence for one Persona setup attempt.
 model PersonaEvidenceBundle {
-  id                       String             @id @default(cuid())
-  organizationId           String
-  productId                String
-  personaSetupRunId        String?
-  version                  Int
-  correlationId            String
-  status                   PersonaSetupStatus @default(RESEARCHING)
-  createdByUserId          String?
-  createdAt                DateTime           @default(now())
-  normalizedEvidenceJson   Json?
-  sourceIdsJson            Json?
-  productEvidenceBundleId  String?
-  webSearchQueriesUsed     Int                @default(0)
+  id                      String             @id @default(cuid())
+  organizationId          String
+  productId               String
+  personaSetupRunId       String?
+  version                 Int
+  correlationId           String
+  status                  PersonaSetupStatus @default(RESEARCHING)
+  createdByUserId         String?
+  createdAt               DateTime           @default(now())
+  normalizedEvidenceJson  Json?
+  sourceIdsJson           Json?
+  productEvidenceBundleId String?
+  webSearchQueriesUsed    Int                @default(0)
 
-  organization           Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product                Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
-  productEvidenceBundle  ProductEvidenceBundle? @relation(fields: [productEvidenceBundleId], references: [id], onDelete: SetNull)
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product               Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productEvidenceBundle ProductEvidenceBundle? @relation(fields: [productEvidenceBundleId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([productId])
@@ -976,25 +982,25 @@ model PersonaEvidenceBundle {
 
 /// One Persona research + synthesis run for a single buyer role.
 model PersonaSetupRun {
-  id                       String             @id @default(cuid())
-  organizationId           String
-  productId                String
-  personaId                String?
-  productEvidenceBundleId  String
-  personaEvidenceBundleId  String?
-  correlationId            String
-  status                   PersonaSetupStatus @default(SYNTHESIZING)
-  selectedBuyerRoleJson    Json?
-  suggestionKey            String?
-  userContextJson          Json?
-  personaDraftJson         Json?
-  synthesisPromptVersion   String?
-  aiProvider               String?
-  aiModel                  String?
-  errorSafe                String?
-  createdByUserId          String?
-  createdAt                DateTime           @default(now())
-  completedAt              DateTime?
+  id                      String             @id @default(cuid())
+  organizationId          String
+  productId               String
+  personaId               String?
+  productEvidenceBundleId String
+  personaEvidenceBundleId String?
+  correlationId           String
+  status                  PersonaSetupStatus @default(SYNTHESIZING)
+  selectedBuyerRoleJson   Json?
+  suggestionKey           String?
+  userContextJson         Json?
+  personaDraftJson        Json?
+  synthesisPromptVersion  String?
+  aiProvider              String?
+  aiModel                 String?
+  errorSafe               String?
+  createdByUserId         String?
+  createdAt               DateTime           @default(now())
+  completedAt             DateTime?
 
   organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product               Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1009,30 +1015,30 @@ model PersonaSetupRun {
 
 /// Tenant-owned structured Persona criterion (role/responsibility oriented).
 model PersonaCriterion {
-  id                String              @id @default(cuid())
-  organizationId    String
-  personaId         String
-  name              String
-  description       String?
-  criterionType     String
-  dataType          CriterionDataType
-  operator          CriterionOperator
-  targetValue       Json?
-  minValue          Json?
-  maxValue          Json?
-  allowedValues     Json?
-  importance        CriterionImportance @default(MEDIUM)
-  isRequired        Boolean             @default(false)
-  isDisqualifier    Boolean             @default(false)
+  id                   String                @id @default(cuid())
+  organizationId       String
+  personaId            String
+  name                 String
+  description          String?
+  criterionType        String
+  dataType             CriterionDataType
+  operator             CriterionOperator
+  targetValue          Json?
+  minValue             Json?
+  maxValue             Json?
+  allowedValues        Json?
+  importance           CriterionImportance   @default(MEDIUM)
+  isRequired           Boolean               @default(false)
+  isDisqualifier       Boolean               @default(false)
   /// TITLE_TESTABLE | EVIDENCE_TESTABLE for exclusions; null for non-disqualifiers.
   exclusionTestability ExclusionTestability?
-  researchGuidance  String?
-  source            CriterionSource     @default(AI_INTERPRETED)
-  confidence        ResearchConfidence?
-  manuallyEdited    Boolean             @default(false)
-  sortOrder         Int                 @default(0)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  researchGuidance     String?
+  source               CriterionSource       @default(AI_INTERPRETED)
+  confidence           ResearchConfidence?
+  manuallyEdited       Boolean               @default(false)
+  sortOrder            Int                   @default(0)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   persona      Persona      @relation(fields: [personaId], references: [id], onDelete: Cascade)
@@ -1100,27 +1106,27 @@ model Contact {
 }
 
 model Company {
-  id              String   @id @default(cuid())
-  organizationId  String
-  name            String
-  normalizedName  String
-  website         String?
+  id               String   @id @default(cuid())
+  organizationId   String
+  name             String
+  normalizedName   String
+  website          String?
   normalizedDomain String?
-  industry        String?
-  employeeCount   Int?
-  revenue         Decimal? @db.Decimal(14, 2)
-  location        String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  industry         String?
+  employeeCount    Int?
+  revenue          Decimal? @db.Decimal(14, 2)
+  location         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contacts     Contact[]
   research     CompanyResearch[]
 
+  @@unique([organizationId, normalizedDomain])
   @@index([organizationId])
   @@index([organizationId, normalizedName])
   @@index([organizationId, normalizedDomain])
-  @@unique([organizationId, normalizedDomain])
 }
 
 model CompanyResearch {
@@ -1160,9 +1166,9 @@ model CompanyResearch {
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  researchedBy   User?        @relation("ResearchInitiatedBy", fields: [researchedByUserId], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  researchedBy User?        @relation("ResearchInitiatedBy", fields: [researchedByUserId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([organizationId, companyId])
@@ -1174,11 +1180,11 @@ model CompanyResearch {
 
 /// Contact-level role research (separate from CompanyResearch). Answers "what are they responsible for?"
 model ContactResearch {
-  id                   String                 @id @default(cuid())
+  id                   String                @id @default(cuid())
   organizationId       String
   contactId            String
-  status               ContactResearchStatus  @default(NOT_STARTED)
-  researchMethod       ResearchMethod         @default(AUTOMATED)
+  status               ContactResearchStatus @default(NOT_STARTED)
+  researchMethod       ResearchMethod        @default(AUTOMATED)
   confidence           ResearchConfidence?
   currentTitle         String?
   roleSummary          String?
@@ -1189,7 +1195,7 @@ model ContactResearch {
   researchSources      Json?
   researchedAt         DateTime?
   expiresAt            DateTime?
-  aiProvider            String?
+  aiProvider           String?
   aiModel              String?
   aiModelUrlIdentifier String?
   promptVersion        String?
@@ -1197,8 +1203,8 @@ model ContactResearch {
   outputTokens         Int?
   webSearchCallCount   Int?
   researchDurationMs   Int?
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -1227,11 +1233,11 @@ model ScoringRun {
   updatedAt       DateTime         @updatedAt
   completedAt     DateTime?
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contactList  ContactList   @relation(fields: [contactListId], references: [id], onDelete: Cascade)
-  product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
-  icp          Icp           @relation(fields: [icpId], references: [id], onDelete: Restrict)
-  persona      Persona       @relation(fields: [personaId], references: [id], onDelete: Restrict)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactList  ContactList    @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+  product      Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  icp          Icp            @relation(fields: [icpId], references: [id], onDelete: Restrict)
+  persona      Persona        @relation(fields: [personaId], references: [id], onDelete: Restrict)
   scores       ContactScore[]
 
   @@index([organizationId])
@@ -1245,49 +1251,49 @@ model ScoringRun {
 }
 
 model ContactScore {
-  id                     String               @id @default(cuid())
-  organizationId         String
-  contactId              String
-  scoringRunId           String
-  scoringStatus          ContactScoringStatus @default(PENDING)
-  overallScore           Int?
-  icpScore               Int?
-  personaScore           Int?
-  companyScore           Int?
-  productRelevanceScore  Int?
-  scoreLabel             ScoreLabel?
-  companySummary         String?
-  whatTheySell           String?
-  estimatedAov           String?
-  aovReasoning           String?
-  fitStrengths           Json?
-  fitRisks               Json?
-  disqualifiers          Json?
-  reasoning              String?
-  recommendedAction      String?
-  researchStatus         ResearchStatus       @default(NOT_STARTED)
-  researchSources        Json?
-  researchedAt           DateTime?
+  id                    String               @id @default(cuid())
+  organizationId        String
+  contactId             String
+  scoringRunId          String
+  scoringStatus         ContactScoringStatus @default(PENDING)
+  overallScore          Int?
+  icpScore              Int?
+  personaScore          Int?
+  companyScore          Int?
+  productRelevanceScore Int?
+  scoreLabel            ScoreLabel?
+  companySummary        String?
+  whatTheySell          String?
+  estimatedAov          String?
+  aovReasoning          String?
+  fitStrengths          Json?
+  fitRisks              Json?
+  disqualifiers         Json?
+  reasoning             String?
+  recommendedAction     String?
+  researchStatus        ResearchStatus       @default(NOT_STARTED)
+  researchSources       Json?
+  researchedAt          DateTime?
   /// Provenance: which CompanyResearch version informed this score.
-  companyResearchId      String?
-  companyResearchAt      DateTime?
+  companyResearchId     String?
+  companyResearchAt     DateTime?
   /// Provenance: which ContactResearch version informed this score.
-  contactResearchId      String?
-  contactResearchAt      DateTime?
+  contactResearchId     String?
+  contactResearchAt     DateTime?
   /// Dynamic per-criterion assessments (auditability for criteria-driven scoring).
-  criterionAssessments   Json?
+  criterionAssessments  Json?
   /// Validated structured assessment used to calculate scores (auditability).
-  assessmentData         Json?
-  aiProvider             String?
-  aiModel                String?
+  assessmentData        Json?
+  aiProvider            String?
+  aiModel               String?
   /// Sanitized model endpoint identifier — never includes API keys or credentials.
-  aiModelUrlIdentifier   String?
-  promptVersion          String?
-  scoringLogicVersion    String?
-  scoredAt               DateTime?
-  scoringError           String?
-  createdAt              DateTime             @default(now())
-  updatedAt              DateTime             @updatedAt
+  aiModelUrlIdentifier  String?
+  promptVersion         String?
+  scoringLogicVersion   String?
+  scoredAt              DateTime?
+  scoringError          String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -1317,6 +1323,8 @@ model Campaign {
   offerDescription String?
   offerCta         String?
   offerNotes       String?
+  emailLength      EmailLength    @default(TWO_PARAGRAPH)
+  emailGuidance    String?
   status           CampaignStatus @default(DRAFT)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
@@ -1529,4 +1537,3 @@ model RateLimitBucket {
   @@unique([bucketKey, windowStart])
   @@index([bucketKey])
 }
-

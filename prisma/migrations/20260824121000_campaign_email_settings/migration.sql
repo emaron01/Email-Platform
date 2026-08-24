@@ -1,0 +1,9 @@
+CREATE TYPE "EmailLength" AS ENUM (
+  'ONE_PARAGRAPH',
+  'TWO_PARAGRAPH',
+  'THREE_PARAGRAPH'
+);
+
+ALTER TABLE "Campaign"
+  ADD COLUMN "emailLength" "EmailLength" NOT NULL DEFAULT 'TWO_PARAGRAPH',
+  ADD COLUMN "emailGuidance" TEXT;
