@@ -18,6 +18,29 @@ import { recordUsageEvent } from "@/lib/usage/events";
 
 export const EMAIL_GENERATION_MODEL = "gpt-5.6-luna";
 
+export function removeEmDashes(value: string): string {
+  return value.replace(/[ \t]*—[ \t]*/g, ", ").trim();
+}
+
+const SIGN_OFF_LINE =
+  /^(?:best(?: regards)?|kind regards|warm regards|regards|sincerely|thanks(?: again)?|thank you|cheers|respectfully)[,.!\s]*$/i;
+const SENDER_PLACEHOLDER_LINE =
+  /^(?:\[(?:your )?(?:name|signature)\]|<your (?:name|signature)>|\{your (?:name|signature)\})[,.!\s]*$/i;
+
+export function sanitizeGeneratedEmailBody(value: string): string {
+  const lines = removeEmDashes(value).split(/\r?\n/);
+  const firstPossibleSignatureLine = Math.max(0, lines.length - 8);
+
+  for (let index = firstPossibleSignatureLine; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (SIGN_OFF_LINE.test(line) || SENDER_PLACEHOLDER_LINE.test(line)) {
+      return lines.slice(0, index).join("\n").trimEnd();
+    }
+  }
+
+  return lines.join("\n").trim();
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -126,14 +149,16 @@ export async function generateEmailDraft(
         retryCount += 1;
       },
     );
+    const subject = removeEmDashes(response.data.subject);
+    const body = sanitizeGeneratedEmailBody(response.data.body);
 
     const draft = await prisma.emailDraft.create({
       data: {
         organizationId: context.organizationId,
         campaignContactId: context.campaignContact.id,
         sequenceNumber: 1,
-        subject: response.data.subject,
-        body: response.data.body,
+        subject,
+        body,
         status: "DRAFT",
         source: "AI",
       },
@@ -166,8 +191,8 @@ export async function generateEmailDraft(
 
     return {
       draftId: draft.id,
-      subject: response.data.subject,
-      body: response.data.body,
+      subject,
+      body,
     };
   } catch (error) {
     await recordUsageEvent({

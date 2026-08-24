@@ -130,6 +130,30 @@ describe("buildEmailPrompt", () => {
     expect(messages[0].content).toMatch(/No markdown/i);
   });
 
+  it("uses the first voice sample as the structural reference", () => {
+    const messages = buildEmailPrompt(contextFixture());
+    const systemPrompt = messages[0].content;
+    const userPrompt = messages[1].content;
+
+    expect(systemPrompt).toMatch(/match its sentence length/i);
+    expect(systemPrompt).toMatch(/paragraph count/i);
+    expect(systemPrompt).toMatch(/closing style/i);
+    expect(systemPrompt).toMatch(/structure overrides/i);
+    expect(systemPrompt).toMatch(/do not use bullet points/i);
+    expect(systemPrompt).toMatch(/more than four sentences/i);
+    expect(systemPrompt).toMatch(/exactly one soft question/i);
+    expect(systemPrompt).toMatch(/do not include a sign-off/i);
+    expect(systemPrompt).toMatch(/signature block of any kind/i);
+    expect(systemPrompt).toMatch(/end the body immediately/i);
+    expect(systemPrompt).toMatch(/never use an em dash/i);
+    expect(systemPrompt).toMatch(/no exceptions/i);
+    expect(userPrompt).toContain(
+      "WRITING SAMPLE TO MATCH FOR STYLE AND STRUCTURE:",
+    );
+    expect(userPrompt).toContain("FIRST VOICE SAMPLE");
+    expect(userPrompt).not.toContain("SECOND VOICE SAMPLE");
+  });
+
   it("keeps generation usable when optional messaging and research are empty", () => {
     const context = contextFixture({
       contactResearch: null,
@@ -167,6 +191,34 @@ describe("buildEmailPrompt", () => {
   });
 });
 
+describe("generated email output", () => {
+  it("removes every em dash while preserving paragraph breaks", async () => {
+    const { removeEmDashes } = await import(
+      "@/lib/email-generation/service"
+    );
+    const output = removeEmDashes(
+      "Forecast accuracy—without the marketing language.\n\nHi Alex — would this help?",
+    );
+
+    expect(output).toBe(
+      "Forecast accuracy, without the marketing language.\n\nHi Alex, would this help?",
+    );
+    expect(output).not.toContain("—");
+  });
+
+  it("removes a trailing sign-off and signature block", async () => {
+    const { sanitizeGeneratedEmailBody } = await import(
+      "@/lib/email-generation/service"
+    );
+    const output = sanitizeGeneratedEmailBody(
+      "Hi Alex,\n\nWould this be useful?\n\nBest,\n[Your Name]",
+    );
+
+    expect(output).toBe("Hi Alex,\n\nWould this be useful?");
+    expect(output).not.toMatch(/Best,|\[Your Name\]/);
+  });
+});
+
 describe("email generation action and UI seams", () => {
   it("returns a typed result and renders the generated draft inline", () => {
     const action = readFileSync("src/app/actions/email.ts", "utf8");
@@ -188,6 +240,10 @@ describe("email generation action and UI seams", () => {
     expect(action).toContain("requireVerifiedForAiSpend");
     expect(form).toContain("Generate Email");
     expect(form).toContain("email-generation-status");
+    expect(form).toContain(
+      "Make sure your signature is set in your Outlook or Gmail client",
+    );
+    expect(form).toContain("text-xs text-slate-500");
     expect(form).toContain("result.subject");
     expect(form).toContain("result.body");
     expect(form).not.toMatch(/send email|mailto|clipboard/i);
@@ -549,8 +605,8 @@ describe.skipIf(!hasDatabase)(
                     {
                       type: "output_text",
                       text: JSON.stringify({
-                        subject: "A more defensible forecast",
-                        body: "Hi Alex,\\n\\nWould a forecast audit be useful?",
+                        subject: "A forecast—without the guesswork",
+                        body: "Hi Alex—quick question.\n\nWould a forecast audit be useful?\n\nBest,\n[Your Name]",
                         reasoning: "Connects the offer to forecast ownership.",
                       }),
                     },
@@ -572,7 +628,12 @@ describe.skipIf(!hasDatabase)(
         context,
         buildEmailPrompt(context),
       );
-      expect(created.subject).toBe("A more defensible forecast");
+      expect(created.subject).toBe("A forecast, without the guesswork");
+      expect(created.body).toBe(
+        "Hi Alex, quick question.\n\nWould a forecast audit be useful?",
+      );
+      expect(created.subject).not.toContain("—");
+      expect(created.body).not.toContain("—");
 
       const draft = await prisma.emailDraft.findUniqueOrThrow({
         where: {
@@ -585,6 +646,8 @@ describe.skipIf(!hasDatabase)(
       });
       expect(draft.status).toBe("DRAFT");
       expect(draft.source).toBe("AI");
+      expect(draft.subject).toBe("A forecast, without the guesswork");
+      expect(draft.body).not.toContain("—");
 
       const event = await prisma.usageEvent.findFirstOrThrow({
         where: {

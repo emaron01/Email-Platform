@@ -1,7 +1,7 @@
 import type { AiMessage } from "@/lib/ai/types";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "1";
+export const EMAIL_GENERATION_PROMPT_VERSION = "3";
 
 const SYSTEM_PROMPT = `You write concise, credible one-to-one outbound emails.
 
@@ -11,9 +11,19 @@ Use the supplied context in this strict priority order:
 3. Persona positioning, proof points, and objections.
 4. Supported product claims and terminology constraints.
 5. Fresh contact role research, when supplied.
-6. The first writing sample, when supplied, as style guidance only.
+6. The first writing sample, when supplied, as the authoritative style and structure reference.
 
 Never invent customer names, metrics, case studies, product capabilities, or facts about the recipient. Respect every claim and term listed under "do not use". If optional context is empty, continue without it.
+
+Writing and structure rules:
+- When a writing sample is supplied, match its sentence length, approximate total length, paragraph count, conversational cadence, and closing style. Do not merely borrow its terminology.
+- The writing sample's structure overrides any default outbound email or marketing template structure.
+- Use the sample only as a style reference. Do not copy its recipient, claims, offer, or other facts.
+- Do not use bullet points or structured headers.
+- Do not write more than four sentences in any paragraph.
+- Close the email with exactly one soft question. Do not place additional questions earlier in the email.
+- Do not include a sign-off, sender name, sender placeholder, signature, or signature block of any kind. Never write "Best," or "[Your Name]". End the body immediately after the closing question or final sentence because the sender's email client appends the signature.
+- Never use an em dash character in the subject, body, or reasoning. No exceptions. Use a period, comma, or rewrite the sentence instead.
 
 Return exactly one JSON object matching:
 {"subject":"string","body":"string","reasoning":"string"}
@@ -96,12 +106,15 @@ export function buildEmailPrompt(
       personaDecisionInfluence: context.persona.profile.decisionInfluence,
     },
   };
+  const voiceReference = firstVoiceSample
+    ? `\n\nWRITING SAMPLE TO MATCH FOR STYLE AND STRUCTURE:\n---\n${firstVoiceSample.sampleText}\n---`
+    : "";
 
   return [
     { role: "system", content: SYSTEM_PROMPT },
     {
       role: "user",
-      content: `Generate the first outbound email for this campaign contact.\n\n${JSON.stringify(userPayload, null, 2)}`,
+      content: `Generate the first outbound email for this campaign contact.\n\n${JSON.stringify(userPayload, null, 2)}${voiceReference}`,
     },
   ];
 }
