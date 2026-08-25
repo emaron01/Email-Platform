@@ -1,26 +1,16 @@
 import "server-only";
 
-import { z } from "zod";
 import { getEmailAiConfig, getEmailAiProvider } from "@/lib/ai";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import type { ReplyClassification } from "@prisma/client";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
-import { PROSPECT_REPLY_MAX_CHARS } from "@/lib/email-generation/reply-contract";
+import {
+  PROSPECT_REPLY_MAX_CHARS,
+  replyClassificationSchema,
+} from "@/lib/email-generation/reply-contract";
 import { recordUsageEvent } from "@/lib/usage/events";
 
-export { PROSPECT_REPLY_MAX_CHARS };
-
-const replyClassificationSchema = z.object({
-  classification: z.enum([
-    "INTERESTED",
-    "OBJECTION",
-    "REFERRAL",
-    "NOT_NOW",
-    "NOT_INTERESTED",
-  ]),
-  referralSuggested: z.boolean(),
-  referralDetails: z.string().trim().max(1_000).nullable(),
-  reasoning: z.string().trim().min(1).max(2_000),
-});
+export { PROSPECT_REPLY_MAX_CHARS, replyClassificationSchema };
 
 export type ProspectReplyClassification = {
   classification: ReplyClassification;
@@ -39,6 +29,7 @@ export async function classifyProspectReply(input: {
 
   try {
     const response = await ai.generateStructured({
+      ...structuredOutputRequest("prospectReplyClassification"),
       messages: [
         {
           role: "system",
@@ -55,12 +46,10 @@ export async function classifyProspectReply(input: {
                 INTERESTED: "Positive interest or willingness to engage.",
                 OBJECTION:
                   "Concern or pushback that should be answered specifically.",
-                REFERRAL:
-                  "Directs the sender to another person or role.",
+                REFERRAL: "Directs the sender to another person or role.",
                 NOT_NOW:
                   "Timing is the blocker; future contact may be welcome.",
-                NOT_INTERESTED:
-                  "Clear decline or request not to continue.",
+                NOT_INTERESTED: "Clear decline or request not to continue.",
               },
             },
             null,
@@ -68,8 +57,6 @@ export async function classifyProspectReply(input: {
           ),
         },
       ],
-      schema: replyClassificationSchema,
-      schemaName: "prospect_reply_classification",
     });
     await recordUsageEvent({
       organizationId: input.context.organizationId,

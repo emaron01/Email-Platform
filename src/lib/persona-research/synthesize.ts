@@ -11,6 +11,7 @@ import {
   getPersonaAiProvider,
   isPersonaAiConfigured,
 } from "@/lib/ai";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import { AiValidationError } from "@/lib/ai/errors";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
@@ -23,7 +24,6 @@ import { selectProductEvidenceForPersona } from "@/lib/persona-research/compact"
 import {
   PERSONA_SYNTHESIS_PROMPT_VERSION,
   parsePersonaAiResponse,
-  personaAiResponseSchema,
   type PersonaAiDraft,
 } from "@/lib/persona-research/contract";
 import { buildPersonaSynthesisMessages } from "@/lib/persona-research/prompt";
@@ -58,7 +58,9 @@ export type BuildPersonaInput = {
   } | null;
 };
 
-export async function researchAndSynthesizePersona(input: BuildPersonaInput): Promise<{
+export async function researchAndSynthesizePersona(
+  input: BuildPersonaInput,
+): Promise<{
   personaSetupRunId: string;
   status: "NEEDS_REVIEW" | "FAILED";
   draft: PersonaAiDraft | null;
@@ -72,9 +74,7 @@ export async function researchAndSynthesizePersona(input: BuildPersonaInput): Pr
     throw new TenantError("Product not found in the active organization.");
   }
   if (product.approvalStatus !== "APPROVED") {
-    throw new TenantError(
-      "Approve the Product before building a Persona.",
-    );
+    throw new TenantError("Approve the Product before building a Persona.");
   }
 
   const productBundleId =
@@ -116,9 +116,11 @@ export async function researchAndSynthesizePersona(input: BuildPersonaInput): Pr
       productEvidenceBundleId: productBundle.id,
       correlationId,
       status: "RESEARCHING",
-      selectedBuyerRoleJson: input.buyerRole as unknown as Prisma.InputJsonValue,
+      selectedBuyerRoleJson:
+        input.buyerRole as unknown as Prisma.InputJsonValue,
       suggestionKey: input.buyerRole.suggestionKey,
-      userContextJson: (input.userContext ?? null) as unknown as Prisma.InputJsonValue,
+      userContextJson: (input.userContext ??
+        null) as unknown as Prisma.InputJsonValue,
       synthesisPromptVersion: PERSONA_SYNTHESIS_PROMPT_VERSION,
       createdByUserId: input.userId,
     },
@@ -327,6 +329,7 @@ export async function synthesizePersonaFromEvidence(input: {
 
     stage = "generateStructured";
     const response = await ai.generateStructured({
+      ...structuredOutputRequest("personaSynthesis"),
       messages: buildPersonaSynthesisMessages({
         productName: input.product.name,
         productSnapshot: {
@@ -341,8 +344,7 @@ export async function synthesizePersonaFromEvidence(input: {
           null,
         buyerRole: {
           ...input.buyerRole,
-          name:
-            input.userContext?.nameOverride?.trim() || input.buyerRole.name,
+          name: input.userContext?.nameOverride?.trim() || input.buyerRole.name,
         },
         userContext: input.userContext ?? null,
         productEvidence: input.productEvidence,
@@ -354,8 +356,6 @@ export async function synthesizePersonaFromEvidence(input: {
             }
           : null,
       }),
-      schema: personaAiResponseSchema,
-      schemaName: "persona_setup_synthesis",
       parseOutput: parsePersonaAiResponse,
     });
 
@@ -494,7 +494,8 @@ export async function resynthesizePersonaFromRun(input: {
     correlationId,
     product,
     buyerRole,
-    userContext: (prior.userContextJson as BuildPersonaInput["userContext"]) ?? null,
+    userContext:
+      (prior.userContextJson as BuildPersonaInput["userContext"]) ?? null,
     productEvidence,
     personaEvidence,
   });

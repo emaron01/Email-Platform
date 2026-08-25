@@ -7,6 +7,7 @@ import {
   getProductAiProvider,
   isProductAiConfigured,
 } from "@/lib/ai";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import { AiValidationError } from "@/lib/ai/errors";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
@@ -14,7 +15,6 @@ import { recordUsageEvent } from "@/lib/usage/events";
 import {
   PRODUCT_SYNTHESIS_PROMPT_VERSION,
   parseProductAiResponse,
-  productAiResponseSchema,
   type ProductSynthesisResult,
 } from "@/lib/product-research/contract";
 import { buildProductSynthesisMessages } from "@/lib/product-research/prompt";
@@ -171,13 +171,12 @@ export async function synthesizeProductSetup(input: {
 
     stage = "generateStructured";
     const response = await ai.generateStructured({
+      ...structuredOutputRequest("productSynthesis"),
       messages: buildProductSynthesisMessages({
         productName: input.productName,
         primaryUrl: input.primaryUrl,
         excerpts: input.excerpts,
       }),
-      schema: productAiResponseSchema,
-      schemaName: "product_setup_synthesis",
       parseOutput: parseProductAiResponse,
     });
 
@@ -191,7 +190,8 @@ export async function synthesizeProductSetup(input: {
       where: { id: run.id },
       data: {
         status: "NEEDS_REVIEW",
-        productDraftJson: result.productDraft as unknown as Prisma.InputJsonValue,
+        productDraftJson:
+          result.productDraft as unknown as Prisma.InputJsonValue,
         messagingDraftJson:
           result.productMessagingDraft as unknown as Prisma.InputJsonValue,
         suggestedPersonasJson:
@@ -264,7 +264,9 @@ export async function resynthesizeFromBundle(input: {
     },
   });
   if (!bundle) {
-    throw new TenantError("Evidence bundle not found in the active organization.");
+    throw new TenantError(
+      "Evidence bundle not found in the active organization.",
+    );
   }
   const product = await prisma.product.findFirst({
     where: { id: input.productId, organizationId: input.organizationId },

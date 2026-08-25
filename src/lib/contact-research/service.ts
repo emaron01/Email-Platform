@@ -1,40 +1,30 @@
 import "server-only";
 
 import type { ContactResearch, Prisma } from "@prisma/client";
-import { z } from "zod";
 import {
   getContactResearchAiProvider,
   getAiConfigPublicSummary,
   isContactResearchAiConfigured,
 } from "@/lib/ai";
 import { getContactResearchAiConfig } from "@/lib/ai/config";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import type { AiMessage } from "@/lib/ai/types";
+import { contactResearchAiResultSchema } from "@/lib/contact-research/contract";
 import { CONTACT_RESEARCH_PROMPT_VERSION } from "@/lib/criteria/types";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
 import { researchExpiresAt } from "@/lib/research/freshness";
-import { researchSourceSchema } from "@/lib/research/assessment";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
 import { shouldResearchContactRole } from "@/lib/contact-research/trigger";
 
-export { CONTACT_RESEARCH_PROMPT_VERSION };
+export { CONTACT_RESEARCH_PROMPT_VERSION, contactResearchAiResultSchema };
 
 export type ContactResearchPolicy = {
   maxSearchQueriesPerContact: number;
   maxSourcesPerContact: number;
   contactResearchFreshnessDays: number;
 };
-
-export const contactResearchAiResultSchema = z.object({
-  roleSummary: z.string().nullable(),
-  responsibilities: z.array(z.string()),
-  ownershipAreas: z.array(z.string()),
-  professionalSignals: z.array(z.string()),
-  negativeRoleSignals: z.array(z.string()),
-  confidence: z.enum(["HIGH", "MEDIUM", "LOW"]),
-  sources: z.array(researchSourceSchema),
-});
 
 function buildContactResearchMessages(input: {
   contact: {
@@ -202,9 +192,8 @@ export async function researchContactRole(input: {
   const providerSummary = getAiConfigPublicSummary(config);
   const webSearchEnabled = config.provider === "openai-responses";
 
-  const { identifyPersonaEvidenceGaps } = await import(
-    "@/lib/contact-research/gaps"
-  );
+  const { identifyPersonaEvidenceGaps } =
+    await import("@/lib/contact-research/gaps");
   const evidenceGaps = identifyPersonaEvidenceGaps(
     input.personaCriteria,
     existing,
@@ -214,6 +203,7 @@ export async function researchContactRole(input: {
   try {
     const ai = getContactResearchAiProvider();
     const response = await ai.generateStructured({
+      ...structuredOutputRequest("contactResearch"),
       messages: buildContactResearchMessages({
         contact: {
           firstName: contact.firstName,
@@ -227,8 +217,6 @@ export async function researchContactRole(input: {
         webSearchEnabled,
         maxSources: input.policy.maxSourcesPerContact,
       }),
-      schema: contactResearchAiResultSchema,
-      schemaName: "contact_role_research",
     });
 
     const result = response.data;

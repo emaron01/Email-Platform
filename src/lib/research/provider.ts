@@ -3,8 +3,13 @@ import {
   getResearchAiProvider,
   isResearchAiConfigured,
 } from "@/lib/ai";
-import { AiConfigError, AiProviderError, AiTimeoutError, AiValidationError } from "@/lib/ai/errors";
-import { companyResearchAiResultSchema } from "@/lib/research/assessment";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
+import {
+  AiConfigError,
+  AiProviderError,
+  AiTimeoutError,
+  AiValidationError,
+} from "@/lib/ai/errors";
 import { RESEARCH_PROMPT_VERSION } from "@/lib/research/config";
 import {
   evidenceFromNormalizedSources,
@@ -143,6 +148,7 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         const { value: response, retries: usedRetries } = await withRetries(
           () =>
             ai.generateStructured({
+              ...structuredOutputRequest("companyResearch"),
               messages: buildCompanyResearchMessages({
                 company: input,
                 evidence,
@@ -151,8 +157,6 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
                 stage: opts.stage,
                 searchesRemaining: opts.searchesRemaining,
               }),
-              schema: companyResearchAiResultSchema,
-              schemaName: "CompanyResearchAiResult",
             }),
           config.maxRetries,
         );
@@ -191,8 +195,7 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
           ),
         };
         lastValidated = next;
-        identityAmbiguous =
-          response.data.identityCertainty === "AMBIGUOUS";
+        identityAmbiguous = response.data.identityCertainty === "AMBIGUOUS";
         return next;
       };
 
@@ -242,9 +245,7 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
           });
         }
 
-        stoppedReason = sufficiency.sufficient
-          ? "sufficient"
-          : "max_queries";
+        stoppedReason = sufficiency.sufficient ? "sufficient" : "max_queries";
       }
 
       if (!lastValidated) {
@@ -321,12 +322,8 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
  * Default: unconfigured until Research AI env is present.
  * Intentionally does not fabricate company intelligence.
  */
-export class UnconfiguredCompanyResearchProvider
-  implements CompanyResearchProvider
-{
-  async research(
-    _input: CompanyResearchInput,
-  ): Promise<CompanyResearchResult> {
+export class UnconfiguredCompanyResearchProvider implements CompanyResearchProvider {
+  async research(_input: CompanyResearchInput): Promise<CompanyResearchResult> {
     throw new AiConfigError(
       "Automated company research is not configured. Use manual research or set RESEARCH_AI_* environment variables.",
     );

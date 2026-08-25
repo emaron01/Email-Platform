@@ -1,31 +1,30 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { STRUCTURED_OUTPUT_SCHEMAS } from "@/lib/ai/structured-output-schemas";
 import {
   assertStrictOpenAiObjectNodes,
   buildOpenAiJsonSchemaFormat,
   collectStrictObjectViolations,
+  collectUnsupportedKeywordViolations,
+  sanitizeOpenAiStrictJsonSchema,
   zodToOpenAiStrictJsonSchema,
 } from "@/lib/ai/zod-json-schema";
-import { contactResearchAiResultSchema } from "@/lib/contact-research/service";
-import {
-  icpInterpretationResultSchema,
-  interpretationResultSchema,
-} from "@/lib/interpretation/schema";
-import { personaAiResponseSchema } from "@/lib/persona-research/contract";
 import {
   parseProductAiResponse,
   productAiResponseSchema,
 } from "@/lib/product-research/contract";
 import { companyResearchAiResultSchema } from "@/lib/research/assessment";
-import { productSourceDiscoverySchema } from "@/lib/research/web-search-retriever";
-import { aiScoringAssessmentSchema } from "@/lib/scoring/assessment";
 
 function expectStrictObjectNodes(schema: unknown): void {
   const violations = collectStrictObjectViolations(schema);
   expect(violations).toEqual([]);
 }
 
-function findEvidenceRefItemSchema(schema: Record<string, unknown>): Record<string, unknown> {
+function findEvidenceRefItemSchema(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
   const productDraft = (schema.properties as Record<string, unknown>)
     .productDraft as Record<string, unknown>;
   const evidenceRefs = (productDraft.properties as Record<string, unknown>)
@@ -33,34 +32,10 @@ function findEvidenceRefItemSchema(schema: Record<string, unknown>): Record<stri
   return evidenceRefs.items as Record<string, unknown>;
 }
 
-function schemaHasMinItems(node: unknown): boolean {
-  let found = false;
-  const walk = (current: unknown): void => {
-    if (!current || typeof current !== "object" || Array.isArray(current)) return;
-    const obj = current as Record<string, unknown>;
-    if ("minItems" in obj || "maxItems" in obj) found = true;
-    if (obj.properties) {
-      for (const value of Object.values(obj.properties as Record<string, unknown>)) {
-        walk(value);
-      }
-    }
-    if (obj.items) walk(obj.items);
-    for (const key of ["anyOf", "oneOf", "allOf"] as const) {
-      const branch = obj[key];
-      if (Array.isArray(branch)) branch.forEach(walk);
-    }
-    const defs = obj.$defs ?? obj.definitions;
-    if (defs && typeof defs === "object") {
-      for (const value of Object.values(defs as Record<string, unknown>)) walk(value);
-    }
-  };
-  walk(node);
-  return found;
-}
-
 function noteSchemaAcceptsNull(noteSchema: Record<string, unknown>): boolean {
   if (noteSchema.type === "null") return true;
-  if (Array.isArray(noteSchema.type) && noteSchema.type.includes("null")) return true;
+  if (Array.isArray(noteSchema.type) && noteSchema.type.includes("null"))
+    return true;
   const branches = noteSchema.anyOf ?? noteSchema.oneOf;
   if (Array.isArray(branches)) {
     return branches.some(
@@ -73,16 +48,21 @@ function noteSchemaAcceptsNull(noteSchema: Record<string, unknown>): boolean {
   return false;
 }
 
-const GENERATE_STRUCTURED_SCHEMAS: Array<{ name: string; schema: z.ZodType }> = [
-  { name: "productAiResponseSchema", schema: productAiResponseSchema },
-  { name: "personaAiResponseSchema", schema: personaAiResponseSchema },
-  { name: "aiScoringAssessmentSchema", schema: aiScoringAssessmentSchema },
-  { name: "interpretationResultSchema", schema: interpretationResultSchema },
-  { name: "icpInterpretationResultSchema", schema: icpInterpretationResultSchema },
-  { name: "contactResearchAiResultSchema", schema: contactResearchAiResultSchema },
-  { name: "companyResearchAiResultSchema", schema: companyResearchAiResultSchema },
-  { name: "productSourceDiscoverySchema", schema: productSourceDiscoverySchema },
-];
+const GENERATE_STRUCTURED_SCHEMAS = Object.entries(
+  STRUCTURED_OUTPUT_SCHEMAS,
+).map(([name, entry]) => ({ name, ...entry }));
+
+function productionTypeScriptFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return productionTypeScriptFiles(path);
+    return entry.isFile() &&
+      entry.name.endsWith(".ts") &&
+      !entry.name.endsWith(".test.ts")
+      ? [path]
+      : [];
+  });
+}
 
 describe("zodToOpenAiStrictJsonSchema", () => {
   it("produces strict closed object schema without root $schema", () => {
@@ -125,11 +105,107 @@ describe("zodToOpenAiStrictJsonSchema", () => {
   );
 
   it.each(GENERATE_STRUCTURED_SCHEMAS)(
-    "$name: no array carries minItems",
+    "$name: carries no unsupported strict-schema keyword",
     ({ schema }) => {
-      expect(schemaHasMinItems(zodToOpenAiStrictJsonSchema(schema))).toBe(false);
+      expect(
+        collectUnsupportedKeywordViolations(
+          zodToOpenAiStrictJsonSchema(schema),
+        ),
+      ).toEqual([]);
     },
   );
+
+  it("company research emits no format keyword at any node", () => {
+    const schema = zodToOpenAiStrictJsonSchema(companyResearchAiResultSchema);
+    expect(
+      collectUnsupportedKeywordViolations(schema).filter((violation) =>
+        violation.endsWith(": format"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps URL validation in Zod after request constraints are stripped", () => {
+    const schema = z.object({
+      url: z.string().url(),
+      label: z.string().min(1),
+    });
+    const raw = z.toJSONSchema(schema, { target: "draft-7" });
+    const rawViolations = collectUnsupportedKeywordViolations(raw);
+
+    expect(rawViolations.some((entry) => entry.endsWith(": format"))).toBe(
+      true,
+    );
+    expect(rawViolations.some((entry) => entry.endsWith(": minLength"))).toBe(
+      true,
+    );
+    expect(
+      collectUnsupportedKeywordViolations(zodToOpenAiStrictJsonSchema(schema)),
+    ).toEqual([]);
+    expect(schema.safeParse({ url: "not a URL", label: "ok" }).success).toBe(
+      false,
+    );
+    expect(
+      schema.safeParse({ url: "https://example.com", label: "" }).success,
+    ).toBe(false);
+  });
+
+  it("strips unsupported keywords through every schema container", () => {
+    const constrained = { type: "string", minLength: 1, format: "uri" };
+    const schema = sanitizeOpenAiStrictJsonSchema({
+      type: "object",
+      properties: {
+        object: {
+          type: "object",
+          properties: { value: constrained },
+          required: ["value"],
+        },
+        array: { type: "array", items: constrained },
+        union: {
+          anyOf: [constrained, { type: "number", minimum: 1 }],
+        },
+        intersection: {
+          allOf: [
+            {
+              type: "object",
+              properties: { left: constrained },
+              required: ["left"],
+            },
+            {
+              type: "object",
+              properties: { right: constrained },
+              required: ["right"],
+            },
+          ],
+        },
+        dictionary: {
+          type: "object",
+          additionalProperties: constrained,
+        },
+      },
+      required: ["object", "array", "union", "intersection", "dictionary"],
+      $defs: { constrained },
+    });
+
+    expect(collectUnsupportedKeywordViolations(schema)).toEqual([]);
+    expectStrictObjectNodes(schema);
+  });
+
+  it("requires every production generateStructured call to use the shared registry", () => {
+    const srcLib = join(process.cwd(), "src", "lib");
+    const violations = productionTypeScriptFiles(srcLib).flatMap((path) => {
+      const source = readFileSync(path, "utf8");
+      const callCount = (source.match(/\.generateStructured\s*\(\s*\{/g) ?? [])
+        .length;
+      const registryCount = (
+        source.match(/\.\.\.structuredOutputRequest\s*\(/g) ?? []
+      ).length;
+      return callCount === registryCount
+        ? []
+        : [`${path}: ${callCount} calls, ${registryCount} registry entries`];
+    });
+
+    expect(violations).toEqual([]);
+  });
 
   it("evidenceRefs items emit note as required with a null-permitting type", () => {
     const schema = zodToOpenAiStrictJsonSchema(productAiResponseSchema);
@@ -165,7 +241,9 @@ describe("parseProductAiResponse note handling", () => {
     const { data } = parseProductAiResponse({
       ...base,
       productDraft: {
-        evidenceRefs: [{ claim: "Runs forecast call", sourceIds: [], note: null }],
+        evidenceRefs: [
+          { claim: "Runs forecast call", sourceIds: [], note: null },
+        ],
       },
     });
     expect(data.productDraft.evidenceRefs[0]!.note).toBeNull();
@@ -205,9 +283,8 @@ describe("openai-responses strict request body", () => {
     process.env.PRODUCT_AI_API_KEY = "sk-test";
 
     const { getProductAiConfig } = await import("@/lib/ai/config");
-    const { createOpenAiResponsesProvider } = await import(
-      "@/lib/ai/providers/openai-responses"
-    );
+    const { createOpenAiResponsesProvider } =
+      await import("@/lib/ai/providers/openai-responses");
 
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) =>
       Response.json({

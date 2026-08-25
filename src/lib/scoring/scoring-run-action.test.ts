@@ -20,6 +20,13 @@ describe("createScoringRunAction redirect", () => {
 
     vi.doMock("next/navigation", () => ({ redirect }));
     vi.doMock("@/lib/tenant/data", () => ({ createScoringRun }));
+    vi.doMock("@/lib/interpretation/icp", () => ({
+      listIcpCriteria: vi.fn(async () => []),
+    }));
+    vi.doMock("@/lib/tenant/getCurrentOrganization", async () => ({
+      ...(await vi.importActual("@/lib/tenant/getCurrentOrganization")),
+      requireOrganizationId: vi.fn(async () => "org_1"),
+    }));
 
     const { createScoringRunAction } = await import("@/app/actions/scoring");
     const formData = new FormData();
@@ -43,6 +50,13 @@ describe("createScoringRunAction redirect", () => {
 
     vi.doMock("next/navigation", () => ({ redirect }));
     vi.doMock("@/lib/tenant/data", () => ({ createScoringRun }));
+    vi.doMock("@/lib/interpretation/icp", () => ({
+      listIcpCriteria: vi.fn(async () => []),
+    }));
+    vi.doMock("@/lib/tenant/getCurrentOrganization", async () => ({
+      ...(await vi.importActual("@/lib/tenant/getCurrentOrganization")),
+      requireOrganizationId: vi.fn(async () => "org_1"),
+    }));
 
     const { createScoringRunAction } = await import("@/app/actions/scoring");
     const formData = new FormData();

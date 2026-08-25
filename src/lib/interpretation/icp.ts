@@ -8,6 +8,7 @@ import {
   getAiConfigPublicSummary,
   isInterpretationAiConfigured,
 } from "@/lib/ai";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import {
   buildLegacyIcpCriteria,
   ensureIcpLegacyCriteriaBackfilled,
@@ -120,7 +121,8 @@ RULES:
       evidenceClassLocked: c.evidenceClassLocked ?? false,
     })),
     responseSchema: {
-      understoodSummary: "2-4 sentence plain-language read-back of what was understood",
+      understoodSummary:
+        "2-4 sentence plain-language read-back of what was understood",
       undetermined: ["specific named items that could not be determined"],
       criteria: [
         {
@@ -136,8 +138,7 @@ RULES:
           importance: "CRITICAL|HIGH|MEDIUM|LOW",
           isRequired: "boolean",
           isDisqualifier: "boolean",
-          evidenceClass:
-            "LIST_DATA|COMPANY_RESEARCH|TARGETED_SEARCH|SEMANTIC",
+          evidenceClass: "LIST_DATA|COMPANY_RESEARCH|TARGETED_SEARCH|SEMANTIC",
           researchGuidance: "string|null",
           sortOrder: "number",
         },
@@ -199,7 +200,9 @@ export async function updateIcpCriterionManual(input: {
     },
   });
   if (!existing) {
-    throw new TenantError("ICP criterion not found in the active organization.");
+    throw new TenantError(
+      "ICP criterion not found in the active organization.",
+    );
   }
 
   const nextEvidenceClass =
@@ -215,8 +218,7 @@ export async function updateIcpCriterionManual(input: {
     });
     const projected = siblings.map((s) => ({
       name: s.id === existing.id ? (input.data.name ?? s.name) : s.name,
-      evidenceClass:
-        s.id === existing.id ? nextEvidenceClass : s.evidenceClass,
+      evidenceClass: s.id === existing.id ? nextEvidenceClass : s.evidenceClass,
     }));
     const policy = await getResearchPolicy(input.organizationId);
     const cap = checkTargetedSearchCap({
@@ -345,7 +347,8 @@ function draftToCreateData(
     researchGuidance: d.researchGuidance ?? null,
     evidenceClass,
     evidenceClassLocked: d.evidenceClassLocked ?? false,
-    source: (d.source as "AI_INTERPRETED" | "MANUAL" | "MIGRATED_FROM_LEGACY") ??
+    source:
+      (d.source as "AI_INTERPRETED" | "MANUAL" | "MIGRATED_FROM_LEGACY") ??
       "AI_INTERPRETED",
     sortOrder: d.sortOrder,
     manuallyEdited: false,
@@ -405,6 +408,7 @@ export async function interpretIcpDefinition(input: {
     providerSummary = getAiConfigPublicSummary(getInterpretationAiConfig());
 
     const response = await ai.generateStructured({
+      ...structuredOutputRequest("icpInterpretation"),
       messages: buildIcpInterpretationMessages({
         productName: icp.product.name,
         productDescription: icp.product.description,
@@ -412,8 +416,6 @@ export async function interpretIcpDefinition(input: {
         additionalContext: icp.additionalContext,
         existingCriteria: existingSnapshots,
       }),
-      schema: icpInterpretationResultSchema,
-      schemaName: "icp_interpretation",
     });
 
     const parsed = parseIcpInterpretedCriteria(response.data);

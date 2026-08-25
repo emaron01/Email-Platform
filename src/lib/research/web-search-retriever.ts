@@ -4,20 +4,18 @@
  * Callers fetch/persist URLs themselves — Product AI never browses.
  */
 
-import { z } from "zod";
 import {
   getAiConfigPublicSummary,
   getResearchAiConfig,
   getResearchAiProvider,
   isResearchAiConfigured,
 } from "@/lib/ai";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import type { NormalizedRetrievedSource } from "@/lib/ai/types";
+import { productSourceDiscoverySchema } from "@/lib/research/source-discovery-contract";
 import { assertSafeExternalHttpUrl } from "@/lib/research/url-safety";
 
-export const productSourceDiscoverySchema = z.object({
-  /** Hints only — authoritative URLs come from retrievedSources. */
-  notes: z.string().nullable().optional(),
-});
+export { productSourceDiscoverySchema };
 
 export type WebSearchDiscoveryInput = {
   /** Human-readable product / company identity. */
@@ -76,8 +74,7 @@ export async function discoverSourcesViaWebSearch(
   const ai = getResearchAiProvider();
 
   const response = await ai.generateStructured({
-    schema: productSourceDiscoverySchema,
-    schemaName: "product_source_discovery",
+    ...structuredOutputRequest("productSourceDiscovery"),
     messages: [
       {
         role: "system",

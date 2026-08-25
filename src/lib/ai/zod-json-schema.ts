@@ -18,6 +18,60 @@
 
 import { z } from "zod";
 
+/**
+ * Conservative, provider-independent denylist for strict Structured Outputs.
+ *
+ * OpenAI's base-model subset supports some of these constraints, but fine-tuned
+ * models do not. Others are undocumented or explicitly unsupported. Runtime Zod
+ * parsing remains authoritative for every stripped constraint.
+ */
+export const OPENAI_STRICT_SCHEMA_STRIPPED_KEYWORDS = [
+  "$schema",
+  "$id",
+  "$comment",
+  "format",
+  "pattern",
+  "minLength",
+  "maxLength",
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "multipleOf",
+  "uniqueItems",
+  "minItems",
+  "maxItems",
+  "minProperties",
+  "maxProperties",
+  "propertyNames",
+  "patternProperties",
+  "contains",
+  "minContains",
+  "maxContains",
+  "prefixItems",
+  "unevaluatedItems",
+  "unevaluatedProperties",
+  "oneOf",
+  "allOf",
+  "not",
+  "if",
+  "then",
+  "else",
+  "dependentRequired",
+  "dependentSchemas",
+  "dependencies",
+  "examples",
+  "contentEncoding",
+  "contentMediaType",
+  "default",
+  "deprecated",
+  "readOnly",
+  "writeOnly",
+] as const;
+
+export type OpenAiStrictSchemaStrippedKeyword =
+  (typeof OPENAI_STRICT_SCHEMA_STRIPPED_KEYWORDS)[number];
+
 /** Accepts any JSON value; used for z.unknown() and record values. */
 const OPENAI_JSON_VALUE: Record<string, unknown> = {
   anyOf: [
@@ -56,8 +110,10 @@ export function buildOpenAiJsonSchemaFormat(
   strict: true;
 } {
   const safeName =
-    schemaName.trim().replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) ||
-    "structured_response";
+    schemaName
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .slice(0, 64) || "structured_response";
   return {
     type: "json_schema",
     name: safeName,
@@ -66,7 +122,7 @@ export function buildOpenAiJsonSchemaFormat(
   };
 }
 
-function sanitizeOpenAiStrictJsonSchema(
+export function sanitizeOpenAiStrictJsonSchema(
   node: Record<string, unknown>,
 ): Record<string, unknown> {
   const { $schema: _schema, ...rest } = node;
@@ -97,7 +153,9 @@ function acceptsNull(schema: Record<string, unknown>): boolean {
   return false;
 }
 
-function ensureNullable(schema: Record<string, unknown>): Record<string, unknown> {
+function ensureNullable(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
   if (acceptsNull(schema)) return schema;
   return { anyOf: [schema, { type: "null" }] };
 }
@@ -107,15 +165,58 @@ function stripDefault(node: Record<string, unknown>): Record<string, unknown> {
   return rest;
 }
 
+function collapseObjectAllOf(obj: Record<string, unknown>): void {
+  if (!Array.isArray(obj.allOf)) return;
+  const branches = obj.allOf.filter(
+    (branch): branch is Record<string, unknown> =>
+      Boolean(branch) && typeof branch === "object" && !Array.isArray(branch),
+  );
+  if (
+    branches.length !== obj.allOf.length ||
+    !branches.every((branch) => branch.type === "object" || branch.properties)
+  ) {
+    return;
+  }
+
+  const properties = {
+    ...((obj.properties as Record<string, unknown> | undefined) ?? {}),
+  };
+  const required = new Set(
+    Array.isArray(obj.required) ? (obj.required as string[]) : [],
+  );
+  for (const branch of branches) {
+    Object.assign(
+      properties,
+      (branch.properties as Record<string, unknown> | undefined) ?? {},
+    );
+    if (Array.isArray(branch.required)) {
+      for (const key of branch.required as string[]) required.add(key);
+    }
+  }
+  obj.type = "object";
+  obj.properties = properties;
+  obj.required = [...required];
+}
+
+function stripUnsupportedKeywords(obj: Record<string, unknown>): void {
+  for (const keyword of OPENAI_STRICT_SCHEMA_STRIPPED_KEYWORDS) {
+    delete obj[keyword];
+  }
+}
+
 function walkJsonSchema(node: unknown): unknown {
-  if (!node || typeof node !== "object" || Array.isArray(node)) {
+  if (Array.isArray(node)) {
+    return node.map((entry) => walkJsonSchema(entry));
+  }
+  if (!node || typeof node !== "object") {
     return node;
   }
 
   const obj = { ...(node as Record<string, unknown>) };
 
   if (typeof obj.$ref === "string") {
-    return obj;
+    stripUnsupportedKeywords(obj);
+    if (Object.keys(obj).every((key) => key === "$ref")) return obj;
   }
 
   if (isEmptyJsonSchema(obj)) {
@@ -128,6 +229,11 @@ function walkJsonSchema(node: unknown): unknown {
       obj[key] = branch.map((entry) => walkJsonSchema(entry));
     }
   }
+
+  if (!obj.anyOf && Array.isArray(obj.oneOf)) {
+    obj.anyOf = obj.oneOf;
+  }
+  collapseObjectAllOf(obj);
 
   const defs = obj.$defs ?? obj.definitions;
   if (defs && typeof defs === "object") {
@@ -145,7 +251,10 @@ function walkJsonSchema(node: unknown): unknown {
     obj.items = walkJsonSchema(obj.items);
   }
 
-  if (obj.additionalProperties !== undefined && obj.additionalProperties !== false) {
+  if (
+    obj.additionalProperties !== undefined &&
+    obj.additionalProperties !== false
+  ) {
     if (
       typeof obj.additionalProperties === "object" &&
       obj.additionalProperties !== null
@@ -159,10 +268,6 @@ function walkJsonSchema(node: unknown): unknown {
         : walked;
     }
   }
-
-  delete obj.minItems;
-  delete obj.maxItems;
-  delete obj.default;
 
   if (obj.type === "object" || obj.properties) {
     obj.additionalProperties = false;
@@ -198,6 +303,7 @@ function walkJsonSchema(node: unknown): unknown {
     }
   }
 
+  stripUnsupportedKeywords(obj);
   return obj;
 }
 
@@ -211,13 +317,17 @@ export function assertStrictOpenAiObjectNodes(
 
   const obj = node as Record<string, unknown>;
 
-  if ("minItems" in obj || "maxItems" in obj) {
-    assert(false, `${path}: array must not carry minItems/maxItems`);
+  for (const keyword of OPENAI_STRICT_SCHEMA_STRIPPED_KEYWORDS) {
+    if (keyword in obj) {
+      assert(false, `${path}: unsupported keyword ${keyword}`);
+    }
   }
 
   if (obj.properties && typeof obj.properties === "object") {
     const keys = Object.keys(obj.properties as Record<string, unknown>);
-    const required = Array.isArray(obj.required) ? (obj.required as string[]) : [];
+    const required = Array.isArray(obj.required)
+      ? (obj.required as string[])
+      : [];
     assert(
       obj.additionalProperties === false,
       `${path}: additionalProperties must be false`,
@@ -242,7 +352,11 @@ export function assertStrictOpenAiObjectNodes(
     const branch = obj[key];
     if (Array.isArray(branch)) {
       branch.forEach((entry, index) =>
-        assertStrictOpenAiObjectNodes(entry, assert, `${path}.${key}[${index}]`),
+        assertStrictOpenAiObjectNodes(
+          entry,
+          assert,
+          `${path}.${key}[${index}]`,
+        ),
       );
     }
   }
@@ -256,7 +370,10 @@ export function assertStrictOpenAiObjectNodes(
     }
   }
 
-  if (typeof obj.additionalProperties === "object" && obj.additionalProperties !== null) {
+  if (
+    typeof obj.additionalProperties === "object" &&
+    obj.additionalProperties !== null
+  ) {
     assertStrictOpenAiObjectNodes(
       obj.additionalProperties,
       assert,
@@ -266,10 +383,43 @@ export function assertStrictOpenAiObjectNodes(
 }
 
 /** Test helper: collect object nodes that violate strict required rules. */
-export function collectStrictObjectViolations(node: unknown, path = "root"): string[] {
+export function collectStrictObjectViolations(
+  node: unknown,
+  path = "root",
+): string[] {
   const violations: string[] = [];
-  assertStrictOpenAiObjectNodes(node, (condition, message) => {
-    if (!condition) violations.push(message);
-  }, path);
+  assertStrictOpenAiObjectNodes(
+    node,
+    (condition, message) => {
+      if (!condition) violations.push(message);
+    },
+    path,
+  );
+  return violations;
+}
+
+/** Collect every stripped keyword still present at any recursive schema node. */
+export function collectUnsupportedKeywordViolations(
+  node: unknown,
+  path = "root",
+): string[] {
+  const violations: string[] = [];
+  const walk = (current: unknown, currentPath: string): void => {
+    if (Array.isArray(current)) {
+      current.forEach((value, index) =>
+        walk(value, `${currentPath}[${index}]`),
+      );
+      return;
+    }
+    if (!current || typeof current !== "object") return;
+    const obj = current as Record<string, unknown>;
+    for (const keyword of OPENAI_STRICT_SCHEMA_STRIPPED_KEYWORDS) {
+      if (keyword in obj) violations.push(`${currentPath}: ${keyword}`);
+    }
+    for (const [key, value] of Object.entries(obj)) {
+      walk(value, `${currentPath}.${key}`);
+    }
+  };
+  walk(node, path);
   return violations;
 }

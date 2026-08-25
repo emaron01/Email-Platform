@@ -1,30 +1,17 @@
 import "server-only";
 
-import { z } from "zod";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import type { AiProvider, AiStructuredResponse } from "@/lib/ai/types";
 import { campaignOfferText } from "@/lib/campaign/offer-validation";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
+import {
+  claimValidationSchema,
+  type ClaimValidationResult,
+  type ClaimValidationViolation,
+} from "@/lib/email-generation/claim-validation-contract";
 
-const claimValidationSchema = z.object({
-  compliant: z.boolean(),
-  violations: z.array(
-    z.object({
-      type: z.enum([
-        "PROHIBITED_CLAIM",
-        "PROHIBITED_TERM",
-        "INVENTED_OFFER_TERM",
-        "UNSUPPORTED_FACT",
-      ]),
-      description: z.string().trim().min(1).max(500),
-      matchedGuard: z.string().trim().max(500).nullable(),
-      bodyExcerpt: z.string().trim().max(500).nullable(),
-    }),
-  ),
-});
-
-export type ClaimValidationViolation = z.infer<
-  typeof claimValidationSchema
->["violations"][number];
+export { claimValidationSchema };
+export type { ClaimValidationViolation };
 
 function normalized(value: string): string {
   return value
@@ -91,7 +78,7 @@ export async function validateGeneratedEmailClaims(input: {
   subject: string;
   body: string;
 }): Promise<{
-  response: AiStructuredResponse<z.infer<typeof claimValidationSchema>>;
+  response: AiStructuredResponse<ClaimValidationResult>;
   violations: ClaimValidationViolation[];
 }> {
   const offerText = campaignOfferText(input.context.campaign);
@@ -107,6 +94,7 @@ export async function validateGeneratedEmailClaims(input: {
     offerConflictsAcknowledged,
   });
   const response = await input.ai.generateStructured({
+    ...structuredOutputRequest("emailClaimValidation"),
     messages: [
       {
         role: "system",
@@ -123,8 +111,7 @@ export async function validateGeneratedEmailClaims(input: {
             },
             campaignOffer: offerText || null,
             offerConflictsAcknowledged,
-            claimsNotToMake:
-              input.context.product.messaging.claimsNotToMake,
+            claimsNotToMake: input.context.product.messaging.claimsNotToMake,
             terminologyToAvoid:
               input.context.product.messaging.terminologyToAvoid,
             supportedClaims: input.context.product.messaging.supportedClaims,
@@ -138,18 +125,14 @@ export async function validateGeneratedEmailClaims(input: {
         ),
       },
     ],
-    schema: claimValidationSchema,
-    schemaName: "email_claim_validation",
   });
-  const violations = [
-    ...deterministic,
-    ...response.data.violations,
-  ].filter(
+  const violations = [...deterministic, ...response.data.violations].filter(
     (violation, index, all) =>
       all.findIndex(
         (candidate) =>
           candidate.type === violation.type &&
-          normalized(candidate.description) === normalized(violation.description),
+          normalized(candidate.description) ===
+            normalized(violation.description),
       ) === index,
   );
   if (!response.data.compliant && violations.length === 0) {

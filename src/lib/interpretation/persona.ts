@@ -8,6 +8,7 @@ import {
   getAiConfigPublicSummary,
   isInterpretationAiConfigured,
 } from "@/lib/ai";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import {
   buildLegacyPersonaCriteria,
   ensurePersonaLegacyCriteriaBackfilled,
@@ -52,20 +53,18 @@ function criterionRowToSnapshot(row: PersonaCriterion): CriterionSnapshot {
   };
 }
 
-function personaToAuthoritativeFields(
-  persona: {
-    name: string;
-    definition: string | null;
-    additionalContext: string | null;
-    targetTitles: unknown;
-    department: string | null;
-    seniority: string | null;
-    responsibilities: string | null;
-    painPoints: string | null;
-    desiredOutcomes: string | null;
-    messagingNotes: string | null;
-  },
-): PersonaAuthoritativeFields {
+function personaToAuthoritativeFields(persona: {
+  name: string;
+  definition: string | null;
+  additionalContext: string | null;
+  targetTitles: unknown;
+  department: string | null;
+  seniority: string | null;
+  responsibilities: string | null;
+  painPoints: string | null;
+  desiredOutcomes: string | null;
+  messagingNotes: string | null;
+}): PersonaAuthoritativeFields {
   const titles = Array.isArray(persona.targetTitles)
     ? persona.targetTitles.map(String).filter(Boolean)
     : [];
@@ -196,7 +195,8 @@ function draftToCreateData(
     isRequired: d.isRequired,
     isDisqualifier: d.isDisqualifier,
     researchGuidance: d.researchGuidance ?? null,
-    source: (d.source as "AI_INTERPRETED" | "MANUAL" | "MIGRATED_FROM_LEGACY") ??
+    source:
+      (d.source as "AI_INTERPRETED" | "MANUAL" | "MIGRATED_FROM_LEGACY") ??
       "AI_INTERPRETED",
     sortOrder: d.sortOrder,
     manuallyEdited: false,
@@ -277,14 +277,13 @@ export async function interpretPersonaDefinition(input: {
     providerSummary = getAiConfigPublicSummary(getInterpretationAiConfig());
 
     const response = await ai.generateStructured({
+      ...structuredOutputRequest("personaInterpretation"),
       messages: buildPersonaInterpretationMessages({
         productName: persona.product.name,
         productDescription: persona.product.description,
         fields,
         existingCriteria: existingSnapshots,
       }),
-      schema: interpretationResultSchema,
-      schemaName: "persona_interpretation",
     });
 
     const parsed = parseInterpretedCriteria(response.data);

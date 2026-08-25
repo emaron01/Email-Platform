@@ -5,10 +5,8 @@ import {
   AiTimeoutError,
   AiValidationError,
 } from "@/lib/ai";
-import {
-  aiScoringAssessmentSchema,
-  type AiScoringAssessment,
-} from "@/lib/scoring/assessment";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
+import type { AiScoringAssessment } from "@/lib/scoring/assessment";
 import type { ScoringPayload } from "@/lib/scoring/payload";
 import { buildScoringMessages } from "@/lib/scoring/prompt";
 import { TenantError } from "@/lib/tenant/getCurrentOrganization";
@@ -32,9 +30,8 @@ export async function generateScoringAssessment(input: {
   while (true) {
     try {
       return await input.provider.generateStructured({
+        ...structuredOutputRequest("contactScoring"),
         messages: buildScoringMessages(input.payload),
-        schema: aiScoringAssessmentSchema,
-        schemaName: "AiScoringAssessment",
       });
     } catch (error) {
       if (

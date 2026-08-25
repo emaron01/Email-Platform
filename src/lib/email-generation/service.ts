@@ -1,9 +1,6 @@
 import "server-only";
 
-import type {
-  EmailDraftKind,
-  ReplyClassification,
-} from "@prisma/client";
+import type { EmailDraftKind, ReplyClassification } from "@prisma/client";
 import {
   AiConfigError,
   AiProviderError,
@@ -12,8 +9,8 @@ import {
   getEmailAiConfig,
   getEmailAiProvider,
 } from "@/lib/ai";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import type { AiMessage } from "@/lib/ai/types";
-import { emailDraftGenerationSchema } from "@/lib/email-generation/contract";
 import { validateGeneratedEmailClaims } from "@/lib/email-generation/claim-validation";
 import { normalizeEmailBody } from "@/lib/email-generation/email-body";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
@@ -21,10 +18,7 @@ import { EMAIL_GENERATION_PROMPT_VERSION } from "@/lib/email-generation/prompt";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
-import {
-  assertUsageAllowed,
-  UsageQuotaError,
-} from "@/lib/usage/quota";
+import { assertUsageAllowed, UsageQuotaError } from "@/lib/usage/quota";
 
 export const EMAIL_GENERATION_MODEL = "gpt-5.6-luna";
 
@@ -43,9 +37,8 @@ export function sanitizeGeneratedEmailBody(value: string): string {
     /^((?:hi|hello|hey|good morning|good afternoon|good evening)\s+[^,\n]{1,60},)[ \t]+(.+)$/i.exec(
       normalized,
     );
-  const lines = (inlineGreeting
-    ? `${inlineGreeting[1]}\n\n${inlineGreeting[2]}`
-    : normalized
+  const lines = (
+    inlineGreeting ? `${inlineGreeting[1]}\n\n${inlineGreeting[2]}` : normalized
   ).split("\n");
   const greetingLine =
     /^(?:(?:hi|hello|hey|good morning|good afternoon|good evening)\b.+|[\p{L}'-]+(?:\s+[\p{L}'-]+)?)[,:!]$/iu;
@@ -58,7 +51,11 @@ export function sanitizeGeneratedEmailBody(value: string): string {
   }
   const firstPossibleSignatureLine = Math.max(0, lines.length - 8);
 
-  for (let index = firstPossibleSignatureLine; index < lines.length; index += 1) {
+  for (
+    let index = firstPossibleSignatureLine;
+    index < lines.length;
+    index += 1
+  ) {
     const line = lines[index].trim();
     if (SIGN_OFF_LINE.test(line) || SENDER_PLACEHOLDER_LINE.test(line)) {
       return lines.slice(0, index).join("\n").trimEnd();
@@ -77,10 +74,12 @@ function normalizedComparable(value: string): string {
 }
 
 function openingSentence(body: string): string {
-  return body
-    .split(/(?<=[.!?])\s+/)
-    .map((part) => part.trim())
-    .find(Boolean) ?? "";
+  return (
+    body
+      .split(/(?<=[.!?])\s+/)
+      .map((part) => part.trim())
+      .find(Boolean) ?? ""
+  );
 }
 
 function closingQuestion(body: string): string {
@@ -99,9 +98,7 @@ export function assertFollowUpNovelty(
     const priorOpening = normalizedComparable(openingSentence(prior.body));
     const priorAsk = normalizedComparable(closingQuestion(prior.body));
     if (opening && opening === priorOpening) {
-      throw new AiValidationError(
-        "Follow-up repeated a prior email opening.",
-      );
+      throw new AiValidationError("Follow-up repeated a prior email opening.");
     }
     if (ask && ask === priorAsk) {
       throw new AiValidationError(
@@ -195,7 +192,9 @@ export async function generateEmailDraft(
   const sequenceNumber = options.sequenceNumber ?? 1;
   const kind = options.kind ?? (sequenceNumber === 1 ? "INITIAL" : "FOLLOW_UP");
   if (!Number.isInteger(sequenceNumber) || sequenceNumber < 1) {
-    throw new TenantError("Email sequence position must be a positive integer.");
+    throw new TenantError(
+      "Email sequence position must be a positive integer.",
+    );
   }
   const existing = await prisma.emailDraft.findUnique({
     where: {
@@ -208,7 +207,9 @@ export async function generateEmailDraft(
     select: { id: true, status: true, sentAt: true },
   });
   if (existing?.status === "SENT" || existing?.sentAt) {
-    throw new TenantError("Sent emails are read-only and cannot be regenerated.");
+    throw new TenantError(
+      "Sent emails are read-only and cannot be regenerated.",
+    );
   }
   const regenerated = Boolean(existing);
   if (sequenceNumber > 1) {
@@ -254,9 +255,8 @@ export async function generateEmailDraft(
     const response = await withRetries(
       () =>
         ai.generateStructured({
+          ...structuredOutputRequest("emailDraftGeneration"),
           messages,
-          schema: emailDraftGenerationSchema,
-          schemaName: "email_draft_generation",
         }),
       config.maxRetries,
       () => {

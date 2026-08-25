@@ -1,12 +1,18 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { z } from "zod";
 import { getEmailAiConfig, getEmailAiProvider } from "@/lib/ai";
+import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import type { AiProvider, AiStructuredResponse } from "@/lib/ai/types";
+import {
+  offerValidationSchema,
+  type OfferValidationAiResult,
+} from "@/lib/campaign/offer-validation-contract";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
+
+export { offerValidationSchema };
 
 export type CampaignOfferFields = {
   offerName: string | null;
@@ -37,7 +43,8 @@ export function offerConflictsFromJson(value: unknown): OfferConflict[] {
   const conflicts = (value as { conflicts?: unknown }).conflicts;
   if (!Array.isArray(conflicts)) return [];
   return conflicts.filter((entry): entry is OfferConflict => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry))
+      return false;
     const candidate = entry as Partial<OfferConflict>;
     return (
       typeof candidate.code === "string" &&
@@ -45,21 +52,6 @@ export function offerConflictsFromJson(value: unknown): OfferConflict[] {
     );
   });
 }
-
-const offerValidationSchema = z.object({
-  conflicts: z.array(
-    z.object({
-      code: z.enum([
-        "CLAIM_CONFLICT",
-        "TERM_CONFLICT",
-        "EVIDENCE_CONFLICT",
-      ]),
-      message: z.string().trim().min(1).max(500),
-      offerExcerpt: z.string().trim().max(500).nullable(),
-      evidenceExcerpt: z.string().trim().max(500).nullable(),
-    }),
-  ),
-});
 
 function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -77,10 +69,7 @@ function stringList(value: unknown): string[] {
   return typeof value === "string" && value.trim() ? [value.trim()] : [];
 }
 
-export function evidenceFragments(
-  value: unknown,
-  path = "evidence",
-): string[] {
+export function evidenceFragments(value: unknown, path = "evidence"): string[] {
   if (typeof value === "string") {
     return value.trim() ? [`${path}: ${value.trim()}`] : [];
   }
@@ -209,7 +198,9 @@ export function detectDeterministicOfferConflicts(input: {
   }
 
   return Array.from(
-    new Map(conflicts.map((conflict) => [conflictKey(conflict), conflict])).values(),
+    new Map(
+      conflicts.map((conflict) => [conflictKey(conflict), conflict]),
+    ).values(),
   );
 }
 
@@ -219,8 +210,9 @@ export async function validateOfferSemantically(input: {
   claimsNotToMake: string[];
   terminologyToAvoid: string[];
   productEvidence: string[];
-}): Promise<AiStructuredResponse<z.infer<typeof offerValidationSchema>>> {
+}): Promise<AiStructuredResponse<OfferValidationAiResult>> {
   return input.ai.generateStructured({
+    ...structuredOutputRequest("campaignOfferValidation"),
     messages: [
       {
         role: "system",
@@ -241,8 +233,6 @@ export async function validateOfferSemantically(input: {
         ),
       },
     ],
-    schema: offerValidationSchema,
-    schemaName: "campaign_offer_validation",
   });
 }
 
