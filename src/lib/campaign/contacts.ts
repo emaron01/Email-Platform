@@ -4,6 +4,7 @@ import type { Prisma, QualificationBucket } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
+import { readIcpQualification } from "@/lib/scoring/icp-qualification";
 import {
   firstUnresolvedCriterion,
   firstUnresolvedDimension,
@@ -217,7 +218,7 @@ export async function getCampaignQualificationView(
     const unresolved =
       firstUnresolvedCriterion(score.criterionAssessments) ??
       firstUnresolvedDimension(score.assessmentData);
-    const inferred = scoreLabelToBucket(score.scoreLabel);
+    const inferred = scoreLabelToBucket(score.scoreLabel, score.assessmentData);
     const bucket = override.get(`CONTACT:${score.contactId}`) ?? inferred;
     const name =
       [score.contact.firstName, score.contact.lastName]
@@ -244,6 +245,10 @@ export async function getCampaignQualificationView(
           : null,
       researchHref: `/scoring/${run.id}#contact-${score.contactId}`,
       canOverride: true,
+      secondaryFlags:
+        readIcpQualification(score.assessmentData)?.secondaryFlags.map(
+          (flag) => flag.text,
+        ) ?? [],
     };
   });
 
@@ -255,6 +260,7 @@ export async function getCampaignQualificationView(
       canOverride: boolean;
       buckets: QualificationBucket[];
       unresolved: ReturnType<typeof firstUnresolvedCriterion>;
+      secondaryFlags: string[];
     }
   >();
   for (const score of run.scores) {
@@ -270,8 +276,16 @@ export async function getCampaignQualificationView(
       canOverride: Boolean(companyId),
       buckets: [],
       unresolved: null,
+      secondaryFlags: [],
     };
-    entry.buckets.push(scoreLabelToBucket(score.scoreLabel));
+    entry.buckets.push(
+      scoreLabelToBucket(score.scoreLabel, score.assessmentData),
+    );
+    const flags =
+      readIcpQualification(score.assessmentData)?.secondaryFlags ?? [];
+    entry.secondaryFlags = Array.from(
+      new Set([...entry.secondaryFlags, ...flags.map((flag) => flag.text)]),
+    );
     entry.unresolved ??=
       firstUnresolvedCriterion(score.criterionAssessments) ??
       firstUnresolvedDimension(score.assessmentData);
@@ -308,9 +322,25 @@ export async function getCampaignQualificationView(
           ? `/companies/${entry.id}`
           : `/scoring/${run.id}`,
         canOverride: entry.canOverride,
+        secondaryFlags: entry.secondaryFlags,
       };
     },
   );
+  const bucketOrder: Record<QualificationBucket, number> = {
+    GOOD: 0,
+    NEEDS_REVIEW: 1,
+    EXCLUDED: 2,
+  };
+  companyRows.sort((a, b) => {
+    const bucketDelta = bucketOrder[a.bucket] - bucketOrder[b.bucket];
+    if (bucketDelta !== 0) return bucketDelta;
+    return (b.secondaryFlags?.length ?? 0) - (a.secondaryFlags?.length ?? 0);
+  });
+  contactRows.sort((a, b) => {
+    const bucketDelta = bucketOrder[a.bucket] - bucketOrder[b.bucket];
+    if (bucketDelta !== 0) return bucketDelta;
+    return (b.secondaryFlags?.length ?? 0) - (a.secondaryFlags?.length ?? 0);
+  });
   return { scoringRunId: run.id, companyRows, contactRows };
 }
 

@@ -25,6 +25,12 @@ import {
 import type { IcpSnapshot, PersonaSnapshot } from "@/lib/scoring/types";
 import type { ScoringContactResearchInput } from "@/lib/scoring/payload";
 import type { PersonaExclusionAssessment } from "@/lib/scoring/persona-exclusions";
+import {
+  icpQualificationToScoreLabel,
+  isSecondaryIcpCriterion,
+  resolveIcpQualification,
+  type IcpQualification,
+} from "@/lib/scoring/icp-qualification";
 
 export type ComponentScores = {
   icpScore: number;
@@ -192,6 +198,7 @@ export type CalculatedScore = ComponentScores & {
   reasoning: string;
   /** Persisted on ContactScore.criterionAssessments / assessmentData. */
   criterionEvidenceAssessments?: CriterionEvidenceAssessment[];
+  icpQualification: IcpQualification;
 };
 
 function factualEvidenceForDimension(
@@ -260,8 +267,11 @@ export function calculateScoresFromAssessment(input: {
     };
   });
 
-  const excludeIcpDimensionNames = new Set(
-    (input.applicable ?? [])
+  const excludeIcpDimensionNames = new Set([
+    ...(input.icp.criteria ?? [])
+      .filter((criterion) => isSecondaryIcpCriterion(criterion))
+      .map((criterion) => criterion.name),
+    ...(input.applicable ?? [])
       .filter((dim) => dim.component === "ICP")
       .map((dim) =>
         factualEvidenceForDimension(dim.dimension, evidenceByName, input.icp),
@@ -270,10 +280,15 @@ export function calculateScoresFromAssessment(input: {
         Boolean(e?.excludeFromScore),
       )
       .map((e) => e.name),
-  );
+  ]);
 
   const components = calculateComponentScores(dimensions, {
     excludeIcpDimensionNames,
+  });
+  const icpQualification = resolveIcpQualification({
+    criteria: input.icp.criteria ?? [],
+    assessments: input.criterionEvidenceAssessments ?? [],
+    dimensions,
   });
   const proposedDisqualifiers = resolveDisqualifiers(
     input.assessment.potentialDisqualifiers,
@@ -289,6 +304,10 @@ export function calculateScoresFromAssessment(input: {
       evidenceByName,
       input.icp,
     );
+    const criterion = (input.icp.criteria ?? []).find(
+      (entry) => entry.name === d.criterion,
+    );
+    if (isSecondaryIcpCriterion(criterion)) return false;
     return !(ev?.excludeFromScore || ev?.evidenceOutcome === "UNVERIFIABLE");
   });
   const deterministicPersonaDisqualifiers: ResolvedDisqualifier[] = (
@@ -302,27 +321,47 @@ export function calculateScoresFromAssessment(input: {
       scope: "PERSONA",
       matchedPersonaCriterion: assessment.criterion,
     }));
+  const mandatoryDisqualifiers: ResolvedDisqualifier[] =
+    icpQualification.mandatoryFailures.map((name) => {
+      const assessment = evidenceByName.get(name);
+      return {
+        criterion: name,
+        evidence: assessment?.reasoning ? [assessment.reasoning] : [],
+        confidence: assessment?.confidence === "HIGH" ? "HIGH" : "MEDIUM",
+        scope: "ICP" as const,
+        matchedIcpSignal: name,
+      };
+    });
   const disqualifiers = [
     ...proposedDisqualifiers,
+    ...mandatoryDisqualifiers,
     ...deterministicPersonaDisqualifiers,
   ];
   const disqualified = disqualifiers.length > 0;
   let scoreLabel = assignScoreLabel(components.overallScore, disqualified);
-  const icpCoverage = components.componentCoverage.icp;
-  const hasUnresolvableIcpCriteria = icpCoverage.evaluated < icpCoverage.total;
-  const knownIcpEvidenceDoesNotFail =
-    icpCoverage.evaluated === 0 ||
-    components.icpScore >= SCORE_LABEL_THRESHOLDS.goodMin;
+  scoreLabel = icpQualificationToScoreLabel(
+    icpQualification,
+    disqualified,
+    scoreLabel,
+  );
   if (
     scoreLabel === "POOR" &&
-    hasUnresolvableIcpCriteria &&
-    knownIcpEvidenceDoesNotFail
+    components.componentCoverage.icp.evaluated <
+      components.componentCoverage.icp.total
   ) {
-    // FAIR maps to Needs review ("Maybe") in qualification. Missing facts alone never exclude.
     scoreLabel = "FAIR";
   }
+  const primaryCount = (input.icp.criteria ?? []).filter(
+    (criterion) => !isSecondaryIcpCriterion(criterion),
+  ).length;
+  if (primaryCount > 0) {
+    components.componentCoverage.icp.total = primaryCount;
+  }
   const unresolvedIcpGaps = (input.criterionEvidenceAssessments ?? [])
-    .filter((assessment) => assessment.excludeFromScore)
+    .filter(
+      (assessment) =>
+        assessment.excludeFromScore && assessment.tier !== "SECONDARY",
+    )
     .map((assessment) => assessment.reasoning);
   const fitRisks = Array.from(
     new Set([...input.assessment.fitRisks, ...unresolvedIcpGaps]),
@@ -338,5 +377,6 @@ export function calculateScoresFromAssessment(input: {
     recommendedAction: input.assessment.recommendedAction,
     reasoning: input.assessment.reasoning,
     criterionEvidenceAssessments: input.criterionEvidenceAssessments,
+    icpQualification,
   };
 }

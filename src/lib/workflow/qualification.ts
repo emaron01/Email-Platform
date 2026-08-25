@@ -1,4 +1,8 @@
 import type { QualificationBucket, ScoreLabel } from "@prisma/client";
+import {
+  icpQualificationToBucket,
+  readIcpQualification,
+} from "@/lib/scoring/icp-qualification";
 
 export const QUALIFICATION_BUCKETS = [
   "GOOD",
@@ -15,12 +19,12 @@ export const QUALIFICATION_BUCKET_LABELS: Record<QualificationBucket, string> =
 
 export function scoreLabelToBucket(
   scoreLabel: ScoreLabel | null,
+  assessmentData?: unknown,
 ): QualificationBucket {
-  if (scoreLabel === "EXCELLENT" || scoreLabel === "GOOD") return "GOOD";
-  if (scoreLabel === "POOR" || scoreLabel === "DISQUALIFIED") {
-    return "EXCLUDED";
-  }
-  return "NEEDS_REVIEW";
+  return icpQualificationToBucket(
+    readIcpQualification(assessmentData),
+    scoreLabel,
+  );
 }
 
 export type UnresolvedCriterion = {
@@ -38,6 +42,7 @@ export function firstUnresolvedCriterion(
     const row = value as Record<string, unknown>;
     const outcome = String(row.evidenceOutcome ?? "");
     const assessment = String(row.assessment ?? "");
+    if (row.tier === "SECONDARY") continue;
     if (outcome !== "UNVERIFIABLE" && assessment !== "UNKNOWN") continue;
     const name = String(row.name ?? "").trim();
     if (!name) continue;

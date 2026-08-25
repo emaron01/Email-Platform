@@ -1,6 +1,7 @@
 import { getScoringAiConfig, getScoringAiProvider } from "@/lib/ai";
 import { generateScoringAssessment } from "@/lib/scoring/ai-assessment";
 import { calculateScoresFromAssessment } from "@/lib/scoring/calculate";
+import { resolveIcpQualification } from "@/lib/scoring/icp-qualification";
 import {
   SCORING_CONCURRENCY,
   SCORING_LOGIC_VERSION,
@@ -333,6 +334,10 @@ export async function scoreSingleContact(input: {
             disqualifiers,
             criterionAssessments,
             personaExclusionAssessments,
+            icpQualification: resolveIcpQualification({
+              criteria: input.icp.criteria ?? [],
+              assessments: criterionAssessments,
+            }),
             aiSkipped: true,
             aiSkipReason: "CONFIRMED_PERSONA_EXCLUSION",
           },
@@ -455,6 +460,7 @@ export async function scoreSingleContact(input: {
           dimensions: calculated.dimensions,
           unknownDimensionCount: calculated.unknownDimensionCount,
           componentCoverage: calculated.componentCoverage,
+          icpQualification: calculated.icpQualification,
           fitStrengths: calculated.fitStrengths,
           fitRisks: calculated.fitRisks,
           disqualifiers: calculated.disqualifiers,

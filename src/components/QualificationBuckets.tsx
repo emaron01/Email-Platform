@@ -22,6 +22,7 @@ export type QualificationBucketRow = {
   researchGuidance: string | null;
   researchHref: string | null;
   canOverride: boolean;
+  secondaryFlags?: string[];
 };
 
 const CARD_STYLES: Record<QualificationBucket, string> = {
@@ -122,6 +123,11 @@ export function QualificationBuckets({
                   <p className="mt-1 text-sm text-slate-600">
                     {QUALIFICATION_BUCKET_LABELS[row.bucket]}
                   </p>
+                  {row.secondaryFlags && row.secondaryFlags.length > 0 ? (
+                    <p className="mt-1 text-xs font-medium text-emerald-800">
+                      {row.secondaryFlags.join(" · ")}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {QUALIFICATION_BUCKETS.map((bucket) => (

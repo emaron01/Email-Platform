@@ -16,6 +16,7 @@ import {
   type CriterionEvidenceClassValue,
 } from "@/lib/criteria/evidence-class";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
+import { icpCriterionTier } from "@/lib/scoring/icp-qualification";
 
 export type TargetedSearchEvidenceOutcome =
   "CONFIRMED" | "CONTRADICTED" | "UNVERIFIABLE" | "NOT_APPLICABLE";
@@ -35,6 +36,8 @@ export type CriterionEvidenceAssessment = {
   excludeFromScore: boolean;
   /** When true, AI dimension for this criterion must not invent a factual result. */
   factualAiForbidden: boolean;
+  tier?: "PRIMARY" | "SECONDARY";
+  isMandatory?: boolean;
 };
 
 function unverifiableAssessment(input: {
@@ -71,6 +74,33 @@ function hasExplicitContradiction(actualValue: unknown): boolean {
  * TARGETED_SEARCH with no evidence → NEUTRAL / UNVERIFIABLE (never NO_FIT, never disqualification).
  */
 export function evaluateIcpCriterionWithEvidenceClass(input: {
+  criterion: CriterionSnapshot;
+  actualValue: unknown;
+}): CriterionEvidenceAssessment {
+  return applyCriterionTier(input.criterion, evaluateIcpCriterionCore(input));
+}
+
+function applyCriterionTier(
+  criterion: CriterionSnapshot,
+  result: CriterionEvidenceAssessment,
+): CriterionEvidenceAssessment {
+  const tier = icpCriterionTier(criterion);
+  if (tier === "SECONDARY") {
+    return {
+      ...result,
+      tier,
+      isMandatory: false,
+      excludeFromScore: true,
+    };
+  }
+  return {
+    ...result,
+    tier,
+    isMandatory: Boolean(criterion.isMandatory),
+  };
+}
+
+function evaluateIcpCriterionCore(input: {
   criterion: CriterionSnapshot;
   actualValue: unknown;
 }): CriterionEvidenceAssessment {

@@ -1,4 +1,9 @@
-import type { IcpSnapshot, PersonaSnapshot, ProductSnapshot } from "@/lib/scoring/types";
+import { isSecondaryIcpCriterion } from "@/lib/scoring/icp-qualification";
+import type {
+  IcpSnapshot,
+  PersonaSnapshot,
+  ProductSnapshot,
+} from "@/lib/scoring/types";
 import {
   COMPANY_DIMENSIONS,
   ICP_DIMENSIONS,
@@ -24,9 +29,7 @@ function icpDimensionName(name: string): string {
   return name.trim() || "ICP Criterion";
 }
 
-function personaHasResponsibilityCriteria(
-  persona: PersonaSnapshot,
-): boolean {
+function personaHasResponsibilityCriteria(persona: PersonaSnapshot): boolean {
   return (persona.criteria ?? []).some((c) => {
     const type = c.criterionType.toLowerCase();
     return (
@@ -42,7 +45,9 @@ function addUniqueDimension(
   component: ScoringComponent,
   dimension: string,
 ): void {
-  if (dims.some((d) => d.component === component && d.dimension === dimension)) {
+  if (
+    dims.some((d) => d.component === component && d.dimension === dimension)
+  ) {
     return;
   }
   dims.push({ component, dimension });
@@ -61,6 +66,7 @@ export function getApplicableDimensions(input: {
 
   if (input.icp.criteria?.length) {
     for (const criterion of input.icp.criteria) {
+      if (isSecondaryIcpCriterion(criterion)) continue;
       addUniqueDimension(dims, "ICP", icpDimensionName(criterion.name));
     }
   } else {
@@ -97,11 +103,7 @@ export function getApplicableDimensions(input: {
         // Unmapped AI types are excluded until classified.
         continue;
       }
-      addUniqueDimension(
-        dims,
-        "PERSONA",
-        icpDimensionName(criterion.name),
-      );
+      addUniqueDimension(dims, "PERSONA", icpDimensionName(criterion.name));
     }
 
     if (personaHasResponsibilityCriteria(input.persona)) {
