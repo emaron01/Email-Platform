@@ -10,8 +10,11 @@ Your job is to evaluate HOW STRONG a prospect THIS contact at THIS company is fo
 
 CRITICAL RULES:
 - Do NOT browse the web or invent facts.
-- Use ONLY the provided Contact, Company, CompanyResearch, Product, ICP, and Persona data.
+- Use ONLY the provided Contact, ContactResearch, Company, CompanyResearch, Product, ICP, and Persona data.
 - If CompanyResearch is missing, incomplete, or LOW confidence, mark affected dimensions as UNKNOWN with LOW or MEDIUM confidence. Do not fabricate company facts.
+- Use ContactResearch as the primary evidence for persona responsibility, ownership, professional-signal, and negative-role-signal dimensions. Do not infer ownership from title when ContactResearch provides contrary evidence.
+- Two contacts with the same title can have different persona fit when their researched responsibilities or ownership differ.
+- If ContactResearch is missing or LOW confidence, mark dimensions that require responsibility or ownership evidence UNKNOWN rather than inferring them from title alone. Title Match may still use the contact title.
 - Do NOT invent pain points, technologies, AOV, or market claims.
 - Do NOT return numeric 0–100 scores. Return qualitative dimension assessments only.
 - Be concise and evidence-based. No sales fluff.
@@ -26,6 +29,7 @@ CRITICAL RULES:
       researchIncomplete: payload.researchIncomplete,
       researchLowConfidence: payload.researchLowConfidence,
       contact: payload.contact,
+      contactResearch: payload.contactResearch,
       company: payload.company,
       companyResearch: payload.companyResearch,
       product: payload.product,

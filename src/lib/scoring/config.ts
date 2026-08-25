@@ -2,7 +2,8 @@
  * Deterministic scoring configuration (centralized — do not scatter magic numbers).
  */
 
-export const SCORING_PROMPT_VERSION = "2";
+/** Bumped when contact-role research became scoring evidence. */
+export const SCORING_PROMPT_VERSION = "3";
 /** Bumped for TARGETED_SEARCH asymmetry + factual AI clamp. */
 export const SCORING_LOGIC_VERSION = "3";
 

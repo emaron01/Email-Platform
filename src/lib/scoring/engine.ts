@@ -1,12 +1,5 @@
-import {
-  AiConfigError,
-  AiProviderError,
-  AiTimeoutError,
-  AiValidationError,
-  getScoringAiConfig,
-  getScoringAiProvider,
-} from "@/lib/ai";
-import { aiScoringAssessmentSchema } from "@/lib/scoring/assessment";
+import { getScoringAiConfig, getScoringAiProvider } from "@/lib/ai";
+import { generateScoringAssessment } from "@/lib/scoring/ai-assessment";
 import { calculateScoresFromAssessment } from "@/lib/scoring/calculate";
 import {
   SCORING_CONCURRENCY,
@@ -16,9 +9,9 @@ import {
 import { getApplicableDimensions } from "@/lib/scoring/dimensions";
 import {
   buildScoringPayload,
+  type ScoringContactResearchInput,
   type ScoringCompanyResearchInput,
 } from "@/lib/scoring/payload";
-import { buildScoringMessages } from "@/lib/scoring/prompt";
 import type {
   IcpSnapshot,
   PersonaSnapshot,
@@ -33,41 +26,6 @@ import {
 } from "@/lib/tenant/getCurrentOrganization";
 import { parseStringArray } from "@/lib/research";
 import { isScoringAiConfigured } from "@/lib/ai/config";
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRetryable(error: unknown): boolean {
-  if (error instanceof AiTimeoutError) return true;
-  if (error instanceof AiProviderError) return error.retryable;
-  return false;
-}
-
-async function withRetries<T>(
-  fn: () => Promise<T>,
-  maxRetries: number,
-): Promise<T> {
-  let attempt = 0;
-  // attempt 0 is first try; retries up to maxRetries
-  while (true) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (
-        error instanceof AiValidationError ||
-        error instanceof AiConfigError ||
-        error instanceof TenantError
-      ) {
-        throw error;
-      }
-      if (!isRetryable(error) || attempt >= maxRetries) throw error;
-      const delay = Math.min(2000 * 2 ** attempt, 8000);
-      await sleep(delay);
-      attempt += 1;
-    }
-  }
-}
 
 async function mapPool<T, R>(
   items: T[],
@@ -130,6 +88,31 @@ function toResearchInput(
     relevantTechnologies: parseStringArray(research.relevantTechnologies),
     buyingSignals: parseStringArray(research.buyingSignals),
     riskSignals: parseStringArray(research.riskSignals),
+    researchedAt: research.researchedAt?.toISOString() ?? null,
+  };
+}
+
+function toContactResearchInput(
+  research: {
+    status: string;
+    confidence: string | null;
+    roleSummary: string | null;
+    responsibilities: unknown;
+    ownershipAreas: unknown;
+    professionalSignals: unknown;
+    negativeRoleSignals: unknown;
+    researchedAt: Date | null;
+  } | null,
+): ScoringContactResearchInput {
+  if (!research) return null;
+  return {
+    status: research.status,
+    confidence: research.confidence,
+    roleSummary: research.roleSummary,
+    responsibilities: parseStringArray(research.responsibilities),
+    ownershipAreas: parseStringArray(research.ownershipAreas),
+    professionalSignals: parseStringArray(research.professionalSignals),
+    negativeRoleSignals: parseStringArray(research.negativeRoleSignals),
     researchedAt: research.researchedAt?.toISOString() ?? null,
   };
 }
@@ -198,6 +181,12 @@ export async function scoreSingleContact(input: {
       id: string;
       researchedAt: Date | null;
       status: string;
+      confidence: string | null;
+      roleSummary: string | null;
+      responsibilities: unknown;
+      ownershipAreas: unknown;
+      professionalSignals: unknown;
+      negativeRoleSignals: unknown;
     } | null = null;
     try {
       const { getResearchPolicy } = await import("@/lib/usage/policy");
@@ -219,6 +208,12 @@ export async function scoreSingleContact(input: {
         id: cr.id,
         researchedAt: cr.researchedAt,
         status: cr.status,
+        confidence: cr.confidence,
+        roleSummary: cr.roleSummary,
+        responsibilities: cr.responsibilities,
+        ownershipAreas: cr.ownershipAreas,
+        professionalSignals: cr.professionalSignals,
+        negativeRoleSignals: cr.negativeRoleSignals,
       };
     } catch {
       // Contact research failures must not block scoring; leave provenance null.
@@ -291,23 +286,18 @@ export async function scoreSingleContact(input: {
           }
         : null,
       companyResearch: toResearchInput(latestResearch),
+      contactResearch: toContactResearchInput(contactResearchRow),
       product: input.product,
       icp: input.icp,
       persona: input.persona,
       applicableDimensions: applicable,
     });
 
-    const messages = buildScoringMessages(payload);
-
-    const aiResponse = await withRetries(
-      () =>
-        provider.generateStructured({
-          messages,
-          schema: aiScoringAssessmentSchema,
-          schemaName: "AiScoringAssessment",
-        }),
-      config.maxRetries,
-    );
+    const aiResponse = await generateScoringAssessment({
+      provider,
+      payload,
+      maxRetries: config.maxRetries,
+    });
 
     const calculated = calculateScoresFromAssessment({
       assessment: aiResponse.data,

@@ -34,6 +34,17 @@ export type ScoringCompanyResearchInput = {
   researchedAt: string | null;
 } | null;
 
+export type ScoringContactResearchInput = {
+  status: string;
+  confidence: string | null;
+  roleSummary: string | null;
+  responsibilities: string[];
+  ownershipAreas: string[];
+  professionalSignals: string[];
+  negativeRoleSignals: string[];
+  researchedAt: string | null;
+} | null;
+
 export type ScoringPayload = {
   contact: ScoringContactInput;
   company: {
@@ -46,6 +57,7 @@ export type ScoringPayload = {
     location: string | null;
   } | null;
   companyResearch: ScoringCompanyResearchInput;
+  contactResearch: ScoringContactResearchInput;
   researchIncomplete: boolean;
   researchLowConfidence: boolean;
   product: ProductSnapshot;
@@ -58,6 +70,7 @@ export function buildScoringPayload(input: {
   contact: ScoringContactInput;
   company: ScoringPayload["company"];
   companyResearch: ScoringCompanyResearchInput;
+  contactResearch: ScoringContactResearchInput;
   product: ProductSnapshot;
   icp: IcpSnapshot;
   persona: PersonaSnapshot;
@@ -77,6 +90,7 @@ export function buildScoringPayload(input: {
     contact: input.contact,
     company: input.company,
     companyResearch: research,
+    contactResearch: input.contactResearch,
     researchIncomplete,
     researchLowConfidence,
     product: input.product,
