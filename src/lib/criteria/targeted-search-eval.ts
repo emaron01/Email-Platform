@@ -17,6 +17,7 @@ import {
 } from "@/lib/criteria/evidence-class";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
 import { icpCriterionTier } from "@/lib/scoring/icp-qualification";
+import type { ActualProvenance } from "@/lib/criteria/research-cascade";
 
 export type TargetedSearchEvidenceOutcome =
   "CONFIRMED" | "CONTRADICTED" | "UNVERIFIABLE" | "NOT_APPLICABLE";
@@ -38,6 +39,7 @@ export type CriterionEvidenceAssessment = {
   factualAiForbidden: boolean;
   tier?: "PRIMARY" | "SECONDARY";
   isMandatory?: boolean;
+  provenance?: ActualProvenance | null;
 };
 
 function unverifiableAssessment(input: {
@@ -76,25 +78,48 @@ function hasExplicitContradiction(actualValue: unknown): boolean {
 export function evaluateIcpCriterionWithEvidenceClass(input: {
   criterion: CriterionSnapshot;
   actualValue: unknown;
+  provenance?: ActualProvenance | null;
 }): CriterionEvidenceAssessment {
-  return applyCriterionTier(input.criterion, evaluateIcpCriterionCore(input));
+  const provenance = input.provenance ?? null;
+  if (provenance?.hedged) {
+    return applyCriterionTier(
+      input.criterion,
+      unverifiableAssessment({
+        criterion: input.criterion,
+        evidenceClass: normalizeEvidenceClass(
+          input.criterion.evidenceClass ?? "TARGETED_SEARCH",
+        ),
+        reasoning: `Unverified: research for "${input.criterion.name}" is hedged, so it is not scored as a fact. ${provenance.label}`,
+      }),
+      provenance,
+    );
+  }
+  return applyCriterionTier(
+    input.criterion,
+    evaluateIcpCriterionCore(input),
+    provenance,
+  );
 }
 
 function applyCriterionTier(
   criterion: CriterionSnapshot,
   result: CriterionEvidenceAssessment,
+  provenance?: ActualProvenance | null,
 ): CriterionEvidenceAssessment {
   const tier = icpCriterionTier(criterion);
+  const withProvenance = provenance
+    ? { ...result, provenance }
+    : result;
   if (tier === "SECONDARY") {
     return {
-      ...result,
+      ...withProvenance,
       tier,
       isMandatory: false,
       excludeFromScore: true,
     };
   }
   return {
-    ...result,
+    ...withProvenance,
     tier,
     isMandatory: Boolean(criterion.isMandatory),
   };
@@ -121,7 +146,7 @@ function evaluateIcpCriterionCore(input: {
       return unverifiableAssessment({
         criterion: input.criterion,
         evidenceClass,
-        reasoning: `Unverified: no ${evidenceClass === "LIST_DATA" ? "list data" : "company research evidence"} for "${input.criterion.name}". Not scored against the company.`,
+        reasoning: `Unverified: no list data or company research evidence for "${input.criterion.name}". Not scored against the company.`,
       });
     }
     return {

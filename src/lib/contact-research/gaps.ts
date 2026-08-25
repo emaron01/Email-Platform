@@ -1,6 +1,6 @@
 import type { CompanyResearch } from "@prisma/client";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
-import { resolveCompanyActualForCriterion } from "@/lib/criteria/evaluate";
+import { resolveCompanyActualWithProvenance } from "@/lib/criteria/evaluate";
 
 function hasText(value: unknown): boolean {
   if (value == null) return false;
@@ -104,6 +104,10 @@ function companyResearchToContext(research: CompanyResearch | null): {
   buyingSignals?: string[] | null;
   riskSignals?: string[] | null;
   primaryMarkets?: string[] | null;
+  companySizeContext?: string | null;
+  companySummary?: string | null;
+  whatTheySell?: string | null;
+  businessModel?: string | null;
 } | null {
   if (!research) return null;
   return {
@@ -111,6 +115,10 @@ function companyResearchToContext(research: CompanyResearch | null): {
     buyingSignals: parseStringArray(research.buyingSignals),
     riskSignals: parseStringArray(research.riskSignals),
     primaryMarkets: parseStringArray(research.primaryMarkets),
+    companySizeContext: research.companySizeContext,
+    companySummary: research.companySummary,
+    whatTheySell: research.whatTheySell,
+    businessModel: research.businessModel,
   };
 }
 
@@ -131,12 +139,13 @@ export function identifyIcpEvidenceGaps(
   const gaps: string[] = [];
 
   for (const criterion of icpCriteria) {
-    const actual = resolveCompanyActualForCriterion(
+    const resolution = resolveCompanyActualWithProvenance(
       criterion,
       company,
       researchCtx,
     );
-    if (actual == null || actual === "") {
+    if (resolution.provenance?.hedged) continue;
+    if (resolution.value == null || resolution.value === "") {
       const guidance =
         criterion.researchGuidance?.trim() ||
         `Research evidence for: ${criterion.name}`;

@@ -7,6 +7,12 @@ import type {
   CriterionOperatorValue,
   CriterionSnapshot,
 } from "@/lib/criteria/types";
+import {
+  isNumericEvidence,
+  resolveCompanyActualWithProvenance,
+  type CompanyListActuals,
+  type CompanyResearchActuals,
+} from "@/lib/criteria/research-cascade";
 
 export type CriterionEvalResult = {
   assessment: "STRONG" | "MODERATE" | "WEAK" | "NO_FIT" | "UNKNOWN";
@@ -69,6 +75,74 @@ function compare(
   }
 }
 
+function numericBounds(value: unknown): { min: number | null; max: number | null; display: string } | null {
+  if (isNumericEvidence(value)) {
+    return { min: value.min, max: value.max, display: value.display };
+  }
+  const n = toNumber(value);
+  if (n == null) return null;
+  return { min: n, max: n, display: String(n) };
+}
+
+/**
+ * Evaluate a point or a research-extracted range. Mixed bounds (overlap) → UNKNOWN.
+ * Min-only / max-only claims only resolve when every possible value in that bound
+ * would give the same answer.
+ */
+export function compareNumericBounds(
+  operator: CriterionOperatorValue,
+  bounds: { min: number | null; max: number | null },
+  target: number | null,
+  min: number | null,
+  max: number | null,
+): boolean | null {
+  const point = (n: number) => compare(operator, n, target, min, max);
+
+  if (bounds.min != null && bounds.max != null) {
+    const low = point(bounds.min);
+    const high = point(bounds.max);
+    if (low == null || high == null) return null;
+    if (low === high) return low;
+    return null;
+  }
+
+  if (bounds.min != null) {
+    const atMin = point(bounds.min);
+    if (atMin == null) return null;
+    switch (operator) {
+      case "GREATER_THAN":
+      case "GREATER_THAN_OR_EQUAL":
+        return atMin ? true : null;
+      case "LESS_THAN":
+      case "LESS_THAN_OR_EQUAL":
+        return atMin ? null : false;
+      case "BETWEEN":
+        return min != null && bounds.min > (max ?? min) ? false : null;
+      default:
+        return null;
+    }
+  }
+
+  if (bounds.max != null) {
+    const atMax = point(bounds.max);
+    if (atMax == null) return null;
+    switch (operator) {
+      case "LESS_THAN":
+      case "LESS_THAN_OR_EQUAL":
+        return atMax ? true : null;
+      case "GREATER_THAN":
+      case "GREATER_THAN_OR_EQUAL":
+        return atMax ? null : false;
+      case "BETWEEN":
+        return max != null && bounds.max < (min ?? max) ? false : null;
+      default:
+        return null;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Evaluate a criterion against a known actual value.
  * Returns REQUIRES_AI for semantic TEXT / role criteria that cannot be decided numerically.
@@ -92,11 +166,11 @@ export function evaluateCriterionDeterministic(input: {
     criterion.dataType === "NUMBER" ||
     criterion.dataType === "CURRENCY"
   ) {
-    const actual = toNumber(actualValue);
+    const bounds = numericBounds(actualValue);
     const target = toNumber(criterion.targetValue);
     const min = toNumber(criterion.minValue);
     const max = toNumber(criterion.maxValue);
-    if (actual == null) {
+    if (bounds == null) {
       return {
         assessment: "UNKNOWN",
         confidence: "LOW",
@@ -104,13 +178,19 @@ export function evaluateCriterionDeterministic(input: {
         reasoning: `Could not parse numeric evidence for "${criterion.name}".`,
       };
     }
-    const ok = compare(criterion.operator, actual, target, min, max);
+    const ok = compareNumericBounds(
+      criterion.operator,
+      bounds,
+      target,
+      min,
+      max,
+    );
     if (ok == null) {
       return {
         assessment: "UNKNOWN",
         confidence: "LOW",
-        method: "REQUIRES_AI",
-        reasoning: `Operator ${criterion.operator} not deterministically applicable.`,
+        method: "UNKNOWN",
+        reasoning: `Observed ${bounds.display} is inconclusive for "${criterion.name}".`,
       };
     }
     if (ok) {
@@ -118,14 +198,14 @@ export function evaluateCriterionDeterministic(input: {
         assessment: criterion.isRequired ? "STRONG" : "MODERATE",
         confidence: "HIGH",
         method: "DETERMINISTIC",
-        reasoning: `Observed ${actual} satisfies ${criterion.name}.`,
+        reasoning: `Observed ${bounds.display} satisfies ${criterion.name}.`,
       };
     }
     return {
-      assessment: criterion.isDisqualifier ? "NO_FIT" : "NO_FIT",
+      assessment: "NO_FIT",
       confidence: "HIGH",
       method: "DETERMINISTIC",
-      reasoning: `Observed ${actual} does not satisfy ${criterion.name}.`,
+      reasoning: `Observed ${bounds.display} does not satisfy ${criterion.name}.`,
     };
   }
 
@@ -223,51 +303,20 @@ export function evaluateCriterionDeterministic(input: {
 
 /**
  * Map known company firmographics onto common criterion types for deterministic scoring.
+ * List fields win; otherwise company research structured fields; otherwise unresolved.
  */
 export function resolveCompanyActualForCriterion(
   criterion: CriterionSnapshot,
-  company: {
-    industry?: string | null;
-    employeeCount?: number | null;
-    revenue?: { toString(): string } | number | string | null;
-    location?: string | null;
-  },
-  research?: {
-    relevantTechnologies?: string[] | null;
-    buyingSignals?: string[] | null;
-    riskSignals?: string[] | null;
-    primaryMarkets?: string[] | null;
-  } | null,
+  company: CompanyListActuals,
+  research?: CompanyResearchActuals | null,
 ): unknown {
-  const type = criterion.criterionType.toLowerCase();
-  const name = criterion.name.toLowerCase();
-
-  if (type.includes("employee") || name.includes("employee")) {
-    return company.employeeCount ?? null;
-  }
-  if (type.includes("revenue") || name.includes("revenue")) {
-    return company.revenue?.toString?.() ?? company.revenue ?? null;
-  }
-  if (type.includes("industry") || name.includes("industry")) {
-    return company.industry ?? null;
-  }
-  if (
-    type.includes("geography") ||
-    type.includes("location") ||
-    name.includes("geography") ||
-    name.includes("location")
-  ) {
-    return company.location ?? research?.primaryMarkets?.join(", ") ?? null;
-  }
-  if (type.includes("technolog") || name.includes("technolog")) {
-    return research?.relevantTechnologies?.join(", ") ?? null;
-  }
-  if (type.includes("positive") || name.includes("buying signal")) {
-    return research?.buyingSignals?.join(", ") ?? null;
-  }
-  if (type.includes("negative") || name.includes("risk") || name.includes("disqualif")) {
-    return research?.riskSignals?.join(", ") ?? null;
-  }
-  // Dynamic attributes (buildings owned, fleet size, etc.) — unknown without research evidence.
-  return null;
+  return resolveCompanyActualWithProvenance(criterion, company, research).value;
 }
+
+export { resolveCompanyActualWithProvenance } from "@/lib/criteria/research-cascade";
+export type {
+  CompanyListActuals,
+  CompanyResearchActuals,
+  CompanyActualResolution,
+} from "@/lib/criteria/research-cascade";
+

@@ -4,8 +4,8 @@
 
 /** Bumped when persona exclusion evidence rules entered the prompt. */
 export const SCORING_PROMPT_VERSION = "4";
-/** Bumped when PRIMARY/SECONDARY ICP qualification entered scoring. */
-export const SCORING_LOGIC_VERSION = "6";
+/** Bumped when factual ICP actuals cascade from list data to company research. */
+export const SCORING_LOGIC_VERSION = "7";
 
 /** Concurrent AI scoring requests per ScoringRun. */
 export const SCORING_CONCURRENCY = 3;

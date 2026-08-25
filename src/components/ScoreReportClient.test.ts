@@ -30,5 +30,8 @@ describe("ScoreReportClient table layout", () => {
     expect(source).toContain("Primary unresolved:");
     expect(source).toContain("Secondary signals found:");
     expect(source).toContain("readIcpQualification");
+    expect(source).toContain('data-testid="icp-criterion-provenance"');
+    expect(source).toContain("Facts used");
+    expect(source).toContain("readCriterionProvenanceLabels");
   });
 });

@@ -21,6 +21,7 @@ import {
   icpQualificationWhyLines,
   readIcpQualification,
 } from "@/lib/scoring/icp-qualification";
+import { readCriterionProvenanceLabels } from "@/lib/criteria/research-cascade";
 
 export type CompanyResearchView = {
   id: string;
@@ -334,6 +335,9 @@ export function ScoreReportClient({
               const why = qualification
                 ? icpQualificationWhyLines(qualification)
                 : null;
+              const factsUsed = readCriterionProvenanceLabels(
+                row.assessmentData,
+              );
               const researchLabel = companyResearchLabel(
                 companyResearch?.status,
               );
@@ -488,6 +492,19 @@ export function ScoreReportClient({
                                 <p>Primary failed: {why.failed}</p>
                                 <p>Secondary signals found: {why.secondary}</p>
                               </div>
+                            </section>
+                          ) : null}
+
+                          {factsUsed.length > 0 ? (
+                            <section data-testid="icp-criterion-provenance">
+                              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Facts used
+                              </h4>
+                              <ul className="mt-2 space-y-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800">
+                                {factsUsed.map((label) => (
+                                  <li key={label}>{label}</li>
+                                ))}
+                              </ul>
                             </section>
                           ) : null}
 

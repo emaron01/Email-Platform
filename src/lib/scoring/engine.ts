@@ -238,7 +238,7 @@ export async function scoreSingleContact(input: {
     });
 
     // Deterministic / asymmetric ICP criterion pre-evaluation.
-    const { resolveCompanyActualForCriterion } =
+    const { resolveCompanyActualWithProvenance } =
       await import("@/lib/criteria/evaluate");
     const { evaluateIcpCriterionWithEvidenceClass } =
       await import("@/lib/criteria/targeted-search-eval");
@@ -246,7 +246,7 @@ export async function scoreSingleContact(input: {
       ReturnType<typeof evaluateIcpCriterionWithEvidenceClass>
     > = [];
     for (const criterion of input.icp.criteria ?? []) {
-      const actual = resolveCompanyActualForCriterion(
+      const resolution = resolveCompanyActualWithProvenance(
         criterion,
         {
           industry: company?.industry ?? contact.industry,
@@ -262,13 +262,18 @@ export async function scoreSingleContact(input: {
               buyingSignals: parseStringArray(latestResearch.buyingSignals),
               riskSignals: parseStringArray(latestResearch.riskSignals),
               primaryMarkets: parseStringArray(latestResearch.primaryMarkets),
+              companySizeContext: latestResearch.companySizeContext,
+              companySummary: latestResearch.companySummary,
+              whatTheySell: latestResearch.whatTheySell,
+              businessModel: latestResearch.businessModel,
             }
           : null,
       );
       criterionAssessments.push(
         evaluateIcpCriterionWithEvidenceClass({
           criterion,
-          actualValue: actual,
+          actualValue: resolution.provenance?.hedged ? null : resolution.value,
+          provenance: resolution.provenance,
         }),
       );
     }
