@@ -1002,6 +1002,9 @@ export async function createScoringRun(input: {
     ensureIcpLegacyCriteriaBackfilled,
     ensurePersonaLegacyCriteriaBackfilled,
   } = await import("@/lib/criteria/legacy-backfill");
+  const { repairUnlockedIcpEvidenceClasses } = await import(
+    "@/lib/interpretation/icp"
+  );
   const { snapshotCriterionRow } = await import("@/lib/scoring/snapshots");
 
   await Promise.all([
@@ -1010,6 +1013,7 @@ export async function createScoringRun(input: {
       ensurePersonaLegacyCriteriaBackfilled(organizationId, persona.id),
     ),
   ]);
+  await repairUnlockedIcpEvidenceClasses(organizationId, icp.id);
 
   const icpCriteriaRows = await prisma.icpCriterion.findMany({
     where: { organizationId, icpId: icp.id },

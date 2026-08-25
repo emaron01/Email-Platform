@@ -45,6 +45,26 @@ export function normalizeEvidenceClass(
   return "TARGETED_SEARCH";
 }
 
+/** Canonical firmographic slugs from the interpretation schema / legacy backfill. */
+const LIST_DATA_CRITERION_TYPES = new Set([
+  "industry",
+  "industries",
+  "employee_count",
+  "employees",
+  "headcount",
+  "company_revenue",
+  "revenue",
+  "geography",
+  "geographies",
+  "location",
+  "domain",
+  "company_size",
+]);
+
+function criterionTypeSlug(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
 /**
  * Heuristic for migration / legacy drafts when AI did not propose a class.
  * Underscores in slugs (employee_count, company_revenue) are treated as spaces
@@ -55,6 +75,10 @@ export function inferEvidenceClassFromCriterion(input: {
   criterionType: string;
   description?: string | null;
 }): CriterionEvidenceClassValue {
+  if (LIST_DATA_CRITERION_TYPES.has(criterionTypeSlug(input.criterionType))) {
+    return "LIST_DATA";
+  }
+
   const blob = [
     input.criterionType,
     input.name,
@@ -121,6 +145,49 @@ export function resolveIcpEvidenceClass(input: {
     return fromAi;
   }
   return inferred;
+}
+
+/**
+ * Correct unlocked firmographics that were stored as TARGETED_SEARCH via the
+ * Prisma / normalizeEvidenceClass conservative default. Returns null when the
+ * stored class should be left alone (locked, already correct, or a real lookup).
+ */
+export function repairedEvidenceClassIfMisclassed(input: {
+  evidenceClass: unknown;
+  evidenceClassLocked?: boolean;
+  name: string;
+  criterionType: string;
+  description?: string | null;
+}): CriterionEvidenceClassValue | null {
+  if (input.evidenceClassLocked) return null;
+  const current = normalizeEvidenceClass(input.evidenceClass);
+  if (current !== "TARGETED_SEARCH") return null;
+  const resolved = resolveIcpEvidenceClass({
+    proposed: current,
+    name: input.name,
+    criterionType: input.criterionType,
+    description: input.description,
+  });
+  if (resolved === "LIST_DATA" || resolved === "COMPANY_RESEARCH") {
+    return resolved;
+  }
+  return null;
+}
+
+/**
+ * PRIMARY TARGETED_SEARCH counts toward the per-ICP lookup cap.
+ * SECONDARY never scores and never disqualifies — an expensive lookup there is
+ * a cost question, not a correctness one, so it does not consume the cap.
+ * Missing / unrecognized tier is treated as PRIMARY (conservative).
+ */
+export function countsTowardTargetedSearchCap(input: {
+  evidenceClass: CriterionEvidenceClassValue;
+  tier?: string | null;
+}): boolean {
+  if (input.evidenceClass !== "TARGETED_SEARCH") return false;
+  const tier =
+    typeof input.tier === "string" ? input.tier.trim().toUpperCase() : "";
+  return tier !== "SECONDARY";
 }
 
 export type EvidenceClassLabel = {
@@ -266,14 +333,19 @@ export type CapCheckResult =
     };
 
 /**
- * Enforce TARGETED_SEARCH cap. Never silently drop — name the excess criteria.
+ * Enforce TARGETED_SEARCH cap on PRIMARY (scoring) criteria only.
+ * Never silently drop — name the excess criteria and the actions that clear it.
  */
 export function checkTargetedSearchCap(input: {
-  criteria: Array<{ name: string; evidenceClass: CriterionEvidenceClassValue }>;
+  criteria: Array<{
+    name: string;
+    evidenceClass: CriterionEvidenceClassValue;
+    tier?: string | null;
+  }>;
   maxAllowed: number;
 }): CapCheckResult {
-  const targeted = input.criteria.filter(
-    (c) => c.evidenceClass === "TARGETED_SEARCH",
+  const targeted = input.criteria.filter((c) =>
+    countsTowardTargetedSearchCap(c),
   );
   if (targeted.length <= input.maxAllowed) return { ok: true };
   const exceeding = targeted.slice(input.maxAllowed);
@@ -281,7 +353,7 @@ export function checkTargetedSearchCap(input: {
   return {
     ok: false,
     exceedingNames,
-    message: `This ICP has ${targeted.length} criteria that need a per-company lookup (limit ${input.maxAllowed}). Remove or reclassify: ${exceedingNames
+    message: `This ICP has ${targeted.length} scoring criteria that need a per-company lookup (limit ${input.maxAllowed}). Remove a listed criterion, or set its scoring role to Good to know (Good to know never counts toward fit or this limit): ${exceedingNames
       .map((n) => `"${n}"`)
       .join(", ")}.`,
   };

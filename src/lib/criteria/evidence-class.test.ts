@@ -6,10 +6,12 @@ import { readFileSync } from "node:fs";
 import {
   buildEvidenceClassSummary,
   checkTargetedSearchCap,
+  countsTowardTargetedSearchCap,
   criterionMaterialFingerprint,
   inferEvidenceClassFromCriterion,
   isTargetedSearchDecisionStale,
   normalizeEvidenceClass,
+  repairedEvidenceClassIfMisclassed,
   resolveIcpEvidenceClass,
 } from "@/lib/criteria/evidence-class";
 import {
@@ -89,6 +91,69 @@ describe("evidence class normalize + infer", () => {
         criterionType: "employee_count",
       }),
     ).toBe("LIST_DATA");
+  });
+
+  it("classes canonical LIST_DATA slugs even when the name is generic", () => {
+    expect(
+      inferEvidenceClassFromCriterion({
+        name: "Filter",
+        criterionType: "geography",
+      }),
+    ).toBe("LIST_DATA");
+    expect(
+      inferEvidenceClassFromCriterion({
+        name: "Filter",
+        criterionType: "Industry",
+      }),
+    ).toBe("LIST_DATA");
+  });
+
+  it("repairs unlocked TARGETED_SEARCH firmographics and leaves real lookups alone", () => {
+    expect(
+      repairedEvidenceClassIfMisclassed({
+        evidenceClass: "TARGETED_SEARCH",
+        evidenceClassLocked: false,
+        name: "Industry",
+        criterionType: "industry",
+      }),
+    ).toBe("LIST_DATA");
+    expect(
+      repairedEvidenceClassIfMisclassed({
+        evidenceClass: "TARGETED_SEARCH",
+        name: "Employee Count",
+        criterionType: "employee_count",
+      }),
+    ).toBe("LIST_DATA");
+    expect(
+      repairedEvidenceClassIfMisclassed({
+        evidenceClass: "TARGETED_SEARCH",
+        name: "Company Revenue",
+        criterionType: "company_revenue",
+      }),
+    ).toBe("LIST_DATA");
+    expect(
+      repairedEvidenceClassIfMisclassed({
+        evidenceClass: "TARGETED_SEARCH",
+        name: "Geography",
+        criterionType: "geography",
+      }),
+    ).toBe("LIST_DATA");
+    expect(
+      repairedEvidenceClassIfMisclassed({
+        evidenceClass: "TARGETED_SEARCH",
+        evidenceClassLocked: true,
+        name: "Industry",
+        criterionType: "industry",
+      }),
+    ).toBeNull();
+    expect(
+      repairedEvidenceClassIfMisclassed({
+        evidenceClass: "TARGETED_SEARCH",
+        name: "Required Technologies",
+        criterionType: "technology",
+        description: "Uses Salesforce or HubSpot",
+      }),
+    ).toBeNull();
   });
 
   it("does not let a conservative TARGETED_SEARCH proposal override firmographics", () => {
@@ -225,6 +290,8 @@ describe("user override fingerprint / material change", () => {
     const src = readFileSync("src/lib/interpretation/icp.ts", "utf8");
     expect(src).toContain("applyLockedEvidenceClass");
     expect(src).toContain("evidenceClassLocked");
+    expect(src).toContain("nextTier");
+    expect(src).toContain("evidenceClass: true, tier: true");
   });
 });
 
@@ -677,8 +744,109 @@ describe("cap enforcement", () => {
       expect(cap.exceedingNames).toEqual(["Fleet"]);
       expect(cap.message).toContain('"Fleet"');
       expect(cap.message).toContain("limit 3");
+      expect(cap.message).toContain("Good to know");
+      expect(cap.message).toContain("Remove a listed criterion");
+      expect(cap.message).not.toMatch(/Remove or reclassify/i);
     }
     expect(criteria).toHaveLength(4);
+  });
+
+  it("does not count SECONDARY TARGETED_SEARCH toward the cap", () => {
+    expect(
+      countsTowardTargetedSearchCap({
+        evidenceClass: "TARGETED_SEARCH",
+        tier: "SECONDARY",
+      }),
+    ).toBe(false);
+    expect(
+      countsTowardTargetedSearchCap({
+        evidenceClass: "TARGETED_SEARCH",
+        tier: "PRIMARY",
+      }),
+    ).toBe(true);
+    expect(
+      countsTowardTargetedSearchCap({
+        evidenceClass: "TARGETED_SEARCH",
+      }),
+    ).toBe(true);
+
+    const mixed = checkTargetedSearchCap({
+      criteria: [
+        {
+          name: "CRM",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "PRIMARY",
+        },
+        {
+          name: "Buildings",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "PRIMARY",
+        },
+        {
+          name: "Certifications",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "SECONDARY",
+        },
+        {
+          name: "Fleet",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "SECONDARY",
+        },
+        {
+          name: "Hiring",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "SECONDARY",
+        },
+      ],
+      maxAllowed: 3,
+    });
+    expect(mixed.ok).toBe(true);
+
+    const allSecondary = checkTargetedSearchCap({
+      criteria: [
+        {
+          name: "CRM",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "SECONDARY",
+        },
+        {
+          name: "Buildings",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "SECONDARY",
+        },
+        {
+          name: "Certifications",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "SECONDARY",
+        },
+        {
+          name: "Fleet",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "SECONDARY",
+        },
+      ],
+      maxAllowed: 3,
+    });
+    expect(allSecondary.ok).toBe(true);
+
+    const fourPrimary = checkTargetedSearchCap({
+      criteria: [
+        { name: "CRM", evidenceClass: "TARGETED_SEARCH", tier: "PRIMARY" },
+        {
+          name: "Buildings",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "PRIMARY",
+        },
+        {
+          name: "Certifications",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "PRIMARY",
+        },
+        { name: "Fleet", evidenceClass: "TARGETED_SEARCH", tier: "PRIMARY" },
+      ],
+      maxAllowed: 3,
+    });
+    expect(fourPrimary.ok).toBe(false);
   });
 });
 
@@ -741,6 +909,27 @@ describe("ICP interpretation prose + definition isolation", () => {
     expect(parsed.criteria[0]?.evidenceClass ?? null).toBeNull();
   });
 
+  it("prompt describes evidenceClass and the structured schema requires the key", () => {
+    const icp = readFileSync("src/lib/interpretation/icp.ts", "utf8");
+    expect(icp).toContain("Assign evidenceClass using these definitions");
+    expect(icp).toContain(
+      'evidenceClass: "LIST_DATA|COMPANY_RESEARCH|TARGETED_SEARCH|SEMANTIC"',
+    );
+    expect(icp).toContain('"Industry is X" → LIST_DATA');
+
+    const jsonSchema = zodToOpenAiStrictJsonSchema(
+      icpInterpretationResultSchema,
+    );
+    const criteria = (jsonSchema.properties as Record<string, unknown>)
+      .criteria as Record<string, unknown>;
+    const items = criteria.items as Record<string, unknown>;
+    const props = items.properties as Record<string, unknown>;
+    const evidenceClass = props.evidenceClass as Record<string, unknown>;
+    expect(items.required as string[]).toContain("evidenceClass");
+    expect(JSON.stringify(evidenceClass)).toContain("LIST_DATA");
+    expect(JSON.stringify(evidenceClass)).toContain("TARGETED_SEARCH");
+  });
+
   it("interpretation persist path never writes Icp.definition", () => {
     const src = readFileSync("src/lib/interpretation/icp.ts", "utf8");
     expect(src).toMatch(
@@ -764,10 +953,16 @@ describe("prompt version + UI seams", () => {
     expect(icp).toContain("Always use LIST_DATA for these");
     expect(icp).toContain("logIcpInterpretationEvidenceClasses");
     expect(icp).toContain("resolveIcpEvidenceClass");
+    expect(icp).toContain("repairUnlockedIcpEvidenceClasses");
     expect(icp).not.toMatch(/Prefer this when unsure/);
     expect(icp).not.toMatch(/data:\s*\{[\s\S]*definition:/);
     const types = readFileSync("src/lib/criteria/types.ts", "utf8");
     expect(types).toContain('ICP_INTERPRETATION_PROMPT_VERSION = "5"');
+    const evidenceClass = readFileSync("src/lib/criteria/evidence-class.ts", "utf8");
+    expect(evidenceClass).toContain("Good to know");
+    expect(evidenceClass).toContain("countsTowardTargetedSearchCap");
+    const backfill = readFileSync("src/lib/criteria/legacy-backfill.ts", "utf8");
+    expect(backfill).toContain("resolveIcpEvidenceClass");
   });
 
   it("criteria review UI shows role, mandatory hover, and a single targeted warning", () => {

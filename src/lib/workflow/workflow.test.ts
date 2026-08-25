@@ -85,6 +85,34 @@ describe("home workflow", () => {
     expect(result.personas.names).toEqual(["Revenue leader"]);
   });
 
+  it("does not count Good to know TARGETED_SEARCH toward lookup count", async () => {
+    prismaMock.product.findMany.mockResolvedValue([
+      productFixture({
+        icps: [
+          {
+            id: "icp_1",
+            name: "Primary target",
+            lastInterpretedAt: null,
+            criteria: [
+              {
+                evidenceClass: "TARGETED_SEARCH",
+                targetedSearchDecision: null,
+                tier: "SECONDARY",
+              },
+              {
+                evidenceClass: "TARGETED_SEARCH",
+                targetedSearchDecision: null,
+                tier: "PRIMARY",
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const result = await getHomeWorkflow("org_1");
+    expect(result.icp.needsLookupCount).toBe(1);
+  });
+
   it("shows a saved count when more than one ICP has criteria", async () => {
     prismaMock.product.findMany.mockResolvedValue([
       productFixture({

@@ -422,6 +422,10 @@ describe.skipIf(!hasDatabase)(
         where: { organizationId: ws.organization.id, icpId: icp.id },
       });
       expect(criteria.some((c) => c.name === "Company Revenue")).toBe(true);
+      const industry = criteria.find((c) => c.name === "Industry");
+      const revenue = criteria.find((c) => c.name === "Company Revenue");
+      expect(industry?.evidenceClass).toBe("LIST_DATA");
+      expect(revenue?.evidenceClass).toBe("LIST_DATA");
 
       // Re-save definition unchanged
       await prisma.icp.update({
@@ -430,6 +434,54 @@ describe.skipIf(!hasDatabase)(
       });
       const after = await prisma.icp.findUniqueOrThrow({ where: { id: icp.id } });
       expect(after.definition).toBe(definition);
+    });
+
+    it("repairs unlocked TARGETED_SEARCH firmographics when listing criteria", async () => {
+      if (!ready) return;
+      const { createIndividualWorkspace } = await import("@/lib/org/signup");
+      const ws = await createIndividualWorkspace({
+        email: `crit-repair-${suffix}@example.test`,
+        name: "Repair",
+      });
+      const product = await prisma.product.create({
+        data: {
+          organizationId: ws.organization.id,
+          name: `Repair Product ${suffix}`,
+        },
+      });
+      const icp = await prisma.icp.create({
+        data: {
+          organizationId: ws.organization.id,
+          productId: product.id,
+          name: `Repair ICP ${suffix}`,
+          definition: "SaaS companies in the United States.",
+        },
+      });
+      await prisma.icpCriterion.create({
+        data: {
+          organizationId: ws.organization.id,
+          icpId: icp.id,
+          name: "Industry",
+          criterionType: "industry",
+          dataType: "MULTI_SELECT",
+          operator: "IN",
+          importance: "HIGH",
+          evidenceClass: "TARGETED_SEARCH",
+          tier: "PRIMARY",
+          sortOrder: 0,
+        },
+      });
+
+      const { listIcpCriteria } = await import("@/lib/interpretation/icp");
+      const listed = await listIcpCriteria(ws.organization.id, icp.id);
+      expect(listed.find((c) => c.name === "Industry")?.evidenceClass).toBe(
+        "LIST_DATA",
+      );
+      const stored = await prisma.icpCriterion.findFirstOrThrow({
+        where: { id: listed[0]!.id },
+      });
+      expect(stored.evidenceClass).toBe("LIST_DATA");
+      expect(stored.manuallyEdited).toBe(false);
     });
 
     it("ContactResearch is tenant-scoped; cross-tenant blocked", async () => {

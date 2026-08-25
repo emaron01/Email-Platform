@@ -5,6 +5,11 @@
 
 import type { Icp, Persona, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { resolveIcpEvidenceClass } from "@/lib/criteria/evidence-class";
+import {
+  coerceIsMandatory,
+  resolveProposedIcpCriterionTier,
+} from "@/lib/criteria/tier";
 import type { InterpretedCriterionDraft } from "@/lib/criteria/types";
 import {
   decomposeProseIntoAtomicTargets,
@@ -277,26 +282,45 @@ export async function ensureIcpLegacyCriteriaBackfilled(
   if (drafts.length === 0) return 0;
 
   await prisma.icpCriterion.createMany({
-    data: drafts.map((d) => ({
-      organizationId,
-      icpId,
-      name: d.name,
-      description: d.description ?? null,
-      criterionType: d.criterionType,
-      dataType: d.dataType,
-      operator: d.operator,
-      targetValue: d.targetValue as Prisma.InputJsonValue,
-      minValue: d.minValue as Prisma.InputJsonValue,
-      maxValue: d.maxValue as Prisma.InputJsonValue,
-      allowedValues: d.allowedValues as Prisma.InputJsonValue,
-      importance: d.importance,
-      isRequired: d.isRequired,
-      isDisqualifier: d.isDisqualifier,
-      researchGuidance: d.researchGuidance ?? null,
-      source: "MIGRATED_FROM_LEGACY",
-      sortOrder: d.sortOrder,
-      manuallyEdited: false,
-    })),
+    data: drafts.map((d) => {
+      const evidenceClass = resolveIcpEvidenceClass({
+        proposed: d.evidenceClass,
+        name: d.name,
+        criterionType: d.criterionType,
+        description: d.description,
+      });
+      const tier = resolveProposedIcpCriterionTier({
+        proposedTier: d.tier,
+        name: d.name,
+        criterionType: d.criterionType,
+        description: d.description,
+        evidenceClass,
+        isDisqualifier: d.isDisqualifier,
+      });
+      return {
+        organizationId,
+        icpId,
+        name: d.name,
+        description: d.description ?? null,
+        criterionType: d.criterionType,
+        dataType: d.dataType,
+        operator: d.operator,
+        targetValue: d.targetValue as Prisma.InputJsonValue,
+        minValue: d.minValue as Prisma.InputJsonValue,
+        maxValue: d.maxValue as Prisma.InputJsonValue,
+        allowedValues: d.allowedValues as Prisma.InputJsonValue,
+        importance: d.importance,
+        isRequired: d.isRequired,
+        isDisqualifier: d.isDisqualifier,
+        researchGuidance: d.researchGuidance ?? null,
+        evidenceClass,
+        tier,
+        isMandatory: coerceIsMandatory(tier, false),
+        source: "MIGRATED_FROM_LEGACY" as const,
+        sortOrder: d.sortOrder,
+        manuallyEdited: false,
+      };
+    }),
   });
   return drafts.length;
 }

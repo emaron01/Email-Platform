@@ -2,6 +2,10 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
+import {
+  countsTowardTargetedSearchCap,
+  normalizeEvidenceClass,
+} from "@/lib/criteria/evidence-class";
 import { normalizeSuggestedBuyerRoles } from "@/lib/setup/product-overview";
 
 export type SetupCardState = {
@@ -55,6 +59,7 @@ export async function getHomeWorkflow(
               select: {
                 evidenceClass: true,
                 targetedSearchDecision: true,
+                tier: true,
               },
             },
           },
@@ -162,8 +167,10 @@ export async function getHomeWorkflow(
       needsLookupCount:
         interpretedIcp?.criteria.filter(
           (criterion) =>
-            criterion.evidenceClass === "TARGETED_SEARCH" &&
-            criterion.targetedSearchDecision == null,
+            countsTowardTargetedSearchCap({
+              evidenceClass: normalizeEvidenceClass(criterion.evidenceClass),
+              tier: criterion.tier,
+            }) && criterion.targetedSearchDecision == null,
         ).length ?? 0,
     },
     personas: {

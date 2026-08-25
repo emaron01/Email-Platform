@@ -16,6 +16,7 @@ import {
 import {
   checkTargetedSearchCap,
   normalizeEvidenceClass,
+  repairedEvidenceClassIfMisclassed,
   resolveIcpEvidenceClass,
 } from "@/lib/criteria/evidence-class";
 import {
@@ -177,11 +178,46 @@ export async function listIcpCriteria(
   organizationId: string,
   icpId: string,
 ): Promise<CriterionSnapshot[]> {
+  await repairUnlockedIcpEvidenceClasses(organizationId, icpId);
   const rows = await prisma.icpCriterion.findMany({
     where: { organizationId, icpId },
     orderBy: { sortOrder: "asc" },
   });
   return rows.map(criterionRowToSnapshot);
+}
+
+/**
+ * Rewrite unlocked firmographics stored as TARGETED_SEARCH (Prisma default /
+ * skipped resolver) to LIST_DATA or COMPANY_RESEARCH. Does not mark the row
+ * as a manual edit — this is an app correction, not a user override.
+ */
+export async function repairUnlockedIcpEvidenceClasses(
+  organizationId: string,
+  icpId: string,
+): Promise<number> {
+  const rows = await prisma.icpCriterion.findMany({
+    where: { organizationId, icpId, evidenceClassLocked: false },
+    select: {
+      id: true,
+      name: true,
+      criterionType: true,
+      description: true,
+      evidenceClass: true,
+    },
+  });
+  const updates = rows.flatMap((row) => {
+    const next = repairedEvidenceClassIfMisclassed(row);
+    return next ? [{ id: row.id, evidenceClass: next }] : [];
+  });
+  await Promise.all(
+    updates.map((update) =>
+      prisma.icpCriterion.update({
+        where: { id: update.id },
+        data: { evidenceClass: update.evidenceClass },
+      }),
+    ),
+  );
+  return updates.length;
 }
 
 export async function updateIcpCriterionManual(input: {
@@ -233,24 +269,6 @@ export async function updateIcpCriterionManual(input: {
       ? normalizeEvidenceClass(input.data.evidenceClass)
       : existing.evidenceClass;
 
-  // Cap check when class becomes / remains TARGETED_SEARCH.
-  if (nextEvidenceClass === "TARGETED_SEARCH") {
-    const siblings = await prisma.icpCriterion.findMany({
-      where: { organizationId: input.organizationId, icpId: input.icpId },
-      select: { id: true, name: true, evidenceClass: true },
-    });
-    const projected = siblings.map((s) => ({
-      name: s.id === existing.id ? (input.data.name ?? s.name) : s.name,
-      evidenceClass: s.id === existing.id ? nextEvidenceClass : s.evidenceClass,
-    }));
-    const policy = await getResearchPolicy(input.organizationId);
-    const cap = checkTargetedSearchCap({
-      criteria: projected,
-      maxAllowed: policy.maxTargetedSearchCriteriaPerIcp,
-    });
-    if (!cap.ok) throw new TenantError(cap.message);
-  }
-
   const nextTier =
     input.data.tier !== undefined
       ? (normalizeIcpCriterionTier(input.data.tier) ??
@@ -271,6 +289,23 @@ export async function updateIcpCriterionManual(input: {
       ? input.data.isMandatory
       : existing.isMandatory,
   );
+
+  const siblings = await prisma.icpCriterion.findMany({
+    where: { organizationId: input.organizationId, icpId: input.icpId },
+    select: { id: true, name: true, evidenceClass: true, tier: true },
+  });
+  const projected = siblings.map((s) => ({
+    name: s.id === existing.id ? (input.data.name ?? s.name) : s.name,
+    evidenceClass:
+      s.id === existing.id ? nextEvidenceClass : s.evidenceClass,
+    tier: s.id === existing.id ? nextTier : s.tier,
+  }));
+  const policy = await getResearchPolicy(input.organizationId);
+  const cap = checkTargetedSearchCap({
+    criteria: projected,
+    maxAllowed: policy.maxTargetedSearchCriteriaPerIcp,
+  });
+  if (!cap.ok) throw new TenantError(cap.message);
 
   const updated = await prisma.icpCriterion.update({
     where: { id: existing.id },
@@ -431,7 +466,14 @@ function extractRawCriteria(rawText: string): unknown[] {
 function logIcpInterpretationEvidenceClasses(input: {
   icpId: string;
   rawText: string;
-  parsed: { criteria: Array<{ name: string; criterionType: string; evidenceClass?: string | null }> };
+  parsed: {
+    criteria: Array<{
+      name: string;
+      criterionType: string;
+      description?: string | null;
+      evidenceClass?: string | null;
+    }>;
+  };
 }): void {
   const rawCriteria = extractRawCriteria(input.rawText);
   console.info(
@@ -462,6 +504,7 @@ function logIcpInterpretationEvidenceClasses(input: {
           proposed: criterion.evidenceClass,
           name: criterion.name,
           criterionType: criterion.criterionType,
+          description: criterion.description,
         }),
       })),
     }),
@@ -507,11 +550,17 @@ export async function interpretIcpDefinition(input: {
     );
   }
 
+  await repairUnlockedIcpEvidenceClasses(input.organizationId, input.icpId);
+  const criteriaAfterRepair = await prisma.icpCriterion.findMany({
+    where: { organizationId: input.organizationId, icpId: input.icpId },
+    orderBy: { sortOrder: "asc" },
+  });
+
   if (!isInterpretationAiConfigured()) {
     return persistLegacyCriteria(input.organizationId, input.icpId);
   }
 
-  const existingSnapshots = icp.criteria.map(criterionRowToSnapshot);
+  const existingSnapshots = criteriaAfterRepair.map(criterionRowToSnapshot);
   const started = Date.now();
   let providerSummary: ReturnType<typeof getAiConfigPublicSummary> | null =
     null;
@@ -570,7 +619,7 @@ export async function interpretIcpDefinition(input: {
     });
 
     const plan = planCriterionReinterpretation({
-      existing: icp.criteria.map((c) => ({
+      existing: criteriaAfterRepair.map((c) => ({
         id: c.id,
         name: c.name,
         criterionType: c.criterionType,
@@ -580,15 +629,25 @@ export async function interpretIcpDefinition(input: {
     });
 
     // Cap: projected set = kept manuals + new inserts (never silently drop).
+    // SECONDARY TARGETED_SEARCH does not consume the cap; missing tier = PRIMARY.
     const keptManual = existingSnapshots.filter((e) => e.manuallyEdited);
     const projectedForCap = [
       ...keptManual.map((m) => ({
         name: m.name,
-        evidenceClass: normalizeEvidenceClass(m.evidenceClass),
+        evidenceClass: m.evidenceClassLocked
+          ? normalizeEvidenceClass(m.evidenceClass)
+          : resolveIcpEvidenceClass({
+              proposed: m.evidenceClass,
+              name: m.name,
+              criterionType: m.criterionType,
+              description: m.description,
+            }),
+        tier: m.tier,
       })),
       ...plan.insertDrafts.map((d) => ({
         name: d.name,
         evidenceClass: normalizeEvidenceClass(d.evidenceClass),
+        tier: d.tier,
       })),
     ];
     const policy = await getResearchPolicy(input.organizationId);
