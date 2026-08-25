@@ -162,6 +162,9 @@ export async function researchContactRole(input: {
   });
 
   if (!trigger.needed) {
+    if (trigger.reuseExisting && existing) {
+      return existing;
+    }
     return upsertNotRequired(
       input.organizationId,
       input.contactId,

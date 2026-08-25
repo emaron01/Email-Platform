@@ -4,6 +4,7 @@ import type { CriterionSnapshot } from "@/lib/criteria/types";
 export type ContactResearchTriggerResult = {
   needed: boolean;
   reason: string;
+  reuseExisting?: boolean;
 };
 
 /** Executive and clearly scoped VP titles — title alone is usually sufficient. */
@@ -143,6 +144,7 @@ export function shouldResearchContactRole(input: {
     return {
       needed: false,
       reason: "Fresh contact research with sufficient confidence already exists.",
+      reuseExisting: true,
     };
   }
 
