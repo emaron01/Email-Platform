@@ -34,6 +34,188 @@ export type IcpFormValues = {
   notes: string;
 };
 
+/**
+ * Plain ICP record safe to pass from a Server Component into the edit form.
+ * Prisma Decimal / Date / class instances are not serializable as client props —
+ * passing the raw Icp model leaves every input empty on the client.
+ */
+export type IcpClientRecord = {
+  id: string;
+  name: string;
+  description: string | null;
+  definition: string | null;
+  additionalContext: string | null;
+  targetIndustries: unknown;
+  minEmployees: number | null;
+  maxEmployees: number | null;
+  minRevenue: string | null;
+  maxRevenue: string | null;
+  targetGeographies: unknown;
+  requiredTechnologies: unknown;
+  positiveSignals: unknown;
+  negativeSignals: unknown;
+  notes: string | null;
+  interpretationSummary: string | null;
+  interpretationUndetermined: string | null;
+};
+
+export type IcpRecordSource = {
+  id: string;
+  name: string;
+  description?: string | null;
+  definition?: string | null;
+  additionalContext?: string | null;
+  targetIndustries?: unknown;
+  minEmployees?: number | null;
+  maxEmployees?: number | null;
+  minRevenue?: unknown;
+  maxRevenue?: unknown;
+  targetGeographies?: unknown;
+  requiredTechnologies?: unknown;
+  positiveSignals?: unknown;
+  negativeSignals?: unknown;
+  notes?: string | null;
+  interpretationSummary?: string | null;
+  interpretationUndetermined?: string | null;
+};
+
+function decimalLikeToInput(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "object" && "toString" in value) {
+    const asString = String(
+      (value as { toString: () => string }).toString(),
+    ).trim();
+    if (asString && asString !== "[object Object]") return asString;
+  }
+  const asNumber = Number(value);
+  return Number.isFinite(asNumber) ? String(asNumber) : "";
+}
+
+function optionalIntToInput(value: unknown): string {
+  if (value == null || value === "") return "";
+  const n = Number(value);
+  return Number.isFinite(n) ? String(n) : "";
+}
+
+/** Flatten Json list columns (array, JSON string, or comma string) for inputs. */
+export function jsonListToInput(value: unknown): string {
+  if (value == null) return "";
+  if (Array.isArray(value)) {
+    return value.map(String).map((item) => item.trim()).filter(Boolean).join(", ");
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return jsonListToInput(parsed);
+    } catch {
+      // already a comma-separated string
+    }
+    return trimmed;
+  }
+  return "";
+}
+
+export function serializeIcpForClient(icp: IcpRecordSource): IcpClientRecord {
+  return {
+    id: icp.id,
+    name: icp.name,
+    description: icp.description ?? null,
+    definition: icp.definition ?? null,
+    additionalContext: icp.additionalContext ?? null,
+    targetIndustries: icp.targetIndustries ?? null,
+    minEmployees: icp.minEmployees ?? null,
+    maxEmployees: icp.maxEmployees ?? null,
+    minRevenue: decimalLikeToInput(icp.minRevenue) || null,
+    maxRevenue: decimalLikeToInput(icp.maxRevenue) || null,
+    targetGeographies: icp.targetGeographies ?? null,
+    requiredTechnologies: icp.requiredTechnologies ?? null,
+    positiveSignals: icp.positiveSignals ?? null,
+    negativeSignals: icp.negativeSignals ?? null,
+    notes: icp.notes ?? null,
+    interpretationSummary: icp.interpretationSummary ?? null,
+    interpretationUndetermined: icp.interpretationUndetermined ?? null,
+  };
+}
+
+export function icpRecordToFormValues(
+  icp: IcpRecordSource,
+  productId = "",
+): IcpFormValues {
+  return {
+    id: icp.id,
+    productId,
+    name: icp.name,
+    description: icp.description ?? "",
+    definition: icp.definition ?? icp.description ?? "",
+    additionalContext: icp.additionalContext ?? "",
+    targetIndustries: jsonListToInput(icp.targetIndustries),
+    minEmployees: optionalIntToInput(icp.minEmployees),
+    maxEmployees: optionalIntToInput(icp.maxEmployees),
+    minRevenue: decimalLikeToInput(icp.minRevenue),
+    maxRevenue: decimalLikeToInput(icp.maxRevenue),
+    targetGeographies: jsonListToInput(icp.targetGeographies),
+    requiredTechnologies: jsonListToInput(icp.requiredTechnologies),
+    positiveSignals: jsonListToInput(icp.positiveSignals),
+    negativeSignals: jsonListToInput(icp.negativeSignals),
+    notes: icp.notes ?? "",
+  };
+}
+
+export function submittedIcpProfileIsBlank(fields: {
+  description: string | null;
+  definition: string | null;
+  additionalContext: string | null;
+  targetIndustries: string[];
+  minEmployees: number | null;
+  maxEmployees: number | null;
+  minRevenue: number | null;
+  maxRevenue: number | null;
+  targetGeographies: string[];
+  requiredTechnologies: string[];
+  positiveSignals: string[];
+  negativeSignals: string[];
+  notes: string | null;
+}): boolean {
+  return (
+    !fields.definition &&
+    !fields.description &&
+    !fields.additionalContext &&
+    !fields.notes &&
+    fields.targetIndustries.length === 0 &&
+    fields.minEmployees == null &&
+    fields.maxEmployees == null &&
+    fields.minRevenue == null &&
+    fields.maxRevenue == null &&
+    fields.targetGeographies.length === 0 &&
+    fields.requiredTechnologies.length === 0 &&
+    fields.positiveSignals.length === 0 &&
+    fields.negativeSignals.length === 0
+  );
+}
+
+export function storedIcpHasProfile(icp: IcpRecordSource): boolean {
+  const values = icpRecordToFormValues(icp);
+  return Boolean(
+    values.definition.trim() ||
+      values.description.trim() ||
+      values.additionalContext.trim() ||
+      values.notes.trim() ||
+      values.targetIndustries.trim() ||
+      values.minEmployees.trim() ||
+      values.maxEmployees.trim() ||
+      values.minRevenue.trim() ||
+      values.maxRevenue.trim() ||
+      values.targetGeographies.trim() ||
+      values.requiredTechnologies.trim() ||
+      values.positiveSignals.trim() ||
+      values.negativeSignals.trim(),
+  );
+}
+
 function readString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
 }

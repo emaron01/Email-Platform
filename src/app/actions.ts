@@ -13,6 +13,7 @@ import {
   updateIcp,
   updatePersona,
   updateProduct,
+  getIcp,
 } from "@/lib/tenant/data";
 import { TenantError } from "@/lib/tenant/getCurrentOrganization";
 import {
@@ -22,6 +23,8 @@ import {
 } from "@/lib/campaign/save";
 import {
   parseIcpFormData,
+  storedIcpHasProfile,
+  submittedIcpProfileIsBlank,
   toSafeIcpActionError,
   type IcpActionResult,
 } from "@/lib/icp/save";
@@ -182,6 +185,19 @@ export async function upsertIcpAction(
     const { id, productId, fields } = parsed;
     let icpId = id;
     if (id) {
+      const existing = await getIcp(id);
+      if (
+        submittedIcpProfileIsBlank(fields) &&
+        storedIcpHasProfile(existing)
+      ) {
+        return {
+          ok: false,
+          message:
+            "Save aborted: the form was empty and would have erased this ICP.",
+          productId,
+          values: parsed.values,
+        };
+      }
       await updateIcp(id, fields);
     } else {
       const created = await createIcp({ ...fields, productId });

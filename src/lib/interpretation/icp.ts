@@ -15,8 +15,8 @@ import {
 } from "@/lib/criteria/legacy-backfill";
 import {
   checkTargetedSearchCap,
-  inferEvidenceClassFromCriterion,
   normalizeEvidenceClass,
+  resolveIcpEvidenceClass,
 } from "@/lib/criteria/evidence-class";
 import {
   coerceIsMandatory,
@@ -92,13 +92,15 @@ RULES:
    Never put "or" / "and" inside a single string. Example: ["Salesforce", "HubSpot"] not
    ["Salesforce or HubSpot"].
 7. Assign evidenceClass using these definitions:
-   - LIST_DATA: satisfiable from uploaded list fields (industry, employee count, revenue, geography, domain).
+   - LIST_DATA: satisfiable from uploaded list fields (industry, employee count, revenue, geography, domain). Always use LIST_DATA for these — never TARGETED_SEARCH.
    - COMPANY_RESEARCH: derivable from standard company research (description, markets, public signals, general firmographics).
-   - TARGETED_SEARCH: requires a specific per-company lookup that MAY NOT BE FINDABLE (tech stack / CRM / competitor products in use, certifications, facility counts, headcount by function). Prefer this when unsure.
+   - TARGETED_SEARCH: requires a specific per-company lookup that MAY NOT BE FINDABLE (tech stack / CRM / competitor products in use, certifications, facility counts, headcount by function). Use ONLY for those lookups. Do not default industry, size, revenue, or geography to TARGETED_SEARCH.
    - SEMANTIC: requires AI judgment over evidence (fit narratives, positioning, complex buying motion).
    Worked examples:
    - "Industry is X" → LIST_DATA
    - "Between 50 and 500 employees" → LIST_DATA
+   - "Company revenue between 50M and 100M" → LIST_DATA
+   - "Geography is United States" → LIST_DATA
    - "Uses Salesforce or HubSpot" → TARGETED_SEARCH
    - "Owns 25+ buildings" → TARGETED_SEARCH
    - "Currently uses [competitor product]" → TARGETED_SEARCH
@@ -368,14 +370,12 @@ function draftToCreateData(
     targetValue: d.targetValue,
     allowedValues: d.allowedValues,
   });
-  const evidenceClass = normalizeEvidenceClass(
-    d.evidenceClass ??
-      inferEvidenceClassFromCriterion({
-        name: d.name,
-        criterionType: d.criterionType,
-        description: d.description,
-      }),
-  );
+  const evidenceClass = resolveIcpEvidenceClass({
+    proposed: d.evidenceClass,
+    name: d.name,
+    criterionType: d.criterionType,
+    description: d.description,
+  });
   const tier = resolveProposedIcpCriterionTier({
     proposedTier: d.tier,
     name: d.name,
@@ -410,6 +410,62 @@ function draftToCreateData(
     sortOrder: d.sortOrder,
     manuallyEdited: false,
   };
+}
+
+function extractRawCriteria(rawText: string): unknown[] {
+  try {
+    const parsed: unknown = JSON.parse(rawText);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      Array.isArray((parsed as { criteria?: unknown }).criteria)
+    ) {
+      return (parsed as { criteria: unknown[] }).criteria;
+    }
+  } catch {
+    // rawText may include a wrapper; logging still records parsed classes.
+  }
+  return [];
+}
+
+function logIcpInterpretationEvidenceClasses(input: {
+  icpId: string;
+  rawText: string;
+  parsed: { criteria: Array<{ name: string; criterionType: string; evidenceClass?: string | null }> };
+}): void {
+  const rawCriteria = extractRawCriteria(input.rawText);
+  console.info(
+    JSON.stringify({
+      event: "icp_interpretation_evidence_class",
+      icpId: input.icpId,
+      rawTextPreview: input.rawText.slice(0, 4000),
+      rawEvidenceClasses: rawCriteria.map((row) => {
+        if (!row || typeof row !== "object") {
+          return { raw: row };
+        }
+        const criterion = row as Record<string, unknown>;
+        return {
+          name: criterion.name ?? null,
+          criterionType: criterion.criterionType ?? null,
+          evidenceClass: criterion.evidenceClass ?? null,
+          evidenceClassKeyPresent: Object.prototype.hasOwnProperty.call(
+            criterion,
+            "evidenceClass",
+          ),
+        };
+      }),
+      parsedEvidenceClasses: input.parsed.criteria.map((criterion) => ({
+        name: criterion.name,
+        criterionType: criterion.criterionType,
+        evidenceClass: criterion.evidenceClass ?? null,
+        resolved: resolveIcpEvidenceClass({
+          proposed: criterion.evidenceClass,
+          name: criterion.name,
+          criterionType: criterion.criterionType,
+        }),
+      })),
+    }),
+  );
 }
 
 function applyLockedEvidenceClass(
@@ -476,6 +532,11 @@ export async function interpretIcpDefinition(input: {
     });
 
     const parsed = parseIcpInterpretedCriteria(response.data);
+    logIcpInterpretationEvidenceClasses({
+      icpId: input.icpId,
+      rawText: response.rawText,
+      parsed,
+    });
     const aiDrafts: InterpretedCriterionDraft[] = parsed.criteria.map((c) => {
       const normalized = normalizeInOperatorValues({
         operator: c.operator,
@@ -483,14 +544,12 @@ export async function interpretIcpDefinition(input: {
         targetValue: c.targetValue,
         allowedValues: c.allowedValues,
       });
-      const evidenceClass = normalizeEvidenceClass(
-        c.evidenceClass ??
-          inferEvidenceClassFromCriterion({
-            name: c.name,
-            criterionType: c.criterionType,
-            description: c.description,
-          }),
-      );
+      const evidenceClass = resolveIcpEvidenceClass({
+        proposed: c.evidenceClass,
+        name: c.name,
+        criterionType: c.criterionType,
+        description: c.description,
+      });
       const draft: InterpretedCriterionDraft = {
         ...c,
         targetValue: normalized.targetValue,

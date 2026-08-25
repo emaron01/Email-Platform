@@ -37,8 +37,7 @@ export function AutosizeTextarea({
     <textarea
       {...rest}
       ref={ref}
-      value={value}
-      defaultValue={defaultValue}
+      {...(value !== undefined ? { value } : { defaultValue })}
       rows={minRows}
       className={className}
       onChange={onChange}

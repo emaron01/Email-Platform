@@ -4,8 +4,13 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
+  icpRecordToFormValues,
+  jsonListToInput,
   parseIcpFormData,
   readIcpFormValues,
+  serializeIcpForClient,
+  storedIcpHasProfile,
+  submittedIcpProfileIsBlank,
   toSafeIcpActionError,
 } from "@/lib/icp/save";
 import { TenantError } from "@/lib/tenant/errors";
@@ -105,5 +110,82 @@ describe("ICP save UI seam", () => {
 
     // Success navigates to the ICP edit view for creates.
     expect(formSrc).toContain("router.push(`/setup/${productId}/icps/${state.icpId}`)");
+    expect(formSrc).toContain("icpRecordToFormValues");
+    expect(actionsSrc).toContain("submittedIcpProfileIsBlank");
+    expect(actionsSrc).toContain("would have erased this ICP");
+    const editPage = readFileSync(
+      "src/app/(app)/setup/[productId]/icps/[icpId]/page.tsx",
+      "utf8",
+    );
+    const listPage = readFileSync(
+      "src/app/(app)/setup/[productId]/icps/page.tsx",
+      "utf8",
+    );
+    expect(editPage).toContain("serializeIcpForClient");
+    expect(listPage).toContain("serializeIcpForClient");
+  });
+});
+
+describe("ICP form reload from stored record", () => {
+  it("serializes Decimal-like revenue and Json lists into input strings", () => {
+    const values = icpRecordToFormValues({
+      id: "icp_1",
+      name: "Mid-market SaaS",
+      description: "B2B software",
+      definition: "SaaS companies in the US with 50-500 employees.",
+      additionalContext: null,
+      targetIndustries: ["SaaS", "Cyber Security"],
+      minEmployees: 50,
+      maxEmployees: 500,
+      minRevenue: { toString: () => "50000000" },
+      maxRevenue: { toString: () => "100000000" },
+      targetGeographies: ["United States of America"],
+      requiredTechnologies: null,
+      positiveSignals: null,
+      negativeSignals: null,
+      notes: null,
+    });
+    expect(values.name).toBe("Mid-market SaaS");
+    expect(values.targetIndustries).toBe("SaaS, Cyber Security");
+    expect(values.minEmployees).toBe("50");
+    expect(values.maxEmployees).toBe("500");
+    expect(values.minRevenue).toBe("50000000");
+    expect(values.maxRevenue).toBe("100000000");
+    expect(values.targetGeographies).toBe("United States of America");
+    expect(serializeIcpForClient({
+      id: "icp_1",
+      name: "Mid-market SaaS",
+      minRevenue: { toString: () => "50000000" },
+      maxRevenue: { toString: () => "100000000" },
+      interpretationSummary: "Understood.",
+      interpretationUndetermined: null,
+    }).minRevenue).toBe("50000000");
+  });
+
+  it("treats a blank save payload as a wipe of stored profile fields", () => {
+    const parsed = parseIcpFormData(
+      formFrom({
+        id: "icp_1",
+        productId: "prod_1",
+        name: "Mid-market SaaS",
+      }),
+    );
+    expect(submittedIcpProfileIsBlank(parsed.fields)).toBe(true);
+    expect(parsed.fields.definition).toBeNull();
+    expect(parsed.fields.targetIndustries).toEqual([]);
+    expect(parsed.fields.minEmployees).toBeNull();
+    expect(parsed.fields.minRevenue).toBeNull();
+    expect(
+      storedIcpHasProfile({
+        id: "icp_1",
+        name: "Mid-market SaaS",
+        definition: "SaaS companies in the US.",
+        targetIndustries: ["SaaS"],
+        minEmployees: 50,
+        minRevenue: "50000000",
+        targetGeographies: ["United States of America"],
+      }),
+    ).toBe(true);
+    expect(jsonListToInput(["SaaS", "B2B"])).toBe("SaaS, B2B");
   });
 });

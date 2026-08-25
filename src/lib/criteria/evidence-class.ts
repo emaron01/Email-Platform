@@ -47,6 +47,8 @@ export function normalizeEvidenceClass(
 
 /**
  * Heuristic for migration / legacy drafts when AI did not propose a class.
+ * Underscores in slugs (employee_count, company_revenue) are treated as spaces
+ * so word-boundary matches still fire.
  */
 export function inferEvidenceClassFromCriterion(input: {
   name: string;
@@ -59,10 +61,11 @@ export function inferEvidenceClassFromCriterion(input: {
     input.description ?? "",
   ]
     .join(" ")
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
 
   if (
-    /\b(industry|industries|employee|headcount|revenue|arr|geography|geographies|location|domain|company size)\b/.test(
+    /\b(industry|industries|employee|employees|headcount|revenue|arr|geography|geographies|location|domain|company size)\b/.test(
       blob,
     )
   ) {
@@ -93,6 +96,31 @@ export function inferEvidenceClassFromCriterion(input: {
     return "TARGETED_SEARCH";
   }
   return "TARGETED_SEARCH";
+}
+
+/**
+ * Resolve the class to persist. Missing/unrecognized AI values stay conservative
+ * (TARGETED_SEARCH) unless the criterion is a structured firmographic — those
+ * must be LIST_DATA / COMPANY_RESEARCH even when the model dumps TARGETED_SEARCH.
+ */
+export function resolveIcpEvidenceClass(input: {
+  proposed?: unknown;
+  name: string;
+  criterionType: string;
+  description?: string | null;
+}): CriterionEvidenceClassValue {
+  const inferred = inferEvidenceClassFromCriterion(input);
+  const proposedRaw =
+    typeof input.proposed === "string" ? input.proposed.trim() : "";
+  const fromAi = proposedRaw ? normalizeEvidenceClass(proposedRaw) : null;
+
+  if (inferred === "LIST_DATA" || inferred === "COMPANY_RESEARCH") {
+    return inferred;
+  }
+  if (fromAi && fromAi !== "TARGETED_SEARCH") {
+    return fromAi;
+  }
+  return inferred;
 }
 
 export type EvidenceClassLabel = {

@@ -10,6 +10,7 @@ import {
   inferEvidenceClassFromCriterion,
   isTargetedSearchDecisionStale,
   normalizeEvidenceClass,
+  resolveIcpEvidenceClass,
 } from "@/lib/criteria/evidence-class";
 import {
   normalizeInOperatorValues,
@@ -24,7 +25,11 @@ import {
   calculateScoresFromAssessment,
 } from "@/lib/scoring/calculate";
 import { ICP_INTERPRETATION_PROMPT_VERSION } from "@/lib/criteria/types";
-import { parseIcpInterpretedCriteria } from "@/lib/interpretation/schema";
+import {
+  icpInterpretationResultSchema,
+  parseIcpInterpretedCriteria,
+} from "@/lib/interpretation/schema";
+import { zodToOpenAiStrictJsonSchema } from "@/lib/ai/zod-json-schema";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
 
 function criterion(
@@ -69,6 +74,64 @@ describe("evidence class normalize + infer", () => {
         description: "Between 50 and 500 employees",
       }),
     ).toBe("LIST_DATA");
+  });
+
+  it("classes company_revenue and employee_count slugs as LIST_DATA", () => {
+    expect(
+      inferEvidenceClassFromCriterion({
+        name: "Size",
+        criterionType: "company_revenue",
+      }),
+    ).toBe("LIST_DATA");
+    expect(
+      inferEvidenceClassFromCriterion({
+        name: "Headcount range",
+        criterionType: "employee_count",
+      }),
+    ).toBe("LIST_DATA");
+  });
+
+  it("does not let a conservative TARGETED_SEARCH proposal override firmographics", () => {
+    expect(
+      resolveIcpEvidenceClass({
+        proposed: "TARGETED_SEARCH",
+        name: "Industry",
+        criterionType: "industry",
+        description: "Industry in [SaaS, Cyber Security, B2B, Software Companies]",
+      }),
+    ).toBe("LIST_DATA");
+    expect(
+      resolveIcpEvidenceClass({
+        proposed: "TARGETED_SEARCH",
+        name: "Employee Count",
+        criterionType: "employee_count",
+        description: "Between 50 and 500 employees",
+      }),
+    ).toBe("LIST_DATA");
+    expect(
+      resolveIcpEvidenceClass({
+        proposed: null,
+        name: "Company Revenue",
+        criterionType: "company_revenue",
+        description: "between 50000000 and 100000000",
+      }),
+    ).toBe("LIST_DATA");
+    expect(
+      resolveIcpEvidenceClass({
+        proposed: undefined,
+        name: "Geography",
+        criterionType: "geography",
+        description: "in [United States of America]",
+      }),
+    ).toBe("LIST_DATA");
+    expect(
+      resolveIcpEvidenceClass({
+        proposed: "TARGETED_SEARCH",
+        name: "Hiring sales leaders or reps",
+        criterionType: "hiring_signal",
+        description: "are hiring sales leaders or reps",
+      }),
+    ).toBe("TARGETED_SEARCH");
   });
 
   it("defaults missing or unrecognized class to TARGETED_SEARCH", () => {
@@ -646,6 +709,38 @@ describe("ICP interpretation prose + definition isolation", () => {
     expect(parsed).not.toHaveProperty("definition");
   });
 
+  it("keeps evidenceClass in the structured schema and accepts null", () => {
+    const jsonSchema = zodToOpenAiStrictJsonSchema(
+      icpInterpretationResultSchema,
+    );
+    const criteria = (jsonSchema.properties as Record<string, unknown>)
+      .criteria as Record<string, unknown>;
+    const items = criteria.items as Record<string, unknown>;
+    const props = items.properties as Record<string, unknown>;
+    expect(props).toHaveProperty("evidenceClass");
+    expect(items.required as string[]).toContain("evidenceClass");
+
+    const parsed = parseIcpInterpretedCriteria({
+      understoodSummary: "Mid-market SaaS.",
+      undetermined: [],
+      criteria: [
+        {
+          name: "Industry",
+          criterionType: "industry",
+          dataType: "MULTI_SELECT",
+          operator: "IN",
+          targetValue: ["SaaS"],
+          importance: "HIGH",
+          isRequired: true,
+          isDisqualifier: false,
+          evidenceClass: null,
+          sortOrder: 0,
+        },
+      ],
+    });
+    expect(parsed.criteria[0]?.evidenceClass ?? null).toBeNull();
+  });
+
   it("interpretation persist path never writes Icp.definition", () => {
     const src = readFileSync("src/lib/interpretation/icp.ts", "utf8");
     expect(src).toMatch(
@@ -659,16 +754,20 @@ describe("ICP interpretation prose + definition isolation", () => {
 });
 
 describe("prompt version + UI seams", () => {
-  it("ICP interpretation prompt version is 4 and asserted in prompt builder", () => {
-    expect(ICP_INTERPRETATION_PROMPT_VERSION).toBe("4");
+  it("ICP interpretation prompt version is 5 and asserted in prompt builder", () => {
+    expect(ICP_INTERPRETATION_PROMPT_VERSION).toBe("5");
     const icp = readFileSync("src/lib/interpretation/icp.ts", "utf8");
     expect(icp).toContain("TARGETED_SEARCH");
     expect(icp).toContain("Uses Salesforce or HubSpot");
     expect(icp).toContain("array of discrete");
     expect(icp).toContain("understoodSummary");
+    expect(icp).toContain("Always use LIST_DATA for these");
+    expect(icp).toContain("logIcpInterpretationEvidenceClasses");
+    expect(icp).toContain("resolveIcpEvidenceClass");
+    expect(icp).not.toMatch(/Prefer this when unsure/);
     expect(icp).not.toMatch(/data:\s*\{[\s\S]*definition:/);
     const types = readFileSync("src/lib/criteria/types.ts", "utf8");
-    expect(types).toContain('ICP_INTERPRETATION_PROMPT_VERSION = "4"');
+    expect(types).toContain('ICP_INTERPRETATION_PROMPT_VERSION = "5"');
   });
 
   it("criteria review UI shows role, mandatory hover, and a single targeted warning", () => {

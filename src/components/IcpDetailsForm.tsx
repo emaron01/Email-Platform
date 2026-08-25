@@ -2,7 +2,6 @@
 
 import { useActionState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import type { Icp } from "@prisma/client";
 import { deleteIcpAction, upsertIcpAction } from "@/app/actions";
 import { interpretIcpAction } from "@/app/actions/interpretation";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
@@ -11,8 +10,12 @@ import {
   type IcpCriterionReviewRow,
 } from "@/components/IcpCriteriaReview";
 import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
-import type { IcpActionResult, IcpFormValues } from "@/lib/icp/save";
-import { listToCommaString } from "@/lib/utils";
+import {
+  icpRecordToFormValues,
+  type IcpActionResult,
+  type IcpClientRecord,
+  type IcpFormValues,
+} from "@/lib/icp/save";
 
 type CriterionRow = IcpCriterionReviewRow;
 
@@ -41,25 +44,9 @@ function StatusBanner({
   );
 }
 
-function defaultsFromIcp(icp?: Icp): Partial<IcpFormValues> {
+function defaultsFromIcp(icp?: IcpClientRecord): Partial<IcpFormValues> {
   if (!icp) return {};
-  return {
-    id: icp.id,
-    name: icp.name,
-    description: icp.description ?? "",
-    definition: icp.definition ?? icp.description ?? "",
-    additionalContext: icp.additionalContext ?? "",
-    targetIndustries: listToCommaString(icp.targetIndustries),
-    minEmployees: icp.minEmployees != null ? String(icp.minEmployees) : "",
-    maxEmployees: icp.maxEmployees != null ? String(icp.maxEmployees) : "",
-    minRevenue: icp.minRevenue != null ? String(Number(icp.minRevenue)) : "",
-    maxRevenue: icp.maxRevenue != null ? String(Number(icp.maxRevenue)) : "",
-    targetGeographies: listToCommaString(icp.targetGeographies),
-    requiredTechnologies: listToCommaString(icp.requiredTechnologies),
-    positiveSignals: listToCommaString(icp.positiveSignals),
-    negativeSignals: listToCommaString(icp.negativeSignals),
-    notes: icp.notes ?? "",
-  };
+  return icpRecordToFormValues(icp);
 }
 
 /** Existing ICP edit form — same fields; useActionState for save feedback. */
@@ -71,7 +58,7 @@ export function IcpDetailsForm({
 }: {
   productId: string;
   productName?: string;
-  icp?: Icp;
+  icp?: IcpClientRecord;
   criteria: CriterionRow[];
 }) {
   const router = useRouter();

@@ -21,11 +21,18 @@ export const interpretedCriterionSchema = z.object({
   isRequired: z.boolean(),
   isDisqualifier: z.boolean(),
   researchGuidance: z.string().nullable().optional(),
-  /** AI proposal; app normalizes missing/unrecognized to TARGETED_SEARCH. */
   evidenceClass: z.enum(CRITERION_EVIDENCE_CLASSES).optional(),
   /** AI proposal; app infers from firmographic vs signal rules when omitted. Never propose isMandatory. */
   tier: z.enum(ICP_CRITERION_TIERS).optional(),
   sortOrder: z.number().int().nonnegative(),
+});
+
+const icpInterpretedCriterionSchema = interpretedCriterionSchema.extend({
+  /**
+   * OpenAI strict mode emits optional fields as required+nullable. Accept null
+   * so a missing class does not fail the whole parse; the app then infers.
+   */
+  evidenceClass: z.enum(CRITERION_EVIDENCE_CLASSES).nullable().optional(),
 });
 
 /** Persona interpretation — criteria only. */
@@ -34,9 +41,10 @@ export const interpretationResultSchema = z.object({
 });
 
 /** ICP interpretation — criteria plus a prose read-back. */
-export const icpInterpretationResultSchema = interpretationResultSchema.extend({
+export const icpInterpretationResultSchema = z.object({
   understoodSummary: z.string().min(1),
   undetermined: z.array(z.string().min(1)).default([]),
+  criteria: z.array(icpInterpretedCriterionSchema).min(1),
 });
 
 export type InterpretationAiResult = z.infer<typeof interpretationResultSchema>;

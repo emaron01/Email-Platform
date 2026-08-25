@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { IcpDetailsForm } from "@/components/IcpDetailsForm";
 import { PageHeader, TenantMissing } from "@/components/ui";
+import { serializeIcpForClient } from "@/lib/icp/save";
 import { listIcpCriteria } from "@/lib/interpretation/icp";
 import { getProduct, listIcps } from "@/lib/tenant/data";
 import {
@@ -75,7 +76,7 @@ export default async function ListIcpsPage({ params }: PageProps) {
             key={icp.id}
             productId={product.id}
             productName={product.name}
-            icp={icp}
+            icp={serializeIcpForClient(icp)}
             criteria={criteriaMap.get(icp.id) ?? []}
           />
         ))
