@@ -31,6 +31,8 @@ describe("parseCampaignFormData", () => {
     );
     expect(parsed.fieldErrors).toEqual({});
     expect(parsed.fields.name).toBe("Q1 Outreach");
+    expect(parsed.fields.personaId).toBe("persona_1");
+    expect(parsed.fields.personaIds).toEqual(["persona_1"]);
     expect(parsed.fields.emailLength).toBe("MEDIUM");
     expect(parsed.fields.emailGuidance).toBeNull();
     expect(parsed.contactIds).toEqual([]);
@@ -41,7 +43,23 @@ describe("parseCampaignFormData", () => {
       formFrom({ name: "X", productId: "prod_1" }),
     );
     expect(parsed.fieldErrors.icpId).toBe("ICP is required.");
-    expect(parsed.fieldErrors.personaId).toBe("Persona is required.");
+    expect(parsed.fieldErrors.personaId).toBeUndefined();
+    expect(parsed.fields.personaId).toBeNull();
+    expect(parsed.fields.personaIds).toEqual([]);
+  });
+
+  it("treats omitted personas as all personas for the product", () => {
+    const parsed = parseCampaignFormData(
+      formFrom({
+        name: "Q1 Outreach",
+        productId: "prod_1",
+        icpId: "icp_1",
+        allPersonas: "1",
+      }),
+    );
+    expect(parsed.fieldErrors).toEqual({});
+    expect(parsed.fields.personaId).toBeNull();
+    expect(parsed.fields.personaIds).toEqual([]);
   });
 });
 
@@ -115,7 +133,11 @@ describe("campaign save UI seam", () => {
     expect(formSrc).toContain('data-testid="campaign-action-status"');
     expect(scoreReport).toContain("useActionState");
     expect(scoreReport).toContain('data-testid="campaign-action-status"');
-    expect(formSrc).toContain('name="emailLength"');
+    expect(formSrc).toContain("Personas in play");
+    expect(formSrc).toContain('name="personaIds"');
+    expect(formSrc).toContain('name="allPersonas"');
+    expect(scoreReport).toContain('name="allPersonas"');
+    expect(scoreReport).not.toContain("Select persona for this campaign");
     expect(formSrc).toContain('name="emailGuidance"');
     expect(scoreReport).toContain('name="emailLength"');
     expect(scoreReport).toContain('name="emailGuidance"');

@@ -20,6 +20,10 @@ const campaignDetailInclude = {
       description: true,
       valueProposition: true,
       messagingJson: true,
+      personas: {
+        where: { archivedAt: null },
+        select: { id: true },
+      },
     },
   },
   icp: { select: { id: true, name: true } },
@@ -30,6 +34,9 @@ const campaignDetailInclude = {
       messagingNotes: true,
       personaMessagingJson: true,
     },
+  },
+  personasInPlay: {
+    include: { persona: { select: { id: true, name: true } } },
   },
   offer: {
     select: {
@@ -354,7 +361,7 @@ async function requireCampaignForOrganization(
   id: string;
   productId: string;
   icpId: string;
-  personaId: string;
+  personaId: string | null;
 }> {
   const campaign = await prisma.campaign.findFirst({
     where: { id: campaignId, organizationId },

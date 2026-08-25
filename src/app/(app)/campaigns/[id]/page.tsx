@@ -29,11 +29,12 @@ import { requireCurrentUser } from "@/lib/auth/session";
 import { getEffectiveUsagePolicy } from "@/lib/usage/policy";
 import { getMailboxConnectionView } from "@/lib/mailbox/data";
 import { getDailyEmailSendUsage } from "@/lib/usage/quota";
+import { listVoiceSamplesForUser } from "@/lib/voice/samples";
 import {
   buildCampaignStages,
   resolveCampaignStage,
 } from "@/lib/workflow/campaign-stages";
-import { listVoiceSamplesForUser } from "@/lib/voice/samples";
+import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -187,10 +188,14 @@ export default async function CampaignDetailPage({
   const qualifiedContactCount = survivingContactRows.filter(
     (row) => row.bucket === "GOOD",
   ).length;
+  const personasLabel = campaignPersonasDisplayName({
+    fallbackPersonaName: campaign.persona?.name,
+    inPlayNames: campaign.personasInPlay.map((row) => row.persona.name),
+    productPersonaCount: campaign.product.personas.length,
+  });
   const setupComplete = Boolean(
     campaign.productId &&
     campaign.icpId &&
-    campaign.personaId &&
     (offerName || campaign.offerId),
   );
   const stages = buildCampaignStages({
@@ -296,7 +301,7 @@ export default async function CampaignDetailPage({
               {[
                 ["Product", campaign.product.id, campaign.product.name],
                 ["ICP", campaign.icp.id, campaign.icp.name],
-                ["Personas", campaign.persona.id, campaign.persona.name],
+                ["Personas", "personas-in-play", personasLabel],
                 [
                   "Offer",
                   campaign.offer?.id ?? "campaign-offer",
@@ -321,7 +326,7 @@ export default async function CampaignDetailPage({
               <Meta label="Status" value={campaign.status} />
               <Meta label="Product" value={campaign.product.name} />
               <Meta label="ICP" value={campaign.icp.name} />
-              <Meta label="Persona" value={campaign.persona.name} />
+              <Meta label="Personas in play" value={personasLabel} />
               <Meta label="Offer" value={offerName} />
               <Meta label="Call to action" value={offerCta} />
               <Meta label="Offer description" value={offerDescription} />

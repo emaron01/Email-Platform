@@ -27,7 +27,7 @@ export function NewCampaignForm({
   const router = useRouter();
   const [productId, setProductId] = useState("");
   const [icpId, setIcpId] = useState("");
-  const [personaId, setPersonaId] = useState("");
+  const [personaIds, setPersonaIds] = useState<string[]>([]);
   const [state, formAction, pending] = useActionState(
     createCampaignAction,
     initial,
@@ -48,12 +48,13 @@ export function NewCampaignForm({
     [personas, productId],
   );
 
+  const allProductPersonasSelected =
+    productPersonas.length > 0 &&
+    productPersonas.every((persona) => personaIds.includes(persona.id));
   const canSubmit =
     Boolean(productId) &&
     Boolean(icpId) &&
-    Boolean(personaId) &&
-    productIcps.some((icp) => icp.id === icpId) &&
-    productPersonas.some((persona) => persona.id === personaId);
+    productIcps.some((icp) => icp.id === icpId);
 
   useEffect(() => {
     if (!state?.ok) return;
@@ -65,7 +66,17 @@ export function NewCampaignForm({
     if (!restored) return;
     if (restored.productId) setProductId(restored.productId);
     if (restored.icpId) setIcpId(restored.icpId);
-    if (restored.personaId) setPersonaId(restored.personaId);
+    if (restored.allPersonas) {
+      setPersonaIds(
+        personas
+          .filter((persona) => persona.productId === restored.productId)
+          .map((persona) => persona.id),
+      );
+    } else if (restored.personaIds.length > 0) {
+      setPersonaIds(restored.personaIds);
+    } else if (restored.personaId) {
+      setPersonaIds([restored.personaId]);
+    }
   }, [restored]);
 
   return (
@@ -129,7 +140,11 @@ export function NewCampaignForm({
           onChange={(event) => {
             setProductId(event.target.value);
             setIcpId("");
-            setPersonaId("");
+            setPersonaIds(
+              personas
+                .filter((persona) => persona.productId === event.target.value)
+                .map((persona) => persona.id),
+            );
           }}
           className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2"
         >
@@ -165,34 +180,55 @@ export function NewCampaignForm({
         </select>
       </label>
 
-      <label className="block text-sm">
-        <span className="font-medium text-slate-700">Persona</span>
-        <select
-          name="personaId"
-          required
-          value={personaId}
-          disabled={!productId}
-          onChange={(event) => setPersonaId(event.target.value)}
-          className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2 disabled:bg-slate-50"
-        >
-          <option value="" disabled>
-            {productId ? "Select persona" : "Select a product first"}
-          </option>
-          {productPersonas.map((persona) => (
-            <option key={persona.id} value={persona.id}>
-              {persona.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <fieldset className="block text-sm md:col-span-2">
+        <legend className="font-medium text-slate-700">Personas in play</legend>
+        <p className="mt-1 text-xs text-slate-500">
+          Defaults to every persona for this product. Persona is a property of
+          the contact; this only limits which roles the campaign will email.
+        </p>
+        {allProductPersonasSelected ? (
+          <input type="hidden" name="allPersonas" value="1" />
+        ) : null}
+        <div className="mt-2 space-y-2">
+          {!productId ? (
+            <p className="text-sm text-slate-500">Select a product first</p>
+          ) : productPersonas.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              This product has no personas yet.
+            </p>
+          ) : (
+            productPersonas.map((persona) => (
+              <label
+                key={persona.id}
+                className="flex items-center gap-2 text-sm text-slate-700"
+              >
+                <input
+                  type="checkbox"
+                  name="personaIds"
+                  value={persona.id}
+                  checked={personaIds.includes(persona.id)}
+                  onChange={(event) => {
+                    setPersonaIds((current) =>
+                      event.target.checked
+                        ? [...current, persona.id]
+                        : current.filter((id) => id !== persona.id),
+                    );
+                  }}
+                />
+                {persona.name}
+              </label>
+            ))
+          )}
+        </div>
+      </fieldset>
 
       <div className="md:col-span-2 border-t border-slate-200 pt-4">
         <p className="mb-3 text-sm font-medium text-slate-900">
           Campaign offer
         </p>
         <p className="mb-4 text-sm text-slate-600">
-          Offers are campaign-specific. The same product, ICP, and persona can
-          use different offers across campaigns.
+          Offers are campaign-specific. The same product and ICP can use
+          different offers across campaigns.
         </p>
         <div className="grid gap-4 md:grid-cols-2">
           <Field
@@ -276,7 +312,7 @@ export function NewCampaignForm({
             ? "Creating…"
             : canSubmit
               ? "Create campaign"
-              : "Select product, ICP, and persona"}
+              : "Select product and ICP"}
         </SubmitButton>
       </div>
     </form>

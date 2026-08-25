@@ -413,6 +413,7 @@ model Organization {
   titleSuggestions         TitleSuggestion[]
   productTitleDismissals   ProductTitleDismissal[]
   campaigns                Campaign[]
+  campaignPersonas         CampaignPersona[]
   campaignContacts         CampaignContact[]
   emailDrafts              EmailDraft[]
   usagePolicy              OrganizationUsagePolicy?
@@ -929,6 +930,7 @@ model Persona {
   product      Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
   criteria     PersonaCriterion[]
   campaigns     Campaign[]
+  campaignPersonas CampaignPersona[]
   scoringRuns   ScoringRun[]
   matchedScores ContactScore[] @relation("ContactScoreMatchedPersona")
   setupRuns     PersonaSetupRun[]
@@ -1537,7 +1539,7 @@ model Campaign {
   name                          String
   productId                     String
   icpId                         String
-  personaId                     String
+  personaId                     String?
   /// Legacy optional link to Offer table. New campaigns use offer* fields below.
   offerId                       String?
   offerName                     String?
@@ -1557,9 +1559,10 @@ model Campaign {
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product      Product           @relation(fields: [productId], references: [id])
   icp          Icp               @relation(fields: [icpId], references: [id])
-  persona      Persona           @relation(fields: [personaId], references: [id])
+  persona      Persona?          @relation(fields: [personaId], references: [id])
   offer        Offer?            @relation(fields: [offerId], references: [id])
   contacts     CampaignContact[]
+  personasInPlay CampaignPersona[]
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
@@ -1568,6 +1571,25 @@ model Campaign {
   @@index([icpId])
   @@index([personaId])
   @@index([offerId])
+}
+
+/// Personas a campaign will email. Empty means all personas for the product.
+/// Campaign.personaId remains as a legacy single-persona fallback.
+model CampaignPersona {
+  id             String   @id @default(cuid())
+  organizationId String
+  campaignId     String
+  personaId      String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  persona      Persona      @relation(fields: [personaId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, campaignId, personaId])
+  @@index([organizationId])
+  @@index([campaignId])
+  @@index([personaId])
 }
 
 model CampaignContact {

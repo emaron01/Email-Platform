@@ -395,15 +395,22 @@ export async function deletePersona(id: string): Promise<{
     where: { id, organizationId, archivedAt: null },
     include: {
       _count: {
-        select: { campaigns: true, scoringRuns: true, criteria: true },
+        select: {
+          campaigns: true,
+          campaignPersonas: true,
+          scoringRuns: true,
+          criteria: true,
+        },
       },
     },
   });
   if (!existing) notFound("Persona");
 
-  if (existing._count.campaigns > 0) {
+  if (existing._count.campaigns > 0 || existing._count.campaignPersonas > 0) {
+    const campaignCount =
+      existing._count.campaigns + existing._count.campaignPersonas;
     throw new TenantError(
-      `Persona could not be deleted because it is still referenced by ${existing._count.campaigns} campaign(s). Remove or reassign those campaigns first.`,
+      `Persona could not be deleted because it is still referenced by ${campaignCount} campaign(s). Remove or reassign those campaigns first.`,
     );
   }
 
@@ -659,7 +666,8 @@ export async function listContacts(options?: {
 export type CampaignWithRelations = Campaign & {
   product: { id: string; name: string };
   icp: { id: string; name: string };
-  persona: { id: string; name: string };
+  persona: { id: string; name: string } | null;
+  personasInPlay: Array<{ persona: { id: string; name: string } }>;
   offer: { id: string; name: string } | null;
   _count: { contacts: number };
 };
@@ -672,6 +680,9 @@ export async function listCampaigns(): Promise<CampaignWithRelations[]> {
       product: { select: { id: true, name: true } },
       icp: { select: { id: true, name: true } },
       persona: { select: { id: true, name: true } },
+      personasInPlay: {
+        include: { persona: { select: { id: true, name: true } } },
+      },
       offer: { select: { id: true, name: true } },
       _count: { select: { contacts: true } },
     },
@@ -683,7 +694,8 @@ export async function createCampaign(input: {
   name: string;
   productId: string;
   icpId: string;
-  personaId: string;
+  personaId?: string | null;
+  personaIds?: string[];
   offerName?: string | null;
   offerDescription?: string | null;
   offerCta?: string | null;
@@ -699,7 +711,11 @@ export async function createCampaign(input: {
 }): Promise<Campaign> {
   const organizationId = await orgId();
 
-  const [product, icp, persona] = await Promise.all([
+  const inPlayIds = Array.from(
+    new Set((input.personaIds ?? []).map((id) => id.trim()).filter(Boolean)),
+  );
+
+  const [product, icp, fallbackPersona, inPlayPersonas] = await Promise.all([
     prisma.product.findFirst({
       where: { id: input.productId, organizationId },
       select: { id: true, organizationId: true },
@@ -708,10 +724,22 @@ export async function createCampaign(input: {
       where: { id: input.icpId, organizationId },
       select: { id: true, organizationId: true, productId: true },
     }),
-    prisma.persona.findFirst({
-      where: { id: input.personaId, organizationId },
-      select: { id: true, organizationId: true, productId: true },
-    }),
+    input.personaId
+      ? prisma.persona.findFirst({
+          where: { id: input.personaId, organizationId, archivedAt: null },
+          select: { id: true, organizationId: true, productId: true },
+        })
+      : Promise.resolve(null),
+    inPlayIds.length > 0
+      ? prisma.persona.findMany({
+          where: {
+            id: { in: inPlayIds },
+            organizationId,
+            archivedAt: null,
+          },
+          select: { id: true, productId: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   if (!product) {
@@ -720,15 +748,27 @@ export async function createCampaign(input: {
   if (!icp) {
     throw new TenantError("ICP does not belong to the active organization.");
   }
-  if (!persona) {
+  if (input.personaId && !fallbackPersona) {
     throw new TenantError("Persona does not belong to the active organization.");
   }
   if (icp.productId !== product.id) {
     throw new TenantError("ICP does not belong to the selected product.");
   }
-  if (persona.productId !== product.id) {
+  if (fallbackPersona && fallbackPersona.productId !== product.id) {
     throw new TenantError("Persona does not belong to the selected product.");
   }
+  if (inPlayPersonas.length !== inPlayIds.length) {
+    throw new TenantError(
+      "One or more personas do not belong to the active organization.",
+    );
+  }
+  if (inPlayPersonas.some((persona) => persona.productId !== product.id)) {
+    throw new TenantError("Persona does not belong to the selected product.");
+  }
+
+  const fallbackPersonaId =
+    fallbackPersona?.id ??
+    (inPlayIds.length === 1 ? inPlayIds[0]! : null);
 
   const contactIds = Array.from(
     new Set((input.contactIds ?? []).map((id) => id.trim()).filter(Boolean)),
@@ -756,7 +796,7 @@ export async function createCampaign(input: {
         name: input.name,
         productId: product.id,
         icpId: icp.id,
-        personaId: persona.id,
+        personaId: fallbackPersonaId,
         offerId: null,
         offerName: input.offerName?.trim() || null,
         offerDescription: input.offerDescription?.trim() || null,
@@ -773,6 +813,16 @@ export async function createCampaign(input: {
         status: input.status ?? "DRAFT",
       },
     });
+
+    if (inPlayIds.length > 0) {
+      await tx.campaignPersona.createMany({
+        data: inPlayIds.map((personaId) => ({
+          organizationId,
+          campaignId: campaign.id,
+          personaId,
+        })),
+      });
+    }
 
     if (contactIds.length > 0) {
       await tx.campaignContact.createMany({

@@ -144,6 +144,7 @@ describe("home workflow", () => {
         context: "",
         icp: { name: "Primary target" },
         persona: { name: "CRO" },
+        personasInPlay: [],
         offerName: null,
         offer: null,
         contacts: [],

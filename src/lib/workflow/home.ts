@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
+import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
 import { normalizeSuggestedBuyerRoles } from "@/lib/setup/product-overview";
 
 export type SetupCardState = {
@@ -77,6 +78,9 @@ export async function getHomeWorkflow(
       include: {
         icp: { select: { name: true } },
         persona: { select: { name: true } },
+        personasInPlay: {
+          include: { persona: { select: { name: true } } },
+        },
         offer: { select: { name: true } },
         contacts: {
           select: {
@@ -198,7 +202,11 @@ export async function getHomeWorkflow(
         name: campaign.name,
         context: [
           campaign.icp.name,
-          campaign.persona.name,
+          campaignPersonasDisplayName({
+            fallbackPersonaName: campaign.persona?.name,
+            inPlayNames: campaign.personasInPlay.map((row) => row.persona.name),
+            productPersonaCount: 0,
+          }),
           campaign.offerName ?? campaign.offer?.name,
         ]
           .filter(Boolean)

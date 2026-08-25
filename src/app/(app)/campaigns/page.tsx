@@ -8,6 +8,7 @@ import {
   listProducts,
 } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
+import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
 import { formatDate } from "@/lib/utils";
 import { getHomeWorkflow } from "@/lib/workflow/home";
 
@@ -44,7 +45,7 @@ export default async function CampaignsPage() {
     <div>
       <PageHeader
         title="Campaigns"
-        description="Each campaign selects one Product, one ICP, one Persona, and a campaign-specific Offer."
+        description="Each campaign selects a Product, an ICP, and a campaign-specific Offer. Personas in play default to every persona for the product."
       />
 
       <div className="mb-6">
@@ -119,7 +120,15 @@ export default async function CampaignsPage() {
                     {campaign.icp.name}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {campaign.persona.name}
+                    {campaignPersonasDisplayName({
+                      fallbackPersonaName: campaign.persona?.name,
+                      inPlayNames: campaign.personasInPlay.map(
+                        (row) => row.persona.name,
+                      ),
+                      productPersonaCount: personas.filter(
+                        (persona) => persona.productId === campaign.productId,
+                      ).length,
+                    })}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {campaign.offerName ?? campaign.offer?.name ?? "—"}

@@ -97,7 +97,7 @@ export function campaignOfferGuardContext(input: {
   persona: {
     messagingNotes: string | null;
     personaMessagingJson: unknown;
-  };
+  } | null;
   normalizedEvidenceJson?: unknown;
 }): {
   claimsNotToMake: string[];
@@ -105,7 +105,9 @@ export function campaignOfferGuardContext(input: {
   evidence: string[];
 } {
   const productMessaging = objectValue(input.product.messagingJson);
-  const personaMessaging = objectValue(input.persona.personaMessagingJson);
+  const personaMessaging = objectValue(
+    input.persona?.personaMessagingJson ?? null,
+  );
   return {
     claimsNotToMake: stringList(productMessaging.claimsNotToMake),
     terminologyToAvoid: stringList(productMessaging.terminologyToAvoid),
@@ -115,7 +117,7 @@ export function campaignOfferGuardContext(input: {
       ...stringList(productMessaging.proofPoints),
       ...stringList(productMessaging.supportedClaims),
       ...stringList(personaMessaging.proofPoints),
-      input.persona.messagingNotes,
+      input.persona?.messagingNotes,
       ...evidenceFragments(input.product.profileJson, "productProfile"),
       ...evidenceFragments(
         input.normalizedEvidenceJson,
@@ -240,7 +242,7 @@ export async function validateCampaignOffer(input: {
   organizationId: string;
   userId: string;
   productId: string;
-  personaId: string;
+  personaId?: string | null;
   offer: CampaignOfferFields;
 }): Promise<OfferValidationResult> {
   const [product, persona] = await Promise.all([
@@ -254,17 +256,27 @@ export async function validateCampaignOffer(input: {
         approvedEvidenceBundleId: true,
       },
     }),
-    prisma.persona.findFirst({
-      where: { id: input.personaId, organizationId: input.organizationId },
-      select: {
-        messagingNotes: true,
-        personaMessagingJson: true,
-      },
-    }),
+    input.personaId
+      ? prisma.persona.findFirst({
+          where: {
+            id: input.personaId,
+            organizationId: input.organizationId,
+          },
+          select: {
+            messagingNotes: true,
+            personaMessagingJson: true,
+          },
+        })
+      : Promise.resolve(null),
   ]);
-  if (!product || !persona) {
+  if (!product) {
     throw new TenantError(
-      "Product and persona must belong to the active organization.",
+      "Product must belong to the active organization.",
+    );
+  }
+  if (input.personaId && !persona) {
+    throw new TenantError(
+      "Persona must belong to the active organization.",
     );
   }
 

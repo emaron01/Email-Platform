@@ -226,7 +226,8 @@ export async function loadEmailGenerationContext(
     campaign.organizationId !== organizationId ||
     contact.organizationId !== organizationId ||
     campaign.product.organizationId !== organizationId ||
-    campaign.persona.organizationId !== organizationId ||
+    (campaign.persona &&
+      campaign.persona.organizationId !== organizationId) ||
     campaign.icp.organizationId !== organizationId
   ) {
     throw new TenantError(
@@ -278,6 +279,12 @@ export async function loadEmailGenerationContext(
     companyResearchRow && isResearchFresh(companyResearchRow)
       ? companyResearchRow
       : null;
+
+  if (!campaign.persona) {
+    throw new TenantError(
+      "No persona is available for this contact. Score the contact so a persona can be matched, or set a fallback persona on the campaign.",
+    );
+  }
 
   const productMessaging = objectValue(campaign.product.messagingJson);
   const productProfile = objectValue(campaign.product.profileJson);

@@ -4,6 +4,10 @@
 
 import { TenantError } from "@/lib/tenant/errors";
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
+import {
+  parseCampaignPersonaSelection,
+  type CampaignPersonaSelection,
+} from "@/lib/campaign/personas";
 
 export const EMAIL_LENGTH_OPTIONS = [
   "SHORT",
@@ -43,6 +47,8 @@ export type CampaignFormValues = {
   productId: string;
   icpId: string;
   personaId: string;
+  personaIds: string[];
+  allPersonas: boolean;
   offerName: string;
   offerDescription: string;
   offerCta: string;
@@ -105,6 +111,15 @@ export function readCampaignFormValues(formData: FormData): CampaignFormValues {
     productId: readString(formData, "productId"),
     icpId: readString(formData, "icpId"),
     personaId: readString(formData, "personaId"),
+    personaIds: formData
+      .getAll("personaIds")
+      .map((value) => String(value).trim())
+      .filter(Boolean),
+    allPersonas:
+      String(formData.get("allPersonas") ?? "").trim() === "1" ||
+      String(formData.get("allPersonas") ?? "")
+        .trim()
+        .toLowerCase() === "on",
     offerName: readString(formData, "offerName"),
     offerDescription: readString(formData, "offerDescription"),
     offerCta: readString(formData, "offerCta"),
@@ -125,7 +140,8 @@ export function parseCampaignFormData(formData: FormData): {
     name: string;
     productId: string;
     icpId: string;
-    personaId: string;
+    personaId: string | null;
+    personaIds: string[];
     offerName: string | null;
     offerDescription: string | null;
     offerCta: string | null;
@@ -141,7 +157,8 @@ export function parseCampaignFormData(formData: FormData): {
   if (!values.name) fieldErrors.name = "Campaign name is required.";
   if (!values.productId) fieldErrors.productId = "Product is required.";
   if (!values.icpId) fieldErrors.icpId = "ICP is required.";
-  if (!values.personaId) fieldErrors.personaId = "Persona is required.";
+  const personas: CampaignPersonaSelection =
+    parseCampaignPersonaSelection(formData);
   const emailSettings = parseCampaignEmailSettingsFormData(formData);
   Object.assign(fieldErrors, emailSettings.fieldErrors);
 
@@ -158,7 +175,8 @@ export function parseCampaignFormData(formData: FormData): {
       name: values.name,
       productId: values.productId,
       icpId: values.icpId,
-      personaId: values.personaId,
+      personaId: personas.personaId,
+      personaIds: personas.personaIds,
       offerName: values.offerName || null,
       offerDescription: values.offerDescription || null,
       offerCta: values.offerCta || null,

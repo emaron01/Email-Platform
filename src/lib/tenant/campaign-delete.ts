@@ -10,7 +10,8 @@
  * - EmailSendRecord.sentByUserId → User ON DELETE RESTRICT (do not delete users)
  * - Campaign.offerId → Offer (outbound optional; Offer is not a dependent)
  * - Campaign.productId / icpId / personaId → Restrict (this delete unblocks
- *   Product/ICP/Persona cleanup)
+ *   Product/ICP/Persona cleanup). Campaign.personaId is optional; CampaignPersona
+ *   rows cascade from Campaign.
  *
  * Not a Campaign FK:
  * - ScoringRun has no campaignId. Scoring history is list/product scoped.
