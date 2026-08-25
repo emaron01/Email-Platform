@@ -36,6 +36,12 @@ describe("campaign contact management seams", () => {
     expect(actions).toContain("addContactsToCampaignAction");
     expect(actions).toContain("addScoringRunContactsToCampaignAction");
     expect(actions).toContain("Promise<CampaignContactsActionResult>");
+    const contactsLib = readFileSync("src/lib/campaign/contacts.ts", "utf8");
+    expect(contactsLib).toContain("compatibleScoringRunWhere");
+    expect(contactsLib).toContain("scoringRunPersonaWhere");
+    expect(contactsLib).not.toMatch(
+      /personaId:\s*campaign\.personaId/,
+    );
   });
 
   it("warns and records explicit offer conflict acknowledgment at save time", () => {
@@ -72,8 +78,10 @@ describe.skipIf(!hasDatabase)(
     let contactA1Id = "";
     let contactA2Id = "";
     let contactA3Id = "";
+    let contactA4Id = "";
     let foreignContactId = "";
     let scoringRunId = "";
+    let allPersonasRunId = "";
     let incompatibleRunId = "";
     const previousBypass = process.env.ALLOW_DEV_TENANT_BYPASS;
     const previousOrg = process.env.DEV_ORGANIZATION_ID;
@@ -129,7 +137,7 @@ describe.skipIf(!hasDatabase)(
           totalContacts: 3,
         },
       });
-      const [contactA1, contactA2, contactA3] = await Promise.all([
+      const [contactA1, contactA2, contactA3, contactA4] = await Promise.all([
         prisma.contact.create({
           data: {
             organizationId: orgAId,
@@ -157,10 +165,20 @@ describe.skipIf(!hasDatabase)(
             email: `scored-${suffix}@example.test`,
           },
         }),
+        prisma.contact.create({
+          data: {
+            organizationId: orgAId,
+            contactListId: list.id,
+            firstName: "All",
+            lastName: "Personas",
+            email: `all-personas-${suffix}@example.test`,
+          },
+        }),
       ]);
       contactA1Id = contactA1.id;
       contactA2Id = contactA2.id;
       contactA3Id = contactA3.id;
+      contactA4Id = contactA4.id;
 
       const campaign = await prisma.campaign.create({
         data: {
@@ -210,6 +228,34 @@ describe.skipIf(!hasDatabase)(
           overallScore: 80,
           scoreLabel: "GOOD" as const,
         })),
+      });
+
+      const allPersonasRun = await prisma.scoringRun.create({
+        data: {
+          organizationId: orgAId,
+          contactListId: list.id,
+          productId: product.id,
+          icpId: icp.id,
+          personaId: null,
+          status: "COMPLETED",
+          totalContacts: 1,
+          scoredContacts: 1,
+          productSnapshot: {},
+          icpSnapshot: {},
+          personaSnapshot: {},
+          completedAt: new Date(),
+        },
+      });
+      allPersonasRunId = allPersonasRun.id;
+      await prisma.contactScore.create({
+        data: {
+          organizationId: orgAId,
+          scoringRunId: allPersonasRunId,
+          contactId: contactA4Id,
+          scoringStatus: "COMPLETED",
+          overallScore: 82,
+          scoreLabel: "GOOD",
+        },
       });
 
       const otherProduct = await prisma.product.create({
@@ -360,7 +406,32 @@ describe.skipIf(!hasDatabase)(
       expect(row?.status).toBe("SELECTED");
     });
 
-    it("rejects foreign contacts and incompatible scoring runs", async () => {
+    it("lists an all-personas scoring run for a campaign that shares product and ICP", async () => {
+      if (!ready) return;
+      const { addScoringRunContactsToCampaign, listCompatibleScoringRuns } =
+        await import("@/lib/campaign/contacts");
+
+      const runs = await listCompatibleScoringRuns(campaignId);
+      expect(runs.map((run) => run.id)).toContain(allPersonasRunId);
+      expect(runs.map((run) => run.id)).toContain(scoringRunId);
+      expect(runs.map((run) => run.id)).not.toContain(incompatibleRunId);
+
+      expect(
+        await addScoringRunContactsToCampaign({
+          campaignId,
+          scoringRunId: allPersonasRunId,
+        }),
+      ).toBe(1);
+      const row = await prisma.campaignContact.findFirst({
+        where: {
+          organizationId: orgAId,
+          campaignId,
+          contactId: contactA4Id,
+        },
+      });
+      expect(row?.selected).toBe(true);
+      expect(row?.status).toBe("SELECTED");
+    });
       if (!ready) return;
       const { addContactsToCampaign, addScoringRunContactsToCampaign } =
         await import("@/lib/campaign/contacts");

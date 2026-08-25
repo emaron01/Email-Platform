@@ -4,6 +4,7 @@ import {
   campaignPersonasDisplayName,
   parseCampaignPersonaSelection,
   resolveCampaignPersonaIds,
+  scoringRunMatchesCampaign,
 } from "@/lib/campaign/personas";
 
 function formFrom(entries: Record<string, string | string[]>): FormData {
@@ -74,6 +75,33 @@ describe("campaign persona selection", () => {
         productPersonaIds: ["p1", "p2"],
       }),
     ).toEqual(["p1", "p2"]);
+  });
+
+  it("treats an all-personas scoring run as compatible with any campaign on the same product and ICP", () => {
+    expect(
+      scoringRunMatchesCampaign({
+        runPersonaId: null,
+        campaignFallbackPersonaId: "persona_cro",
+        campaignInPlayPersonaIds: [],
+        productPersonaIds: ["persona_cro", "persona_revops"],
+      }),
+    ).toBe(true);
+    expect(
+      scoringRunMatchesCampaign({
+        runPersonaId: "persona_revops",
+        campaignFallbackPersonaId: "persona_cro",
+        campaignInPlayPersonaIds: [],
+        productPersonaIds: ["persona_cro", "persona_revops"],
+      }),
+    ).toBe(false);
+    expect(
+      scoringRunMatchesCampaign({
+        runPersonaId: "persona_cro",
+        campaignFallbackPersonaId: null,
+        campaignInPlayPersonaIds: [],
+        productPersonaIds: ["persona_cro", "persona_revops"],
+      }),
+    ).toBe(true);
   });
 
   it("labels all-personas campaigns without naming a single role", () => {

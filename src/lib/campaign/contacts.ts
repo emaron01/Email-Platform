@@ -11,6 +11,7 @@ import {
   scoreLabelToBucket,
 } from "@/lib/workflow/qualification";
 import type { QualificationBucketRow } from "@/components/QualificationBuckets";
+import { scoringRunPersonaWhere } from "@/lib/campaign/personas";
 
 const campaignDetailInclude = {
   product: {
@@ -139,13 +140,7 @@ export async function getCampaignQualificationView(
     return { scoringRunId: null, companyRows: [], contactRows: [] };
   }
   const compatibleRuns = await prisma.scoringRun.findMany({
-    where: {
-      organizationId,
-      productId: campaign.productId,
-      icpId: campaign.icpId,
-      personaId: campaign.personaId,
-      status: { in: ["COMPLETED", "PARTIAL"] },
-    },
+    where: await compatibleScoringRunWhere(campaign, organizationId),
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -378,6 +373,42 @@ async function requireCampaignForOrganization(
   return campaign;
 }
 
+async function compatibleScoringRunWhere(
+  campaign: {
+    id: string;
+    productId: string;
+    icpId: string;
+    personaId: string | null;
+  },
+  organizationId: string,
+): Promise<Prisma.ScoringRunWhereInput> {
+  const [inPlay, productPersonas] = await Promise.all([
+    prisma.campaignPersona.findMany({
+      where: { organizationId, campaignId: campaign.id },
+      select: { personaId: true },
+    }),
+    prisma.persona.findMany({
+      where: {
+        organizationId,
+        productId: campaign.productId,
+        archivedAt: null,
+      },
+      select: { id: true },
+    }),
+  ]);
+  return {
+    organizationId,
+    productId: campaign.productId,
+    icpId: campaign.icpId,
+    status: { in: ["COMPLETED", "PARTIAL"] },
+    OR: scoringRunPersonaWhere({
+      campaignFallbackPersonaId: campaign.personaId,
+      campaignInPlayPersonaIds: inPlay.map((row) => row.personaId),
+      productPersonaIds: productPersonas.map((persona) => persona.id),
+    }),
+  };
+}
+
 export async function getCampaignDetail(
   campaignId: string,
 ): Promise<CampaignDetail> {
@@ -441,13 +472,7 @@ export async function listCompatibleScoringRuns(
     organizationId,
   );
   const runs = await prisma.scoringRun.findMany({
-    where: {
-      organizationId,
-      productId: campaign.productId,
-      icpId: campaign.icpId,
-      personaId: campaign.personaId,
-      status: { in: ["COMPLETED", "PARTIAL"] },
-    },
+    where: await compatibleScoringRunWhere(campaign, organizationId),
     select: {
       id: true,
       status: true,
@@ -539,11 +564,7 @@ export async function addScoringRunContactsToCampaign(input: {
   const run = await prisma.scoringRun.findFirst({
     where: {
       id: input.scoringRunId,
-      organizationId,
-      productId: campaign.productId,
-      icpId: campaign.icpId,
-      personaId: campaign.personaId,
-      status: { in: ["COMPLETED", "PARTIAL"] },
+      ...(await compatibleScoringRunWhere(campaign, organizationId)),
     },
     select: { id: true },
   });

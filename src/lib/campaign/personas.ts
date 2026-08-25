@@ -77,3 +77,39 @@ export function resolveCampaignPersonaIds(input: {
   if (input.fallbackPersonaId) return [input.fallbackPersonaId];
   return [...input.productPersonaIds];
 }
+
+/**
+ * An all-personas scoring run (personaId null) matches any campaign on the
+ * same product and ICP. A single-persona run matches when that persona is
+ * in play for the campaign.
+ */
+export function scoringRunMatchesCampaign(input: {
+  runPersonaId: string | null;
+  campaignFallbackPersonaId: string | null;
+  campaignInPlayPersonaIds: string[];
+  productPersonaIds: string[];
+}): boolean {
+  if (input.runPersonaId == null) return true;
+  return resolveCampaignPersonaIds({
+    fallbackPersonaId: input.campaignFallbackPersonaId,
+    inPlayPersonaIds: input.campaignInPlayPersonaIds,
+    productPersonaIds: input.productPersonaIds,
+  }).includes(input.runPersonaId);
+}
+
+/** Prisma OR clause for scoring-run persona compatibility. */
+export function scoringRunPersonaWhere(input: {
+  campaignFallbackPersonaId: string | null;
+  campaignInPlayPersonaIds: string[];
+  productPersonaIds: string[];
+}): Array<{ personaId: null } | { personaId: { in: string[] } }> {
+  const inPlay = resolveCampaignPersonaIds({
+    fallbackPersonaId: input.campaignFallbackPersonaId,
+    inPlayPersonaIds: input.campaignInPlayPersonaIds,
+    productPersonaIds: input.productPersonaIds,
+  });
+  return [
+    { personaId: null },
+    ...(inPlay.length > 0 ? [{ personaId: { in: inPlay } }] : []),
+  ];
+}
