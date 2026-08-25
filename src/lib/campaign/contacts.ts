@@ -23,7 +23,7 @@ const campaignDetailInclude = {
       messagingJson: true,
       personas: {
         where: { archivedAt: null },
-        select: { id: true },
+        select: { id: true, name: true },
       },
     },
   },

@@ -5,8 +5,13 @@ import {
   buildRuntimeReasoningSketch,
   COMPANY_RESEARCH_USE_INSTRUCTIONS,
 } from "@/lib/email-generation/company-research-use";
+import {
+  PERSONALIZATION_TIER_INSTRUCTIONS,
+  contactResearchForPrompt,
+  resolvePersonalization,
+} from "@/lib/email-generation/personalization";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "9";
+export const EMAIL_GENERATION_PROMPT_VERSION = "10";
 export const ADDITIONAL_GUIDANCE_MAX_CHARS = 200;
 
 const SYSTEM_PROMPT = `You write concise, credible one-to-one outbound emails.
@@ -15,12 +20,11 @@ Use the supplied context in this strict priority order:
 1. Per-contact regeneration instructions, when supplied. They override campaign guidance and writing defaults.
 2. Additional campaign instructions, when supplied. They override writing defaults.
 3. The campaign offer and call to action.
-4. Persona pain points and desired outcomes.
-5. Persona positioning, proof points, and objections.
-6. Supported product claims and terminology constraints.
-7. Fresh contact role research, when supplied.
-8. Company research, when supplied: infer selling motion and connect it to this product's problem space. Do not restate what the company does.
-9. The first writing sample, when supplied, as the authoritative style reference.
+4. Company research, when personalization.companyResearchUsable is true: infer selling motion and connect it to this product's problem in that motion. Do not restate what the company does.
+5. Persona as angle only: which value prop leads, what this role cares about, what objections to preempt, what vocabulary to use. Persona is not personalization.
+6. Contact role research, when personalization.contactResearchUsable is true: roleSummary, responsibilities, ownershipAreas only.
+7. Supported product claims and terminology constraints.
+8. The first writing sample, when supplied, as the authoritative style reference.
 
 Never invent customer names, metrics, case studies, product capabilities, offer terms, or facts about the recipient. Product claimsNotToMake, terminologyToAvoid, and persona messaging notes are hard constraints regardless of the priority list. Campaign offer terms are authoritative only when they appear in the supplied offer. If optional context is empty, continue without it.
 Per-contact regeneration instructions override additional campaign instructions and writing defaults, but they cannot override factual constraints, the selected emailStructure, JSON-only output, the sign-off prohibition, or the em dash prohibition.
@@ -37,6 +41,8 @@ Writing and structure rules:
 - Close the email with exactly one soft question. Do not place additional questions earlier in the email.
 - Do not include a sign-off, sender name, sender placeholder, signature, or signature block of any kind. Never write "Best," or "[Your Name]". End the generated body immediately after the closing question or final sentence.
 - Never use an em dash character in the subject, body, or reasoning. No exceptions. Use a period, comma, or rewrite the sentence instead.
+
+${PERSONALIZATION_TIER_INSTRUCTIONS}
 
 ${COMPANY_RESEARCH_USE_INSTRUCTIONS}
 
@@ -69,6 +75,10 @@ export function buildEmailPrompt(
             instruction:
               "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: problem or context, 2 sentences max. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
           };
+  const personalization = resolvePersonalization({
+    companyResearch: context.companyResearch,
+    contactResearch: contactResearchForPrompt(context.contactResearch),
+  });
   const userPayload = {
     regenerationInstructions: regenerationGuidance
       ? `Per-contact regeneration instruction that overrides campaign guidance: ${regenerationGuidance}`
@@ -83,6 +93,20 @@ export function buildEmailPrompt(
       ? `Additional instructions that override defaults: ${context.campaign.emailGuidance}`
       : null,
     emailStructure,
+    personalization: {
+      tier: personalization.tier,
+      companyResearchUsable: personalization.companyResearchUsable,
+      contactResearchUsable: personalization.contactResearchUsable,
+      instruction: personalization.detail,
+    },
+    companyResearch: personalization.companyResearch,
+    companyResearchReasoningSketch: buildRuntimeReasoningSketch({
+      research: personalization.companyResearch,
+      problemSpace: {
+        problemsSolved: context.product.problemsSolved,
+        painPoints: context.persona.painPoints,
+      },
+    }),
     personaNeeds: {
       persona: context.persona.name,
       painPoints: context.persona.painPoints,
@@ -94,8 +118,23 @@ export function buildEmailPrompt(
       likelyObjections: context.persona.messaging.objections,
       terminology: context.persona.profile.terminology,
       messagingNotes: context.persona.messagingNotes,
-      organizationalPressures:
-        context.persona.profile.organizationalPressures,
+    },
+    contactContext: {
+      recipient: {
+        firstName: context.contact.firstName,
+        lastName: context.contact.lastName,
+        title: context.contact.title,
+        company: context.contact.company,
+        industry: context.contact.industry,
+        location: context.contact.location,
+      },
+      freshRoleResearch: personalization.contactResearch
+        ? {
+            roleSummary: personalization.contactResearch.roleSummary,
+            responsibilities: personalization.contactResearch.responsibilities,
+            ownershipAreas: personalization.contactResearch.ownershipAreas,
+          }
+        : null,
     },
     productMessaging: {
       product: context.product.name,
@@ -113,41 +152,10 @@ export function buildEmailPrompt(
         terms: context.product.messaging.terminologyToAvoid,
       },
     },
-    contactContext: {
-      recipient: {
-        firstName: context.contact.firstName,
-        lastName: context.contact.lastName,
-        title: context.contact.title,
-        company: context.contact.company,
-        industry: context.contact.industry,
-        location: context.contact.location,
-      },
-      freshRoleResearch: context.contactResearch
-        ? {
-            currentTitle: context.contactResearch.currentTitle,
-            roleSummary: context.contactResearch.roleSummary,
-            responsibilities: context.contactResearch.responsibilities,
-            ownershipAreas: context.contactResearch.ownershipAreas,
-            professionalSignals:
-              context.contactResearch.professionalSignals,
-            negativeRoleSignals:
-              context.contactResearch.negativeRoleSignals,
-            confidence: context.contactResearch.confidence,
-          }
-        : null,
-      companyResearch: context.companyResearch,
-    },
     productProblemSpace: {
       problemsSolved: context.product.problemsSolved,
       personaPainPoints: context.persona.painPoints,
     },
-    companyResearchReasoningSketch: buildRuntimeReasoningSketch({
-      research: context.companyResearch,
-      problemSpace: {
-        problemsSolved: context.product.problemsSolved,
-        painPoints: context.persona.painPoints,
-      },
-    }),
     voiceStyle: firstVoiceSample
       ? {
           label: firstVoiceSample.label,

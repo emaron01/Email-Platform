@@ -15,6 +15,12 @@ import {
   isResearchFresh,
   parseStringArray,
 } from "@/lib/research/freshness";
+import {
+  resolveEmailGenerationPersona,
+  resolvePersonalization,
+  contactResearchForPrompt,
+  type PersonalizationTier,
+} from "@/lib/email-generation/personalization";
 
 const CONTACT_RESEARCH_FRESHNESS_DAYS = 90;
 
@@ -171,11 +177,26 @@ export type EmailGenerationContext = {
     referralSuggested: boolean;
     inReplyToDraftId: string | null;
   }>;
+  personaResolution: {
+    source: "override" | "matched" | "campaign_fallback";
+    usedCampaignFallback: boolean;
+  };
+};
+
+export type EmailDraftScreenState = {
+  resolvedPersonaId: string | null;
+  resolvedPersonaName: string | null;
+  usedCampaignFallback: boolean;
+  personaOptions: Array<{ id: string; name: string }>;
+  personalizationTier: PersonalizationTier;
+  personalizationLabel: string;
+  personalizationDetail: string;
 };
 
 export async function loadEmailGenerationContext(
   campaignContactId: string,
   userId: string,
+  options?: { personaId?: string | null },
 ): Promise<EmailGenerationContext> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new TenantError("User not found.");
@@ -211,6 +232,9 @@ export async function loadEmailGenerationContext(
           product: true,
           persona: true,
           icp: true,
+          personasInPlay: {
+            include: { persona: { select: { id: true, name: true } } },
+          },
         },
       },
     },
@@ -235,8 +259,13 @@ export async function loadEmailGenerationContext(
     );
   }
 
-  const [voiceSamples, contactResearch, approvedEvidence, companyResearchRow] =
-    await Promise.all([
+  const [
+    voiceSamples,
+    contactResearch,
+    approvedEvidence,
+    companyResearchRow,
+    matchedScore,
+  ] = await Promise.all([
       prisma.voiceSample.findMany({
         where: { organizationId, userId },
         orderBy: { createdAt: "desc" },
@@ -271,6 +300,21 @@ export async function loadEmailGenerationContext(
             orderBy: { updatedAt: "desc" },
           })
         : Promise.resolve(null),
+      prisma.contactScore.findFirst({
+        where: {
+          organizationId,
+          contactId: contact.id,
+          scoringStatus: "COMPLETED",
+          scoringRun: {
+            organizationId,
+            productId: campaign.productId,
+            icpId: campaign.icpId,
+            status: { in: ["COMPLETED", "PARTIAL"] },
+          },
+        },
+        orderBy: [{ scoredAt: "desc" }, { createdAt: "desc" }],
+        select: { matchedPersonaId: true },
+      }),
     ]);
   const freshContactResearch = isFreshContactResearch(contactResearch)
     ? contactResearch
@@ -280,7 +324,25 @@ export async function loadEmailGenerationContext(
       ? companyResearchRow
       : null;
 
-  if (!campaign.persona) {
+  const resolved = resolveEmailGenerationPersona({
+    overridePersonaId: options?.personaId,
+    matchedPersonaId: matchedScore?.matchedPersonaId ?? null,
+    campaignFallbackPersonaId: campaign.personaId,
+  });
+  const personaRow =
+    resolved.personaId === campaign.persona?.id
+      ? campaign.persona
+      : resolved.personaId
+        ? await prisma.persona.findFirst({
+            where: {
+              id: resolved.personaId,
+              organizationId,
+              productId: campaign.productId,
+              archivedAt: null,
+            },
+          })
+        : null;
+  if (!personaRow) {
     throw new TenantError(
       "No persona is available for this contact. Score the contact so a persona can be matched, or set a fallback persona on the campaign.",
     );
@@ -288,8 +350,8 @@ export async function loadEmailGenerationContext(
 
   const productMessaging = objectValue(campaign.product.messagingJson);
   const productProfile = objectValue(campaign.product.profileJson);
-  const personaMessaging = objectValue(campaign.persona.personaMessagingJson);
-  const personaProfile = objectValue(campaign.persona.profileJson);
+  const personaMessaging = objectValue(personaRow.personaMessagingJson);
+  const personaProfile = objectValue(personaRow.profileJson);
 
   return {
     organizationId,
@@ -358,11 +420,11 @@ export async function loadEmailGenerationContext(
       },
     },
     persona: {
-      id: campaign.persona.id,
-      name: campaign.persona.name,
-      painPoints: lines(campaign.persona.painPoints),
-      desiredOutcomes: lines(campaign.persona.desiredOutcomes),
-      messagingNotes: lines(campaign.persona.messagingNotes),
+      id: personaRow.id,
+      name: personaRow.name,
+      painPoints: lines(personaRow.painPoints),
+      desiredOutcomes: lines(personaRow.desiredOutcomes),
+      messagingNotes: lines(personaRow.messagingNotes),
       messaging: {
         positioning: stringList(personaMessaging.positioning),
         proofPoints: stringList(personaMessaging.proofPoints),
@@ -413,7 +475,163 @@ export async function loadEmailGenerationContext(
       : null,
     voiceSamples,
     sequence: campaignContact.emailDrafts,
+    personaResolution: {
+      source: resolved.source,
+      usedCampaignFallback: resolved.usedCampaignFallback,
+    },
   };
+}
+
+export async function loadEmailDraftScreenStates(input: {
+  organizationId: string;
+  productId: string;
+  icpId: string;
+  campaignPersonaId: string | null;
+  campaignPersonaName: string | null;
+  inPlay: Array<{ personaId: string; name: string }>;
+  productPersonas: Array<{ id: string; name: string }>;
+  contacts: Array<{
+    campaignContactId: string;
+    contactId: string;
+    companyId: string | null;
+  }>;
+}): Promise<Record<string, EmailDraftScreenState>> {
+  const contactIds = input.contacts.map((row) => row.contactId);
+  const companyIds = Array.from(
+    new Set(
+      input.contacts
+        .map((row) => row.companyId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const personaOptions =
+    input.inPlay.length > 0
+      ? input.inPlay.map((row) => ({ id: row.personaId, name: row.name }))
+      : input.productPersonas;
+  const personaNameById = new Map(
+    [
+      ...input.productPersonas.map((persona) => [persona.id, persona.name] as const),
+      ...(input.campaignPersonaId && input.campaignPersonaName
+        ? ([[input.campaignPersonaId, input.campaignPersonaName]] as const)
+        : []),
+    ],
+  );
+
+  const [scores, contactResearchRows, companyResearchRows] = await Promise.all([
+    contactIds.length > 0
+      ? prisma.contactScore.findMany({
+          where: {
+            organizationId: input.organizationId,
+            contactId: { in: contactIds },
+            scoringStatus: "COMPLETED",
+            scoringRun: {
+              organizationId: input.organizationId,
+              productId: input.productId,
+              icpId: input.icpId,
+              status: { in: ["COMPLETED", "PARTIAL"] },
+            },
+          },
+          orderBy: [{ scoredAt: "desc" }, { createdAt: "desc" }],
+          select: { contactId: true, matchedPersonaId: true, scoredAt: true },
+        })
+      : Promise.resolve([]),
+    contactIds.length > 0
+      ? prisma.contactResearch.findMany({
+          where: {
+            organizationId: input.organizationId,
+            contactId: { in: contactIds },
+          },
+        })
+      : Promise.resolve([]),
+    companyIds.length > 0
+      ? prisma.companyResearch.findMany({
+          where: {
+            organizationId: input.organizationId,
+            companyId: { in: companyIds },
+          },
+          orderBy: { updatedAt: "desc" },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const matchedByContact = new Map<string, string | null>();
+  for (const score of scores) {
+    if (!matchedByContact.has(score.contactId)) {
+      matchedByContact.set(score.contactId, score.matchedPersonaId);
+    }
+  }
+  const contactResearchByContact = new Map(
+    contactResearchRows.map((row) => [row.contactId, row]),
+  );
+  const companyResearchByCompany = new Map<string, (typeof companyResearchRows)[number]>();
+  for (const row of companyResearchRows) {
+    if (!companyResearchByCompany.has(row.companyId)) {
+      companyResearchByCompany.set(row.companyId, row);
+    }
+  }
+
+  const states: Record<string, EmailDraftScreenState> = {};
+  for (const row of input.contacts) {
+    const resolved = resolveEmailGenerationPersona({
+      matchedPersonaId: matchedByContact.get(row.contactId) ?? null,
+      campaignFallbackPersonaId: input.campaignPersonaId,
+    });
+    const contactResearch = contactResearchByContact.get(row.contactId) ?? null;
+    const companyResearchRow = row.companyId
+      ? companyResearchByCompany.get(row.companyId) ?? null
+      : null;
+    const freshContact = isFreshContactResearch(contactResearch);
+    const freshCompany =
+      companyResearchRow && isResearchFresh(companyResearchRow)
+        ? companyResearchRow
+        : null;
+    const personalization = resolvePersonalization({
+      companyResearch: freshCompany
+        ? {
+            companySummary: freshCompany.companySummary,
+            whatTheySell: freshCompany.whatTheySell,
+            customerTypes: parseStringArray(freshCompany.customerTypes),
+            primaryMarkets: parseStringArray(freshCompany.primaryMarkets),
+            businessModel: freshCompany.businessModel,
+            companySizeContext: freshCompany.companySizeContext,
+            confidence: freshCompany.researchConfidence,
+          }
+        : null,
+      contactResearch: contactResearchForPrompt(
+        freshContact && contactResearch
+          ? {
+              roleSummary: contactResearch.roleSummary,
+              responsibilities: stringList(contactResearch.responsibilities),
+              ownershipAreas: stringList(contactResearch.ownershipAreas),
+            }
+          : null,
+      ),
+    });
+    const options =
+      resolved.personaId &&
+      personaNameById.get(resolved.personaId) &&
+      !personaOptions.some((persona) => persona.id === resolved.personaId)
+        ? [
+            {
+              id: resolved.personaId,
+              name: personaNameById.get(resolved.personaId)!,
+            },
+            ...personaOptions,
+          ]
+        : personaOptions;
+    states[row.campaignContactId] = {
+      resolvedPersonaId: resolved.personaId,
+      resolvedPersonaName: resolved.personaId
+        ? (personaNameById.get(resolved.personaId) ?? null)
+        : null,
+      usedCampaignFallback: resolved.usedCampaignFallback,
+      personaOptions: options,
+      personalizationTier: personalization.tier,
+      personalizationLabel: personalization.label,
+      personalizationDetail: personalization.detail,
+    };
+  }
+  return states;
 }
 
 export async function loadEmailReplyContext(
@@ -478,6 +696,7 @@ export async function loadEmailReplyContext(
 export async function loadExistingEmailDraftContext(
   emailDraftId: string,
   userId: string,
+  options?: { personaId?: string | null },
 ): Promise<{
   context: EmailGenerationContext;
   draft: EmailGenerationContext["sequence"][number];
@@ -503,6 +722,7 @@ export async function loadExistingEmailDraftContext(
   const context = await loadEmailGenerationContext(
     row.campaignContactId,
     userId,
+    options,
   );
   const draft = context.sequence.find((entry) => entry.id === emailDraftId);
   if (!draft) throw new TenantError("Email draft was not found.");

@@ -90,6 +90,10 @@ function baseContext(
     },
     contactResearch: null,
     companyResearch: null,
+    personaResolution: {
+      source: "campaign_fallback",
+      usedCampaignFallback: true,
+    },
     voiceSamples: [],
     sequence: [],
   };
@@ -186,6 +190,7 @@ describe("company research use in email prompts", () => {
       "src/lib/email-generation/prompt.ts",
       "src/lib/email-generation/company-research-use.ts",
       "src/lib/email-generation/context.ts",
+      "src/lib/email-generation/personalization.ts",
     ];
     for (const file of files) {
       const source = readFileSync(file, "utf8");

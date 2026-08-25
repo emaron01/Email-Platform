@@ -102,6 +102,10 @@ function contextFixture(
       researchedAt: new Date(),
     },
     companyResearch: null,
+    personaResolution: {
+      source: "campaign_fallback",
+      usedCampaignFallback: true,
+    },
     voiceSamples: [
       {
         id: "voice_new",
@@ -138,18 +142,21 @@ describe("buildEmailPrompt", () => {
     const product = prompt.indexOf('"productMessaging"');
     const contact = prompt.indexOf('"contactContext"');
     const voice = prompt.indexOf('"voiceStyle"');
-    const companyResearch = prompt.indexOf('"companyResearch"');
-    expect(companyResearch).toBeGreaterThan(contact);
-    expect(companyResearch).toBeLessThan(voice);
+    const companyResearch = prompt.indexOf('"companyResearch":');
+    expect(companyResearch).toBeGreaterThan(structure);
+    expect(companyResearch).toBeLessThan(needs);
+    expect(needs).toBeLessThan(contact);
+    expect(contact).toBeLessThan(voice);
     expect([
       regeneration,
       offer,
       instructions,
       structure,
+      companyResearch,
       needs,
       persona,
-      product,
       contact,
+      product,
       voice,
     ]).toEqual(
       [
@@ -158,10 +165,11 @@ describe("buildEmailPrompt", () => {
           offer,
           instructions,
           structure,
+          companyResearch,
           needs,
           persona,
-          product,
           contact,
+          product,
           voice,
         ],
       ].sort(
@@ -1101,6 +1109,76 @@ describe.skipIf(!hasDatabase)(
       );
       expect(context.companyResearch).toBeNull();
       expect(context.product.problemsSolved).toEqual([]);
+      expect(context.personaResolution.usedCampaignFallback).toBe(true);
+      expect(context.persona.name).toBe("CRO");
+    });
+
+    it("uses ContactScore.matchedPersonaId instead of the campaign fallback when present", async () => {
+      if (!ready) return;
+      const campaign = await prisma.campaign.findUniqueOrThrow({
+        where: { id: campaignId },
+        select: { productId: true, icpId: true },
+      });
+      const matchedPersona = await prisma.persona.create({
+        data: {
+          organizationId,
+          productId: campaign.productId,
+          name: "RevOps",
+          painPoints: "Rollup hygiene",
+        },
+      });
+      const matchedContact = await prisma.contact.create({
+        data: {
+          organizationId,
+          contactListId,
+          firstName: "Jordan",
+          email: `jordan-${suffix}@example.test`,
+          title: "Head of RevOps",
+        },
+      });
+      const matchedCampaignContact = await prisma.campaignContact.create({
+        data: {
+          organizationId,
+          campaignId,
+          contactId: matchedContact.id,
+          status: "SELECTED",
+        },
+      });
+      const run = await prisma.scoringRun.create({
+        data: {
+          organizationId,
+          contactListId,
+          productId: campaign.productId,
+          icpId: campaign.icpId,
+          personaId: null,
+          status: "COMPLETED",
+          productSnapshot: {},
+          icpSnapshot: {},
+          personaSnapshot: {},
+          completedAt: new Date(),
+        },
+      });
+      await prisma.contactScore.create({
+        data: {
+          organizationId,
+          scoringRunId: run.id,
+          contactId: matchedContact.id,
+          scoringStatus: "COMPLETED",
+          matchedPersonaId: matchedPersona.id,
+          scoredAt: new Date(),
+        },
+      });
+      const { loadEmailGenerationContext } = await import(
+        "@/lib/email-generation/context"
+      );
+      const context = await loadEmailGenerationContext(
+        matchedCampaignContact.id,
+        userAId,
+      );
+      expect(context.persona.id).toBe(matchedPersona.id);
+      expect(context.persona.name).toBe("RevOps");
+      expect(context.personaResolution.usedCampaignFallback).toBe(false);
+      expect(context.personaResolution.source).toBe("matched");
     });
 
     it("loads fresh company research and product problemsSolved for email use", async () => {

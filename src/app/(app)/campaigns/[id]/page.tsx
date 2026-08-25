@@ -35,6 +35,7 @@ import {
   resolveCampaignStage,
 } from "@/lib/workflow/campaign-stages";
 import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
+import { loadEmailDraftScreenStates } from "@/lib/email-generation/context";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -116,6 +117,24 @@ export default async function CampaignDetailPage({
     if (error instanceof TenantError) notFound();
     throw error;
   }
+
+  const draftScreens = await loadEmailDraftScreenStates({
+    organizationId: organization.id,
+    productId: campaign.productId,
+    icpId: campaign.icpId,
+    campaignPersonaId: campaign.personaId,
+    campaignPersonaName: campaign.persona?.name ?? null,
+    inPlay: campaign.personasInPlay.map((row) => ({
+      personaId: row.personaId,
+      name: row.persona.name,
+    })),
+    productPersonas: campaign.product.personas,
+    contacts: campaign.contacts.map((entry) => ({
+      campaignContactId: entry.id,
+      contactId: entry.contact.id,
+      companyId: entry.contact.companyId,
+    })),
+  });
 
   const offerName = campaign.offerName ?? campaign.offer?.name ?? null;
   const offerDescription =
@@ -393,6 +412,7 @@ export default async function CampaignDetailPage({
             <div className="space-y-4">
               {stageContacts.map((campaignContact) => {
                 const contact = campaignContact.contact;
+                const draftScreen = draftScreens[campaignContact.id];
 
                 return (
                   <section
@@ -429,6 +449,25 @@ export default async function CampaignDetailPage({
                         limit: dailySendUsage.limit,
                       }}
                       mode={currentStage === "emails" ? "EMAILS" : "SEND"}
+                      personaOptions={draftScreen?.personaOptions ?? []}
+                      resolvedPersonaId={draftScreen?.resolvedPersonaId ?? null}
+                      resolvedPersonaName={
+                        draftScreen?.resolvedPersonaName ?? null
+                      }
+                      usedCampaignFallback={
+                        draftScreen?.usedCampaignFallback ?? false
+                      }
+                      personalizationTier={
+                        draftScreen?.personalizationTier ?? "THIN"
+                      }
+                      personalizationLabel={
+                        draftScreen?.personalizationLabel ??
+                        "Persona and product only"
+                      }
+                      personalizationDetail={
+                        draftScreen?.personalizationDetail ??
+                        "No usable company or contact research."
+                      }
                       initialDrafts={campaignContact.emailDrafts
                         .filter(
                           (draft) =>

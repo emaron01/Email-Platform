@@ -79,6 +79,7 @@ function revalidateCampaign(campaignId: string): void {
 export async function generateEmailDraftAction(
   campaignContactId: string,
   additionalGuidance?: string,
+  personaId?: string | null,
 ): Promise<GenerateEmailDraftActionResult> {
   const normalizedGuidance = additionalGuidance?.trim() || null;
   if (
@@ -96,6 +97,7 @@ export async function generateEmailDraftAction(
     const context = await loadEmailGenerationContext(
       campaignContactId,
       user.id,
+      { personaId },
     );
     const messages = buildEmailPrompt(context, normalizedGuidance);
     const draft = await generateEmailDraft(context, messages);
@@ -126,6 +128,7 @@ export async function generateEmailDraftAction(
 export async function regenerateEmailDraftAction(
   emailDraftId: string,
   additionalGuidance?: string,
+  personaId?: string | null,
 ): Promise<GenerateEmailDraftActionResult> {
   const normalizedGuidance = additionalGuidance?.trim() || null;
   if (
@@ -143,6 +146,7 @@ export async function regenerateEmailDraftAction(
     const { context, draft: existing } = await loadExistingEmailDraftContext(
       emailDraftId,
       user.id,
+      { personaId },
     );
     let messages: AiMessage[];
     if (existing.kind === "INITIAL") {

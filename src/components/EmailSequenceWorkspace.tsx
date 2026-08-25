@@ -78,6 +78,13 @@ export function EmailSequenceWorkspace({
   mailboxConnection,
   dailySendUsage,
   mode,
+  personaOptions = [],
+  resolvedPersonaId = null,
+  resolvedPersonaName = null,
+  usedCampaignFallback = false,
+  personalizationTier = "THIN",
+  personalizationLabel = "Persona and product only",
+  personalizationDetail = "No usable company or contact research.",
 }: {
   campaignContactId: string;
   contactName: string;
@@ -97,6 +104,13 @@ export function EmailSequenceWorkspace({
     limit: number;
   };
   mode: "EMAILS" | "SEND";
+  personaOptions?: Array<{ id: string; name: string }>;
+  resolvedPersonaId?: string | null;
+  resolvedPersonaName?: string | null;
+  usedCampaignFallback?: boolean;
+  personalizationTier?: "BEST" | "COMPANY" | "THIN";
+  personalizationLabel?: string;
+  personalizationDetail?: string;
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState(initialDrafts);
@@ -110,6 +124,9 @@ export function EmailSequenceWorkspace({
   const [replyText, setReplyText] = useState("");
   const [showReplyBox, setShowReplyBox] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [selectedPersonaId, setSelectedPersonaId] = useState(
+    resolvedPersonaId ?? "",
+  );
   const latest = drafts.at(-1) ?? null;
   const selected =
     drafts.find((draft) => draft.id === selectedId) ?? latest ?? null;
@@ -444,12 +461,69 @@ export function EmailSequenceWorkspace({
           </div>
         ) : null}
 
+        <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+          <div data-testid="personalization-tier">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Personalization
+            </p>
+            <p className="mt-1 text-sm font-medium text-slate-900">
+              {personalizationLabel}
+              <span className="ml-2 font-normal text-slate-500">
+                ({personalizationTier === "BEST"
+                  ? "role and company"
+                  : personalizationTier === "COMPANY"
+                    ? "company motion"
+                    : "generic"})
+              </span>
+            </p>
+            <p className="mt-1 text-xs text-slate-600">{personalizationDetail}</p>
+          </div>
+          <div data-testid="resolved-persona">
+            <label className="block text-sm">
+              <span className="font-medium text-slate-700">Persona for this email</span>
+              {usedCampaignFallback ? (
+                <span className="mt-1 block text-xs text-amber-800">
+                  Using campaign persona
+                  {resolvedPersonaName ? ` (${resolvedPersonaName})` : ""} —
+                  no matched persona on this contact.
+                </span>
+              ) : resolvedPersonaName ? (
+                <span className="mt-1 block text-xs text-slate-500">
+                  Matched persona: {resolvedPersonaName}. Change before generating
+                  if needed.
+                </span>
+              ) : null}
+              <select
+                value={selectedPersonaId}
+                onChange={(event) => setSelectedPersonaId(event.target.value)}
+                disabled={pending || personaOptions.length === 0}
+                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+              >
+                {personaOptions.length === 0 ? (
+                  <option value="">No personas available</option>
+                ) : null}
+                {personaOptions.map((persona) => (
+                  <option key={persona.id} value={persona.id}>
+                    {persona.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
         {!selected ? (
           <button
             type="button"
-            disabled={pending}
+            disabled={pending || !selectedPersonaId}
             onClick={() =>
-              run(() => generateEmailDraftAction(campaignContactId))
+              run(() =>
+                generateEmailDraftAction(
+                  campaignContactId,
+                  undefined,
+                  selectedPersonaId || null,
+                ),
+              )
             }
             className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
           >
@@ -561,6 +635,7 @@ export function EmailSequenceWorkspace({
                         regenerateEmailDraftAction(
                           selected.id,
                           regenerationGuidance,
+                          selectedPersonaId || null,
                         ),
                       )
                     }
