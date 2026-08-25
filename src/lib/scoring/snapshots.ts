@@ -1,4 +1,10 @@
-import type { Icp, IcpCriterion, Persona, PersonaCriterion, Product } from "@prisma/client";
+import type {
+  Icp,
+  IcpCriterion,
+  Persona,
+  PersonaCriterion,
+  Product,
+} from "@prisma/client";
 import type {
   CriterionSnapshot,
   CriterionDataTypeValue,
@@ -48,11 +54,10 @@ export function snapshotCriterionRow(
     sortOrder: row.sortOrder,
   };
   if ("evidenceClass" in row && row.evidenceClass) {
-    base.evidenceClass = row.evidenceClass as CriterionSnapshot["evidenceClass"];
+    base.evidenceClass =
+      row.evidenceClass as CriterionSnapshot["evidenceClass"];
     base.evidenceClassLocked =
-      "evidenceClassLocked" in row
-        ? Boolean(row.evidenceClassLocked)
-        : false;
+      "evidenceClassLocked" in row ? Boolean(row.evidenceClassLocked) : false;
     base.targetedSearchDecision =
       "targetedSearchDecision" in row
         ? (row.targetedSearchDecision as CriterionSnapshot["targetedSearchDecision"])
@@ -65,6 +70,12 @@ export function snapshotCriterionRow(
       "targetedSearchDecidedAt" in row && row.targetedSearchDecidedAt
         ? row.targetedSearchDecidedAt.toISOString()
         : null;
+    if ("tier" in row && row.tier) {
+      base.tier = row.tier as CriterionSnapshot["tier"];
+    }
+    if ("isMandatory" in row) {
+      base.isMandatory = Boolean(row.isMandatory);
+    }
   }
   if ("exclusionTestability" in row) {
     base.exclusionTestability =

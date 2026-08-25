@@ -192,6 +192,6 @@ describe("persona exclusion evaluation", () => {
   it("bumps scoring versions with persona exclusion behavior", () => {
     expect(SCORING_PROMPT_VERSION).toBe("4");
     expect(SCORING_LOGIC_VERSION).toBe("5");
-    expect(SCORING_LOGIC_VERSION_CRITERIA).toBe("4");
+    expect(SCORING_LOGIC_VERSION_CRITERIA).toBe("5");
   });
 });

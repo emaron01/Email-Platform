@@ -659,8 +659,8 @@ describe("ICP interpretation prose + definition isolation", () => {
 });
 
 describe("prompt version + UI seams", () => {
-  it("ICP interpretation prompt version is 3 and asserted in prompt builder", () => {
-    expect(ICP_INTERPRETATION_PROMPT_VERSION).toBe("3");
+  it("ICP interpretation prompt version is 4 and asserted in prompt builder", () => {
+    expect(ICP_INTERPRETATION_PROMPT_VERSION).toBe("4");
     const icp = readFileSync("src/lib/interpretation/icp.ts", "utf8");
     expect(icp).toContain("TARGETED_SEARCH");
     expect(icp).toContain("Uses Salesforce or HubSpot");
@@ -668,7 +668,7 @@ describe("prompt version + UI seams", () => {
     expect(icp).toContain("understoodSummary");
     expect(icp).not.toMatch(/data:\s*\{[\s\S]*definition:/);
     const types = readFileSync("src/lib/criteria/types.ts", "utf8");
-    expect(types).toContain('ICP_INTERPRETATION_PROMPT_VERSION = "3"');
+    expect(types).toContain('ICP_INTERPRETATION_PROMPT_VERSION = "4"');
   });
 
   it("criteria review UI surfaces summary, targeted section, and decisions", () => {

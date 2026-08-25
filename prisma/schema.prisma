@@ -241,6 +241,12 @@ enum CriterionEvidenceClass {
   SEMANTIC
 }
 
+/// Whether an ICP criterion defines a fit (PRIMARY) or is only an upside signal (SECONDARY).
+enum IcpCriterionTier {
+  PRIMARY
+  SECONDARY
+}
+
 /// User decision for TARGETED_SEARCH criteria before they are considered approved.
 enum TargetedSearchDecision {
   /// Confirm when found; never penalize when not found (recommended).
@@ -839,6 +845,10 @@ model IcpCriterion {
   confidence                        ResearchConfidence?
   /// Where evidence is expected; app owns default (missing/unrecognized → TARGETED_SEARCH).
   evidenceClass                     CriterionEvidenceClass  @default(TARGETED_SEARCH)
+  /// PRIMARY counts toward ICP fit; SECONDARY is an upside signal only.
+  tier                              IcpCriterionTier        @default(PRIMARY)
+  /// PRIMARY only. Confirmed failure disqualifies; unresolved is never a failure.
+  isMandatory                       Boolean                 @default(false)
   /// When true, reinterpret preserves this evidenceClass even if the AI proposes another.
   evidenceClassLocked               Boolean                 @default(false)
   /// Required for TARGETED_SEARCH before the criterion is considered approved for scoring setup.
@@ -861,6 +871,7 @@ model IcpCriterion {
   @@index([organizationId, icpId])
   @@index([organizationId, icpId, sortOrder])
   @@index([organizationId, icpId, evidenceClass])
+  @@index([organizationId, icpId, tier])
 }
 
 model Persona {

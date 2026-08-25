@@ -18,6 +18,11 @@ import {
   inferEvidenceClassFromCriterion,
   normalizeEvidenceClass,
 } from "@/lib/criteria/evidence-class";
+import {
+  coerceIsMandatory,
+  normalizeIcpCriterionTier,
+  resolveProposedIcpCriterionTier,
+} from "@/lib/criteria/tier";
 import { normalizeInOperatorValues } from "@/lib/criteria/multi-value";
 import { planCriterionReinterpretation } from "@/lib/criteria/merge";
 import {
@@ -56,6 +61,8 @@ function criterionRowToSnapshot(row: IcpCriterion): CriterionSnapshot {
     manuallyEdited: row.manuallyEdited,
     evidenceClass: row.evidenceClass,
     evidenceClassLocked: row.evidenceClassLocked,
+    tier: row.tier,
+    isMandatory: row.isMandatory,
     targetedSearchDecision: row.targetedSearchDecision,
     targetedSearchDecisionFingerprint: row.targetedSearchDecisionFingerprint,
     targetedSearchDecidedAt: row.targetedSearchDecidedAt?.toISOString() ?? null,
@@ -96,14 +103,23 @@ RULES:
    - "Owns 25+ buildings" → TARGETED_SEARCH
    - "Currently uses [competitor product]" → TARGETED_SEARCH
    - "Sells complex multi-stakeholder deals" → SEMANTIC
-8. Also return a short plain-language read-back:
+8. Assign tier using these definitions. The user may later change the assignment.
+    - PRIMARY: firmographics that define the customer (industry, size, revenue, business model, geography). Counts toward ICP fit.
+    - SECONDARY: tooling, tech stack, timing signals, initiatives in flight. Upside only — never a requirement.
+    Worked examples:
+    - "Industry is X" → PRIMARY
+    - "100+ employees" → PRIMARY
+    - "Uses Salesforce or HubSpot" → SECONDARY
+    - "Currently replacing VMware" → SECONDARY
+9. NEVER set a criterion as mandatory. Mandatory is a deliberate user choice after interpretation.
+10. Also return a short plain-language read-back:
    - understoodSummary: 2–4 sentences describing what you understood from the user's definition.
      Do not invent requirements. Do not rewrite their narrative as if it were your text.
    - undetermined: a list of specific facts or constraints named in the definition that you
      could not turn into a reliable criterion from the available wording (empty array if none).
-9. NEVER return a rewritten definition. The user's narrative is authoritative and is stored
-   separately — you only produce criteria plus this read-back.
-10. Return JSON matching the schema only.`;
+11. NEVER return a rewritten definition. The user's narrative is authoritative and is stored
+     separately — you only produce criteria plus this read-back.
+12. Return JSON matching the schema only.`;
 
   const user = JSON.stringify({
     product: {
@@ -117,6 +133,8 @@ RULES:
       type: c.criterionType,
       operator: c.operator,
       evidenceClass: c.evidenceClass ?? null,
+      tier: c.tier ?? null,
+      isMandatory: false,
       manuallyEdited: c.manuallyEdited ?? false,
       evidenceClassLocked: c.evidenceClassLocked ?? false,
     })),
@@ -139,6 +157,7 @@ RULES:
           isRequired: "boolean",
           isDisqualifier: "boolean",
           evidenceClass: "LIST_DATA|COMPANY_RESEARCH|TARGETED_SEARCH|SEMANTIC",
+          tier: "PRIMARY|SECONDARY",
           researchGuidance: "string|null",
           sortOrder: "number",
         },
@@ -186,6 +205,8 @@ export async function updateIcpCriterionManual(input: {
       | "sortOrder"
       | "evidenceClass"
       | "evidenceClassLocked"
+      | "tier"
+      | "isMandatory"
       | "targetedSearchDecision"
       | "targetedSearchDecisionFingerprint"
       | "targetedSearchDecidedAt"
@@ -227,6 +248,27 @@ export async function updateIcpCriterionManual(input: {
     });
     if (!cap.ok) throw new TenantError(cap.message);
   }
+
+  const nextTier =
+    input.data.tier !== undefined
+      ? (normalizeIcpCriterionTier(input.data.tier) ??
+        resolveProposedIcpCriterionTier({
+          name: input.data.name ?? existing.name,
+          criterionType: input.data.criterionType ?? existing.criterionType,
+          description:
+            input.data.description !== undefined
+              ? input.data.description
+              : existing.description,
+          evidenceClass: nextEvidenceClass,
+          isDisqualifier: input.data.isDisqualifier ?? existing.isDisqualifier,
+        }))
+      : existing.tier;
+  const nextMandatory = coerceIsMandatory(
+    nextTier,
+    input.data.isMandatory !== undefined
+      ? input.data.isMandatory
+      : existing.isMandatory,
+  );
 
   const updated = await prisma.icpCriterion.update({
     where: { id: existing.id },
@@ -271,6 +313,11 @@ export async function updateIcpCriterionManual(input: {
       evidenceClassLocked:
         input.data.evidenceClassLocked ??
         (input.data.evidenceClass !== undefined ? true : undefined),
+      tier: input.data.tier !== undefined ? nextTier : undefined,
+      isMandatory:
+        input.data.tier !== undefined || input.data.isMandatory !== undefined
+          ? nextMandatory
+          : undefined,
       targetedSearchDecision: input.data.targetedSearchDecision,
       targetedSearchDecisionFingerprint:
         input.data.targetedSearchDecisionFingerprint,
@@ -329,6 +376,14 @@ function draftToCreateData(
         description: d.description,
       }),
   );
+  const tier = resolveProposedIcpCriterionTier({
+    proposedTier: d.tier,
+    name: d.name,
+    criterionType: d.criterionType,
+    description: d.description,
+    evidenceClass,
+    isDisqualifier: d.isDisqualifier,
+  });
   return {
     organizationId,
     icpId,
@@ -347,6 +402,8 @@ function draftToCreateData(
     researchGuidance: d.researchGuidance ?? null,
     evidenceClass,
     evidenceClassLocked: d.evidenceClassLocked ?? false,
+    tier,
+    isMandatory: coerceIsMandatory(tier, false),
     source:
       (d.source as "AI_INTERPRETED" | "MANUAL" | "MIGRATED_FROM_LEGACY") ??
       "AI_INTERPRETED",
@@ -439,6 +496,15 @@ export async function interpretIcpDefinition(input: {
         targetValue: normalized.targetValue,
         allowedValues: normalized.allowedValues,
         evidenceClass,
+        tier: resolveProposedIcpCriterionTier({
+          proposedTier: c.tier,
+          name: c.name,
+          criterionType: c.criterionType,
+          description: c.description,
+          evidenceClass,
+          isDisqualifier: c.isDisqualifier,
+        }),
+        isMandatory: false,
         source: "AI_INTERPRETED",
       };
       return applyLockedEvidenceClass(draft, existingSnapshots);

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CRITERION_EVIDENCE_CLASSES } from "@/lib/criteria/evidence-class";
+import { ICP_CRITERION_TIERS } from "@/lib/criteria/tier";
 import {
   CRITERION_DATA_TYPES,
   CRITERION_IMPORTANCE,
@@ -22,6 +23,8 @@ export const interpretedCriterionSchema = z.object({
   researchGuidance: z.string().nullable().optional(),
   /** AI proposal; app normalizes missing/unrecognized to TARGETED_SEARCH. */
   evidenceClass: z.enum(CRITERION_EVIDENCE_CLASSES).optional(),
+  /** AI proposal; app infers from firmographic vs signal rules when omitted. Never propose isMandatory. */
+  tier: z.enum(ICP_CRITERION_TIERS).optional(),
   sortOrder: z.number().int().nonnegative(),
 });
 

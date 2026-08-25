@@ -1,5 +1,6 @@
 import type { CriterionEvidenceClassValue } from "@/lib/criteria/evidence-class";
 import type { TargetedSearchDecisionValue } from "@/lib/criteria/evidence-class";
+import type { IcpCriterionTierValue } from "@/lib/criteria/tier";
 import type { ExclusionTestabilityValue } from "@/lib/persona-research/contract";
 
 export const CRITERION_DATA_TYPES = [
@@ -64,6 +65,10 @@ export type CriterionSnapshot = {
   /** ICP evidence class; persona criteria omit this. */
   evidenceClass?: CriterionEvidenceClassValue;
   evidenceClassLocked?: boolean;
+  /** ICP only. Missing on historical snapshots → PRIMARY. */
+  tier?: IcpCriterionTierValue;
+  /** ICP PRIMARY only. Missing on historical snapshots → false. */
+  isMandatory?: boolean;
   targetedSearchDecision?: TargetedSearchDecisionValue | null;
   targetedSearchDecisionFingerprint?: string | null;
   targetedSearchDecidedAt?: string | null;
@@ -118,7 +123,7 @@ function stringifyValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export const ICP_INTERPRETATION_PROMPT_VERSION = "3";
+export const ICP_INTERPRETATION_PROMPT_VERSION = "4";
 export const PERSONA_INTERPRETATION_PROMPT_VERSION = "2";
 export const CONTACT_RESEARCH_PROMPT_VERSION = "1";
-export const SCORING_LOGIC_VERSION_CRITERIA = "4";
+export const SCORING_LOGIC_VERSION_CRITERIA = "5";
