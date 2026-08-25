@@ -121,4 +121,21 @@ describe("scoring run UI seam", () => {
     expect(formSrc).toContain("ALL_PERSONAS_VALUE");
     expect(formSrc).toContain("state.message");
   });
+
+  it("score report hosts unmatched-title review", () => {
+    const pageSrc = readFileSync(
+      "src/app/(app)/scoring/[runId]/page.tsx",
+      "utf8",
+    );
+    const reviewSrc = readFileSync(
+      "src/components/TitleSuggestionReview.tsx",
+      "utf8",
+    );
+    expect(pageSrc).toContain("TitleSuggestionReview");
+    expect(pageSrc).toContain("Unmatched titles");
+    expect(reviewSrc).toContain("resolveTitleSuggestionAction");
+    expect(reviewSrc).toContain("Approve");
+    expect(reviewSrc).toContain("Dismiss");
+    expect(reviewSrc).toContain("Assign");
+  });
 });

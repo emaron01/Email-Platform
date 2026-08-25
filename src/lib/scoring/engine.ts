@@ -5,6 +5,7 @@ import { scoreSingleContact } from "@/lib/scoring/score-contact";
 import { resolvePersonaSnapshots } from "@/lib/scoring/title-fit";
 import type {
   IcpSnapshot,
+  PersonaSnapshot,
   ProductSnapshot,
 } from "@/lib/scoring/types";
 import { prisma } from "@/lib/prisma";
@@ -45,6 +46,15 @@ async function mapPool<T, R>(
 function asSnapshot<T>(value: unknown): T {
   return value as T;
 }
+
+export type RunScoringOptions = {
+  rescoreFailedOnly?: boolean;
+  forceRescore?: boolean;
+  /** Score only these rows (used after a title-suggestion approval). */
+  contactScoreIds?: string[];
+  /** Optional persona override; defaults to the run snapshots. */
+  personas?: PersonaSnapshot[];
+};
 
 export type RunScoringSummary = {
   totalContacts: number;
@@ -130,7 +140,7 @@ export async function getScoringReadiness(scoringRunId: string): Promise<{
 
 export async function runScoringForRun(
   scoringRunId: string,
-  options?: { rescoreFailedOnly?: boolean; forceRescore?: boolean },
+  options?: RunScoringOptions,
 ): Promise<RunScoringSummary> {
   const organizationId = await requireOrganizationId();
 
@@ -146,14 +156,19 @@ export async function runScoringForRun(
 
   const product = asSnapshot<ProductSnapshot>(run.productSnapshot);
   const icp = asSnapshot<IcpSnapshot>(run.icpSnapshot);
-  const personas = resolvePersonaSnapshots({
-    personaSnapshot: run.personaSnapshot,
-    personaSnapshots: run.personaSnapshots,
-  });
+  const personas =
+    options?.personas && options.personas.length > 0
+      ? options.personas
+      : resolvePersonaSnapshots({
+          personaSnapshot: run.personaSnapshot,
+          personaSnapshots: run.personaSnapshots,
+        });
   const persona = personas[0];
   if (!persona) {
     throw new TenantError("Scoring run is missing a persona snapshot.");
   }
+
+  const subset = Boolean(options?.contactScoreIds?.length);
 
   await prisma.scoringRun.update({
     where: { id: run.id },
@@ -166,7 +181,11 @@ export async function runScoringForRun(
     orderBy: { createdAt: "asc" },
   });
 
+  const allowedIds = options?.contactScoreIds
+    ? new Set(options.contactScoreIds)
+    : null;
   const targets = scores.filter((row) => {
+    if (allowedIds) return allowedIds.has(row.id);
     if (options?.forceRescore) return true;
     if (options?.rescoreFailedOnly) return row.scoringStatus === "FAILED";
     return row.scoringStatus !== "COMPLETED";
@@ -218,6 +237,19 @@ export async function runScoringForRun(
       completedAt: new Date(),
     },
   });
+
+  if (!subset && personas.length > 1) {
+    try {
+      const { generateTitleSuggestionsForRun } =
+        await import("@/lib/scoring/title-suggestions");
+      await generateTitleSuggestionsForRun({
+        organizationId,
+        scoringRunId: run.id,
+      });
+    } catch {
+      // Scoring results are already persisted. Suggestion failures are metered.
+    }
+  }
 
   return {
     totalContacts: refreshed.length,

@@ -13,6 +13,7 @@ import { productAiResponseSchema } from "@/lib/product-research/contract";
 import { companyResearchAiResultSchema } from "@/lib/research/assessment";
 import { productSourceDiscoverySchema } from "@/lib/research/source-discovery-contract";
 import { aiScoringAssessmentSchema } from "@/lib/scoring/assessment";
+import { titleSuggestionAiResultSchema } from "@/lib/scoring/title-suggestion-contract";
 
 export type StructuredOutputSchemaEntry = {
   schemaName: string;
@@ -29,7 +30,8 @@ export type StructuredOutputSchemaEntry = {
     | "EMAIL_DRAFT_CREATED"
     | "CAMPAIGN_OFFER_VALIDATED"
     | "EMAIL_REPLY_CLASSIFIED"
-    | "PERSONA_WEB_SEARCH")[];
+    | "PERSONA_WEB_SEARCH"
+    | "TITLE_SUGGESTION")[];
 };
 
 /**
@@ -52,6 +54,11 @@ export const STRUCTURED_OUTPUT_SCHEMAS = {
     schemaName: "AiScoringAssessment",
     schema: aiScoringAssessmentSchema,
     usageOperations: ["CONTACT_SCORING"],
+  },
+  titleSuggestion: {
+    schemaName: "title_suggestion",
+    schema: titleSuggestionAiResultSchema,
+    usageOperations: ["TITLE_SUGGESTION"],
   },
   icpInterpretation: {
     schemaName: "icp_interpretation",

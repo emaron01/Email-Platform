@@ -339,6 +339,8 @@ export async function interpretPersonaDefinition(input: {
           interpretationVersion: newVersion,
           interpretationPromptVersion: PERSONA_INTERPRETATION_PROMPT_VERSION,
           lastInterpretedAt: now,
+          // Never rewrite targetTitles. Rep-approved titles live on Persona and
+          // are protected by manuallyEditedFields on research re-approval.
         },
       });
     });

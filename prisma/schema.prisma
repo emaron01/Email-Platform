@@ -100,6 +100,12 @@ enum ScoringRunStatus {
   FAILED
 }
 
+enum TitleSuggestionStatus {
+  PENDING
+  APPROVED
+  DISMISSED
+}
+
 enum ContactScoringStatus {
   PENDING
   IN_PROGRESS
@@ -187,6 +193,7 @@ enum UsageOperation {
   EMAIL_DRAFT_SENT
   EMAIL_REPLY_CLASSIFIED
   EMAIL_DEEPLINK_OPENED
+  TITLE_SUGGESTION
 }
 
 enum CriterionDataType {
@@ -403,6 +410,8 @@ model Organization {
   personaCriteria          PersonaCriterion[]
   contactScores            ContactScore[]
   scoringRuns              ScoringRun[]
+  titleSuggestions         TitleSuggestion[]
+  productTitleDismissals   ProductTitleDismissal[]
   campaigns                Campaign[]
   campaignContacts         CampaignContact[]
   emailDrafts              EmailDraft[]
@@ -461,6 +470,8 @@ model User {
   mailboxConnections       MailboxConnection[]
   mailboxOAuthStates       MailboxOAuthState[]
   emailSendRecords         EmailSendRecord[]
+  titleSuggestionsResolved TitleSuggestion[]             @relation("TitleSuggestionResolvedBy")
+  productTitleDismissals   ProductTitleDismissal[]       @relation("ProductTitleDismissedBy")
 
   @@index([platformRole])
   @@index([activeOrganizationId])
@@ -747,6 +758,8 @@ model Product {
   personas               Persona[]
   campaigns              Campaign[]
   scoringRuns            ScoringRun[]
+  titleSuggestions       TitleSuggestion[]
+  titleDismissals        ProductTitleDismissal[]
   sources                ProductSource[]
   evidenceBundles        ProductEvidenceBundle[]
   setupRuns              ProductSetupRun[]
@@ -1367,6 +1380,7 @@ model ScoringRun {
   persona                Persona?                      @relation(fields: [personaId], references: [id], onDelete: Restrict)
   scores                 ContactScore[]
   qualificationOverrides QualificationBucketOverride[]
+  titleSuggestions       TitleSuggestion[]
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
@@ -1376,6 +1390,57 @@ model ScoringRun {
   @@index([productId])
   @@index([icpId])
   @@index([personaId])
+}
+
+/// Distinct unmatched job titles from an all-personas scoring run, with an optional AI proposal.
+model TitleSuggestion {
+  id                  String                 @id @default(cuid())
+  organizationId      String
+  scoringRunId        String
+  productId           String
+  unmatchedTitle      String
+  normalizedTitle     String
+  contactCount        Int
+  proposedPersonaId   String?
+  proposedPersonaName String?
+  confidence          String?
+  reasoning           String?
+  status              TitleSuggestionStatus  @default(PENDING)
+  resolvedPersonaId   String?
+  resolvedAt          DateTime?
+  resolvedById        String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  scoringRun   ScoringRun   @relation(fields: [scoringRunId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  resolvedBy   User?        @relation("TitleSuggestionResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@unique([scoringRunId, normalizedTitle])
+  @@index([organizationId])
+  @@index([organizationId, scoringRunId])
+  @@index([organizationId, productId, status])
+  @@index([productId])
+}
+
+/// Product-level dismissed titles so the same unmatched title is not re-proposed.
+model ProductTitleDismissal {
+  id              String   @id @default(cuid())
+  organizationId  String
+  productId       String
+  normalizedTitle String
+  unmatchedTitle  String
+  dismissedById   String?
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  dismissedBy  User?        @relation("ProductTitleDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, productId, normalizedTitle])
+  @@index([organizationId])
+  @@index([productId])
 }
 
 model ContactScore {

@@ -3,10 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AiConfigError } from "@/lib/ai/errors";
+import { getCurrentUser } from "@/lib/org/authz";
 import { runScoringForRun } from "@/lib/scoring/engine";
 import { ALL_PERSONAS_VALUE } from "@/lib/scoring/title-fit";
+import { resolveTitleSuggestion } from "@/lib/scoring/title-suggestions";
 import { createScoringRun } from "@/lib/tenant/data";
-import { TenantError } from "@/lib/tenant/getCurrentOrganization";
+import {
+  requireOrganizationId,
+  TenantError,
+} from "@/lib/tenant/getCurrentOrganization";
 
 function requiredString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -134,6 +139,56 @@ export async function scoreContactsAction(
     }
     const message =
       error instanceof Error ? error.message : "Unable to score contacts.";
+    return { ok: false, message };
+  }
+}
+
+export async function resolveTitleSuggestionAction(
+  formData: FormData,
+): Promise<{
+  ok: boolean;
+  message: string;
+  scored?: number;
+  failed?: number;
+}> {
+  const suggestionId = requiredString(formData, "suggestionId");
+  const scoringRunId = requiredString(formData, "scoringRunId");
+  const actionRaw = requiredString(formData, "action");
+  const personaId = requiredString(formData, "personaId");
+  const action =
+    actionRaw === "assign"
+      ? "assign"
+      : actionRaw === "dismiss"
+        ? "dismiss"
+        : "approve";
+
+  if (!suggestionId || !scoringRunId) {
+    return { ok: false, message: "Title suggestion is required." };
+  }
+
+  try {
+    const organizationId = await requireOrganizationId();
+    const user = await getCurrentUser();
+    const result = await resolveTitleSuggestion({
+      organizationId,
+      userId: user?.id ?? null,
+      suggestionId,
+      action,
+      personaId: personaId || null,
+    });
+    revalidatePath(`/scoring/${scoringRunId}`);
+    return result;
+  } catch (error) {
+    if (error instanceof AiConfigError) {
+      return { ok: false, message: error.message };
+    }
+    if (error instanceof TenantError) {
+      return { ok: false, message: error.message };
+    }
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to update the title suggestion.";
     return { ok: false, message };
   }
 }

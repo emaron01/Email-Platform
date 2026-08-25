@@ -4,6 +4,7 @@ import type { ScoreLabel, ResearchStatus } from "@prisma/client";
 import { ResearchRunPanel } from "@/components/ResearchRunPanel";
 import { ScoreContactsPanel } from "@/components/ScoreContactsPanel";
 import { ScoreReportClient } from "@/components/ScoreReportClient";
+import { TitleSuggestionReview } from "@/components/TitleSuggestionReview";
 import {
   PageHeader,
   Panel,
@@ -18,6 +19,7 @@ import {
 } from "@/lib/tenant/data";
 import { getCompaniesNeedingResearchForScoringRun } from "@/lib/tenant/companies";
 import { getScoringReadiness } from "@/lib/scoring/engine";
+import { listTitleSuggestionsForRun } from "@/lib/scoring/title-suggestions";
 import { isResearchAiConfigured } from "@/lib/ai/config";
 import {
   getCurrentOrganization,
@@ -80,20 +82,24 @@ export default async function ScoringReportPage({
     ? Number.parseInt(query.minOverallScore, 10)
     : null;
 
-  const [rows, researchPlan, scoringReadiness, personas] = await Promise.all([
-    getScoreReportRows(runId, {
-      scoreLabel: (query.scoreLabel as ScoreLabel | undefined) || "",
-      researchStatus:
-        (query.researchStatus as ResearchStatus | undefined) || "",
-      company: query.company || "",
-      minOverallScore: Number.isFinite(minOverallScore) ? minOverallScore : null,
-      sort,
-      sortDir,
-    }),
-    getCompaniesNeedingResearchForScoringRun(runId),
-    getScoringReadiness(runId),
-    listPersonas(run.productId),
-  ]);
+  const [rows, researchPlan, scoringReadiness, personas, titleSuggestions] =
+    await Promise.all([
+      getScoreReportRows(runId, {
+        scoreLabel: (query.scoreLabel as ScoreLabel | undefined) || "",
+        researchStatus:
+          (query.researchStatus as ResearchStatus | undefined) || "",
+        company: query.company || "",
+        minOverallScore: Number.isFinite(minOverallScore)
+          ? minOverallScore
+          : null,
+        sort,
+        sortDir,
+      }),
+      getCompaniesNeedingResearchForScoringRun(runId),
+      getScoringReadiness(runId),
+      listPersonas(run.productId),
+      listTitleSuggestionsForRun(runId),
+    ]);
 
   return (
     <div>
@@ -151,6 +157,33 @@ export default async function ScoringReportPage({
           />
         </Panel>
       </div>
+
+      {titleSuggestions.some((row) => row.status === "PENDING") ? (
+        <div className="mb-6">
+          <Panel
+            title="Unmatched titles"
+            description="Review titles that did not match a persona. Approvals are saved on the persona so the next list can match them automatically."
+          >
+            <TitleSuggestionReview
+              runId={run.id}
+              personas={personas.map((persona) => ({
+                id: persona.id,
+                name: persona.name,
+              }))}
+              suggestions={titleSuggestions.map((row) => ({
+                id: row.id,
+                unmatchedTitle: row.unmatchedTitle,
+                contactCount: row.contactCount,
+                proposedPersonaId: row.proposedPersonaId,
+                proposedPersonaName: row.proposedPersonaName,
+                confidence: row.confidence,
+                reasoning: row.reasoning,
+                status: row.status,
+              }))}
+            />
+          </Panel>
+        </div>
+      ) : null}
 
       <Panel title="Filters" description="Simple tenant-scoped filters for this scoring run.">
         <form className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
