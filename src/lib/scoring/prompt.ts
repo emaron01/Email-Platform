@@ -18,7 +18,9 @@ CRITICAL RULES:
 - Do NOT invent pain points, technologies, AOV, or market claims.
 - Do NOT return numeric 0–100 scores. Return qualitative dimension assessments only.
 - Be concise and evidence-based. No sales fluff.
-- potentialDisqualifiers must only cite explicit ICP negative/disqualifying criteria with supporting evidence from the provided data. If unsure, omit.
+- potentialDisqualifiers may only cite an explicit ICP negative criterion or an explicit Persona EVIDENCE_TESTABLE exclusion, with supporting evidence from the provided data.
+- A Persona EVIDENCE_TESTABLE exclusion requires sufficiently confident ContactResearch evidence. Missing evidence is UNKNOWN: omit the disqualifier and do not penalize persona fit.
+- Never propose a TITLE_TESTABLE exclusion; the application evaluates those deterministically.
 - Return a single JSON object matching the required schema.`;
 
   const user = JSON.stringify(
@@ -50,7 +52,8 @@ CRITICAL RULES:
         fitRisks: ["string"],
         potentialDisqualifiers: [
           {
-            criterion: "string matching an ICP negative signal",
+            criterion:
+              "string matching an ICP negative signal or Persona EVIDENCE_TESTABLE exclusion",
             evidence: ["string"],
             confidence: "HIGH|MEDIUM|LOW",
           },

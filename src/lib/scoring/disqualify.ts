@@ -4,13 +4,16 @@ import {
   type ConfidenceValue,
 } from "@/lib/scoring/config";
 import type { PotentialDisqualifier } from "@/lib/scoring/assessment";
-import type { IcpSnapshot } from "@/lib/scoring/types";
+import type { ScoringContactResearchInput } from "@/lib/scoring/payload";
+import type { IcpSnapshot, PersonaSnapshot } from "@/lib/scoring/types";
 
 export type ResolvedDisqualifier = {
   criterion: string;
   evidence: string[];
   confidence: ConfidenceValue;
-  matchedIcpSignal: string;
+  scope: "ICP" | "PERSONA";
+  matchedIcpSignal?: string;
+  matchedPersonaCriterion?: string;
 };
 
 function confidenceRank(value: ConfidenceValue): number {
@@ -29,12 +32,36 @@ function normalize(text: string): string {
 export function resolveDisqualifiers(
   proposed: PotentialDisqualifier[],
   icp: IcpSnapshot,
+  options?: {
+    persona?: PersonaSnapshot;
+    contactResearch?: ScoringContactResearchInput;
+  },
 ): ResolvedDisqualifier[] {
-  const negatives = (icp.negativeSignals ?? [])
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const candidates: Array<{
+    scope: "ICP" | "PERSONA";
+    criterion: string;
+  }> = (icp.negativeSignals ?? [])
+    .map((criterion) => ({ scope: "ICP" as const, criterion: criterion.trim() }))
+    .filter((item) => Boolean(item.criterion));
+  const contactResearch = options?.contactResearch;
+  const personaEvidenceAvailable =
+    contactResearch != null &&
+    (contactResearch.status === "COMPLETED" ||
+      contactResearch.status === "PARTIAL") &&
+    (contactResearch.confidence === "HIGH" ||
+      contactResearch.confidence === "MEDIUM");
+  if (personaEvidenceAvailable) {
+    for (const criterion of options?.persona?.criteria ?? []) {
+      if (
+        criterion.isDisqualifier &&
+        criterion.exclusionTestability === "EVIDENCE_TESTABLE"
+      ) {
+        candidates.push({ scope: "PERSONA", criterion: criterion.name });
+      }
+    }
+  }
 
-  if (negatives.length === 0) return [];
+  if (candidates.length === 0) return [];
 
   const minRank = confidenceRank(DISQUALIFIER_MIN_CONFIDENCE);
   const accepted: ResolvedDisqualifier[] = [];
@@ -44,8 +71,8 @@ export function resolveDisqualifiers(
     if (confidenceRank(item.confidence) < minRank) continue;
 
     const criterionNorm = normalize(item.criterion);
-    const matched = negatives.find((signal) => {
-      const signalNorm = normalize(signal);
+    const matched = candidates.find((candidate) => {
+      const signalNorm = normalize(candidate.criterion);
       return (
         criterionNorm.includes(signalNorm) ||
         signalNorm.includes(criterionNorm) ||
@@ -59,7 +86,11 @@ export function resolveDisqualifiers(
       criterion: item.criterion,
       evidence: item.evidence,
       confidence: item.confidence,
-      matchedIcpSignal: matched,
+      scope: matched.scope,
+      matchedIcpSignal:
+        matched.scope === "ICP" ? matched.criterion : undefined,
+      matchedPersonaCriterion:
+        matched.scope === "PERSONA" ? matched.criterion : undefined,
     });
   }
 

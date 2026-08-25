@@ -12,6 +12,7 @@ import {
   type ScoringContactResearchInput,
   type ScoringCompanyResearchInput,
 } from "@/lib/scoring/payload";
+import { evaluatePersonaExclusions } from "@/lib/scoring/persona-exclusions";
 import type {
   IcpSnapshot,
   PersonaSnapshot,
@@ -132,9 +133,6 @@ export async function scoreSingleContact(input: {
   icp: IcpSnapshot;
   persona: PersonaSnapshot;
 }): Promise<ScoreContactResult> {
-  const config = getScoringAiConfig();
-  const provider = getScoringAiProvider();
-
   const scoreRow = await prisma.contactScore.findFirst({
     where: {
       id: input.contactScoreId,
@@ -175,6 +173,15 @@ export async function scoreSingleContact(input: {
       persona: input.persona,
       product: input.product,
     });
+    const titleExclusionConfirmed = evaluatePersonaExclusions({
+      criteria: input.persona.criteria ?? [],
+      title: contact.title,
+      contactResearch: null,
+    }).some(
+      (assessment) =>
+        assessment.testability === "TITLE_TESTABLE" &&
+        assessment.outcome === "CONFIRMED",
+    );
 
     // Progressive contact-role research when persona criteria warrant it.
     let contactResearchRow: {
@@ -188,37 +195,45 @@ export async function scoreSingleContact(input: {
       professionalSignals: unknown;
       negativeRoleSignals: unknown;
     } | null = null;
-    try {
-      const { getResearchPolicy } = await import("@/lib/usage/policy");
-      const { researchContactRole } = await import(
-        "@/lib/contact-research/service"
-      );
-      const policy = await getResearchPolicy(input.organizationId);
-      const cr = await researchContactRole({
-        organizationId: input.organizationId,
-        contactId: contact.id,
-        personaCriteria: input.persona.criteria ?? [],
-        policy: {
-          maxSearchQueriesPerContact: policy.maxSearchQueriesPerContact,
-          maxSourcesPerContact: policy.maxSourcesPerContact,
-          contactResearchFreshnessDays: policy.contactResearchFreshnessDays,
-        },
-      });
-      contactResearchRow = {
-        id: cr.id,
-        researchedAt: cr.researchedAt,
-        status: cr.status,
-        confidence: cr.confidence,
-        roleSummary: cr.roleSummary,
-        responsibilities: cr.responsibilities,
-        ownershipAreas: cr.ownershipAreas,
-        professionalSignals: cr.professionalSignals,
-        negativeRoleSignals: cr.negativeRoleSignals,
-      };
-    } catch {
-      // Contact research failures must not block scoring; leave provenance null.
-      contactResearchRow = null;
+    if (!titleExclusionConfirmed) {
+      try {
+        const { getResearchPolicy } = await import("@/lib/usage/policy");
+        const { researchContactRole } = await import(
+          "@/lib/contact-research/service"
+        );
+        const policy = await getResearchPolicy(input.organizationId);
+        const cr = await researchContactRole({
+          organizationId: input.organizationId,
+          contactId: contact.id,
+          personaCriteria: input.persona.criteria ?? [],
+          policy: {
+            maxSearchQueriesPerContact: policy.maxSearchQueriesPerContact,
+            maxSourcesPerContact: policy.maxSourcesPerContact,
+            contactResearchFreshnessDays: policy.contactResearchFreshnessDays,
+          },
+        });
+        contactResearchRow = {
+          id: cr.id,
+          researchedAt: cr.researchedAt,
+          status: cr.status,
+          confidence: cr.confidence,
+          roleSummary: cr.roleSummary,
+          responsibilities: cr.responsibilities,
+          ownershipAreas: cr.ownershipAreas,
+          professionalSignals: cr.professionalSignals,
+          negativeRoleSignals: cr.negativeRoleSignals,
+        };
+      } catch {
+        // Contact research failures must not block scoring; leave provenance null.
+        contactResearchRow = null;
+      }
     }
+    const contactResearch = toContactResearchInput(contactResearchRow);
+    const personaExclusionAssessments = evaluatePersonaExclusions({
+      criteria: input.persona.criteria ?? [],
+      title: contact.title,
+      contactResearch,
+    });
 
     // Deterministic / asymmetric ICP criterion pre-evaluation.
     const { resolveCompanyActualForCriterion } = await import(
@@ -258,6 +273,102 @@ export async function scoreSingleContact(input: {
       );
     }
 
+    const researchStatus =
+      !latestResearch || latestResearch.status === "NOT_STARTED"
+        ? "NOT_STARTED"
+        : latestResearch.status === "FAILED"
+          ? "FAILED"
+          : latestResearch.status === "COMPLETED" ||
+              latestResearch.status === "PARTIAL"
+            ? "COMPLETED"
+            : "IN_PROGRESS";
+    const confirmedPersonaExclusions = personaExclusionAssessments.filter(
+      (assessment) => assessment.outcome === "CONFIRMED",
+    );
+
+    if (confirmedPersonaExclusions.length > 0) {
+      const disqualifiers = confirmedPersonaExclusions.map((assessment) => ({
+        criterion: assessment.criterion,
+        evidence: assessment.evidence,
+        confidence: assessment.confidence,
+        scope: "PERSONA" as const,
+        matchedPersonaCriterion: assessment.criterion,
+      }));
+      await prisma.contactScore.update({
+        where: { id: scoreRow.id },
+        data: {
+          scoringStatus: "COMPLETED",
+          overallScore: 0,
+          icpScore: null,
+          personaScore: 0,
+          companyScore: null,
+          productRelevanceScore: null,
+          scoreLabel: "DISQUALIFIED",
+          companySummary: latestResearch?.companySummary ?? null,
+          whatTheySell: latestResearch?.whatTheySell ?? null,
+          estimatedAov: latestResearch?.estimatedAov ?? null,
+          aovReasoning: latestResearch?.aovReasoning ?? null,
+          fitStrengths: [],
+          fitRisks: confirmedPersonaExclusions.map(
+            (assessment) => assessment.reasoning,
+          ),
+          disqualifiers,
+          reasoning: confirmedPersonaExclusions
+            .map((assessment) => assessment.reasoning)
+            .join(" "),
+          recommendedAction: "Exclude from this persona.",
+          researchStatus,
+          researchSources: latestResearch?.researchSources ?? undefined,
+          researchedAt: latestResearch?.researchedAt ?? null,
+          companyResearchId: latestResearch?.id ?? null,
+          companyResearchAt: latestResearch?.researchedAt ?? null,
+          contactResearchId: contactResearchRow?.id ?? null,
+          contactResearchAt: contactResearchRow?.researchedAt ?? null,
+          criterionAssessments: [
+            ...criterionAssessments,
+            ...personaExclusionAssessments,
+          ],
+          assessmentData: {
+            dimensions: [],
+            unknownDimensionCount: 0,
+            disqualifiers,
+            criterionAssessments,
+            personaExclusionAssessments,
+            aiSkipped: true,
+            aiSkipReason: "CONFIRMED_PERSONA_EXCLUSION",
+          },
+          aiProvider: null,
+          aiModel: null,
+          aiModelUrlIdentifier: null,
+          promptVersion: null,
+          scoringLogicVersion: SCORING_LOGIC_VERSION,
+          scoredAt: new Date(),
+          scoringError: null,
+        },
+      });
+
+      const user = await getCurrentUser();
+      await recordUsageEvent({
+        organizationId: input.organizationId,
+        userId: user?.id ?? null,
+        category: "SCORING",
+        operation: "CONTACT_SCORING",
+        companyId: company?.id ?? null,
+        contactId: contact.id,
+        scoringRunId: input.scoringRunId,
+        status: "SUCCESS",
+        metadata: {
+          aiSkipped: true,
+          reason: "CONFIRMED_PERSONA_EXCLUSION",
+        },
+      });
+      return {
+        contactScoreId: scoreRow.id,
+        contactId: contact.id,
+        ok: true,
+      };
+    }
+
     const payload = buildScoringPayload({
       contact: {
         firstName: contact.firstName,
@@ -286,13 +397,15 @@ export async function scoreSingleContact(input: {
           }
         : null,
       companyResearch: toResearchInput(latestResearch),
-      contactResearch: toContactResearchInput(contactResearchRow),
+      contactResearch,
       product: input.product,
       icp: input.icp,
       persona: input.persona,
       applicableDimensions: applicable,
     });
 
+    const config = getScoringAiConfig();
+    const provider = getScoringAiProvider();
     const aiResponse = await generateScoringAssessment({
       provider,
       payload,
@@ -303,18 +416,11 @@ export async function scoreSingleContact(input: {
       assessment: aiResponse.data,
       applicable,
       icp: input.icp,
+      persona: input.persona,
+      contactResearch,
+      personaExclusionAssessments,
       criterionEvidenceAssessments: criterionAssessments,
     });
-
-    const researchStatus =
-      !latestResearch || latestResearch.status === "NOT_STARTED"
-        ? "NOT_STARTED"
-        : latestResearch.status === "FAILED"
-          ? "FAILED"
-          : latestResearch.status === "COMPLETED" ||
-              latestResearch.status === "PARTIAL"
-            ? "COMPLETED"
-            : "IN_PROGRESS";
 
     await prisma.contactScore.update({
       where: { id: scoreRow.id },
@@ -342,7 +448,10 @@ export async function scoreSingleContact(input: {
         companyResearchAt: latestResearch?.researchedAt ?? null,
         contactResearchId: contactResearchRow?.id ?? null,
         contactResearchAt: contactResearchRow?.researchedAt ?? null,
-        criterionAssessments,
+        criterionAssessments: [
+          ...criterionAssessments,
+          ...personaExclusionAssessments,
+        ],
         assessmentData: {
           dimensions: calculated.dimensions,
           unknownDimensionCount: calculated.unknownDimensionCount,
@@ -352,6 +461,7 @@ export async function scoreSingleContact(input: {
           researchIncomplete: payload.researchIncomplete,
           researchLowConfidence: payload.researchLowConfidence,
           criterionAssessments,
+          personaExclusionAssessments,
           /** Confirmed vs unverifiable TARGETED_SEARCH outcomes for later qualification UI. */
           targetedSearchOutcomes: criterionAssessments
             .filter((c) => c.evidenceClass === "TARGETED_SEARCH")

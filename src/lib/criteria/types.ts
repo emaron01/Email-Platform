@@ -1,5 +1,6 @@
 import type { CriterionEvidenceClassValue } from "@/lib/criteria/evidence-class";
 import type { TargetedSearchDecisionValue } from "@/lib/criteria/evidence-class";
+import type { ExclusionTestabilityValue } from "@/lib/persona-research/contract";
 
 export const CRITERION_DATA_TYPES = [
   "TEXT",
@@ -54,6 +55,8 @@ export type CriterionSnapshot = {
   importance: CriterionImportanceValue;
   isRequired: boolean;
   isDisqualifier: boolean;
+  /** Persona exclusion evidence mode; null for non-disqualifiers and ICP criteria. */
+  exclusionTestability?: ExclusionTestabilityValue | null;
   researchGuidance?: string | null;
   source?: string;
   confidence?: string | null;
@@ -118,4 +121,4 @@ function stringifyValue(value: unknown): string {
 export const ICP_INTERPRETATION_PROMPT_VERSION = "3";
 export const PERSONA_INTERPRETATION_PROMPT_VERSION = "2";
 export const CONTACT_RESEARCH_PROMPT_VERSION = "1";
-export const SCORING_LOGIC_VERSION_CRITERIA = "3";
+export const SCORING_LOGIC_VERSION_CRITERIA = "4";

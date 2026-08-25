@@ -66,6 +66,10 @@ export function snapshotCriterionRow(
         ? row.targetedSearchDecidedAt.toISOString()
         : null;
   }
+  if ("exclusionTestability" in row) {
+    base.exclusionTestability =
+      row.exclusionTestability as CriterionSnapshot["exclusionTestability"];
+  }
   return base;
 }
 

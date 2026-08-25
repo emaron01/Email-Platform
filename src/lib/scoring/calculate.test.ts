@@ -8,7 +8,7 @@ import {
 import { COMPONENT_WEIGHTS } from "@/lib/scoring/config";
 import type { AiScoringAssessment } from "@/lib/scoring/assessment";
 import type { ApplicableDimension } from "@/lib/scoring/dimensions";
-import type { IcpSnapshot } from "@/lib/scoring/types";
+import type { IcpSnapshot, PersonaSnapshot } from "@/lib/scoring/types";
 
 describe("deterministic scoring mappings", () => {
   it("maps STRONG/MODERATE/WEAK/NO_FIT/UNKNOWN correctly", () => {
@@ -200,6 +200,143 @@ describe("assessment → calculated score", () => {
       applicable: [{ component: "ICP", dimension: "Industry Fit" }],
       icp,
     });
+    expect(result.scoreLabel).not.toBe("DISQUALIFIED");
+    expect(result.disqualifiers).toHaveLength(0);
+  });
+
+  it("accepts an explicit evidence-backed persona exclusion", () => {
+    const persona: PersonaSnapshot = {
+      id: "persona_1",
+      name: "Forecast owner",
+      definition: null,
+      targetTitles: ["VP Sales"],
+      department: null,
+      seniority: null,
+      responsibilities: null,
+      painPoints: null,
+      desiredOutcomes: null,
+      messagingNotes: null,
+      criteria: [
+        {
+          name: "CRM administration without forecast ownership",
+          criterionType: "negative_role_signal",
+          dataType: "TEXT",
+          operator: "EXISTS",
+          importance: "CRITICAL",
+          isRequired: false,
+          isDisqualifier: true,
+          exclusionTestability: "EVIDENCE_TESTABLE",
+          sortOrder: 0,
+        },
+      ],
+    };
+    const assessment: AiScoringAssessment = {
+      dimensions: [
+        {
+          dimension: "Industry Fit",
+          component: "ICP",
+          assessment: "STRONG",
+          evidence: ["SaaS"],
+          concerns: [],
+          confidence: "HIGH",
+        },
+      ],
+      fitStrengths: [],
+      fitRisks: ["No forecast ownership"],
+      potentialDisqualifiers: [
+        {
+          criterion: "CRM administration without forecast ownership",
+          evidence: ["Contact research confirms CRM administration only"],
+          confidence: "MEDIUM",
+        },
+      ],
+      recommendedAction: "Exclude",
+      reasoning: "Explicit persona exclusion is confirmed.",
+    };
+
+    const result = calculateScoresFromAssessment({
+      assessment,
+      applicable: [{ component: "ICP", dimension: "Industry Fit" }],
+      icp,
+      persona,
+      contactResearch: {
+        status: "COMPLETED",
+        confidence: "MEDIUM",
+        roleSummary: "CRM administration only",
+        responsibilities: [],
+        ownershipAreas: ["CRM configuration"],
+        professionalSignals: [],
+        negativeRoleSignals: [
+          "CRM administration without forecast ownership",
+        ],
+        researchedAt: "2026-08-24T00:00:00.000Z",
+      },
+    });
+
+    expect(result.scoreLabel).toBe("DISQUALIFIED");
+    expect(result.disqualifiers[0]).toMatchObject({
+      scope: "PERSONA",
+      matchedPersonaCriterion:
+        "CRM administration without forecast ownership",
+    });
+  });
+
+  it("treats an evidence-testable exclusion without contact evidence as unknown", () => {
+    const persona: PersonaSnapshot = {
+      id: "persona_1",
+      name: "Forecast owner",
+      definition: null,
+      targetTitles: ["VP Sales"],
+      department: null,
+      seniority: null,
+      responsibilities: null,
+      painPoints: null,
+      desiredOutcomes: null,
+      messagingNotes: null,
+      criteria: [
+        {
+          name: "CRM administration without forecast ownership",
+          criterionType: "negative_role_signal",
+          dataType: "TEXT",
+          operator: "EXISTS",
+          importance: "CRITICAL",
+          isRequired: false,
+          isDisqualifier: true,
+          exclusionTestability: "EVIDENCE_TESTABLE",
+          sortOrder: 0,
+        },
+      ],
+    };
+    const result = calculateScoresFromAssessment({
+      assessment: {
+        dimensions: [
+          {
+            dimension: "Industry Fit",
+            component: "ICP",
+            assessment: "STRONG",
+            evidence: ["SaaS"],
+            concerns: [],
+            confidence: "HIGH",
+          },
+        ],
+        fitStrengths: [],
+        fitRisks: [],
+        potentialDisqualifiers: [
+          {
+            criterion: "CRM administration without forecast ownership",
+            evidence: ["Unsupported assertion"],
+            confidence: "HIGH",
+          },
+        ],
+        recommendedAction: "Proceed",
+        reasoning: "No contact evidence.",
+      },
+      applicable: [{ component: "ICP", dimension: "Industry Fit" }],
+      icp,
+      persona,
+      contactResearch: null,
+    });
+
     expect(result.scoreLabel).not.toBe("DISQUALIFIED");
     expect(result.disqualifiers).toHaveLength(0);
   });

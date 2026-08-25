@@ -90,9 +90,11 @@ export function getApplicableDimensions(input: {
   if (input.persona.criteria?.length) {
     for (const criterion of input.persona.criteria) {
       if (
+        criterion.isDisqualifier ||
         criterion.criterionType.trim().toLowerCase() === "needs_review"
       ) {
-        // Unmapped AI types — excluded from scoring until classified.
+        // Exclusions are resolved separately and never averaged as persona fit.
+        // Unmapped AI types are excluded until classified.
         continue;
       }
       addUniqueDimension(

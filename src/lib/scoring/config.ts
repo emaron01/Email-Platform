@@ -2,10 +2,10 @@
  * Deterministic scoring configuration (centralized — do not scatter magic numbers).
  */
 
-/** Bumped when contact-role research became scoring evidence. */
-export const SCORING_PROMPT_VERSION = "3";
-/** Bumped for TARGETED_SEARCH asymmetry + factual AI clamp. */
-export const SCORING_LOGIC_VERSION = "3";
+/** Bumped when persona exclusion evidence rules entered the prompt. */
+export const SCORING_PROMPT_VERSION = "4";
+/** Bumped for deterministic and evidence-gated persona disqualification. */
+export const SCORING_LOGIC_VERSION = "4";
 
 /** Concurrent AI scoring requests per ScoringRun. */
 export const SCORING_CONCURRENCY = 3;

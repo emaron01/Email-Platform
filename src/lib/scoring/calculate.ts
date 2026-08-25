@@ -18,7 +18,12 @@ import {
   resolveDisqualifiers,
   type ResolvedDisqualifier,
 } from "@/lib/scoring/disqualify";
-import type { IcpSnapshot } from "@/lib/scoring/types";
+import type {
+  IcpSnapshot,
+  PersonaSnapshot,
+} from "@/lib/scoring/types";
+import type { ScoringContactResearchInput } from "@/lib/scoring/payload";
+import type { PersonaExclusionAssessment } from "@/lib/scoring/persona-exclusions";
 
 export type ComponentScores = {
   icpScore: number;
@@ -167,6 +172,9 @@ export function calculateScoresFromAssessment(input: {
   assessment: AiScoringAssessment;
   applicable: ApplicableDimension[];
   icp: IcpSnapshot;
+  persona?: PersonaSnapshot;
+  contactResearch?: ScoringContactResearchInput;
+  personaExclusionAssessments?: PersonaExclusionAssessment[];
   criterionEvidenceAssessments?: CriterionEvidenceAssessment[];
 }): CalculatedScore {
   const evidenceByName = new Map(
@@ -204,14 +212,33 @@ export function calculateScoresFromAssessment(input: {
   const components = calculateComponentScores(dimensions, {
     excludeIcpDimensionNames,
   });
-  const disqualifiers = resolveDisqualifiers(
+  const proposedDisqualifiers = resolveDisqualifiers(
     input.assessment.potentialDisqualifiers,
     input.icp,
+    {
+      persona: input.persona,
+      contactResearch: input.contactResearch,
+    },
   ).filter((d) => {
     // Asymmetry guard: unverifiable TARGETED_SEARCH must never exclude.
     const ev = evidenceByName.get(d.criterion);
     return !(ev?.excludeFromScore || ev?.evidenceOutcome === "UNVERIFIABLE");
   });
+  const deterministicPersonaDisqualifiers: ResolvedDisqualifier[] = (
+    input.personaExclusionAssessments ?? []
+  )
+    .filter((assessment) => assessment.outcome === "CONFIRMED")
+    .map((assessment) => ({
+      criterion: assessment.criterion,
+      evidence: assessment.evidence,
+      confidence: assessment.confidence,
+      scope: "PERSONA",
+      matchedPersonaCriterion: assessment.criterion,
+    }));
+  const disqualifiers = [
+    ...proposedDisqualifiers,
+    ...deterministicPersonaDisqualifiers,
+  ];
   const disqualified = disqualifiers.length > 0;
   const scoreLabel = assignScoreLabel(components.overallScore, disqualified);
 
