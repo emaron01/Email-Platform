@@ -141,6 +141,7 @@ export function buildSidebarNavItems(input: {
   const items: SidebarNavItem[] = [
     { href: "/", label: "Home" },
     { href: "/setup", label: "Setup" },
+    { href: "/lists", label: "Lists" },
     { href: "/campaigns", label: "Campaigns" },
     { href: "/settings/voice", label: "Your Voice" },
     { href: "/settings/email", label: "Email Connection" },

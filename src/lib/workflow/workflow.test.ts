@@ -30,7 +30,7 @@ function productFixture(overrides: Record<string, unknown> = {}) {
       {
         id: "icp_1",
         name: "Primary target",
-        lastInterpretedAt: new Date(),
+        lastInterpretedAt: null,
         criteria: [
           {
             evidenceClass: "TARGETED_SEARCH",
@@ -70,14 +70,92 @@ describe("home workflow", () => {
     },
   );
 
-  it("enables campaigns only when approved Product, interpreted ICP criteria, and Persona coexist", async () => {
+  it("enables campaigns when ICP has criteria even if lastInterpretedAt is null", async () => {
     prismaMock.product.findMany.mockResolvedValue([productFixture()]);
     const result = await getHomeWorkflow("org_1");
     expect(result.setupComplete).toBe(true);
     expect(result.product.label).toBe("Approved");
+    expect(result.icp.done).toBe(true);
+    expect(result.icp.label).toBe("Saved");
     expect(result.icp.criterionCount).toBe(1);
     expect(result.icp.needsLookupCount).toBe(1);
+    expect(result.icp.count).toBe(1);
+    expect(result.icp.detail).toBe("Primary target");
     expect(result.personas.names).toEqual(["Revenue leader"]);
+  });
+
+  it("shows a saved count when more than one ICP has criteria", async () => {
+    prismaMock.product.findMany.mockResolvedValue([
+      productFixture({
+        icps: [
+          {
+            id: "icp_1",
+            name: "Primary target",
+            lastInterpretedAt: null,
+            criteria: [{ evidenceClass: "LIST_DATA", targetedSearchDecision: null }],
+          },
+          {
+            id: "icp_2",
+            name: "Secondary target",
+            lastInterpretedAt: null,
+            criteria: [{ evidenceClass: "LIST_DATA", targetedSearchDecision: null }],
+          },
+        ],
+      }),
+    ]);
+    const result = await getHomeWorkflow("org_1");
+    expect(result.setupComplete).toBe(true);
+    expect(result.icp.done).toBe(true);
+    expect(result.icp.count).toBe(2);
+    expect(result.icp.detail).toBe("2 saved");
+    expect(result.icp.actionLabel).toBe("Review ICPs");
+    expect(result.icp.href).toBe("/setup/product_1/icps");
+  });
+
+  it("does not treat an ICP without criteria as complete", async () => {
+    prismaMock.product.findMany.mockResolvedValue([
+      productFixture({
+        icps: [
+          {
+            id: "icp_empty",
+            name: "Draft ICP",
+            lastInterpretedAt: null,
+            criteria: [],
+          },
+        ],
+      }),
+    ]);
+    const result = await getHomeWorkflow("org_1");
+    expect(result.setupComplete).toBe(false);
+    expect(result.icp.done).toBe(false);
+    expect(result.icp.label).toBe("Not started");
+    expect(result.icp.count).toBe(0);
+  });
+
+  it("still returns existing campaigns when setup is incomplete", async () => {
+    prismaMock.product.findMany.mockResolvedValue([
+      productFixture({ icps: [] }),
+    ]);
+    prismaMock.campaign.findMany.mockResolvedValue([
+      {
+        id: "camp_1",
+        name: "Web Follow-ups",
+        context: "",
+        icp: { name: "Primary target" },
+        persona: { name: "CRO" },
+        offerName: null,
+        offer: null,
+        contacts: [],
+      },
+    ]);
+    const result = await getHomeWorkflow("org_1");
+    expect(result.setupComplete).toBe(false);
+    expect(result.campaigns).toEqual([
+      expect.objectContaining({
+        id: "camp_1",
+        name: "Web Follow-ups",
+      }),
+    ]);
   });
 });
 
@@ -179,6 +257,17 @@ describe("workflow view contracts", () => {
     expect(redirectPage).toContain(
       "redirect(`/campaigns/${id}?stage=${stage}`)",
     );
+  });
+
+  it("lists campaigns on home even when setup is incomplete, and links Lists", () => {
+    const page = readFileSync("src/app/(app)/page.tsx", "utf8");
+    expect(page).toContain('href="/lists"');
+    expect(page).toContain('href="/campaigns"');
+    expect(page).toContain("workflow.campaigns.map");
+    expect(page).toContain("href={`/campaigns/${campaign.id}`}");
+    expect(page).toContain("Finish setup first");
+    expect(page).toContain("campaigns stay available");
+    expect(page).toContain("{workflow.campaigns.length === 0 ? (");
   });
 
   it("does not render unsupported engagement metrics", () => {

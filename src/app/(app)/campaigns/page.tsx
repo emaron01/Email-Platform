@@ -71,7 +71,7 @@ export default async function CampaignsPage() {
             />
           ) : (
             <p className="text-sm text-slate-600">
-              Finish setup first: approve a Product, interpret at least one ICP
+              Finish setup first: approve a Product, save at least one ICP
               with criteria, and save a Persona for that Product.
             </p>
           )}

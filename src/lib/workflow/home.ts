@@ -17,6 +17,7 @@ export type HomeWorkflow = {
   product: SetupCardState & { suggestedRoleCount: number };
   icp: SetupCardState & {
     name: string | null;
+    count: number;
     criterionCount: number;
     needsLookupCount: number;
   };
@@ -31,6 +32,11 @@ export type HomeWorkflow = {
     emailsToWrite: number;
   }>;
 };
+
+/** Criteria rows are the interpreted ICP. lastInterpretedAt is not required — legacy/manual backfill never sets it. */
+function hasInterpretedCriteria(icp: { criteria: unknown[] }): boolean {
+  return icp.criteria.length > 0;
+}
 
 export async function getHomeWorkflow(
   organizationId: string,
@@ -89,19 +95,16 @@ export async function getHomeWorkflow(
   const completeProducts = products.filter(
     (product) =>
       product.approvalStatus === "APPROVED" &&
-      product.icps.some(
-        (icp) => Boolean(icp.lastInterpretedAt) && icp.criteria.length > 0,
-      ) &&
+      product.icps.some(hasInterpretedCriteria) &&
       product.personas.length > 0,
   );
   const completeProduct = completeProducts[0] ?? null;
   const activeProduct = completeProduct ?? firstProduct;
-  const interpretedIcp =
-    activeProduct?.icps.find(
-      (icp) => Boolean(icp.lastInterpretedAt) && icp.criteria.length > 0,
-    ) ?? null;
+  const readyIcps = activeProduct?.icps.filter(hasInterpretedCriteria) ?? [];
+  const interpretedIcp = readyIcps[0] ?? null;
+  const icpCount = readyIcps.length;
   const productDone = activeProduct?.approvalStatus === "APPROVED";
-  const icpDone = Boolean(interpretedIcp);
+  const icpDone = icpCount > 0;
   const personasDone = Boolean(activeProduct?.personas.length);
   const productHref = activeProduct
     ? `/setup/${activeProduct.id}`
@@ -131,17 +134,26 @@ export async function getHomeWorkflow(
     },
     icp: {
       done: icpDone,
-      label: icpDone ? "Interpreted" : "Not started",
-      detail: interpretedIcp
-        ? interpretedIcp.name
+      label: icpDone ? "Saved" : "Not started",
+      detail: icpDone
+        ? icpCount > 1
+          ? `${icpCount} saved`
+          : interpretedIcp!.name
         : "Define and interpret a primary target",
-      actionLabel: interpretedIcp ? "Review ICP" : "Add ICP",
+      actionLabel: icpDone
+        ? icpCount > 1
+          ? "Review ICPs"
+          : "Review ICP"
+        : "Add ICP",
       href: activeProduct
-        ? interpretedIcp
-          ? `/setup/${activeProduct.id}/icps/${interpretedIcp.id}`
+        ? icpDone
+          ? icpCount > 1
+            ? `/setup/${activeProduct.id}/icps`
+            : `/setup/${activeProduct.id}/icps/${interpretedIcp!.id}`
           : `/setup/${activeProduct.id}/icps/new`
         : "/setup/new",
       name: interpretedIcp?.name ?? null,
+      count: icpCount,
       criterionCount: interpretedIcp?.criteria.length ?? 0,
       needsLookupCount:
         interpretedIcp?.criteria.filter(

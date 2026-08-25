@@ -90,6 +90,12 @@ describe("buildSidebarNavItems", () => {
       isSuperAdmin: false,
     });
     expect(items.some((i) => i.href === "/")).toBe(true);
+    expect(items.some((i) => i.href === "/lists" && i.label === "Lists")).toBe(
+      true,
+    );
+    expect(
+      items.some((i) => i.href === "/campaigns" && i.label === "Campaigns"),
+    ).toBe(true);
     expect(
       items.some(
         (i) => i.href === "/settings/voice" && i.label === "Your Voice",
