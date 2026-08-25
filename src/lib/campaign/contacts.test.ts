@@ -432,6 +432,8 @@ describe.skipIf(!hasDatabase)(
       expect(row?.selected).toBe(true);
       expect(row?.status).toBe("SELECTED");
     });
+
+    it("rejects foreign contacts and incompatible scoring runs", async () => {
       if (!ready) return;
       const { addContactsToCampaign, addScoringRunContactsToCampaign } =
         await import("@/lib/campaign/contacts");
