@@ -24,6 +24,10 @@ import {
 } from "@/lib/scoring/snapshots";
 import { requireOrganizationId, TenantError } from "@/lib/tenant/getCurrentOrganization";
 import {
+  deleteCampaignGraph,
+  type CampaignDeleteImpact,
+} from "@/lib/tenant/campaign-delete";
+import {
   deletePersonaAssistedSetupGraph,
   deleteProductAssistedSetupGraph,
 } from "@/lib/tenant/product-persona-delete";
@@ -784,6 +788,29 @@ export async function createCampaign(input: {
 
     return campaign;
   });
+}
+
+export async function deleteCampaign(id: string): Promise<{
+  mode: "deleted";
+  message: string;
+  impact: CampaignDeleteImpact;
+}> {
+  const organizationId = await orgId();
+  const existing = await prisma.campaign.findFirst({
+    where: { id, organizationId },
+    select: { id: true },
+  });
+  if (!existing) notFound("Campaign");
+
+  const impact = await prisma.$transaction((tx) =>
+    deleteCampaignGraph(tx, organizationId, existing.id),
+  );
+
+  return {
+    mode: "deleted",
+    message: `Campaign deleted. Removed ${impact.contactCount} contact(s), ${impact.draftCount} draft(s), and ${impact.sentCount} sent email(s).`,
+    impact,
+  };
 }
 
 export async function assertContactBelongsToOrg(contactId: string): Promise<void> {

@@ -38,6 +38,34 @@ describe("setup delete authorization policy", () => {
     expect(src).toContain("Historical scoring snapshots");
     expect(src).toContain("ICPs");
   });
+
+  it("campaign workspace delete confirmation shows contact, draft, and sent counts", async () => {
+    const src = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/app/(app)/campaigns/[id]/page.tsx", "utf8"),
+    );
+    expect(src).toContain("ConfirmDeleteForm");
+    expect(src).toContain("deleteCampaignAction");
+    expect(src).toContain("campaignDeleteConfirmBody");
+    expect(src).toContain("contactCount");
+    expect(src).toContain("draftCount");
+    expect(src).toContain("sentCount");
+  });
+
+  it("contact lists, contacts, and scoring runs have no delete action", async () => {
+    const fs = await import("node:fs");
+    const lists = fs.readFileSync("src/app/(app)/lists/page.tsx", "utf8");
+    const listDetail = fs.readFileSync(
+      "src/app/(app)/lists/[id]/page.tsx",
+      "utf8",
+    );
+    expect(lists).not.toContain("ConfirmDeleteForm");
+    expect(listDetail).not.toContain("ConfirmDeleteForm");
+    expect(listDetail).not.toMatch(/deleteScoringRun|deleteContactList|deleteContactAction/);
+    const tenant = fs.readFileSync("src/lib/tenant/data.ts", "utf8");
+    expect(tenant).not.toMatch(/export async function deleteContactList/);
+    expect(tenant).not.toMatch(/export async function deleteScoringRun/);
+    expect(tenant).not.toMatch(/export async function deleteContact\b/);
+  });
 });
 
 describe.skipIf(!hasDatabase)(

@@ -6,6 +6,7 @@ import {
   createIcp,
   createPersona,
   createProduct,
+  deleteCampaign,
   deleteIcp,
   deletePersona,
   deleteProduct,
@@ -276,6 +277,28 @@ export async function deletePersonaAction(
     };
   } catch (error) {
     logActionError("Failed to delete persona.", error);
+    return { ok: false, message: toSafeCrudDeleteError(error) };
+  }
+}
+
+export async function deleteCampaignAction(
+  _prev: CrudDeleteResult | null,
+  formData: FormData,
+): Promise<CrudDeleteResult> {
+  try {
+    await requireSetupDeletePermission();
+    const id = requiredString(formData, "id");
+    if (!id) throw new TenantError("Campaign id is required.");
+    if (requiredString(formData, "confirm") !== "1") {
+      return { ok: false, message: "Confirm deletion before continuing." };
+    }
+    const result = await deleteCampaign(id);
+    revalidatePath("/campaigns");
+    revalidatePath(`/campaigns/${id}`);
+    revalidateSetup();
+    return { ok: true, message: result.message, mode: result.mode };
+  } catch (error) {
+    logActionError("Failed to delete campaign.", error);
     return { ok: false, message: toSafeCrudDeleteError(error) };
   }
 }

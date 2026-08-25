@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { deleteCampaignAction } from "@/app/actions";
 import { CampaignContactsManager } from "@/components/CampaignContactsManager";
 import { CampaignEmailSettingsForm } from "@/components/CampaignEmailSettingsForm";
 import { CampaignOfferForm } from "@/components/CampaignOfferForm";
+import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { EmailSequenceWorkspace } from "@/components/EmailSequenceWorkspace";
 import { CampaignStageRail } from "@/components/CampaignStageRail";
 import { QualificationBuckets } from "@/components/QualificationBuckets";
 import { PageHeader, Panel, TenantMissing } from "@/components/ui";
+import { campaignDeleteConfirmBody } from "@/lib/tenant/campaign-delete";
 import {
   getCampaignDetail,
   getCampaignQualificationView,
@@ -244,12 +247,27 @@ export default async function CampaignDetailPage({
         title={campaign.name}
         description={`Stage ${stages.find((stage) => stage.key === currentStage)?.number}: ${stages.find((stage) => stage.key === currentStage)?.label}`}
         actions={
-          <Link
-            href="/campaigns"
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Back to campaigns
-          </Link>
+          <div className="flex flex-col items-end gap-2">
+            <Link
+              href="/campaigns"
+              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Back to campaigns
+            </Link>
+            <ConfirmDeleteForm
+              action={deleteCampaignAction}
+              hiddenFields={{ id: campaign.id }}
+              triggerLabel="Delete campaign"
+              confirmTitle={`Delete campaign "${campaign.name}"?`}
+              confirmBody={campaignDeleteConfirmBody({
+                contactCount: campaign.contacts.length,
+                draftCount: generatedEmailCount,
+                sentCount: sentEmailCount,
+              })}
+              confirmButtonLabel="Delete campaign"
+              onSuccessNavigate="/campaigns"
+            />
+          </div>
         }
       />
       <CampaignStageRail
