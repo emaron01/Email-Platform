@@ -54,6 +54,7 @@ function contextFixture(
       description: "Forecasting software",
       valueProposition: "More reliable forecasts",
       evidence: ["Published product fact: configurable workflow."],
+      problemsSolved: [],
       messaging: {
         primaryPositioning: ["A forecast operating system"],
         coreValueThemes: ["Consistency"],
@@ -100,6 +101,7 @@ function contextFixture(
       confidence: "HIGH",
       researchedAt: new Date(),
     },
+    companyResearch: null,
     voiceSamples: [
       {
         id: "voice_new",
@@ -136,6 +138,9 @@ describe("buildEmailPrompt", () => {
     const product = prompt.indexOf('"productMessaging"');
     const contact = prompt.indexOf('"contactContext"');
     const voice = prompt.indexOf('"voiceStyle"');
+    const companyResearch = prompt.indexOf('"companyResearch"');
+    expect(companyResearch).toBeGreaterThan(contact);
+    expect(companyResearch).toBeLessThan(voice);
     expect([
       regeneration,
       offer,
@@ -253,8 +258,14 @@ describe("buildEmailPrompt", () => {
     expect(systemPrompt).toMatch(/signature block of any kind/i);
     expect(systemPrompt).toMatch(/end the generated body immediately/i);
     expect(systemPrompt).not.toMatch(/email client appends the signature/i);
-    expect(systemPrompt).toMatch(/never use an em dash/i);
-    expect(systemPrompt).toMatch(/no exceptions/i);
+    expect(messages[0].content).toMatch(/never use an em dash/i);
+    expect(messages[0].content).toMatch(/no exceptions/i);
+    expect(messages[0].content).toContain(
+      "Do NOT restate what the company does.",
+    );
+    expect(messages[0].content).toMatch(
+      /infer their selling motion from customerTypes, businessModel, whatTheySell, and primaryMarkets/i,
+    );
     expect(userPrompt).toContain(
       "WRITING SAMPLE TO MATCH FOR STYLE AND STRUCTURE:",
     );
@@ -294,6 +305,10 @@ describe("buildEmailPrompt", () => {
     });
     const messages = buildEmailPrompt(context);
     expect(messages[1].content).toContain('"freshRoleResearch": null');
+    expect(messages[1].content).toContain('"companyResearch": null');
+    expect(messages[1].content).toContain(
+      '"companyResearchReasoningSketch": null',
+    );
     expect(messages[1].content).toContain('"voiceStyle": null');
     expect(messages[1].content).toContain('"supportedClaims": []');
   });
@@ -722,9 +737,19 @@ describe("sequence and claim guards", () => {
       "src/lib/email-generation/claim-validation.ts",
       "utf8",
     );
-    for (const source of [offerValidator, draftValidator]) {
+    const prompt = readFileSync("src/lib/email-generation/prompt.ts", "utf8");
+    const companyResearchUse = readFileSync(
+      "src/lib/email-generation/company-research-use.ts",
+      "utf8",
+    );
+    for (const source of [
+      offerValidator,
+      draftValidator,
+      prompt,
+      companyResearchUse,
+    ]) {
       expect(source).not.toMatch(
-        /forecast|accuracy|trial|roi|durationTerms|pricingTerms|audienceCountTerms|offerSensitiveTerms/i,
+        /forecast|accuracy|trial|roi|durationTerms|pricingTerms|audienceCountTerms|offerSensitiveTerms|dealership|F&I|SalesForecaster|StoneEagle|\bCRM\b|\bpipeline\b/i,
       );
     }
   });
@@ -1074,6 +1099,65 @@ describe.skipIf(!hasDatabase)(
       expect(context.contactResearch?.roleSummary).toBe(
         "Owns forecast accuracy",
       );
+      expect(context.companyResearch).toBeNull();
+      expect(context.product.problemsSolved).toEqual([]);
+    });
+
+    it("loads fresh company research and product problemsSolved for email use", async () => {
+      if (!ready) return;
+      const company = await prisma.company.create({
+        data: {
+          organizationId,
+          name: "Acme Plants",
+          normalizedName: `acme-plants-${suffix}`,
+        },
+      });
+      await prisma.contact.update({
+        where: { id: contactId },
+        data: { companyId: company.id },
+      });
+      await prisma.companyResearch.create({
+        data: {
+          organizationId,
+          companyId: company.id,
+          status: "COMPLETED",
+          researchConfidence: "HIGH",
+          whatTheySell: "Industrial sensors for plant floors",
+          customerTypes: ["plant managers"],
+          primaryMarkets: ["US manufacturing"],
+          businessModel: "Direct B2B equipment sales to multi-site plants",
+          researchedAt: new Date(),
+          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+        },
+      });
+      await prisma.product.update({
+        where: { id: (await prisma.campaign.findUniqueOrThrow({
+          where: { id: campaignId },
+          select: { productId: true },
+        })).productId },
+        data: {
+          profileJson: {
+            problemsSolved: ["Missed shift handoffs on the floor"],
+          },
+        },
+      });
+
+      const { loadEmailGenerationContext } = await import(
+        "@/lib/email-generation/context"
+      );
+      const context = await loadEmailGenerationContext(
+        campaignContactId,
+        userAId,
+      );
+      expect(context.companyResearch?.whatTheySell).toBe(
+        "Industrial sensors for plant floors",
+      );
+      expect(context.companyResearch?.customerTypes).toEqual([
+        "plant managers",
+      ]);
+      expect(context.product.problemsSolved).toEqual([
+        "Missed shift handoffs on the floor",
+      ]);
     });
 
     it("returns null for low-confidence or older-than-90-day research", async () => {

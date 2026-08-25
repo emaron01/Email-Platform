@@ -1,8 +1,12 @@
 import type { AiMessage } from "@/lib/ai/types";
 import type { ReplyClassification } from "@prisma/client";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
+import {
+  buildRuntimeReasoningSketch,
+  COMPANY_RESEARCH_USE_INSTRUCTIONS,
+} from "@/lib/email-generation/company-research-use";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "8";
+export const EMAIL_GENERATION_PROMPT_VERSION = "9";
 export const ADDITIONAL_GUIDANCE_MAX_CHARS = 200;
 
 const SYSTEM_PROMPT = `You write concise, credible one-to-one outbound emails.
@@ -15,7 +19,8 @@ Use the supplied context in this strict priority order:
 5. Persona positioning, proof points, and objections.
 6. Supported product claims and terminology constraints.
 7. Fresh contact role research, when supplied.
-8. The first writing sample, when supplied, as the authoritative style reference.
+8. Company research, when supplied: infer selling motion and connect it to this product's problem space. Do not restate what the company does.
+9. The first writing sample, when supplied, as the authoritative style reference.
 
 Never invent customer names, metrics, case studies, product capabilities, offer terms, or facts about the recipient. Product claimsNotToMake, terminologyToAvoid, and persona messaging notes are hard constraints regardless of the priority list. Campaign offer terms are authoritative only when they appear in the supplied offer. If optional context is empty, continue without it.
 Per-contact regeneration instructions override additional campaign instructions and writing defaults, but they cannot override factual constraints, the selected emailStructure, JSON-only output, the sign-off prohibition, or the em dash prohibition.
@@ -32,6 +37,8 @@ Writing and structure rules:
 - Close the email with exactly one soft question. Do not place additional questions earlier in the email.
 - Do not include a sign-off, sender name, sender placeholder, signature, or signature block of any kind. Never write "Best," or "[Your Name]". End the generated body immediately after the closing question or final sentence.
 - Never use an em dash character in the subject, body, or reasoning. No exceptions. Use a period, comma, or rewrite the sentence instead.
+
+${COMPANY_RESEARCH_USE_INSTRUCTIONS}
 
 Return exactly one JSON object matching:
 {"subject":"string","body":"string","reasoning":"string"}
@@ -128,7 +135,19 @@ export function buildEmailPrompt(
             confidence: context.contactResearch.confidence,
           }
         : null,
+      companyResearch: context.companyResearch,
     },
+    productProblemSpace: {
+      problemsSolved: context.product.problemsSolved,
+      personaPainPoints: context.persona.painPoints,
+    },
+    companyResearchReasoningSketch: buildRuntimeReasoningSketch({
+      research: context.companyResearch,
+      problemSpace: {
+        problemsSolved: context.product.problemsSolved,
+        painPoints: context.persona.painPoints,
+      },
+    }),
     voiceStyle: firstVoiceSample
       ? {
           label: firstVoiceSample.label,

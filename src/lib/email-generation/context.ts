@@ -6,10 +6,15 @@ import type {
   EmailLength,
   ReplyClassification,
 } from "@prisma/client";
+import type { EmailCompanyResearch } from "@/lib/email-generation/company-research-use";
 import { prisma } from "@/lib/prisma";
 import { resolveActiveOrganization } from "@/lib/auth/session";
 import { TenantError } from "@/lib/tenant/errors";
 import { evidenceFragments } from "@/lib/campaign/offer-validation";
+import {
+  isResearchFresh,
+  parseStringArray,
+} from "@/lib/research/freshness";
 
 const CONTACT_RESEARCH_FRESHNESS_DAYS = 90;
 
@@ -99,6 +104,7 @@ export type EmailGenerationContext = {
     description: string | null;
     valueProposition: string | null;
     evidence: string[];
+    problemsSolved: string[];
     messaging: {
       primaryPositioning: string[];
       coreValueThemes: string[];
@@ -145,6 +151,7 @@ export type EmailGenerationContext = {
     confidence: "HIGH" | "MEDIUM" | "LOW" | null;
     researchedAt: Date;
   } | null;
+  companyResearch: EmailCompanyResearch | null;
   voiceSamples: Array<{
     id: string;
     label: string;
@@ -227,41 +234,53 @@ export async function loadEmailGenerationContext(
     );
   }
 
-  const [voiceSamples, contactResearch, approvedEvidence] = await Promise.all([
-    prisma.voiceSample.findMany({
-      where: { organizationId, userId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        label: true,
-        sampleText: true,
-        createdAt: true,
-      },
-    }),
-    prisma.contactResearch.findUnique({
-      where: {
-        organizationId_contactId: {
-          organizationId,
-          contactId: contact.id,
+  const [voiceSamples, contactResearch, approvedEvidence, companyResearchRow] =
+    await Promise.all([
+      prisma.voiceSample.findMany({
+        where: { organizationId, userId },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          label: true,
+          sampleText: true,
+          createdAt: true,
         },
-      },
-    }),
-    campaign.product.approvedEvidenceBundleId
-      ? prisma.productEvidenceBundle.findFirst({
-          where: {
-            id: campaign.product.approvedEvidenceBundleId,
+      }),
+      prisma.contactResearch.findUnique({
+        where: {
+          organizationId_contactId: {
             organizationId,
-            productId: campaign.product.id,
+            contactId: contact.id,
           },
-          select: { normalizedEvidenceJson: true },
-        })
-      : Promise.resolve(null),
-  ]);
+        },
+      }),
+      campaign.product.approvedEvidenceBundleId
+        ? prisma.productEvidenceBundle.findFirst({
+            where: {
+              id: campaign.product.approvedEvidenceBundleId,
+              organizationId,
+              productId: campaign.product.id,
+            },
+            select: { normalizedEvidenceJson: true },
+          })
+        : Promise.resolve(null),
+      contact.companyId
+        ? prisma.companyResearch.findFirst({
+            where: { organizationId, companyId: contact.companyId },
+            orderBy: { updatedAt: "desc" },
+          })
+        : Promise.resolve(null),
+    ]);
   const freshContactResearch = isFreshContactResearch(contactResearch)
     ? contactResearch
     : null;
+  const freshCompanyResearch =
+    companyResearchRow && isResearchFresh(companyResearchRow)
+      ? companyResearchRow
+      : null;
 
   const productMessaging = objectValue(campaign.product.messagingJson);
+  const productProfile = objectValue(campaign.product.profileJson);
   const personaMessaging = objectValue(campaign.persona.personaMessagingJson);
   const personaProfile = objectValue(campaign.persona.profileJson);
 
@@ -315,6 +334,7 @@ export async function loadEmailGenerationContext(
           "approvedProductEvidence",
         ),
       ].filter((value): value is string => Boolean(value?.trim())),
+      problemsSolved: stringList(productProfile.problemsSolved),
       messaging: {
         primaryPositioning: stringList(
           productMessaging.primaryPositioning,
@@ -371,6 +391,17 @@ export async function loadEmailGenerationContext(
           ),
           confidence: freshContactResearch.confidence,
           researchedAt: freshContactResearch.researchedAt,
+        }
+      : null,
+    companyResearch: freshCompanyResearch
+      ? {
+          companySummary: freshCompanyResearch.companySummary,
+          whatTheySell: freshCompanyResearch.whatTheySell,
+          customerTypes: parseStringArray(freshCompanyResearch.customerTypes),
+          primaryMarkets: parseStringArray(freshCompanyResearch.primaryMarkets),
+          businessModel: freshCompanyResearch.businessModel,
+          companySizeContext: freshCompanyResearch.companySizeContext,
+          confidence: freshCompanyResearch.researchConfidence,
         }
       : null,
     voiceSamples,
