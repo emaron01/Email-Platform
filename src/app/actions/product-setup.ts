@@ -20,6 +20,10 @@ import type {
   ProductMessagingDraft,
   SuggestedPersona,
 } from "@/lib/product-research/contract";
+import {
+  diffProductDraftFields,
+  productDraftFromFormData,
+} from "@/lib/product-research/review";
 import { prisma } from "@/lib/prisma";
 
 export type ProductSetupActionResult = {
@@ -265,6 +269,21 @@ export async function saveApprovedProductAction(
       return { ok: false, message: "Setup run not found." };
     }
 
+    const existingProduct = await prisma.product.findFirst({
+      where: { id: productId, organizationId },
+      select: { name: true, websiteUrl: true },
+    });
+    const originalDraft = (run.productDraftJson as ProductDraft | null) ?? null;
+    const profile = productDraftFromFormData(formData);
+    const websiteUrl = String(formData.get("websiteUrl") || "").trim() || null;
+    const editedFields = diffProductDraftFields(originalDraft, profile);
+    if (existingProduct && name !== existingProduct.name) {
+      editedFields.push("name");
+    }
+    if (existingProduct && websiteUrl !== (existingProduct.websiteUrl ?? null)) {
+      editedFields.push("websiteUrl");
+    }
+
     await approveProductFromDraft({
       organizationId,
       productId,
@@ -272,21 +291,21 @@ export async function saveApprovedProductAction(
       setupRunId,
       fields: {
         name,
-        description: String(formData.get("description") || "").trim() || null,
-        valueProposition:
-          String(formData.get("valueProposition") || "").trim() || null,
-        websiteUrl: String(formData.get("websiteUrl") || "").trim() || null,
+        description: profile.description ?? null,
+        valueProposition: profile.valueProposition ?? null,
+        websiteUrl,
         averageOrderValue: toOptionalFloat(formData.get("averageOrderValue")),
       },
-      profile: (run.productDraftJson as ProductDraft | null) ?? null,
+      profile,
       messaging: (run.messagingDraftJson as ProductMessagingDraft | null) ?? null,
-      editedFields: ["name", "description", "valueProposition", "websiteUrl"],
+      editedFields,
     });
 
     revalidateProduct(productId);
     return {
       ok: true,
-      message: "Product saved and approved.",
+      message:
+        "Product profile approved. Personas, scoring, and every email will use this record.",
       productId,
       setupRunId,
     };

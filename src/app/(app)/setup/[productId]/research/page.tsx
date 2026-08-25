@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   AssistedProductIntake,
-  ProductDraftReview,
   SuggestedBuyerRolesPanel,
 } from "@/components/AssistedProductSetup";
+import { ProductDraftReview } from "@/components/ProductDraftReview";
 import { PageHeader, TenantMissing } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { getProduct } from "@/lib/tenant/data";
@@ -44,8 +44,13 @@ export default async function ProductResearchPage({ params }: PageProps) {
     throw error;
   }
 
-  const [latestRun, latestFailedRun, latestBundle, urlStale, sourceCount] =
-    await Promise.all([
+  const [
+    latestRun,
+    latestFailedRun,
+    latestBundle,
+    urlStale,
+    sources,
+  ] = await Promise.all([
       prisma.productSetupRun.findFirst({
         where: {
           organizationId: organization.id,
@@ -70,12 +75,20 @@ export default async function ProductResearchPage({ params }: PageProps) {
         organizationId: organization.id,
         productId: product.id,
       }),
-      prisma.productSource.count({
+      prisma.productSource.findMany({
         where: {
           organizationId: organization.id,
           productId: product.id,
           status: { in: ["ACQUIRED", "EXTRACTED"] },
         },
+        select: {
+          id: true,
+          sourceType: true,
+          displayName: true,
+          originalUrl: true,
+          filename: true,
+        },
+        orderBy: { createdAt: "asc" },
       }),
     ]);
 
@@ -92,7 +105,7 @@ export default async function ProductResearchPage({ params }: PageProps) {
   const productApproved = product.approvalStatus === "APPROVED";
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-3xl space-y-8">
       <PageHeader
         title={`Research: ${product.name}`}
         description="Research the Product once. Approve it. Then build Personas one at a time."
@@ -124,6 +137,20 @@ export default async function ProductResearchPage({ params }: PageProps) {
         </div>
       ) : null}
 
+      {latestRun && draft ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-5 sm:p-8">
+          <ProductDraftReview
+            productId={product.id}
+            setupRunId={latestRun.id}
+            productName={product.name}
+            websiteUrl={product.websiteUrl}
+            sources={sources}
+            draft={draft}
+            messaging={messaging}
+          />
+        </section>
+      ) : null}
+
       <section className="rounded-lg border border-slate-200 bg-white p-5">
         <AssistedProductIntake
           productId={product.id}
@@ -133,20 +160,6 @@ export default async function ProductResearchPage({ params }: PageProps) {
           latestEvidenceBundleId={latestBundle?.id}
         />
       </section>
-
-      {latestRun && draft ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-5">
-          <ProductDraftReview
-            productId={product.id}
-            setupRunId={latestRun.id}
-            productName={product.name}
-            websiteUrl={product.websiteUrl}
-            sourceCount={sourceCount}
-            draft={draft}
-            messaging={messaging}
-          />
-        </section>
-      ) : null}
 
       {latestRun || productApproved ? (
         <section className="rounded-lg border border-slate-200 bg-white p-5">

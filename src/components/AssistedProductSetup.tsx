@@ -7,14 +7,11 @@ import {
   createProductMinimalAction,
   researchAndBuildProductAction,
   retryProductSynthesisAction,
-  saveApprovedProductAction,
   type ProductSetupActionResult,
 } from "@/app/actions/product-setup";
 import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
 import type {
   PersonaDraft,
-  ProductDraft,
-  ProductMessagingDraft,
   SuggestedBuyerRole,
   SuggestedPersona,
 } from "@/lib/product-research/contract";
@@ -196,107 +193,7 @@ export function AssistedProductIntake({
   );
 }
 
-export function ProductDraftReview({
-  productId,
-  setupRunId,
-  productName,
-  websiteUrl,
-  sourceCount,
-  draft,
-  messaging,
-}: {
-  productId: string;
-  setupRunId: string;
-  productName: string;
-  websiteUrl: string | null;
-  sourceCount: number;
-  draft: ProductDraft;
-  messaging: ProductMessagingDraft | null;
-}) {
-  const [state, action, pending] = useActionState(
-    saveApprovedProductAction,
-    initial,
-  );
-  const router = useRouter();
-
-  useEffect(() => {
-    if (state?.ok) router.refresh();
-  }, [state, router]);
-
-  return (
-    <div className="space-y-4" data-testid="product-draft-review">
-      <div>
-        <h3 className="text-lg font-semibold text-slate-900">
-          Review Your Product Profile
-        </h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Generated from {sourceCount} source{sourceCount === 1 ? "" : "s"}.
-          Edit anything, then Save — saving validates this as authoritative.
-        </p>
-      </div>
-      <form action={action} className="grid gap-4 md:grid-cols-2">
-        <input type="hidden" name="productId" value={productId} />
-        <input type="hidden" name="setupRunId" value={setupRunId} />
-        <Field label="Product Name" name="name" defaultValue={productName} required />
-        <Field
-          label="Website URL"
-          name="websiteUrl"
-          defaultValue={websiteUrl}
-        />
-        <div className="md:col-span-2">
-          <Field
-            label="Description"
-            name="description"
-            as="textarea"
-            defaultValue={draft.description ?? ""}
-          />
-        </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Primary Value Proposition"
-            name="valueProposition"
-            as="textarea"
-            defaultValue={draft.valueProposition ?? ""}
-          />
-        </div>
-        {draft.unknownFields?.length ? (
-          <p className="md:col-span-2 text-sm text-slate-500">
-            Left unknown (not fabricated): {draft.unknownFields.join(", ")}
-          </p>
-        ) : null}
-        {messaging?.primaryPositioning ? (
-          <p className="md:col-span-2 rounded-md bg-slate-50 p-3 text-sm text-slate-700">
-            <span className="font-medium">Messaging (guidance only): </span>
-            {messaging.primaryPositioning}
-          </p>
-        ) : null}
-        {draft.evidenceRefs && draft.evidenceRefs.length > 0 ? (
-          <details className="md:col-span-2 text-sm text-slate-600">
-            <summary className="cursor-pointer font-medium text-slate-800">
-              Why did AI suggest this?
-            </summary>
-            <ul className="mt-2 list-disc space-y-1 pl-5">
-              {draft.evidenceRefs.slice(0, 12).map((ref, i) => (
-                <li key={i}>
-                  {ref.claim}
-                  {ref.sourceIds?.length
-                    ? ` (sources: ${ref.sourceIds.join(", ")})`
-                    : ""}
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
-        <div className="md:col-span-2">
-          <SubmitButton disabled={pending}>
-            {pending ? "Saving…" : "Review & Save Product"}
-          </SubmitButton>
-        </div>
-      </form>
-      <Status result={state} />
-    </div>
-  );
-}
+export { ProductDraftReview } from "@/components/ProductDraftReview";
 
 export function SuggestedBuyerRolesPanel({
   productId,
