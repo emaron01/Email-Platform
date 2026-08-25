@@ -130,6 +130,17 @@ export function coerceIsMandatory(
   return isMandatory === true;
 }
 
+/** One-line model for the ICP editor — the user should not need docs. */
+export const ICP_TIER_MODEL_LINE =
+  "Primary criteria define your fit and drive the score. Secondary criteria are signals that help you prioritise but never disqualify. Mandatory criteria disqualify on confirmed failure only.";
+
+export const ICP_PRIMARY_TIER_HEADER =
+  "Defines a fit — counts toward the score";
+export const ICP_SECONDARY_TIER_HEADER =
+  "Good to know — never counts against a company";
+export const ICP_MANDATORY_EXPLANATION =
+  "A confirmed failure disqualifies the company outright. An unknown does not.";
+
 export function logIcpCriterionTierAssignments(
   assignments: IcpCriterionTierAssignment[],
   write: (line: string) => void = console.info,

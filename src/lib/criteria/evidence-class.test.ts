@@ -682,11 +682,20 @@ describe("prompt version + UI seams", () => {
     expect(ui).toContain("expectation-line");
     expect(ui).toContain('data-testid="icp-interpretation-prose"');
     expect(ui).toContain("Could not be determined from available data");
+    expect(ui).toContain('data-testid="icp-scoring-model-line"');
+    expect(ui).toContain('data-testid="icp-primary-tier"');
+    expect(ui).toContain('data-testid="icp-secondary-tier"');
+    expect(ui).toContain('data-testid="icp-mandatory-toggle"');
+    expect(ui).toContain("ICP_PRIMARY_TIER_HEADER");
+    expect(ui).toContain("ICP_SECONDARY_TIER_HEADER");
+    expect(ui).toContain("ICP_MANDATORY_EXPLANATION");
+    expect(ui).toContain("ICP_TIER_MODEL_LINE");
   });
 
   it("MAKE_SUPPORTING demote only clears isRequired via decide action", () => {
     const actions = readFileSync("src/app/actions/interpretation.ts", "utf8");
     expect(actions).toContain("decideIcpTargetedSearchAction");
     expect(actions).toContain('decision === "MAKE_SUPPORTING" ? false');
+    expect(actions).toContain("updateIcpCriterionTierAction");
   });
 });

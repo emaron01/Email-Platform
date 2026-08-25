@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import {
   assignMigratedIcpCriterionTier,
   coerceIsMandatory,
+  ICP_MANDATORY_EXPLANATION,
+  ICP_PRIMARY_TIER_HEADER,
+  ICP_SECONDARY_TIER_HEADER,
+  ICP_TIER_MODEL_LINE,
   logIcpCriterionTierAssignments,
   migrateExistingIcpCriterionTier,
   proposeIcpCriterionTier,
@@ -164,5 +168,19 @@ describe("interpretation prompt includes tier proposal rules", () => {
     );
     expect(migration).toContain("icp_criterion_tier_backfill");
     expect(migration).toContain("TARGETED_SEARCH");
+  });
+
+  it("exposes plain-language editor copy for tier and mandatory", () => {
+    expect(ICP_TIER_MODEL_LINE).toContain("Primary criteria define your fit");
+    expect(ICP_PRIMARY_TIER_HEADER).toBe(
+      "Defines a fit — counts toward the score",
+    );
+    expect(ICP_SECONDARY_TIER_HEADER).toBe(
+      "Good to know — never counts against a company",
+    );
+    expect(ICP_MANDATORY_EXPLANATION).toContain(
+      "confirmed failure disqualifies",
+    );
+    expect(ICP_MANDATORY_EXPLANATION).toContain("unknown does not");
   });
 });

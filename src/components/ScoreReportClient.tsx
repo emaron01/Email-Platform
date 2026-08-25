@@ -17,6 +17,10 @@ import {
   SubmitButton,
 } from "@/components/ui";
 import { contactDisplayName, cn } from "@/lib/utils";
+import {
+  icpQualificationWhyLines,
+  readIcpQualification,
+} from "@/lib/scoring/icp-qualification";
 
 export type CompanyResearchView = {
   id: string;
@@ -326,6 +330,10 @@ export function ScoreReportClient({
               const open = expandedId === row.id;
               const companyResearch = row.contact.companyRecord?.research?.[0];
               const coverage = icpCoverage(row.assessmentData);
+              const qualification = readIcpQualification(row.assessmentData);
+              const why = qualification
+                ? icpQualificationWhyLines(qualification)
+                : null;
               const researchLabel = companyResearchLabel(
                 companyResearch?.status,
               );
@@ -379,6 +387,13 @@ export function ScoreReportClient({
                         <span className="mt-0.5 block text-[10px] leading-3 text-slate-500">
                           {coverage.evaluated} of {coverage.total} criteria
                           evaluated
+                        </span>
+                      ) : null}
+                      {qualification?.secondaryFlags.length ? (
+                        <span className="mt-0.5 block text-[10px] leading-3 text-emerald-800">
+                          {qualification.secondaryFlags
+                            .map((flag) => flag.text)
+                            .join(" · ")}
                         </span>
                       ) : null}
                     </td>
@@ -455,6 +470,26 @@ export function ScoreReportClient({
                               </div>
                             )}
                           </section>
+
+                          {why ? (
+                            <section data-testid="icp-qualification-why">
+                              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Why this ICP result
+                              </h4>
+                              <div className="mt-2 space-y-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800">
+                                {why.mandatory ? (
+                                  <p className="font-medium text-red-800">
+                                    Disqualified by confirmed failure:{" "}
+                                    {why.mandatory}
+                                  </p>
+                                ) : null}
+                                <p>Primary passed: {why.passed}</p>
+                                <p>Primary unresolved: {why.unresolved}</p>
+                                <p>Primary failed: {why.failed}</p>
+                                <p>Secondary signals found: {why.secondary}</p>
+                              </div>
+                            </section>
+                          ) : null}
 
                           <div className="grid gap-3 md:grid-cols-2">
                             <Detail

@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { evaluateIcpCriterionWithEvidenceClass } from "@/lib/criteria/targeted-search-eval";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
 import { calculateScoresFromAssessment } from "@/lib/scoring/calculate";
-import { icpQualificationToBucket } from "@/lib/scoring/icp-qualification";
+import {
+  icpQualificationToBucket,
+  icpQualificationWhyLines,
+} from "@/lib/scoring/icp-qualification";
 import type { AiScoringAssessment } from "@/lib/scoring/assessment";
 import type { IcpSnapshot } from "@/lib/scoring/types";
 
@@ -202,5 +205,30 @@ describe("PRIMARY / SECONDARY ICP qualification", () => {
     ]);
     expect(result.icpQualification.bucket).toBe("NO");
     expect(result.scoreLabel).toBe("DISQUALIFIED");
+  });
+
+  it("explains passed primaries, unresolved primaries, and secondary signals", () => {
+    const confirmed = scoreIcp({
+      criteria: [industry, hubspot],
+      actuals: ["B2B", "HubSpot CRM"],
+    });
+    expect(icpQualificationWhyLines(confirmed.icpQualification)).toEqual({
+      passed: "Industry",
+      unresolved: "None",
+      failed: "None",
+      mandatory: null,
+      secondary: "Uses HubSpot ✓",
+    });
+    const unresolved = scoreIcp({
+      criteria: [industry, hubspot],
+      actuals: [null, null],
+    });
+    expect(icpQualificationWhyLines(unresolved.icpQualification)).toEqual({
+      passed: "None",
+      unresolved: "Industry",
+      failed: "None",
+      mandatory: null,
+      secondary: "None",
+    });
   });
 });

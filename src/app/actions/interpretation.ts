@@ -19,6 +19,7 @@ import {
   criterionMaterialFingerprint,
   normalizeEvidenceClass,
 } from "@/lib/criteria/evidence-class";
+import { normalizeIcpCriterionTier } from "@/lib/criteria/tier";
 import { createPersona, updatePersona } from "@/lib/tenant/data";
 import { prisma } from "@/lib/prisma";
 
@@ -322,6 +323,48 @@ export async function decideIcpTargetedSearchAction(
         error instanceof TenantError
           ? error.message
           : "Unable to save criterion decision. Please try again.",
+    };
+  }
+}
+
+export async function updateIcpCriterionTierAction(
+  _prev: CriterionActionResult | null,
+  formData: FormData,
+): Promise<CriterionActionResult> {
+  try {
+    const organizationId = await requireOrganizationId();
+    const criterionId = String(formData.get("criterionId") || "").trim();
+    const icpId = String(formData.get("icpId") || "").trim();
+    const productId = String(formData.get("productId") || "").trim();
+    const tier = normalizeIcpCriterionTier(formData.get("tier"));
+    const isMandatory =
+      formData.get("isMandatory") === "on" ||
+      formData.get("isMandatory") === "true";
+    if (!criterionId || !icpId) {
+      return { ok: false, message: "ICP criterion id and icp id are required." };
+    }
+    if (!tier) {
+      return {
+        ok: false,
+        message: "Choose whether this defines a fit or is good to know.",
+      };
+    }
+
+    await updateIcpCriterionManual({
+      organizationId,
+      icpId,
+      criterionId,
+      data: { tier, isMandatory },
+    });
+    revalidateSetup(productId || undefined);
+    return { ok: true, message: "Criterion scoring role updated." };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof TenantError
+          ? error.message
+          : "Unable to update criterion scoring role. Please try again.",
     };
   }
 }

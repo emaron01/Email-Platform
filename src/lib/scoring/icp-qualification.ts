@@ -157,6 +157,30 @@ export function icpQualificationToBucket(
   return "NEEDS_REVIEW";
 }
 
+export function icpQualificationWhyLines(qualification: IcpQualification): {
+  passed: string;
+  unresolved: string;
+  failed: string;
+  mandatory: string | null;
+  secondary: string;
+} {
+  const names = (values: string[]) =>
+    values.length > 0 ? values.join(", ") : "None";
+  return {
+    passed: names(qualification.primaryPassed),
+    unresolved: names(qualification.primaryUnresolved),
+    failed: names(qualification.primaryFailed),
+    mandatory:
+      qualification.mandatoryFailures.length > 0
+        ? names(qualification.mandatoryFailures)
+        : null,
+    secondary:
+      qualification.secondaryFlags.length > 0
+        ? qualification.secondaryFlags.map((flag) => flag.text).join(", ")
+        : "None",
+  };
+}
+
 export function readIcpQualification(
   assessmentData: unknown,
 ): IcpQualification | null {

@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   decideIcpTargetedSearchAction,
+  updateIcpCriterionTierAction,
   updateIcpEvidenceClassAction,
 } from "@/app/actions/interpretation";
 import {
@@ -18,6 +19,14 @@ import {
   type CriterionEvidenceClassValue,
   type TargetedSearchDecisionValue,
 } from "@/lib/criteria/evidence-class";
+import {
+  ICP_MANDATORY_EXPLANATION,
+  ICP_PRIMARY_TIER_HEADER,
+  ICP_SECONDARY_TIER_HEADER,
+  ICP_TIER_MODEL_LINE,
+  normalizeIcpCriterionTier,
+  type IcpCriterionTierValue,
+} from "@/lib/criteria/tier";
 import { formatCriterionDisplay } from "@/lib/criteria/types";
 
 export type IcpCriterionReviewRow = {
@@ -40,6 +49,8 @@ export type IcpCriterionReviewRow = {
   evidenceClassLocked?: boolean;
   targetedSearchDecision?: TargetedSearchDecisionValue | null;
   targetedSearchDecisionFingerprint?: string | null;
+  tier?: IcpCriterionTierValue | string | null;
+  isMandatory?: boolean;
 };
 
 function roleGlyph(c: IcpCriterionReviewRow): string {
@@ -179,6 +190,87 @@ function EvidenceClassSelect({
   );
 }
 
+function TierAndMandatoryForm({
+  productId,
+  icpId,
+  criterion,
+}: {
+  productId: string;
+  icpId: string;
+  criterion: IcpCriterionReviewRow;
+}) {
+  const router = useRouter();
+  const initialTier = normalizeIcpCriterionTier(criterion.tier) ?? "PRIMARY";
+  const [tier, setTier] = useState<IcpCriterionTierValue>(initialTier);
+  const [state, action, pending] = useActionState(
+    updateIcpCriterionTierAction,
+    null,
+  );
+
+  useEffect(() => {
+    if (state?.ok) router.refresh();
+  }, [state, router]);
+
+  if (!criterion.id) return null;
+
+  return (
+    <form action={action} className="mt-2 space-y-2">
+      <input type="hidden" name="productId" value={productId} />
+      <input type="hidden" name="icpId" value={icpId} />
+      <input type="hidden" name="criterionId" value={criterion.id} />
+      <label className="text-xs text-slate-600">
+        Scoring role
+        <select
+          name="tier"
+          value={tier}
+          disabled={pending}
+          onChange={(event) =>
+            setTier(
+              normalizeIcpCriterionTier(event.target.value) ?? "PRIMARY",
+            )
+          }
+          className="ml-2 rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+        >
+          <option value="PRIMARY">{ICP_PRIMARY_TIER_HEADER}</option>
+          <option value="SECONDARY">{ICP_SECONDARY_TIER_HEADER}</option>
+        </select>
+      </label>
+      {tier === "PRIMARY" ? (
+        <div
+          className="rounded-md border border-red-300 bg-red-50 px-2.5 py-2"
+          data-testid="icp-mandatory-toggle"
+        >
+          <label className="flex items-start gap-2 text-xs text-red-950">
+            <input
+              type="checkbox"
+              name="isMandatory"
+              value="true"
+              defaultChecked={Boolean(criterion.isMandatory)}
+              disabled={pending}
+              className="mt-0.5 accent-red-700"
+            />
+            <span>
+              <span className="font-semibold">Mandatory</span>
+              {" — "}
+              {ICP_MANDATORY_EXPLANATION}
+            </span>
+          </label>
+        </div>
+      ) : null}
+      <button
+        type="submit"
+        disabled={pending}
+        className="text-xs font-medium text-slate-900 underline disabled:opacity-60"
+      >
+        {pending ? "Saving…" : "Update scoring role"}
+      </button>
+      {state && !state.ok ? (
+        <p className="text-xs text-red-600">{state.message}</p>
+      ) : null}
+    </form>
+  );
+}
+
 function CriterionCard({
   productId,
   icpId,
@@ -210,16 +302,20 @@ function CriterionCard({
       storedFingerprint: criterion.targetedSearchDecisionFingerprint,
       currentFingerprint: fingerprint,
     });
+  const mandatory =
+    (normalizeIcpCriterionTier(criterion.tier) ?? "PRIMARY") === "PRIMARY" &&
+    Boolean(criterion.isMandatory);
 
   return (
     <li
       className={
-        emphasize
+        emphasize || mandatory
           ? "rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-950"
           : "rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-800"
       }
       data-testid="icp-criterion-card"
       data-evidence-class={evidenceClass}
+      data-tier={normalizeIcpCriterionTier(criterion.tier) ?? "PRIMARY"}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p>
@@ -231,10 +327,16 @@ function CriterionCard({
               operator: criterion.operator as never,
               importance: criterion.importance as never,
               evidenceClass,
+              tier: normalizeIcpCriterionTier(criterion.tier) ?? undefined,
             })}
           </span>
           {criterion.manuallyEdited ? (
             <span className="ml-2 text-xs text-amber-700">(manual)</span>
+          ) : null}
+          {mandatory ? (
+            <span className="ml-2 rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-900">
+              Mandatory
+            </span>
           ) : null}
         </p>
         <span
@@ -258,6 +360,12 @@ function CriterionCard({
           &ldquo;Make supporting&rdquo; unless you accept asymmetric evaluation.
         </p>
       ) : null}
+      <TierAndMandatoryForm
+        key={`${criterion.id}-${criterion.tier}-${String(criterion.isMandatory)}`}
+        productId={productId}
+        icpId={icpId}
+        criterion={criterion}
+      />
       <EvidenceClassSelect
         productId={productId}
         icpId={icpId}
@@ -277,6 +385,86 @@ function CriterionCard({
         </p>
       ) : null}
     </li>
+  );
+}
+
+function TargetedSearchBlock({
+  productId,
+  icpId,
+  criteria,
+}: {
+  productId: string;
+  icpId: string;
+  criteria: IcpCriterionReviewRow[];
+}) {
+  if (criteria.length === 0) return null;
+  return (
+    <section
+      className="rounded-md border border-red-300 bg-red-50/60 p-3"
+      data-testid="targeted-search-section"
+    >
+      <h6 className="text-sm font-semibold text-red-950">
+        {TARGETED_SEARCH_SECTION_TITLE}
+      </h6>
+      <p className="mt-1 text-xs text-red-900/90">
+        {TARGETED_SEARCH_SECTION_BODY}
+      </p>
+      <ul className="mt-3 space-y-2">
+        {criteria.map((c) => (
+          <CriterionCard
+            key={c.id ?? c.name}
+            productId={productId}
+            icpId={icpId}
+            criterion={c}
+            emphasize
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function TierSection({
+  title,
+  productId,
+  icpId,
+  criteria,
+}: {
+  title: string;
+  productId: string;
+  icpId: string;
+  criteria: IcpCriterionReviewRow[];
+}) {
+  if (criteria.length === 0) return null;
+  const targeted = criteria.filter(
+    (c) => normalizeEvidenceClass(c.evidenceClass) === "TARGETED_SEARCH",
+  );
+  const rest = criteria.filter(
+    (c) => normalizeEvidenceClass(c.evidenceClass) !== "TARGETED_SEARCH",
+  );
+  return (
+    <section>
+      <h6 className="text-sm font-semibold text-slate-900">{title}</h6>
+      {rest.length > 0 ? (
+        <ul className="mt-2 space-y-2">
+          {rest.map((c) => (
+            <CriterionCard
+              key={c.id ?? c.name}
+              productId={productId}
+              icpId={icpId}
+              criterion={c}
+            />
+          ))}
+        </ul>
+      ) : null}
+      <div className={rest.length > 0 ? "mt-3" : "mt-2"}>
+        <TargetedSearchBlock
+          productId={productId}
+          icpId={icpId}
+          criteria={targeted}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -307,15 +495,12 @@ export function IcpCriteriaReview({
   const withClass = criteria.map((c) => ({
     ...c,
     evidenceClass: normalizeEvidenceClass(c.evidenceClass),
+    tier: normalizeIcpCriterionTier(c.tier) ?? "PRIMARY",
   }));
 
   const summary = buildEvidenceClassSummary(withClass);
-  const targeted = withClass.filter((c) => c.evidenceClass === "TARGETED_SEARCH");
-  const listData = withClass.filter((c) => c.evidenceClass === "LIST_DATA");
-  const research = withClass.filter(
-    (c) => c.evidenceClass === "COMPANY_RESEARCH",
-  );
-  const semantic = withClass.filter((c) => c.evidenceClass === "SEMANTIC");
+  const primary = withClass.filter((c) => c.tier === "PRIMARY");
+  const secondary = withClass.filter((c) => c.tier === "SECONDARY");
 
   return (
     <div className="mt-4 space-y-4" data-testid="icp-criteria-review">
@@ -354,6 +539,12 @@ export function IcpCriteriaReview({
         ) : null}
         <p
           className="mt-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900"
+          data-testid="icp-scoring-model-line"
+        >
+          {ICP_TIER_MODEL_LINE}
+        </p>
+        <p
+          className="mt-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900"
           data-testid="evidence-class-summary"
         >
           {summary}
@@ -366,83 +557,25 @@ export function IcpCriteriaReview({
         </p>
       </div>
 
-      {listData.length > 0 ? (
-        <section>
-          <h6 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            From your list
-          </h6>
-          <ul className="mt-2 space-y-2">
-            {listData.map((c) => (
-              <CriterionCard
-                key={c.id ?? c.name}
-                productId={productId}
-                icpId={icpId}
-                criterion={c}
-              />
-            ))}
-          </ul>
-        </section>
+      {primary.length > 0 ? (
+        <div data-testid="icp-primary-tier">
+          <TierSection
+            title={ICP_PRIMARY_TIER_HEADER}
+            productId={productId}
+            icpId={icpId}
+            criteria={primary}
+          />
+        </div>
       ) : null}
-
-      {research.length > 0 ? (
-        <section>
-          <h6 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            From company research
-          </h6>
-          <ul className="mt-2 space-y-2">
-            {research.map((c) => (
-              <CriterionCard
-                key={c.id ?? c.name}
-                productId={productId}
-                icpId={icpId}
-                criterion={c}
-              />
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {targeted.length > 0 ? (
-        <section
-          className="rounded-md border border-red-300 bg-red-50/60 p-3"
-          data-testid="targeted-search-section"
-        >
-          <h6 className="text-sm font-semibold text-red-950">
-            {TARGETED_SEARCH_SECTION_TITLE}
-          </h6>
-          <p className="mt-1 text-xs text-red-900/90">
-            {TARGETED_SEARCH_SECTION_BODY}
-          </p>
-          <ul className="mt-3 space-y-2">
-            {targeted.map((c) => (
-              <CriterionCard
-                key={c.id ?? c.name}
-                productId={productId}
-                icpId={icpId}
-                criterion={c}
-                emphasize
-              />
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {semantic.length > 0 ? (
-        <section>
-          <h6 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            AI judgment
-          </h6>
-          <ul className="mt-2 space-y-2">
-            {semantic.map((c) => (
-              <CriterionCard
-                key={c.id ?? c.name}
-                productId={productId}
-                icpId={icpId}
-                criterion={c}
-              />
-            ))}
-          </ul>
-        </section>
+      {secondary.length > 0 ? (
+        <div data-testid="icp-secondary-tier">
+          <TierSection
+            title={ICP_SECONDARY_TIER_HEADER}
+            productId={productId}
+            icpId={icpId}
+            criteria={secondary}
+          />
+        </div>
       ) : null}
     </div>
   );

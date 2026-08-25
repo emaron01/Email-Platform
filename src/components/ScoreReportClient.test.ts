@@ -22,4 +22,13 @@ describe("ScoreReportClient table layout", () => {
     expect(source).toContain('title={row.recommendedAction ?? "Pending"}');
     expect(source).toContain('label="Recommended Action"');
   });
+
+  it("explains which primaries passed, which are unresolved, and which secondary signals were found", () => {
+    expect(source).toContain('data-testid="icp-qualification-why"');
+    expect(source).toContain("Why this ICP result");
+    expect(source).toContain("Primary passed:");
+    expect(source).toContain("Primary unresolved:");
+    expect(source).toContain("Secondary signals found:");
+    expect(source).toContain("readIcpQualification");
+  });
 });
