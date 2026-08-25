@@ -19,6 +19,8 @@ import {
 } from "@/lib/tenant/data";
 import { getCompaniesNeedingResearchForScoringRun } from "@/lib/tenant/companies";
 import { getScoringReadiness } from "@/lib/scoring/engine";
+import { collectMandatorySuggestions } from "@/lib/scoring/mandatory-suggestion";
+import type { IcpSnapshot } from "@/lib/scoring/types";
 import { listTitleSuggestionsForRun } from "@/lib/scoring/title-suggestions";
 import { isResearchAiConfigured } from "@/lib/ai/config";
 import {
@@ -100,6 +102,15 @@ export default async function ScoringReportPage({
       listPersonas(run.productId),
       listTitleSuggestionsForRun(runId),
     ]);
+
+  const mandatorySuggestions = collectMandatorySuggestions({
+    criteria: (run.icpSnapshot as IcpSnapshot | null)?.criteria ?? [],
+    scores: rows.map((row) => ({
+      companyKey: row.contact.companyId ?? row.contactId,
+      criterionAssessments: row.criterionAssessments,
+      assessmentData: row.assessmentData,
+    })),
+  });
 
   return (
     <div>
@@ -280,6 +291,7 @@ export default async function ScoringReportPage({
             id: persona.id,
             name: persona.name,
           }))}
+          mandatorySuggestions={mandatorySuggestions}
           rows={rows.map((row) => ({
             id: row.id,
             contactId: row.contactId,

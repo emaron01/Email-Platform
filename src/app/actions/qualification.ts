@@ -15,7 +15,12 @@ export type QualificationOverrideActionResult = {
   bucket?: QualificationBucket;
 };
 
-const BUCKETS: QualificationBucket[] = ["GOOD", "NEEDS_REVIEW", "EXCLUDED"];
+const BUCKETS: QualificationBucket[] = [
+  "GOOD",
+  "NEEDS_REVIEW",
+  "POOR_FIT",
+  "EXCLUDED",
+];
 const TARGETS: QualificationOverrideTarget[] = ["COMPANY", "CONTACT"];
 
 export async function overrideQualificationBucketAction(input: {

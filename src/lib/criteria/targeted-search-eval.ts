@@ -8,8 +8,11 @@
 
 import {
   evaluateCriterionDeterministic,
+  formatConfirmedFactualMiss,
   type CriterionEvalResult,
 } from "@/lib/criteria/evaluate";
+import type { DimensionAssessment } from "@/lib/scoring/assessment";
+import type { ConfidenceValue } from "@/lib/scoring/config";
 import {
   isFactualEvidenceClass,
   normalizeEvidenceClass,
@@ -40,7 +43,62 @@ export type CriterionEvidenceAssessment = {
   tier?: "PRIMARY" | "SECONDARY";
   isMandatory?: boolean;
   provenance?: ActualProvenance | null;
+  /** Prominent confirmed-miss line; omitted when unresolved or passing. */
+  confirmedFailureLine?: string | null;
 };
+
+function observedDisplay(
+  actualValue: unknown,
+  provenance?: ActualProvenance | null,
+): string {
+  if (provenance?.displayValue?.trim()) return provenance.displayValue.trim();
+  if (
+    actualValue &&
+    typeof actualValue === "object" &&
+    "display" in actualValue &&
+    typeof (actualValue as { display?: unknown }).display === "string"
+  ) {
+    return (actualValue as { display: string }).display;
+  }
+  if (actualValue == null) return "";
+  return String(actualValue);
+}
+
+function confirmedFailureLineFor(
+  criterion: CriterionSnapshot,
+  actualValue: unknown,
+  provenance?: ActualProvenance | null,
+): string {
+  return formatConfirmedFactualMiss({
+    name: criterion.name,
+    observed: observedDisplay(actualValue, provenance),
+    operator: criterion.operator,
+    minValue: criterion.minValue,
+    maxValue: criterion.maxValue,
+    targetValue: criterion.targetValue,
+  });
+}
+
+/**
+ * List data or a cited research sentence is not low-confidence.
+ * Unresolved stays LOW. Missing provenance on a resolved deterministic value is HIGH.
+ */
+export function confidenceForResolvedFactual(input: {
+  method: CriterionEvalResult["method"] | "ASYMMETRIC";
+  confidence: CriterionEvalResult["confidence"];
+  provenance?: ActualProvenance | null;
+  unresolved: boolean;
+}): ConfidenceValue {
+  if (input.unresolved) return "LOW";
+  if (input.provenance?.source === "LIST") return "HIGH";
+  if (input.provenance?.source === "RESEARCH" && input.provenance.excerpt) {
+    return "HIGH";
+  }
+  if (input.method === "DETERMINISTIC" || input.method === "ASYMMETRIC") {
+    return input.confidence === "LOW" ? "HIGH" : input.confidence;
+  }
+  return input.confidence === "LOW" ? "MEDIUM" : input.confidence;
+}
 
 function unverifiableAssessment(input: {
   criterion: CriterionSnapshot;
@@ -128,6 +186,7 @@ function applyCriterionTier(
 function evaluateIcpCriterionCore(input: {
   criterion: CriterionSnapshot;
   actualValue: unknown;
+  provenance?: ActualProvenance | null;
 }): CriterionEvidenceAssessment {
   const evidenceClass = normalizeEvidenceClass(
     input.criterion.evidenceClass ?? "TARGETED_SEARCH",
@@ -149,18 +208,31 @@ function evaluateIcpCriterionCore(input: {
         reasoning: `Unverified: no list data or company research evidence for "${input.criterion.name}". Not scored against the company.`,
       });
     }
+    const failed = base.assessment === "NO_FIT";
     return {
       scope: "ICP",
       name: input.criterion.name,
       criterionId: input.criterion.id,
       evidenceClass,
       assessment: base.assessment,
-      confidence: base.confidence,
+      confidence: confidenceForResolvedFactual({
+        method: base.method,
+        confidence: base.confidence,
+        provenance: input.provenance,
+        unresolved: false,
+      }),
       method: base.method,
       reasoning: base.reasoning,
-      evidenceOutcome: "NOT_APPLICABLE",
+      evidenceOutcome: failed ? "CONTRADICTED" : "CONFIRMED",
       excludeFromScore: false,
       factualAiForbidden,
+      confirmedFailureLine: failed
+        ? confirmedFailureLineFor(
+            input.criterion,
+            input.actualValue,
+            input.provenance,
+          )
+        : null,
     };
   }
 
@@ -191,6 +263,11 @@ function evaluateIcpCriterionCore(input: {
       evidenceOutcome: "CONTRADICTED",
       excludeFromScore: false,
       factualAiForbidden: true,
+      confirmedFailureLine: confirmedFailureLineFor(
+        input.criterion,
+        input.actualValue,
+        input.provenance,
+      ),
     };
   }
 
@@ -211,7 +288,7 @@ function evaluateIcpCriterionCore(input: {
   }
 
   if (
-    base.assessment === "WEAK" &&
+    (base.assessment === "WEAK" || base.assessment === "NO_FIT") &&
     !hasExplicitContradiction(input.actualValue)
   ) {
     return unverifiableAssessment({
@@ -234,14 +311,70 @@ function evaluateIcpCriterionCore(input: {
     evidenceOutcome: "CONTRADICTED",
     excludeFromScore: false,
     factualAiForbidden: true,
+    confirmedFailureLine: confirmedFailureLineFor(
+      input.criterion,
+      input.actualValue,
+      input.provenance,
+    ),
   };
 }
 
 /**
- * Guard: strip or clamp AI dimension assessments that try to invent factual results.
- * Unverifiable factual dimensions are forced to UNKNOWN and marked excludeFromScore by
- * the caller via criterionAssessments.
+ * Guard: factual ICP dimensions are scored by the cascade + deterministic eval.
+ * The AI assessment is discarded — including when it happens to match NO_FIT —
+ * so "no data" / LOW confidence cannot survive a resolved value.
  */
+export function overlayFactualAiDimension(input: {
+  dimension: DimensionAssessment;
+  evidenceAssessment: CriterionEvidenceAssessment | undefined;
+}): DimensionAssessment {
+  const ev = input.evidenceAssessment;
+  if (!ev || !ev.factualAiForbidden) return input.dimension;
+
+  if (ev.evidenceOutcome === "UNVERIFIABLE" || ev.excludeFromScore) {
+    return {
+      dimension: input.dimension.dimension,
+      component: input.dimension.component,
+      assessment: "UNKNOWN",
+      confidence: "LOW",
+      evidence: [],
+      concerns: [ev.reasoning],
+    };
+  }
+
+  const assessment: DimensionAssessment["assessment"] =
+    ev.assessment === "NEUTRAL"
+      ? "UNKNOWN"
+      : ev.assessment === "WEAK"
+        ? "NO_FIT"
+        : ev.assessment;
+  const confidence = confidenceForResolvedFactual({
+    method: ev.method,
+    confidence: ev.confidence,
+    provenance: ev.provenance,
+    unresolved: false,
+  });
+  const evidence = [
+    ev.provenance?.excerpt,
+    ev.provenance?.label,
+    ev.reasoning,
+  ].filter((line): line is string => Boolean(line && line.trim()));
+  const concerns =
+    assessment === "NO_FIT"
+      ? [ev.confirmedFailureLine ?? ev.reasoning]
+      : [];
+
+  return {
+    dimension: input.dimension.dimension,
+    component: input.dimension.component,
+    assessment,
+    confidence,
+    evidence: [...new Set(evidence)],
+    concerns,
+  };
+}
+
+/** @deprecated use overlayFactualAiDimension — kept for existing call sites/tests. */
 export function clampFactualAiDimension(input: {
   dimensionName: string;
   aiAssessment: string;
@@ -251,30 +384,42 @@ export function clampFactualAiDimension(input: {
   forced: boolean;
   reason?: string;
 } {
-  const ev = input.evidenceAssessment;
-  if (!ev || !ev.factualAiForbidden) {
-    return { assessment: input.aiAssessment, forced: false };
-  }
+  const overlaid = overlayFactualAiDimension({
+    dimension: {
+      dimension: input.dimensionName,
+      component: "ICP",
+      assessment: input.aiAssessment as DimensionAssessment["assessment"],
+      evidence: [],
+      concerns: [],
+      confidence: "LOW",
+    },
+    evidenceAssessment: input.evidenceAssessment,
+  });
+  const forced =
+    !input.evidenceAssessment ||
+    !input.evidenceAssessment.factualAiForbidden
+      ? false
+      : overlaid.assessment !== input.aiAssessment ||
+        overlaid.confidence !== "LOW" ||
+        overlaid.concerns.length > 0;
+  return {
+    assessment: overlaid.assessment,
+    forced:
+      Boolean(input.evidenceAssessment?.factualAiForbidden) &&
+      (overlaid.assessment !== input.aiAssessment || forced),
+    reason: input.evidenceAssessment?.factualAiForbidden
+      ? `Factual criterion "${input.dimensionName}" uses evidence-class evaluation, not AI inference.`
+      : undefined,
+  };
+}
 
-  if (ev.evidenceOutcome === "UNVERIFIABLE" || ev.excludeFromScore) {
-    return {
-      assessment: "UNKNOWN",
-      forced: true,
-      reason: `Factual criterion "${input.dimensionName}" has no evidence — AI may not invent a result.`,
-    };
-  }
-
-  // Prefer deterministic/asymmetric assessment over AI for factual classes.
-  if (ev.method === "DETERMINISTIC" || ev.method === "ASYMMETRIC") {
-    const mapped = ev.assessment === "NEUTRAL" ? "UNKNOWN" : ev.assessment;
-    if (mapped !== input.aiAssessment) {
-      return {
-        assessment: mapped,
-        forced: true,
-        reason: `Factual criterion "${input.dimensionName}" uses evidence-class evaluation, not AI inference.`,
-      };
-    }
-  }
-
-  return { assessment: input.aiAssessment, forced: false };
+export function omitFactualIcpDimensionsForAi<
+  T extends { component: string; dimension: string },
+>(applicable: T[], assessments: CriterionEvidenceAssessment[]): T[] {
+  const factual = new Set(
+    assessments.filter((row) => row.factualAiForbidden).map((row) => row.name),
+  );
+  return applicable.filter(
+    (row) => row.component !== "ICP" || !factual.has(row.dimension),
+  );
 }

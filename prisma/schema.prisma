@@ -124,6 +124,7 @@ enum ScoreLabel {
 enum QualificationBucket {
   GOOD
   NEEDS_REVIEW
+  POOR_FIT
   EXCLUDED
 }
 

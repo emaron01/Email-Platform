@@ -192,3 +192,141 @@ export async function resolveTitleSuggestionAction(
     return { ok: false, message };
   }
 }
+
+export type MandatoryRescoreResult = {
+  ok: boolean;
+  message: string;
+};
+
+export async function makePrimaryCriterionMandatoryAndRescoreAction(
+  _prev: MandatoryRescoreResult | null,
+  formData: FormData,
+): Promise<MandatoryRescoreResult> {
+  const scoringRunId = requiredString(formData, "scoringRunId");
+  const criterionId = requiredString(formData, "criterionId");
+  if (!scoringRunId || !criterionId) {
+    return { ok: false, message: "Scoring run and criterion are required." };
+  }
+
+  try {
+    const organizationId = await requireOrganizationId();
+    const { prisma } = await import("@/lib/prisma");
+    const { updateIcpCriterionManual } = await import(
+      "@/lib/interpretation/icp"
+    );
+    const { coerceIsMandatory } = await import("@/lib/criteria/tier");
+
+    const run = await prisma.scoringRun.findFirst({
+      where: { id: scoringRunId, organizationId },
+    });
+    if (!run) {
+      return { ok: false, message: "Scoring run was not found." };
+    }
+
+    const snapshot = run.icpSnapshot as {
+      id?: string;
+      criteria?: Array<{
+        id?: string;
+        name?: string;
+        tier?: string;
+        isMandatory?: boolean;
+      }>;
+    };
+    const snapshotCriterion = (snapshot.criteria ?? []).find(
+      (row) => row.id === criterionId,
+    );
+    if (!snapshotCriterion) {
+      return { ok: false, message: "That criterion is not on this scoring run." };
+    }
+
+    await updateIcpCriterionManual({
+      organizationId,
+      icpId: run.icpId,
+      criterionId,
+      data: { isMandatory: true },
+    });
+
+    const nextCriteria = (snapshot.criteria ?? []).map((row) =>
+      row.id === criterionId
+        ? { ...row, isMandatory: coerceIsMandatory("PRIMARY", true) }
+        : row,
+    );
+    await prisma.scoringRun.update({
+      where: { id: run.id },
+      data: {
+        icpSnapshot: { ...snapshot, criteria: nextCriteria },
+      },
+    });
+
+    const scores = await prisma.contactScore.findMany({
+      where: { organizationId, scoringRunId: run.id },
+      select: { id: true, criterionAssessments: true, assessmentData: true },
+    });
+    const name = snapshotCriterion.name ?? "";
+    const toRescore = scores
+      .filter((score) => {
+        const rows = Array.isArray(score.criterionAssessments)
+          ? score.criterionAssessments
+          : typeof score.assessmentData === "object" &&
+              score.assessmentData &&
+              Array.isArray(
+                (score.assessmentData as { criterionAssessments?: unknown })
+                  .criterionAssessments,
+              )
+            ? (
+                score.assessmentData as {
+                  criterionAssessments: unknown[];
+                }
+              ).criterionAssessments
+            : [];
+        return rows.some((row) => {
+          if (!row || typeof row !== "object") return false;
+          const assessment = row as {
+            name?: unknown;
+            evidenceOutcome?: unknown;
+            assessment?: unknown;
+            excludeFromScore?: unknown;
+          };
+          if (String(assessment.name ?? "") !== name) return false;
+          if (assessment.excludeFromScore) return false;
+          return (
+            assessment.evidenceOutcome === "CONTRADICTED" ||
+            assessment.assessment === "NO_FIT"
+          );
+        });
+      })
+      .map((score) => score.id);
+
+    if (toRescore.length === 0) {
+      revalidatePath(`/scoring/${run.id}`);
+      return {
+        ok: true,
+        message: "Mandatory is on. No scored companies needed a rescore.",
+      };
+    }
+
+    const summary = await runScoringForRun(run.id, {
+      forceRescore: true,
+      contactScoreIds: toRescore,
+    });
+    revalidatePath(`/scoring/${run.id}`);
+    return {
+      ok: true,
+      message: `Mandatory is on. Rescored ${summary.completed} ${summary.completed === 1 ? "company" : "companies"}.`,
+    };
+  } catch (error) {
+    if (error instanceof AiConfigError) {
+      return { ok: false, message: error.message };
+    }
+    if (error instanceof TenantError) {
+      return { ok: false, message: error.message };
+    }
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unable to make this criterion mandatory.",
+    };
+  }
+}

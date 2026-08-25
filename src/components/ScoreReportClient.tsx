@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createCampaignAction } from "@/app/actions";
+import { makePrimaryCriterionMandatoryAndRescoreAction } from "@/app/actions/scoring";
 import {
   DEFAULT_EMAIL_LENGTH,
   EMAIL_GUIDANCE_MAX_CHARS,
@@ -41,6 +42,13 @@ export type CompanyResearchView = {
   riskSignals: unknown;
   researchSources: unknown;
   researchedAt: string | null;
+};
+
+export type MandatorySuggestionView = {
+  criterionId: string;
+  criterionName: string;
+  failedCompanyCount: number;
+  prompt: string;
 };
 
 export type ScoreReportClientRow = {
@@ -118,7 +126,9 @@ function icpCoverage(assessmentData: unknown): ComponentCoverage | null {
 function displayScoreLabel(
   label: string | null,
   coverage: ComponentCoverage | null,
+  bucket: string | null,
 ): string {
+  if (bucket === "WEAK" || label === "POOR") return "Poor";
   if (label === "FAIR" && coverage && coverage.evaluated < coverage.total) {
     return "Maybe";
   }
@@ -215,6 +225,7 @@ export function ScoreReportClient({
   personaName,
   personas: _personas = [],
   rows,
+  mandatorySuggestions = [],
 }: {
   runId: string;
   productId: string;
@@ -225,6 +236,7 @@ export function ScoreReportClient({
   personaName: string;
   personas?: Array<{ id: string; name: string }>;
   rows: ScoreReportClientRow[];
+  mandatorySuggestions?: MandatorySuggestionView[];
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -234,6 +246,15 @@ export function ScoreReportClient({
     createCampaignAction,
     null as CampaignActionResult | null,
   );
+  const [mandatoryState, mandatoryAction, mandatoryPending] = useActionState(
+    makePrimaryCriterionMandatoryAndRescoreAction,
+    null as { ok: boolean; message: string } | null,
+  );
+
+  useEffect(() => {
+    if (!mandatoryState?.ok) return;
+    router.refresh();
+  }, [mandatoryState, router]);
 
   useEffect(() => {
     if (!campaignState?.ok) return;
@@ -274,6 +295,36 @@ export function ScoreReportClient({
 
   return (
     <div className="space-y-4">
+      {mandatorySuggestions.length > 0 ? (
+        <div className="space-y-2" data-testid="mandatory-suggestions">
+          {mandatorySuggestions.map((suggestion) => (
+            <form
+              key={suggestion.criterionId}
+              action={mandatoryAction}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950"
+            >
+              <input type="hidden" name="scoringRunId" value={runId} />
+              <input
+                type="hidden"
+                name="criterionId"
+                value={suggestion.criterionId}
+              />
+              <p>{suggestion.prompt}</p>
+              <PrimaryButton
+                type="submit"
+                disabled={mandatoryPending}
+              >
+                Make mandatory
+              </PrimaryButton>
+            </form>
+          ))}
+          {mandatoryState && !mandatoryState.ok ? (
+            <p role="status" className="text-sm text-rose-800">
+              {mandatoryState.message}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
         <p className="text-sm text-slate-600">
           Selected: <strong className="text-slate-900">{selected.size}</strong>
@@ -413,7 +464,11 @@ export function ScoreReportClient({
                       {displayScore(row.productRelevanceScore)}
                     </td>
                     <td className="px-3 py-2 text-slate-600">
-                      {displayScoreLabel(row.scoreLabel, coverage)}
+                      {displayScoreLabel(
+                        row.scoreLabel,
+                        coverage,
+                        qualification?.bucket ?? null,
+                      )}
                     </td>
                     <td className="px-3 py-2 text-slate-600">
                       <button
@@ -440,6 +495,19 @@ export function ScoreReportClient({
                     <tr className="bg-slate-50">
                       <td colSpan={13} className="px-4 py-4">
                         <div className="space-y-5 text-sm text-slate-700">
+                          {why?.failedLines && why.failedLines !== "None" ? (
+                            <section data-testid="icp-confirmed-failures">
+                              <h4 className="text-xs font-semibold uppercase tracking-wide text-rose-800">
+                                Confirmed misses
+                              </h4>
+                              <ul className="mt-2 space-y-1 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-950">
+                                {qualification?.primaryFailedLines.map((line) => (
+                                  <li key={line}>{line}</li>
+                                ))}
+                              </ul>
+                            </section>
+                          ) : null}
+
                           <section>
                             <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                               Score Breakdown

@@ -365,6 +365,8 @@ export async function scoreSingleContact(input: {
           persona,
           product: input.product,
         });
+        const { omitFactualIcpDimensionsForAi } =
+          await import("@/lib/criteria/targeted-search-eval");
         const payload = buildScoringPayload({
           contact: {
             firstName: contact.firstName,
@@ -399,7 +401,13 @@ export async function scoreSingleContact(input: {
           product: input.product,
           icp: input.icp,
           persona,
-          applicableDimensions: applicable,
+          applicableDimensions: (() => {
+            const forAi = omitFactualIcpDimensionsForAi(
+              applicable,
+              criterionAssessments,
+            );
+            return forAi.length > 0 ? forAi : applicable;
+          })(),
         });
         const config = getScoringAiConfig();
         const provider = getScoringAiProvider();

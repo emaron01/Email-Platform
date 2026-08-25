@@ -15,6 +15,10 @@ describe("ScoreReportClient table layout", () => {
     expect(source).toContain("componentCoverage");
     expect(source).toContain("of {coverage.total} criteria");
     expect(source).toContain('return "Maybe"');
+    expect(source).toContain('return "Poor"');
+    expect(source).toContain('data-testid="icp-confirmed-failures"');
+    expect(source).toContain('data-testid="mandatory-suggestions"');
+    expect(source).toContain("makePrimaryCriterionMandatoryAndRescoreAction");
   });
 
   it("caps recommendations at two lines and keeps the full text available", () => {

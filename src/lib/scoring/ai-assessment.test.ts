@@ -136,7 +136,7 @@ describe("scoring AI contact-research evidence", () => {
     expect(forecastOwner.data.dimensions[0]?.assessment).toBe("STRONG");
     expect(crmAdmin.data.dimensions[0]?.assessment).toBe("NO_FIT");
     expect(generateStructured).toHaveBeenCalledTimes(2);
-    expect(SCORING_PROMPT_VERSION).toBe("4");
+    expect(SCORING_PROMPT_VERSION).toBe("5");
     expect(
       generateStructured.mock.calls[0]?.[0].messages[0]?.content,
     ).toContain("ContactResearch as the primary evidence");

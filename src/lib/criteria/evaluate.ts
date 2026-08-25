@@ -31,6 +31,94 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
+function toTime(value: unknown): number | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.getTime();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const asDate = new Date(value);
+    return Number.isNaN(asDate.getTime()) ? null : asDate.getTime();
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = new Date(value.trim());
+    return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+  }
+  return null;
+}
+
+function stringifyConstraintBound(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  return String(value);
+}
+
+function listConstraintTargets(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : value != null ? [value] : [];
+  return values
+    .map((entry) => stringifyConstraintBound(entry))
+    .filter((entry): entry is string => Boolean(entry));
+}
+
+/** Generic miss phrase from operator + targets. No field names or units. */
+export function describeConstraintMiss(input: {
+  operator: string;
+  minValue?: unknown;
+  maxValue?: unknown;
+  targetValue?: unknown;
+}): string | null {
+  const operator = input.operator.trim().toUpperCase();
+  if (operator === "BETWEEN") {
+    const min = stringifyConstraintBound(input.minValue);
+    const max = stringifyConstraintBound(input.maxValue);
+    if (min && max) return `outside ${min}–${max}`;
+  }
+  const targets = listConstraintTargets(input.targetValue);
+  if (
+    (operator === "IN" || operator === "EQUALS" || operator === "CONTAINS") &&
+    targets.length > 0
+  ) {
+    return `not matching ${targets.join(", ")}`;
+  }
+  if (
+    (operator === "NOT_IN" || operator === "NOT_EQUALS") &&
+    targets.length > 0
+  ) {
+    return `matching excluded ${targets.join(", ")}`;
+  }
+  if (
+    operator === "GREATER_THAN" ||
+    operator === "GREATER_THAN_OR_EQUAL" ||
+    operator === "LESS_THAN" ||
+    operator === "LESS_THAN_OR_EQUAL"
+  ) {
+    const target = stringifyConstraintBound(input.targetValue);
+    if (target) return `outside ${target}`;
+  }
+  return null;
+}
+
+export function formatConfirmedFactualMiss(input: {
+  name: string;
+  observed: string;
+  operator: string;
+  minValue?: unknown;
+  maxValue?: unknown;
+  targetValue?: unknown;
+}): string {
+  const observed = input.observed.trim();
+  const miss = describeConstraintMiss(input);
+  if (!observed) {
+    return miss ? `${input.name} (${miss})` : input.name;
+  }
+  return miss
+    ? `${input.name}: ${observed} (${miss})`
+    : `${input.name}: ${observed}`;
+}
+
 function toBoolean(value: unknown): boolean | null {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
@@ -164,18 +252,35 @@ export function evaluateCriterionDeterministic(input: {
 
   if (
     criterion.dataType === "NUMBER" ||
-    criterion.dataType === "CURRENCY"
+    criterion.dataType === "CURRENCY" ||
+    criterion.dataType === "DATE"
   ) {
-    const bounds = numericBounds(actualValue);
-    const target = toNumber(criterion.targetValue);
-    const min = toNumber(criterion.minValue);
-    const max = toNumber(criterion.maxValue);
+    const bounds =
+      criterion.dataType === "DATE"
+        ? (() => {
+            const t = toTime(actualValue);
+            if (t == null) return null;
+            return { min: t, max: t, display: stringifyConstraintBound(actualValue) ?? String(t) };
+          })()
+        : numericBounds(actualValue);
+    const target =
+      criterion.dataType === "DATE"
+        ? toTime(criterion.targetValue)
+        : toNumber(criterion.targetValue);
+    const min =
+      criterion.dataType === "DATE"
+        ? toTime(criterion.minValue)
+        : toNumber(criterion.minValue);
+    const max =
+      criterion.dataType === "DATE"
+        ? toTime(criterion.maxValue)
+        : toNumber(criterion.maxValue);
     if (bounds == null) {
       return {
         assessment: "UNKNOWN",
         confidence: "LOW",
         method: "UNKNOWN",
-        reasoning: `Could not parse numeric evidence for "${criterion.name}".`,
+        reasoning: `Could not parse evidence for "${criterion.name}".`,
       };
     }
     const ok = compareNumericBounds(
@@ -260,8 +365,8 @@ export function evaluateCriterionDeterministic(input: {
       }
       const ok = actual.includes(needle);
       return {
-        assessment: ok ? "STRONG" : "WEAK",
-        confidence: "MEDIUM",
+        assessment: ok ? "STRONG" : "NO_FIT",
+        confidence: "HIGH",
         method: "DETERMINISTIC",
         reasoning: ok
           ? `Text contains expected value for "${criterion.name}".`
@@ -269,11 +374,15 @@ export function evaluateCriterionDeterministic(input: {
       };
     }
 
-    if (criterion.operator === "IN" || criterion.operator === "EQUALS") {
+    if (
+      criterion.operator === "IN" ||
+      criterion.operator === "EQUALS" ||
+      criterion.operator === "NOT_IN" ||
+      criterion.operator === "NOT_EQUALS"
+    ) {
       const targets = Array.isArray(criterion.targetValue)
         ? criterion.targetValue.map(normalizeText).filter(Boolean)
         : [normalizeText(criterion.targetValue)];
-      const ok = targets.some((t) => t && (actual === t || actual.includes(t)));
       if (targets.filter(Boolean).length === 0) {
         return {
           assessment: "UNKNOWN",
@@ -282,9 +391,16 @@ export function evaluateCriterionDeterministic(input: {
           reasoning: "Semantic interpretation required.",
         };
       }
+      const matched = targets.some(
+        (t) => t && (actual === t || actual.includes(t)),
+      );
+      const ok =
+        criterion.operator === "NOT_IN" || criterion.operator === "NOT_EQUALS"
+          ? !matched
+          : matched;
       return {
-        assessment: ok ? "STRONG" : "WEAK",
-        confidence: "MEDIUM",
+        assessment: ok ? "STRONG" : "NO_FIT",
+        confidence: "HIGH",
         method: "DETERMINISTIC",
         reasoning: ok
           ? `Matched allowed values for "${criterion.name}".`

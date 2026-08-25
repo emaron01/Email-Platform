@@ -7,6 +7,7 @@ import {
 export const QUALIFICATION_BUCKETS = [
   "GOOD",
   "NEEDS_REVIEW",
+  "POOR_FIT",
   "EXCLUDED",
 ] as const satisfies readonly QualificationBucket[];
 
@@ -14,6 +15,7 @@ export const QUALIFICATION_BUCKET_LABELS: Record<QualificationBucket, string> =
   {
     GOOD: "Good",
     NEEDS_REVIEW: "Needs review",
+    POOR_FIT: "Poor fit",
     EXCLUDED: "Excluded",
   };
 
@@ -69,7 +71,7 @@ export function firstUnresolvedCriterion(
     const outcome = String(row.evidenceOutcome ?? "");
     const assessment = String(row.assessment ?? "");
     if (row.tier === "SECONDARY") continue;
-    if (outcome !== "UNVERIFIABLE" && assessment !== "UNKNOWN") continue;
+    if (outcome !== "UNVERIFIABLE" && assessment !== "UNKNOWN" && assessment !== "NEUTRAL") continue;
     const name = String(row.name ?? "").trim();
     if (!name) continue;
     return {
@@ -95,8 +97,7 @@ export function firstUnresolvedDimension(
     const assessment = String(row.assessment ?? "");
     if (
       assessment !== "UNKNOWN" &&
-      assessment !== "WEAK" &&
-      assessment !== "NO_FIT"
+      assessment !== "WEAK"
     ) {
       continue;
     }

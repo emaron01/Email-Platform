@@ -304,7 +304,9 @@ export async function getCampaignQualificationView(
         ? "EXCLUDED"
         : entry.buckets.some((bucket) => bucket === "NEEDS_REVIEW")
           ? "NEEDS_REVIEW"
-          : "GOOD";
+          : entry.buckets.some((bucket) => bucket === "POOR_FIT")
+            ? "POOR_FIT"
+            : "GOOD";
       const bucket =
         (entry.canOverride ? override.get(`COMPANY:${entry.id}`) : undefined) ??
         inferred;
@@ -334,7 +336,8 @@ export async function getCampaignQualificationView(
   const bucketOrder: Record<QualificationBucket, number> = {
     GOOD: 0,
     NEEDS_REVIEW: 1,
-    EXCLUDED: 2,
+    POOR_FIT: 2,
+    EXCLUDED: 3,
   };
   companyRows.sort((a, b) => {
     const bucketDelta = bucketOrder[a.bucket] - bucketOrder[b.bucket];

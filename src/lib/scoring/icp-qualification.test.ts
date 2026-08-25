@@ -216,6 +216,7 @@ describe("PRIMARY / SECONDARY ICP qualification", () => {
       passed: "Industry",
       unresolved: "None",
       failed: "None",
+      failedLines: "None",
       mandatory: null,
       secondary: "Uses HubSpot ✓",
     });
@@ -227,6 +228,7 @@ describe("PRIMARY / SECONDARY ICP qualification", () => {
       passed: "None",
       unresolved: "Industry",
       failed: "None",
+      failedLines: "None",
       mandatory: null,
       secondary: "None",
     });

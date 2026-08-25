@@ -9,7 +9,7 @@ import type { DimensionAssessment } from "@/lib/scoring/assessment";
 import type { ScoreLabelValue } from "@/lib/scoring/types";
 import type { QualificationBucket } from "@prisma/client";
 
-export type IcpQualificationBucket = "GOOD" | "MAYBE" | "NO";
+export type IcpQualificationBucket = "GOOD" | "MAYBE" | "WEAK" | "NO";
 
 export type SecondarySignalFlag = {
   name: string;
@@ -22,6 +22,7 @@ export type IcpQualification = {
   primaryPassed: string[];
   primaryUnresolved: string[];
   primaryFailed: string[];
+  primaryFailedLines: string[];
   mandatoryFailures: string[];
 };
 
@@ -49,9 +50,14 @@ function isConfirmedFailure(
   assessment: CriterionEvidenceAssessment | undefined,
   dimension: DimensionAssessment | undefined,
 ): boolean {
+  if (assessment?.excludeFromScore) return false;
+  if (assessment?.evidenceOutcome === "UNVERIFIABLE") return false;
   if (assessment?.evidenceOutcome === "CONTRADICTED") return true;
-  const value = assessment?.assessment ?? dimension?.assessment;
-  return value === "NO_FIT" || value === "WEAK";
+  if (assessment?.assessment === "NO_FIT") return true;
+  if (dimension?.assessment === "NO_FIT" && assessment?.method === "DETERMINISTIC") {
+    return true;
+  }
+  return false;
 }
 
 function isUnresolved(
@@ -79,6 +85,7 @@ export function resolveIcpQualification(input: {
   const primaryPassed: string[] = [];
   const primaryUnresolved: string[] = [];
   const primaryFailed: string[] = [];
+  const primaryFailedLines: string[] = [];
   const mandatoryFailures: string[] = [];
   const secondaryFlags: SecondarySignalFlag[] = [];
 
@@ -99,6 +106,11 @@ export function resolveIcpQualification(input: {
     const mandatory = coerceIsMandatory(tier, criterion.isMandatory);
     if (isConfirmedFailure(assessment, dimension)) {
       primaryFailed.push(criterion.name);
+      const line =
+        assessment?.confirmedFailureLine?.trim() ||
+        assessment?.reasoning?.trim() ||
+        criterion.name;
+      primaryFailedLines.push(line);
       if (mandatory) mandatoryFailures.push(criterion.name);
       continue;
     }
@@ -119,7 +131,7 @@ export function resolveIcpQualification(input: {
       : primaryUnresolved.length > 0
         ? "MAYBE"
         : primaryFailed.length > 0
-          ? "MAYBE"
+          ? "WEAK"
           : "GOOD";
 
   return {
@@ -128,6 +140,7 @@ export function resolveIcpQualification(input: {
     primaryPassed,
     primaryUnresolved,
     primaryFailed,
+    primaryFailedLines,
     mandatoryFailures,
   };
 }
@@ -138,6 +151,7 @@ export function icpQualificationToScoreLabel(
   overallLabel: ScoreLabelValue,
 ): ScoreLabelValue {
   if (disqualified || qualification.bucket === "NO") return "DISQUALIFIED";
+  if (qualification.bucket === "WEAK") return "POOR";
   if (qualification.bucket === "MAYBE" && overallLabel === "POOR") {
     return "FAIR";
   }
@@ -151,6 +165,7 @@ export function icpQualificationToBucket(
   if (qualification?.bucket === "NO") return "EXCLUDED";
   if (scoreLabel === "DISQUALIFIED") return "EXCLUDED";
   if (qualification?.bucket === "MAYBE") return "NEEDS_REVIEW";
+  if (qualification?.bucket === "WEAK") return "POOR_FIT";
   if (qualification?.bucket === "GOOD") return "GOOD";
   if (scoreLabel === "EXCELLENT" || scoreLabel === "GOOD") return "GOOD";
   if (scoreLabel === "POOR") return "EXCLUDED";
@@ -161,6 +176,7 @@ export function icpQualificationWhyLines(qualification: IcpQualification): {
   passed: string;
   unresolved: string;
   failed: string;
+  failedLines: string;
   mandatory: string | null;
   secondary: string;
 } {
@@ -170,6 +186,10 @@ export function icpQualificationWhyLines(qualification: IcpQualification): {
     passed: names(qualification.primaryPassed),
     unresolved: names(qualification.primaryUnresolved),
     failed: names(qualification.primaryFailed),
+    failedLines:
+      qualification.primaryFailedLines.length > 0
+        ? qualification.primaryFailedLines.join("; ")
+        : "None",
     mandatory:
       qualification.mandatoryFailures.length > 0
         ? names(qualification.mandatoryFailures)
@@ -189,7 +209,7 @@ export function readIcpQualification(
     .icpQualification;
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Partial<IcpQualification>;
-  if (row.bucket !== "GOOD" && row.bucket !== "MAYBE" && row.bucket !== "NO") {
+  if (row.bucket !== "GOOD" && row.bucket !== "MAYBE" && row.bucket !== "NO" && row.bucket !== "WEAK") {
     return null;
   }
   return {
@@ -211,6 +231,9 @@ export function readIcpQualification(
       : [],
     primaryFailed: Array.isArray(row.primaryFailed)
       ? row.primaryFailed.map(String)
+      : [],
+    primaryFailedLines: Array.isArray(row.primaryFailedLines)
+      ? row.primaryFailedLines.map(String)
       : [],
     mandatoryFailures: Array.isArray(row.mandatoryFailures)
       ? row.mandatoryFailures.map(String)

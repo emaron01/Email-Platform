@@ -16,8 +16,10 @@ import {
   isFactualEvidenceClass,
   normalizeEvidenceClass,
 } from "@/lib/criteria/evidence-class";
-import type { CriterionEvidenceAssessment } from "@/lib/criteria/targeted-search-eval";
-import { clampFactualAiDimension } from "@/lib/criteria/targeted-search-eval";
+import {
+  overlayFactualAiDimension,
+  type CriterionEvidenceAssessment,
+} from "@/lib/criteria/targeted-search-eval";
 import {
   resolveDisqualifiers,
   type ResolvedDisqualifier,
@@ -254,17 +256,10 @@ export function calculateScoresFromAssessment(input: {
       evidenceByName,
       input.icp,
     );
-    const clamped = clampFactualAiDimension({
-      dimensionName: dim.dimension,
-      aiAssessment: dim.assessment,
+    return overlayFactualAiDimension({
+      dimension: dim,
       evidenceAssessment: ev,
     });
-    if (!clamped.forced) return dim;
-    return {
-      ...dim,
-      assessment: clamped.assessment as DimensionAssessment["assessment"],
-      concerns: [...dim.concerns, ...(clamped.reason ? [clamped.reason] : [])],
-    };
   });
 
   const excludeIcpDimensionNames = new Set([
