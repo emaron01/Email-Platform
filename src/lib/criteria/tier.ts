@@ -138,8 +138,34 @@ export const ICP_PRIMARY_TIER_HEADER =
   "Defines a fit — counts toward the score";
 export const ICP_SECONDARY_TIER_HEADER =
   "Good to know — never counts against a company";
+export const ICP_PRIMARY_ROLE_LABEL = "Defines a fit";
+export const ICP_SECONDARY_ROLE_LABEL = "Good to know";
 export const ICP_MANDATORY_EXPLANATION =
   "A confirmed failure disqualifies the company outright. An unknown does not.";
+
+/** Editor one-liner: what the criteria do, not where data might come from. */
+export function buildIcpRoleSummary(input: {
+  primaryCount: number;
+  secondaryCount: number;
+}): string {
+  const { primaryCount, secondaryCount } = input;
+  if (primaryCount <= 0 && secondaryCount <= 0) return "No criteria yet.";
+  if (primaryCount <= 0) {
+    return secondaryCount === 1
+      ? "1 signal will never disqualify a company."
+      : `${secondaryCount} signals will never disqualify a company.`;
+  }
+  const fit =
+    primaryCount === 1
+      ? "1 criterion defines your fit"
+      : `${primaryCount} criteria define your fit`;
+  if (secondaryCount <= 0) return `${fit}.`;
+  const signal =
+    secondaryCount === 1
+      ? "1 is a signal that will never disqualify a company"
+      : `${secondaryCount} are signals that will never disqualify a company`;
+  return `${fit}. ${signal}.`;
+}
 
 export function logIcpCriterionTierAssignments(
   assignments: IcpCriterionTierAssignment[],

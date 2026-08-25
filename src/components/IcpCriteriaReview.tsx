@@ -5,25 +5,21 @@ import { useRouter } from "next/navigation";
 import {
   decideIcpTargetedSearchAction,
   updateIcpCriterionTierAction,
-  updateIcpEvidenceClassAction,
 } from "@/app/actions/interpretation";
 import {
-  buildEvidenceClassSummary,
   criterionMaterialFingerprint,
-  evidenceClassAvailabilityLabel,
-  EXPECTATION_SETTING_LINE,
   isTargetedSearchDecisionStale,
   normalizeEvidenceClass,
-  TARGETED_SEARCH_SECTION_BODY,
-  TARGETED_SEARCH_SECTION_TITLE,
   type CriterionEvidenceClassValue,
   type TargetedSearchDecisionValue,
 } from "@/lib/criteria/evidence-class";
 import {
+  buildIcpRoleSummary,
   ICP_MANDATORY_EXPLANATION,
+  ICP_PRIMARY_ROLE_LABEL,
   ICP_PRIMARY_TIER_HEADER,
+  ICP_SECONDARY_ROLE_LABEL,
   ICP_SECONDARY_TIER_HEADER,
-  ICP_TIER_MODEL_LINE,
   normalizeIcpCriterionTier,
   type IcpCriterionTierValue,
 } from "@/lib/criteria/tier";
@@ -53,11 +49,8 @@ export type IcpCriterionReviewRow = {
   isMandatory?: boolean;
 };
 
-function roleGlyph(c: IcpCriterionReviewRow): string {
-  if (c.isDisqualifier) return "✗";
-  if (c.isRequired) return "✓";
-  return "☆";
-}
+const TARGETED_SEARCH_CRITERION_WARNING =
+  "May not be verifiable online. Confirmed matches help; missing evidence is never held against a company.";
 
 function DecisionForm({
   productId,
@@ -82,9 +75,6 @@ function DecisionForm({
 
   return (
     <div className="mt-2 space-y-2" data-testid="targeted-search-decision">
-      <p className="text-xs font-medium text-red-900">
-        Decide how to treat this criterion:
-      </p>
       <div className="flex flex-wrap gap-2">
         <form action={action}>
           <input type="hidden" name="productId" value={productId} />
@@ -135,61 +125,6 @@ function DecisionForm({
   );
 }
 
-function EvidenceClassSelect({
-  productId,
-  icpId,
-  criterion,
-}: {
-  productId: string;
-  icpId: string;
-  criterion: IcpCriterionReviewRow;
-}) {
-  const router = useRouter();
-  const [state, action, pending] = useActionState(
-    updateIcpEvidenceClassAction,
-    null,
-  );
-
-  useEffect(() => {
-    if (state?.ok) router.refresh();
-  }, [state, router]);
-
-  if (!criterion.id) return null;
-  const current = normalizeEvidenceClass(criterion.evidenceClass);
-
-  return (
-    <form action={action} className="mt-1 flex flex-wrap items-center gap-2">
-      <input type="hidden" name="productId" value={productId} />
-      <input type="hidden" name="icpId" value={icpId} />
-      <input type="hidden" name="criterionId" value={criterion.id} />
-      <label className="text-xs text-slate-600">
-        Evidence source
-        <select
-          name="evidenceClass"
-          defaultValue={current}
-          disabled={pending}
-          className="ml-2 rounded border border-slate-300 bg-white px-2 py-1 text-xs"
-        >
-          <option value="LIST_DATA">From your list</option>
-          <option value="COMPANY_RESEARCH">From company research</option>
-          <option value="TARGETED_SEARCH">May not be verifiable online</option>
-          <option value="SEMANTIC">AI judgment</option>
-        </select>
-      </label>
-      <button
-        type="submit"
-        disabled={pending}
-        className="text-xs font-medium text-slate-900 underline disabled:opacity-60"
-      >
-        {pending ? "Saving…" : "Update"}
-      </button>
-      {state && !state.ok ? (
-        <span className="text-xs text-red-600">{state.message}</span>
-      ) : null}
-    </form>
-  );
-}
-
 function TierAndMandatoryForm({
   productId,
   icpId,
@@ -214,7 +149,7 @@ function TierAndMandatoryForm({
   if (!criterion.id) return null;
 
   return (
-    <form action={action} className="mt-2 space-y-2">
+    <form action={action} className="mt-2 flex flex-wrap items-center gap-3">
       <input type="hidden" name="productId" value={productId} />
       <input type="hidden" name="icpId" value={icpId} />
       <input type="hidden" name="criterionId" value={criterion.id} />
@@ -225,47 +160,40 @@ function TierAndMandatoryForm({
           value={tier}
           disabled={pending}
           onChange={(event) =>
-            setTier(
-              normalizeIcpCriterionTier(event.target.value) ?? "PRIMARY",
-            )
+            setTier(normalizeIcpCriterionTier(event.target.value) ?? "PRIMARY")
           }
           className="ml-2 rounded border border-slate-300 bg-white px-2 py-1 text-xs"
         >
-          <option value="PRIMARY">{ICP_PRIMARY_TIER_HEADER}</option>
-          <option value="SECONDARY">{ICP_SECONDARY_TIER_HEADER}</option>
+          <option value="PRIMARY">{ICP_PRIMARY_ROLE_LABEL}</option>
+          <option value="SECONDARY">{ICP_SECONDARY_ROLE_LABEL}</option>
         </select>
       </label>
       {tier === "PRIMARY" ? (
-        <div
-          className="rounded-md border border-red-300 bg-red-50 px-2.5 py-2"
+        <label
+          className="flex items-center gap-1.5 text-xs font-medium text-red-800"
+          title={ICP_MANDATORY_EXPLANATION}
           data-testid="icp-mandatory-toggle"
         >
-          <label className="flex items-start gap-2 text-xs text-red-950">
-            <input
-              type="checkbox"
-              name="isMandatory"
-              value="true"
-              defaultChecked={Boolean(criterion.isMandatory)}
-              disabled={pending}
-              className="mt-0.5 accent-red-700"
-            />
-            <span>
-              <span className="font-semibold">Mandatory</span>
-              {" — "}
-              {ICP_MANDATORY_EXPLANATION}
-            </span>
-          </label>
-        </div>
+          <input
+            type="checkbox"
+            name="isMandatory"
+            value="true"
+            defaultChecked={Boolean(criterion.isMandatory)}
+            disabled={pending}
+            className="accent-red-700"
+          />
+          Mandatory
+        </label>
       ) : null}
       <button
         type="submit"
         disabled={pending}
         className="text-xs font-medium text-slate-900 underline disabled:opacity-60"
       >
-        {pending ? "Saving…" : "Update scoring role"}
+        {pending ? "Saving…" : "Update"}
       </button>
       {state && !state.ok ? (
-        <p className="text-xs text-red-600">{state.message}</p>
+        <p className="w-full text-xs text-red-600">{state.message}</p>
       ) : null}
     </form>
   );
@@ -275,15 +203,12 @@ function CriterionCard({
   productId,
   icpId,
   criterion,
-  emphasize,
 }: {
   productId: string;
   icpId: string;
   criterion: IcpCriterionReviewRow;
-  emphasize?: boolean;
 }) {
   const evidenceClass = normalizeEvidenceClass(criterion.evidenceClass);
-  const label = evidenceClassAvailabilityLabel(evidenceClass);
   const fingerprint = criterionMaterialFingerprint({
     name: criterion.name,
     description: criterion.description,
@@ -302,125 +227,42 @@ function CriterionCard({
       storedFingerprint: criterion.targetedSearchDecisionFingerprint,
       currentFingerprint: fingerprint,
     });
-  const mandatory =
-    (normalizeIcpCriterionTier(criterion.tier) ?? "PRIMARY") === "PRIMARY" &&
-    Boolean(criterion.isMandatory);
 
   return (
     <li
-      className={
-        emphasize || mandatory
-          ? "rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-950"
-          : "rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-800"
-      }
+      className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-800"
       data-testid="icp-criterion-card"
       data-evidence-class={evidenceClass}
       data-tier={normalizeIcpCriterionTier(criterion.tier) ?? "PRIMARY"}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <p>
-          <span className="font-medium">
-            {roleGlyph(criterion)}{" "}
-            {formatCriterionDisplay({
-              ...criterion,
-              dataType: criterion.dataType as never,
-              operator: criterion.operator as never,
-              importance: criterion.importance as never,
-              evidenceClass,
-              tier: normalizeIcpCriterionTier(criterion.tier) ?? undefined,
-            })}
-          </span>
-          {criterion.manuallyEdited ? (
-            <span className="ml-2 text-xs text-amber-700">(manual)</span>
-          ) : null}
-          {mandatory ? (
-            <span className="ml-2 rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-900">
-              Mandatory
-            </span>
-          ) : null}
-        </p>
-        <span
-          className={
-            label.tone === "warning"
-              ? "rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-950"
-              : "rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700"
-          }
-          data-testid="evidence-class-label"
-        >
-          {label.label}
-        </span>
-      </div>
-      {criterion.isRequired && evidenceClass === "TARGETED_SEARCH" ? (
-        <p
-          className="mt-2 text-xs text-amber-950"
-          data-testid="required-targeted-warning"
-        >
-          &ldquo;{criterion.name}&rdquo; is required but may not be verifiable
-          online. Most companies will be unresolvable until researched. Prefer
-          &ldquo;Make supporting&rdquo; unless you accept asymmetric evaluation.
-        </p>
-      ) : null}
+      <p className="font-medium">
+        {formatCriterionDisplay({
+          ...criterion,
+          dataType: criterion.dataType as never,
+          operator: criterion.operator as never,
+          importance: criterion.importance as never,
+          evidenceClass,
+          tier: normalizeIcpCriterionTier(criterion.tier) ?? undefined,
+        })}
+      </p>
       <TierAndMandatoryForm
         key={`${criterion.id}-${criterion.tier}-${String(criterion.isMandatory)}`}
         productId={productId}
         icpId={icpId}
         criterion={criterion}
       />
-      <EvidenceClassSelect
-        productId={productId}
-        icpId={icpId}
-        criterion={criterion}
-      />
-      {needsDecision ? (
-        <DecisionForm productId={productId} icpId={icpId} criterion={criterion} />
-      ) : evidenceClass === "TARGETED_SEARCH" &&
-        criterion.targetedSearchDecision ? (
-        <p className="mt-2 text-xs text-slate-600">
-          Decision:{" "}
-          {criterion.targetedSearchDecision === "KEEP_ASYMMETRIC"
-            ? "Keep — never penalize when not found"
-            : criterion.targetedSearchDecision === "MAKE_SUPPORTING"
-              ? "Supporting"
-              : criterion.targetedSearchDecision}
+      {evidenceClass === "TARGETED_SEARCH" ? (
+        <p
+          className="mt-2 text-xs text-amber-950"
+          data-testid="targeted-search-warning"
+        >
+          {TARGETED_SEARCH_CRITERION_WARNING}
         </p>
       ) : null}
+      {needsDecision ? (
+        <DecisionForm productId={productId} icpId={icpId} criterion={criterion} />
+      ) : null}
     </li>
-  );
-}
-
-function TargetedSearchBlock({
-  productId,
-  icpId,
-  criteria,
-}: {
-  productId: string;
-  icpId: string;
-  criteria: IcpCriterionReviewRow[];
-}) {
-  if (criteria.length === 0) return null;
-  return (
-    <section
-      className="rounded-md border border-red-300 bg-red-50/60 p-3"
-      data-testid="targeted-search-section"
-    >
-      <h6 className="text-sm font-semibold text-red-950">
-        {TARGETED_SEARCH_SECTION_TITLE}
-      </h6>
-      <p className="mt-1 text-xs text-red-900/90">
-        {TARGETED_SEARCH_SECTION_BODY}
-      </p>
-      <ul className="mt-3 space-y-2">
-        {criteria.map((c) => (
-          <CriterionCard
-            key={c.id ?? c.name}
-            productId={productId}
-            icpId={icpId}
-            criterion={c}
-            emphasize
-          />
-        ))}
-      </ul>
-    </section>
   );
 }
 
@@ -436,34 +278,19 @@ function TierSection({
   criteria: IcpCriterionReviewRow[];
 }) {
   if (criteria.length === 0) return null;
-  const targeted = criteria.filter(
-    (c) => normalizeEvidenceClass(c.evidenceClass) === "TARGETED_SEARCH",
-  );
-  const rest = criteria.filter(
-    (c) => normalizeEvidenceClass(c.evidenceClass) !== "TARGETED_SEARCH",
-  );
   return (
     <section>
       <h6 className="text-sm font-semibold text-slate-900">{title}</h6>
-      {rest.length > 0 ? (
-        <ul className="mt-2 space-y-2">
-          {rest.map((c) => (
-            <CriterionCard
-              key={c.id ?? c.name}
-              productId={productId}
-              icpId={icpId}
-              criterion={c}
-            />
-          ))}
-        </ul>
-      ) : null}
-      <div className={rest.length > 0 ? "mt-3" : "mt-2"}>
-        <TargetedSearchBlock
-          productId={productId}
-          icpId={icpId}
-          criteria={targeted}
-        />
-      </div>
+      <ul className="mt-2 space-y-2">
+        {criteria.map((c) => (
+          <CriterionCard
+            key={c.id ?? c.name}
+            productId={productId}
+            icpId={icpId}
+            criterion={c}
+          />
+        ))}
+      </ul>
     </section>
   );
 }
@@ -497,8 +324,6 @@ export function IcpCriteriaReview({
     evidenceClass: normalizeEvidenceClass(c.evidenceClass),
     tier: normalizeIcpCriterionTier(c.tier) ?? "PRIMARY",
   }));
-
-  const summary = buildEvidenceClassSummary(withClass);
   const primary = withClass.filter((c) => c.tier === "PRIMARY");
   const secondary = withClass.filter((c) => c.tier === "SECONDARY");
 
@@ -530,30 +355,17 @@ export function IcpCriteriaReview({
                     ))}
                 </ul>
               </div>
-            ) : (
-              <p className="text-xs text-slate-500">
-                Nothing in the definition was left undetermined.
-              </p>
-            )}
+            ) : null}
           </div>
         ) : null}
         <p
-          className="mt-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900"
-          data-testid="icp-scoring-model-line"
+          className="mt-2 text-sm text-slate-700"
+          data-testid="icp-role-summary"
         >
-          {ICP_TIER_MODEL_LINE}
-        </p>
-        <p
-          className="mt-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900"
-          data-testid="evidence-class-summary"
-        >
-          {summary}
-        </p>
-        <p className="mt-2 text-xs text-slate-600" data-testid="expectation-line">
-          {EXPECTATION_SETTING_LINE}
-        </p>
-        <p className="mt-1 text-xs text-slate-500">
-          ✓ required · ☆ supporting · ✗ disqualifier
+          {buildIcpRoleSummary({
+            primaryCount: primary.length,
+            secondaryCount: secondary.length,
+          })}
         </p>
       </div>
 

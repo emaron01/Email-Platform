@@ -114,7 +114,7 @@ function provenanceLabel(
   displayValue: string,
   source: ActualProvenanceSource,
 ): string {
-  const from = source === "LIST" ? "from list" : "from research";
+  const from = source === "LIST" ? "from your list" : "from research";
   return `${shortName}: ${displayValue} (${from})`;
 }
 

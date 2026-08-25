@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   assignMigratedIcpCriterionTier,
+  buildIcpRoleSummary,
   coerceIsMandatory,
   ICP_MANDATORY_EXPLANATION,
   ICP_PRIMARY_TIER_HEADER,
@@ -182,5 +183,19 @@ describe("interpretation prompt includes tier proposal rules", () => {
       "confirmed failure disqualifies",
     );
     expect(ICP_MANDATORY_EXPLANATION).toContain("unknown does not");
+  });
+
+  it("summarises what criteria do, not where data might come from", () => {
+    expect(
+      buildIcpRoleSummary({ primaryCount: 3, secondaryCount: 1 }),
+    ).toBe(
+      "3 criteria define your fit. 1 is a signal that will never disqualify a company.",
+    );
+    expect(buildIcpRoleSummary({ primaryCount: 3, secondaryCount: 0 })).toBe(
+      "3 criteria define your fit.",
+    );
+    expect(buildIcpRoleSummary({ primaryCount: 0, secondaryCount: 2 })).toBe(
+      "2 signals will never disqualify a company.",
+    );
   });
 });

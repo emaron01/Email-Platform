@@ -87,8 +87,8 @@ describe("evidence class normalize + infer", () => {
   });
 });
 
-describe("evidence class summary (production ICP)", () => {
-  it("counts the production ICP correctly", () => {
+describe("evidence class summary (internal helper)", () => {
+  it("still describes class counts for internal callers", () => {
     const summary = buildEvidenceClassSummary([
       { evidenceClass: "LIST_DATA" },
       { evidenceClass: "LIST_DATA" },
@@ -671,25 +671,29 @@ describe("prompt version + UI seams", () => {
     expect(types).toContain('ICP_INTERPRETATION_PROMPT_VERSION = "4"');
   });
 
-  it("criteria review UI surfaces summary, targeted section, and decisions", () => {
+  it("criteria review UI shows role, mandatory hover, and a single targeted warning", () => {
     const ui = readFileSync("src/components/IcpCriteriaReview.tsx", "utf8");
-    expect(ui).toContain('data-testid="evidence-class-summary"');
-    expect(ui).toContain('data-testid="targeted-search-section"');
-    expect(ui).toContain('data-testid="required-targeted-warning"');
+    expect(ui).toContain('data-testid="icp-role-summary"');
+    expect(ui).toContain("buildIcpRoleSummary");
     expect(ui).toContain("KEEP_ASYMMETRIC");
     expect(ui).toContain("MAKE_SUPPORTING");
     expect(ui).toContain("REMOVE");
-    expect(ui).toContain("expectation-line");
     expect(ui).toContain('data-testid="icp-interpretation-prose"');
     expect(ui).toContain("Could not be determined from available data");
-    expect(ui).toContain('data-testid="icp-scoring-model-line"');
     expect(ui).toContain('data-testid="icp-primary-tier"');
     expect(ui).toContain('data-testid="icp-secondary-tier"');
     expect(ui).toContain('data-testid="icp-mandatory-toggle"');
+    expect(ui).toContain("title={ICP_MANDATORY_EXPLANATION}");
     expect(ui).toContain("ICP_PRIMARY_TIER_HEADER");
     expect(ui).toContain("ICP_SECONDARY_TIER_HEADER");
-    expect(ui).toContain("ICP_MANDATORY_EXPLANATION");
-    expect(ui).toContain("ICP_TIER_MODEL_LINE");
+    expect(ui).toContain("May not be verifiable online");
+    expect(ui).toContain('data-testid="targeted-search-warning"');
+    expect(ui).not.toContain("Evidence source");
+    expect(ui).not.toContain("updateIcpEvidenceClassAction");
+    expect(ui).not.toContain("From your list");
+    expect(ui).not.toContain('data-testid="evidence-class-summary"');
+    expect(ui).not.toContain("expectation-line");
+    expect(ui).not.toContain("TARGETED_SEARCH_SECTION_TITLE");
   });
 
   it("MAKE_SUPPORTING demote only clears isRequired via decide action", () => {

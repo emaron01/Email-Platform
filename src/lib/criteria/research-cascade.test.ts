@@ -106,7 +106,7 @@ describe("research cascade actuals", () => {
     expect(resolution.provenance).toMatchObject({
       source: "LIST",
       field: "employeeCount",
-      label: "Employees: 120 (from list)",
+      label: "Employees: 120 (from your list)",
       excerpt: null,
     });
   });
