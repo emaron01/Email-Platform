@@ -22,6 +22,7 @@ import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
 import { formatCriterionDisplay } from "@/lib/criteria/types";
 import type { PersonaActionResult } from "@/lib/persona/save";
+import { NEEDS_REVIEW_CLASSIFY_TARGETS } from "@/lib/persona-research/project-signals";
 import { listToCommaString } from "@/lib/utils";
 
 type CriterionRow = {
@@ -137,8 +138,8 @@ function CriteriaReview({
             {needsReview.length === 1 ? " criterion" : " criteria"}
           </h5>
           <p className="mt-1 text-xs text-amber-900/80">
-            Unrecognized types from synthesis. Not scored as fit. Reclassify
-            via role below, or remove.
+            Classify each item into a scoring box, or dismiss it. Until then
+            it is held out of scoring.
           </p>
           <ul className="mt-3 space-y-3 text-sm text-amber-950">
             {needsReview.map((c, i) => (
@@ -246,34 +247,37 @@ function NeedsReviewCriterionRow({
         <span className="ml-2 text-xs text-amber-800/80">needs_review</span>
       </div>
       {criterion.id ? (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <CriterionActionForm
             action={updatePersonaCriterionAction}
-            className="flex flex-wrap items-center gap-2"
+            className="flex flex-wrap items-center gap-1.5"
           >
             <input type="hidden" name="criterionId" value={criterion.id} />
             <input type="hidden" name="personaId" value={personaId} />
             <input type="hidden" name="productId" value={productId} />
             <input type="hidden" name="name" value={criterion.name} />
-            <label className="text-xs text-amber-900">
-              Classify as
-              <select
+            {NEEDS_REVIEW_CLASSIFY_TARGETS.map((target) => (
+              <button
+                key={target.role}
+                type="submit"
                 name="role"
-                defaultValue="supporting"
-                className="ml-1 rounded border border-amber-300 px-1 py-0.5 text-xs"
+                value={target.role}
+                className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-950 hover:bg-amber-100"
               >
-                <option value="required">Required / strong</option>
-                <option value="supporting">Supporting (positive)</option>
-                <option value="disqualifier">Disqualifier / exclusion</option>
-              </select>
-            </label>
-            <SecondaryButton type="submit">Update</SecondaryButton>
+                {target.label}
+              </button>
+            ))}
           </CriterionActionForm>
           <CriterionActionForm action={deletePersonaCriterionAction}>
             <input type="hidden" name="criterionId" value={criterion.id} />
             <input type="hidden" name="personaId" value={personaId} />
             <input type="hidden" name="productId" value={productId} />
-            <SecondaryButton type="submit">Remove</SecondaryButton>
+            <button
+              type="submit"
+              className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Dismiss
+            </button>
           </CriterionActionForm>
         </div>
       ) : null}

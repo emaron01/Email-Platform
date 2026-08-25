@@ -9,6 +9,7 @@ import {
 import { getCurrentUser } from "@/lib/auth/session";
 import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
 import { TenantError } from "@/lib/tenant/errors";
+import { classifyNeedsReviewRole } from "@/lib/persona-research/project-signals";
 import {
   parsePersonaFormData,
   toSafePersonaActionError,
@@ -386,24 +387,23 @@ export async function updatePersonaCriterionAction(
     }
 
     const role = String(formData.get("role") || "").trim();
+    const classified = classifyNeedsReviewRole(role);
     let isRequired = formData.get("isRequired") === "on" || formData.get("isRequired") === "true";
     let isDisqualifier =
       formData.get("isDisqualifier") === "on" ||
       formData.get("isDisqualifier") === "true";
     let criterionType: string | undefined;
+    const classifyRoles = new Set([
+      "positive",
+      "exclusion",
+      "ownership",
+      "responsibility",
+    ]);
 
-    if (role === "required") {
-      isRequired = true;
-      isDisqualifier = false;
-      criterionType = "positive_role_signal";
-    } else if (role === "supporting") {
-      isRequired = false;
-      isDisqualifier = false;
-      criterionType = "positive_role_signal";
-    } else if (role === "disqualifier") {
-      isRequired = false;
-      isDisqualifier = true;
-      criterionType = "negative_role_signal";
+    if (classified) {
+      isRequired = classified.isRequired;
+      isDisqualifier = classified.isDisqualifier;
+      criterionType = classified.criterionType;
     }
 
     const existing = await prisma.personaCriterion.findFirst({
@@ -413,6 +413,8 @@ export async function updatePersonaCriterionAction(
     const promoteFromNeedsReview =
       existing?.criterionType.trim().toLowerCase() === "needs_review" &&
       Boolean(criterionType);
+    const applyType =
+      promoteFromNeedsReview || classifyRoles.has(role);
 
     const name = String(formData.get("name") || "").trim();
     await updatePersonaCriterionManual({
@@ -424,9 +426,7 @@ export async function updatePersonaCriterionAction(
         description: String(formData.get("description") || "") || null,
         isRequired,
         isDisqualifier,
-        ...(promoteFromNeedsReview && criterionType
-          ? { criterionType }
-          : {}),
+        ...(applyType && criterionType ? { criterionType } : {}),
       },
     });
     revalidateSetup(productId || undefined);

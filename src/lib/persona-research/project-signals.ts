@@ -1065,6 +1065,102 @@ const BOX_CRITERION_TYPE: Record<
   responsibilities: PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
 };
 
+/** Inline classify targets for needs-review rows (draft + edit pages). */
+export const NEEDS_REVIEW_CLASSIFY_TARGETS: Array<{
+  box: CriteriaEditorBoxKey;
+  role: string;
+  label: string;
+}> = [
+  {
+    box: "positiveRoleSignals",
+    role: "positive",
+    label: "Positive role signal",
+  },
+  { box: "exclusions", role: "exclusion", label: "Exclusion" },
+  { box: "ownershipAreas", role: "ownership", label: "Ownership" },
+  {
+    box: "responsibilities",
+    role: "responsibility",
+    label: "Responsibility",
+  },
+];
+
+export function classifyNeedsReviewRole(role: string): {
+  criterionType: string;
+  isRequired: boolean;
+  isDisqualifier: boolean;
+} | null {
+  switch (role) {
+    case "required":
+      return {
+        criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+        isRequired: true,
+        isDisqualifier: false,
+      };
+    case "supporting":
+    case "positive":
+      return {
+        criterionType: PERSONA_SIGNAL_CRITERION_TYPES.positiveRoleSignal,
+        isRequired: false,
+        isDisqualifier: false,
+      };
+    case "disqualifier":
+    case "exclusion":
+      return {
+        criterionType: PERSONA_SIGNAL_CRITERION_TYPES.negativeRoleSignal,
+        isRequired: false,
+        isDisqualifier: true,
+      };
+    case "ownership":
+      return {
+        criterionType: PERSONA_SIGNAL_CRITERION_TYPES.ownership,
+        isRequired: false,
+        isDisqualifier: false,
+      };
+    case "responsibility":
+      return {
+        criterionType: PERSONA_SIGNAL_CRITERION_TYPES.responsibility,
+        isRequired: false,
+        isDisqualifier: false,
+      };
+    default:
+      return null;
+  }
+}
+
+export function appendCriterionLineToBox(boxText: string, line: string): string {
+  const name = line.trim();
+  if (!name) return boxText;
+  const existing = parseCriteriaBoxLines(boxText);
+  const semantic = normalizeCriterionSemanticKey(name);
+  if (
+    existing.some((row) => normalizeCriterionSemanticKey(row) === semantic)
+  ) {
+    return existing.join("\n");
+  }
+  return [...existing, name].join("\n");
+}
+
+export function remainingNeedsReviewCriteria(
+  baseline: PersonaCriterionFormRow[],
+  boxes: CriteriaEditorBoxes,
+  dismissedSemanticKeys: Iterable<string> = [],
+): PersonaCriterionFormRow[] {
+  const dismissed = new Set(
+    [...dismissedSemanticKeys].map((key) => key.trim().toLowerCase()),
+  );
+  const placed = new Set<string>();
+  for (const boxKey of Object.keys(BOX_CRITERION_TYPE) as CriteriaEditorBoxKey[]) {
+    for (const line of parseCriteriaBoxLines(boxes[boxKey] ?? "")) {
+      placed.add(normalizeCriterionSemanticKey(line));
+    }
+  }
+  return needsReviewCriteria(baseline).filter((row) => {
+    const semantic = normalizeCriterionSemanticKey(row.name);
+    return Boolean(semantic) && !placed.has(semantic) && !dismissed.has(semantic);
+  });
+}
+
 function boxKeyForCriterion(row: PersonaCriterionFormRow): CriteriaEditorBoxKey | null {
   if (isNeedsReviewCriterionType(row.criterionType)) {
     // Held out of the four typed boxes until the user places the line.
@@ -1143,13 +1239,22 @@ export function needsReviewCriteria(
  *
  * Manual edits (item 6): pass modifiedBoxes for any box whose text differs from the
  * initial boxes; all criteria emitted from those boxes get manuallyEdited: true.
+ * Dismissed needs-review names (semantic keys) are omitted entirely.
  */
 export function editorBoxesToCriteria(
   boxes: CriteriaEditorBoxes,
   baseline: PersonaCriterionFormRow[],
-  options?: { modifiedBoxes?: Iterable<CriteriaEditorBoxKey> },
+  options?: {
+    modifiedBoxes?: Iterable<CriteriaEditorBoxKey>;
+    dismissedNeedsReview?: Iterable<string>;
+  },
 ): PersonaCriterionFormRow[] {
   const modified = new Set(options?.modifiedBoxes ?? []);
+  const dismissed = new Set(
+    [...(options?.dismissedNeedsReview ?? [])].map((key) =>
+      key.trim().toLowerCase(),
+    ),
+  );
   const baselineByBox = new Map<
     CriteriaEditorBoxKey,
     Map<string, PersonaCriterionFormRow>
@@ -1167,6 +1272,14 @@ export function editorBoxesToCriteria(
     map.set(semantic, row);
   }
 
+  const needsReviewBySemantic = new Map<string, PersonaCriterionFormRow>();
+  for (const row of needsReviewCriteria(baseline)) {
+    const semantic = normalizeCriterionSemanticKey(row.name);
+    if (semantic && !needsReviewBySemantic.has(semantic)) {
+      needsReviewBySemantic.set(semantic, row);
+    }
+  }
+
   const out: PersonaCriterionFormRow[] = [];
   const placedSemantics = new Set<string>();
 
@@ -1180,7 +1293,8 @@ export function editorBoxesToCriteria(
     for (const line of lines) {
       const semantic = normalizeCriterionSemanticKey(line);
       placedSemantics.add(semantic);
-      const prior = baselineMap.get(semantic);
+      const classifiedFromReview = needsReviewBySemantic.get(semantic);
+      const prior = baselineMap.get(semantic) ?? classifiedFromReview;
       const isRequired = prior?.isRequired ?? false;
       const exclusionTestability = isExclusion
         ? resolveExclusionTestability({
@@ -1199,15 +1313,21 @@ export function editorBoxesToCriteria(
         isDisqualifier: isExclusion,
         exclusionTestability,
         researchGuidance: prior?.researchGuidance ?? null,
-        manuallyEdited: boxModified || Boolean(prior?.manuallyEdited),
+        manuallyEdited:
+          boxModified ||
+          Boolean(classifiedFromReview) ||
+          Boolean(prior?.manuallyEdited),
       });
     }
   }
 
-  // Preserve needs_review rows until the user places them in a typed box.
+  // Preserve needs_review rows until the user classifies or dismisses them.
+  // Same text already placed in a typed box does not emit a second row.
   for (const row of needsReviewCriteria(baseline)) {
     const semantic = normalizeCriterionSemanticKey(row.name);
-    if (!semantic || placedSemantics.has(semantic)) continue;
+    if (!semantic || placedSemantics.has(semantic) || dismissed.has(semantic)) {
+      continue;
+    }
     out.push({
       ...row,
       criterionType: PERSONA_SIGNAL_CRITERION_TYPES.needsReview,

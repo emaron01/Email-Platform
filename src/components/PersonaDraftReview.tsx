@@ -11,11 +11,14 @@ import { AutosizeTextarea } from "@/components/AutosizeTextarea";
 import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import {
+  NEEDS_REVIEW_CLASSIFY_TARGETS,
+  appendCriterionLineToBox,
   buildPersonaCriteriaForReview,
   criteriaEditorBoxModified,
   criteriaToEditorBoxes,
   editorBoxesToCriteria,
-  needsReviewCriteria,
+  normalizeCriterionSemanticKey,
+  remainingNeedsReviewCriteria,
   parseCriteriaBoxLines,
   researchGuidanceForBox,
   type CriteriaEditorBoxKey,
@@ -96,9 +99,13 @@ function PersonaCriteriaEditor({
     [baseline],
   );
   const [boxes, setBoxes] = useState<CriteriaEditorBoxes>(initialBoxes);
+  const [dismissedNeedsReview, setDismissedNeedsReview] = useState<string[]>(
+    [],
+  );
 
   useEffect(() => {
     setBoxes(criteriaToEditorBoxes(baseline));
+    setDismissedNeedsReview([]);
   }, [baseline]);
 
   useEffect(() => {
@@ -108,17 +115,42 @@ function PersonaCriteriaEditor({
       criteriaEditorBoxModified(initialBoxes[key], boxes[key]),
     );
     onChange(
-      editorBoxesToCriteria(boxes, baseline, { modifiedBoxes }),
+      editorBoxesToCriteria(boxes, baseline, {
+        modifiedBoxes,
+        dismissedNeedsReview,
+      }),
     );
-  }, [boxes, baseline, initialBoxes, onChange]);
+  }, [boxes, baseline, initialBoxes, dismissedNeedsReview, onChange]);
 
   function updateBox(key: CriteriaEditorBoxKey, value: string) {
     setBoxes((prev) => ({ ...prev, [key]: value }));
   }
 
+  function classifyNeedsReview(
+    name: string,
+    box: CriteriaEditorBoxKey,
+  ) {
+    setBoxes((prev) => ({
+      ...prev,
+      [box]: appendCriterionLineToBox(prev[box], name),
+    }));
+  }
+
+  function dismissNeedsReview(name: string) {
+    const semantic = normalizeCriterionSemanticKey(name);
+    if (!semantic) return;
+    setDismissedNeedsReview((prev) =>
+      prev.includes(semantic) ? prev : [...prev, semantic],
+    );
+  }
+
   const exclusionsEmpty =
     parseCriteriaBoxLines(boxes.exclusions).length === 0;
-  const heldForReview = needsReviewCriteria(baseline);
+  const heldForReview = remainingNeedsReviewCriteria(
+    baseline,
+    boxes,
+    dismissedNeedsReview,
+  );
 
   return (
     <div className="md:col-span-2 space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -138,12 +170,37 @@ function PersonaCriteriaEditor({
             Needs review — unrecognized criterion types (not scored as fit)
           </p>
           <p className="mt-1 text-xs text-amber-900/80">
-            Move each line into Exclusions, Ownership, Responsibilities, or
-            Positive role signals. Until then they are held out of scoring.
+            Classify each item into a scoring box, or dismiss it. Until then
+            it is held out of scoring.
           </p>
-          <ul className="mt-2 list-disc space-y-1 pl-4 text-xs">
+          <ul className="mt-2 space-y-2">
             {heldForReview.map((row) => (
-              <li key={row.name}>{row.name}</li>
+              <li
+                key={row.name}
+                className="rounded border border-amber-200 bg-white px-2 py-2"
+                data-testid="needs-review-row"
+              >
+                <p className="text-xs font-medium text-amber-950">{row.name}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {NEEDS_REVIEW_CLASSIFY_TARGETS.map((target) => (
+                    <button
+                      key={target.role}
+                      type="button"
+                      className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-950 hover:bg-amber-100"
+                      onClick={() => classifyNeedsReview(row.name, target.box)}
+                    >
+                      {target.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                    onClick={() => dismissNeedsReview(row.name)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </li>
             ))}
           </ul>
         </div>

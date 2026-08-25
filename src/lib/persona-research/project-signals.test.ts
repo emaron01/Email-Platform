@@ -7,6 +7,9 @@ import { getApplicableDimensions } from "@/lib/scoring/dimensions";
 import { planCriterionReinterpretation } from "@/lib/criteria/merge";
 import {
   PERSONA_SIGNAL_CRITERION_TYPES,
+  appendCriterionLineToBox,
+  classifyNeedsReviewRole,
+  remainingNeedsReviewCriteria,
   buildPersonaCriteriaForReview,
   capPersonaCriteria,
   collectUnmappedCriterionTypesFromDraft,
@@ -905,6 +908,80 @@ describe("criteria editor boxes (four textareas)", () => {
     expect(rows.every((r) => r.manuallyEdited === true)).toBe(true);
   });
 
+  it("typing the same needs-review text into a box does not duplicate on save", () => {
+    const baseline: PersonaCriterionFormRow[] = [
+      {
+        name: "Sales leadership scope",
+        criterionType: "needs_review",
+        isRequired: false,
+        isDisqualifier: false,
+        researchGuidance: "Confirm seniority from role evidence.",
+      },
+      {
+        name: "Owns forecast process",
+        criterionType: "ownership",
+        isRequired: false,
+        isDisqualifier: false,
+      },
+    ];
+    const boxes = criteriaToEditorBoxes(baseline);
+    boxes.ownershipAreas = appendCriterionLineToBox(
+      boxes.ownershipAreas,
+      "Sales leadership scope",
+    );
+    const rows = editorBoxesToCriteria(boxes, baseline, {
+      modifiedBoxes: ["ownershipAreas"],
+    });
+    const named = rows.filter(
+      (row) =>
+        normalizeCriterionSemanticKey(row.name) ===
+        normalizeCriterionSemanticKey("Sales leadership scope"),
+    );
+    expect(named).toHaveLength(1);
+    expect(named[0]?.criterionType).toBe("ownership");
+    expect(named[0]?.manuallyEdited).toBe(true);
+    expect(named[0]?.researchGuidance).toBe(
+      "Confirm seniority from role evidence.",
+    );
+    expect(
+      remainingNeedsReviewCriteria(baseline, boxes),
+    ).toHaveLength(0);
+  });
+
+  it("dismiss removes a needs-review row without adding it to a box", () => {
+    const baseline: PersonaCriterionFormRow[] = [
+      {
+        name: "Sales leadership scope",
+        criterionType: "needs_review",
+        isRequired: false,
+        isDisqualifier: false,
+      },
+    ];
+    const boxes = criteriaToEditorBoxes(baseline);
+    const semantic = normalizeCriterionSemanticKey("Sales leadership scope");
+    const rows = editorBoxesToCriteria(boxes, baseline, {
+      dismissedNeedsReview: [semantic],
+    });
+    expect(rows).toHaveLength(0);
+    expect(
+      remainingNeedsReviewCriteria(baseline, boxes, [semantic]),
+    ).toHaveLength(0);
+  });
+
+  it("classifyNeedsReviewRole maps the five inline actions", () => {
+    expect(classifyNeedsReviewRole("positive")?.criterionType).toBe(
+      "positive_role_signal",
+    );
+    expect(classifyNeedsReviewRole("exclusion")?.isDisqualifier).toBe(true);
+    expect(classifyNeedsReviewRole("ownership")?.criterionType).toBe(
+      "ownership",
+    );
+    expect(classifyNeedsReviewRole("responsibility")?.criterionType).toBe(
+      "responsibility",
+    );
+    expect(classifyNeedsReviewRole("dismiss")).toBeNull();
+  });
+
   it("RevOps and CRO v2 fixtures round-trip without loss", () => {
     for (const fixture of [
       REVOPS_PERSONA_DRAFT_FIXTURE,
@@ -945,5 +1022,31 @@ describe("criteria editor boxes (four textareas)", () => {
         );
       }
     }
+  });
+
+  it("persona draft and edit pages expose classify and dismiss actions", async () => {
+    const fs = await import("node:fs");
+    const draft = fs.readFileSync(
+      "src/components/PersonaDraftReview.tsx",
+      "utf8",
+    );
+    const edit = fs.readFileSync("src/components/PersonaForm.tsx", "utf8");
+    const targets = fs.readFileSync(
+      "src/lib/persona-research/project-signals.ts",
+      "utf8",
+    );
+    expect(targets).toContain('label: "Positive role signal"');
+    expect(targets).toContain('label: "Exclusion"');
+    expect(targets).toContain('label: "Ownership"');
+    expect(targets).toContain('label: "Responsibility"');
+    for (const src of [draft, edit]) {
+      expect(src).toContain("Dismiss");
+      expect(src).toContain("NEEDS_REVIEW_CLASSIFY_TARGETS");
+    }
+    expect(draft).toContain("classifyNeedsReview");
+    expect(draft).toContain("dismissNeedsReview");
+    expect(draft).toContain("remainingNeedsReviewCriteria");
+    expect(edit).toContain("updatePersonaCriterionAction");
+    expect(edit).toContain("deletePersonaCriterionAction");
   });
 });
