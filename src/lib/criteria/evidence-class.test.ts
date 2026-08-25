@@ -370,6 +370,127 @@ describe("factual AI guard", () => {
     expect(result.scoreLabel).toBe("FAIR");
   });
 
+  it("excludes an AI STRONG for a blank LIST_DATA field from the score", () => {
+    const industryCriterion = criterion({
+      id: "industry",
+      name: "Industry",
+      criterionType: "industry",
+      dataType: "MULTI_SELECT",
+      operator: "IN",
+      targetValue: ["SaaS", "B2B"],
+      evidenceClass: "LIST_DATA",
+      isRequired: true,
+    });
+    const evidenceAssessment = evaluateIcpCriterionWithEvidenceClass({
+      criterion: industryCriterion,
+      actualValue: null,
+    });
+    expect(evidenceAssessment).toMatchObject({
+      assessment: "NEUTRAL",
+      evidenceOutcome: "UNVERIFIABLE",
+      excludeFromScore: true,
+      factualAiForbidden: true,
+    });
+
+    const result = calculateScoresFromAssessment({
+      assessment: {
+        dimensions: [
+          {
+            dimension: "Industry",
+            component: "ICP",
+            assessment: "STRONG",
+            evidence: ["model invented B2B from research narrative"],
+            concerns: [],
+            confidence: "HIGH",
+          },
+        ],
+        fitStrengths: [],
+        fitRisks: [],
+        potentialDisqualifiers: [],
+        recommendedAction: "review",
+        reasoning: "test",
+      },
+      applicable: [{ dimension: "Industry", component: "ICP" }],
+      icp: {
+        id: "icp",
+        name: "Primary Target",
+        description: null,
+        definition: null,
+        targetIndustries: null,
+        minEmployees: null,
+        maxEmployees: null,
+        minRevenue: null,
+        maxRevenue: null,
+        targetGeographies: null,
+        requiredTechnologies: null,
+        positiveSignals: null,
+        negativeSignals: null,
+        notes: null,
+        criteria: [industryCriterion],
+      },
+      criterionEvidenceAssessments: [evidenceAssessment],
+    });
+
+    expect(result.dimensions[0]?.assessment).toBe("UNKNOWN");
+    expect(result.dimensions[0]?.assessment).not.toBe("STRONG");
+    // A leaked AI STRONG would score 100. Exclusion yields the empty-average fallback.
+    expect(result.icpScore).toBe(50);
+    expect(result.icpScore).not.toBe(100);
+    expect(result.componentCoverage.icp).toEqual({ evaluated: 0, total: 1 });
+  });
+
+  it("does not let AI STRONG satisfy a factual criterion when evidence assessments are omitted", () => {
+    const industryCriterion = criterion({
+      id: "industry",
+      name: "Industry",
+      criterionType: "industry",
+      dataType: "MULTI_SELECT",
+      operator: "IN",
+      targetValue: ["SaaS"],
+      evidenceClass: "LIST_DATA",
+    });
+    const result = calculateScoresFromAssessment({
+      assessment: {
+        dimensions: [
+          {
+            dimension: "Industry",
+            component: "ICP",
+            assessment: "STRONG",
+            evidence: ["invented"],
+            concerns: [],
+            confidence: "HIGH",
+          },
+        ],
+        fitStrengths: [],
+        fitRisks: [],
+        potentialDisqualifiers: [],
+        recommendedAction: "review",
+        reasoning: "test",
+      },
+      applicable: [{ dimension: "Industry", component: "ICP" }],
+      icp: {
+        id: "icp",
+        name: "ICP",
+        description: null,
+        definition: null,
+        targetIndustries: null,
+        minEmployees: null,
+        maxEmployees: null,
+        minRevenue: null,
+        maxRevenue: null,
+        targetGeographies: null,
+        requiredTechnologies: null,
+        positiveSignals: null,
+        negativeSignals: null,
+        notes: null,
+        criteria: [industryCriterion],
+      },
+    });
+    expect(result.dimensions[0]?.assessment).toBe("UNKNOWN");
+    expect(result.icpScore).toBe(50);
+    expect(result.componentCoverage.icp).toEqual({ evaluated: 0, total: 1 });
+  });
+
   it("scores one passing ICP criterion while excluding three unresolvable criteria", () => {
     const criteria = [
       criterion({

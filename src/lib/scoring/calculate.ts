@@ -12,6 +12,10 @@ import type {
 } from "@/lib/scoring/assessment";
 import type { ApplicableDimension } from "@/lib/scoring/dimensions";
 import type { ScoreLabelValue } from "@/lib/scoring/types";
+import {
+  isFactualEvidenceClass,
+  normalizeEvidenceClass,
+} from "@/lib/criteria/evidence-class";
 import type { CriterionEvidenceAssessment } from "@/lib/criteria/targeted-search-eval";
 import { clampFactualAiDimension } from "@/lib/criteria/targeted-search-eval";
 import {
@@ -190,6 +194,36 @@ export type CalculatedScore = ComponentScores & {
   criterionEvidenceAssessments?: CriterionEvidenceAssessment[];
 };
 
+function factualEvidenceForDimension(
+  dimensionName: string,
+  evidenceByName: Map<string, CriterionEvidenceAssessment>,
+  icp: IcpSnapshot,
+): CriterionEvidenceAssessment | undefined {
+  const existing = evidenceByName.get(dimensionName);
+  if (existing) return existing;
+  const criterion = (icp.criteria ?? []).find(
+    (entry) => entry.name === dimensionName,
+  );
+  if (!criterion) return undefined;
+  const evidenceClass = normalizeEvidenceClass(criterion.evidenceClass);
+  if (!isFactualEvidenceClass(evidenceClass)) return undefined;
+  // Fail closed: a factual criterion without a deterministic assessment
+  // cannot be satisfied by the AI response.
+  return {
+    scope: "ICP",
+    name: criterion.name,
+    criterionId: criterion.id,
+    evidenceClass,
+    assessment: "NEUTRAL",
+    confidence: "LOW",
+    method: "ASYMMETRIC",
+    reasoning: `Unverified: no evidence for "${criterion.name}". Not scored against the company.`,
+    evidenceOutcome: "UNVERIFIABLE",
+    excludeFromScore: true,
+    factualAiForbidden: true,
+  };
+}
+
 export function calculateScoresFromAssessment(input: {
   assessment: AiScoringAssessment;
   applicable: ApplicableDimension[];
@@ -208,7 +242,11 @@ export function calculateScoresFromAssessment(input: {
     input.assessment.dimensions,
   ).map((dim) => {
     if (dim.component !== "ICP") return dim;
-    const ev = evidenceByName.get(dim.dimension);
+    const ev = factualEvidenceForDimension(
+      dim.dimension,
+      evidenceByName,
+      input.icp,
+    );
     const clamped = clampFactualAiDimension({
       dimensionName: dim.dimension,
       aiAssessment: dim.assessment,
@@ -223,8 +261,14 @@ export function calculateScoresFromAssessment(input: {
   });
 
   const excludeIcpDimensionNames = new Set(
-    (input.criterionEvidenceAssessments ?? [])
-      .filter((e) => e.excludeFromScore)
+    (input.applicable ?? [])
+      .filter((dim) => dim.component === "ICP")
+      .map((dim) =>
+        factualEvidenceForDimension(dim.dimension, evidenceByName, input.icp),
+      )
+      .filter((e): e is CriterionEvidenceAssessment =>
+        Boolean(e?.excludeFromScore),
+      )
       .map((e) => e.name),
   );
 
@@ -239,8 +283,12 @@ export function calculateScoresFromAssessment(input: {
       contactResearch: input.contactResearch,
     },
   ).filter((d) => {
-    // Asymmetry guard: unverifiable TARGETED_SEARCH must never exclude.
-    const ev = evidenceByName.get(d.criterion);
+    // Asymmetry guard: unverifiable factual criteria must never exclude.
+    const ev = factualEvidenceForDimension(
+      d.criterion,
+      evidenceByName,
+      input.icp,
+    );
     return !(ev?.excludeFromScore || ev?.evidenceOutcome === "UNVERIFIABLE");
   });
   const deterministicPersonaDisqualifiers: ResolvedDisqualifier[] = (
