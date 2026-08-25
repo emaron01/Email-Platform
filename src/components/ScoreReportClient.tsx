@@ -248,20 +248,35 @@ export function ScoreReportClient({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-slate-500">
+      <div className="max-h-[75vh] overflow-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-[1576px] table-fixed divide-y divide-slate-200 text-sm">
+          <colgroup>
+            <col className="w-14" />
+            <col className="w-48" />
+            <col className="w-44" />
+            <col className="w-40" />
+            <col className="w-28" />
+            <col className="w-20" />
+            <col className="w-20" />
+            <col className="w-20" />
+            <col className="w-24" />
+            <col className="w-20" />
+            <col className="w-24" />
+            <col className="w-72" />
+            <col className="w-20" />
+          </colgroup>
+          <thead className="sticky top-0 z-10 bg-slate-50 text-left text-slate-500 shadow-[0_1px_0_0_rgb(226_232_240)]">
             <tr>
               <th className="px-3 py-3 font-medium">Select</th>
               <th className="px-3 py-3 font-medium">Contact</th>
               <th className="px-3 py-3 font-medium">Title</th>
               <th className="px-3 py-3 font-medium">Company</th>
               <th className="px-3 py-3 font-medium">Research</th>
-              <th className="px-3 py-3 font-medium">Overall</th>
-              <th className="px-3 py-3 font-medium">ICP</th>
-              <th className="px-3 py-3 font-medium">Persona</th>
-              <th className="px-3 py-3 font-medium">Company Fit</th>
-              <th className="px-3 py-3 font-medium">Product</th>
+              <th className="px-3 py-3 text-center font-medium">Overall</th>
+              <th className="px-3 py-3 text-center font-medium">ICP</th>
+              <th className="px-3 py-3 text-center font-medium">Persona</th>
+              <th className="px-3 py-3 text-center font-medium">Company Fit</th>
+              <th className="px-3 py-3 text-center font-medium">Product</th>
               <th className="px-3 py-3 font-medium">Label</th>
               <th className="px-3 py-3 font-medium">Action</th>
               <th className="px-3 py-3 font-medium">Details</th>
@@ -277,14 +292,14 @@ export function ScoreReportClient({
               return (
                 <Fragment key={row.id}>
                   <tr className="align-top">
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-2">
                       <input
                         type="checkbox"
                         checked={selected.has(row.contactId)}
                         onChange={() => toggleOne(row.contactId)}
                       />
                     </td>
-                    <td className="px-3 py-3 font-medium text-slate-900">
+                    <td className="px-3 py-2 font-medium text-slate-900">
                       {contactDisplayName(
                         row.contact.firstName,
                         row.contact.lastName,
@@ -295,10 +310,10 @@ export function ScoreReportClient({
                         )}
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-slate-600">
+                    <td className="px-3 py-2 text-slate-600">
                       {row.contact.title ?? "—"}
                     </td>
-                    <td className="px-3 py-3 text-slate-600">
+                    <td className="px-3 py-2 text-slate-600">
                       {row.contact.companyId ? (
                         <Link
                           href={`/companies/${row.contact.companyId}`}
@@ -312,31 +327,39 @@ export function ScoreReportClient({
                         (row.contact.company ?? "—")
                       )}
                     </td>
-                    <td className="px-3 py-3 text-slate-600">
+                    <td className="px-3 py-2 text-slate-600">
                       Research: {researchLabel}
                     </td>
-                    <td className="px-3 py-3 text-slate-600">
+                    <td className="px-3 py-2 text-center tabular-nums text-slate-600">
                       {displayScore(row.overallScore)}
                     </td>
-                    <td className="px-3 py-3 text-slate-600">
+                    <td className="px-3 py-2 text-center tabular-nums text-slate-600">
                       {displayScore(row.icpScore)}
                     </td>
-                    <td className="px-3 py-3 text-slate-600">
+                    <td className="px-3 py-2 text-center tabular-nums text-slate-600">
                       {displayScore(row.personaScore)}
                     </td>
-                    <td className="px-3 py-3 text-slate-600">
+                    <td className="px-3 py-2 text-center tabular-nums text-slate-600">
                       {displayScore(row.companyScore)}
                     </td>
-                    <td className="px-3 py-3 text-slate-600">
+                    <td className="px-3 py-2 text-center tabular-nums text-slate-600">
                       {displayScore(row.productRelevanceScore)}
                     </td>
-                    <td className="px-3 py-3 text-slate-600">
+                    <td className="px-3 py-2 text-slate-600">
                       {row.scoreLabel ?? "Pending"}
                     </td>
-                    <td className="px-3 py-3 text-slate-600">
-                      {row.recommendedAction ?? "Pending"}
+                    <td className="px-3 py-2 text-slate-600">
+                      <button
+                        type="button"
+                        className="line-clamp-2 max-h-10 w-full text-left leading-5 hover:text-slate-900 hover:underline"
+                        title={row.recommendedAction ?? "Pending"}
+                        aria-expanded={open}
+                        onClick={() => setExpandedId(open ? null : row.id)}
+                      >
+                        {row.recommendedAction ?? "Pending"}
+                      </button>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-2">
                       <button
                         type="button"
                         className="text-sm font-medium text-slate-900 underline"
@@ -443,6 +466,12 @@ export function ScoreReportClient({
                             />
                             <div className="md:col-span-2">
                               <Detail label="Reasoning" value={row.reasoning} />
+                            </div>
+                            <div className="md:col-span-2">
+                              <Detail
+                                label="Recommended Action"
+                                value={row.recommendedAction}
+                              />
                             </div>
                             {row.scoringError ? (
                               <div className="md:col-span-2">
