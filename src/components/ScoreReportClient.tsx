@@ -89,6 +89,45 @@ function displayScore(value: number | null): string {
   return value == null ? "Not scored" : String(value);
 }
 
+type ComponentCoverage = {
+  evaluated: number;
+  total: number;
+};
+
+function icpCoverage(assessmentData: unknown): ComponentCoverage | null {
+  if (!assessmentData || typeof assessmentData !== "object") return null;
+  const coverage = (
+    assessmentData as {
+      componentCoverage?: { icp?: Partial<ComponentCoverage> };
+    }
+  ).componentCoverage?.icp;
+  if (
+    typeof coverage?.evaluated !== "number" ||
+    typeof coverage.total !== "number"
+  ) {
+    return null;
+  }
+  return { evaluated: coverage.evaluated, total: coverage.total };
+}
+
+function displayScoreLabel(
+  label: string | null,
+  coverage: ComponentCoverage | null,
+): string {
+  if (label === "FAIR" && coverage && coverage.evaluated < coverage.total) {
+    return "Maybe";
+  }
+  return label ?? "Pending";
+}
+
+function displayIcpScore(
+  score: number | null,
+  coverage: ComponentCoverage | null,
+): string {
+  if (coverage?.total && coverage.evaluated === 0) return "Not scored";
+  return displayScore(score);
+}
+
 function asStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map(String).filter(Boolean);
@@ -249,7 +288,7 @@ export function ScoreReportClient({
       </div>
 
       <div className="max-h-[75vh] overflow-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-[1576px] table-fixed divide-y divide-slate-200 text-sm">
+        <table className="w-[1656px] table-fixed divide-y divide-slate-200 text-sm">
           <colgroup>
             <col className="w-14" />
             <col className="w-48" />
@@ -257,7 +296,7 @@ export function ScoreReportClient({
             <col className="w-40" />
             <col className="w-28" />
             <col className="w-20" />
-            <col className="w-20" />
+            <col className="w-40" />
             <col className="w-20" />
             <col className="w-24" />
             <col className="w-20" />
@@ -286,6 +325,7 @@ export function ScoreReportClient({
             {rows.map((row) => {
               const open = expandedId === row.id;
               const companyResearch = row.contact.companyRecord?.research?.[0];
+              const coverage = icpCoverage(row.assessmentData);
               const researchLabel = companyResearchLabel(
                 companyResearch?.status,
               );
@@ -334,7 +374,13 @@ export function ScoreReportClient({
                       {displayScore(row.overallScore)}
                     </td>
                     <td className="px-3 py-2 text-center tabular-nums text-slate-600">
-                      {displayScore(row.icpScore)}
+                      {displayIcpScore(row.icpScore, coverage)}
+                      {coverage?.total ? (
+                        <span className="mt-0.5 block text-[10px] leading-3 text-slate-500">
+                          {coverage.evaluated} of {coverage.total} criteria
+                          evaluated
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 text-center tabular-nums text-slate-600">
                       {displayScore(row.personaScore)}
@@ -346,7 +392,7 @@ export function ScoreReportClient({
                       {displayScore(row.productRelevanceScore)}
                     </td>
                     <td className="px-3 py-2 text-slate-600">
-                      {row.scoreLabel ?? "Pending"}
+                      {displayScoreLabel(row.scoreLabel, coverage)}
                     </td>
                     <td className="px-3 py-2 text-slate-600">
                       <button

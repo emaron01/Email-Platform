@@ -4,8 +4,8 @@
 
 /** Bumped when persona exclusion evidence rules entered the prompt. */
 export const SCORING_PROMPT_VERSION = "4";
-/** Bumped for deterministic and evidence-gated persona disqualification. */
-export const SCORING_LOGIC_VERSION = "4";
+/** Bumped when unresolvable ICP criteria stopped contributing midpoint scores. */
+export const SCORING_LOGIC_VERSION = "5";
 
 /** Concurrent AI scoring requests per ScoringRun. */
 export const SCORING_CONCURRENCY = 3;

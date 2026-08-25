@@ -18,10 +18,7 @@ import {
   resolveDisqualifiers,
   type ResolvedDisqualifier,
 } from "@/lib/scoring/disqualify";
-import type {
-  IcpSnapshot,
-  PersonaSnapshot,
-} from "@/lib/scoring/types";
+import type { IcpSnapshot, PersonaSnapshot } from "@/lib/scoring/types";
 import type { ScoringContactResearchInput } from "@/lib/scoring/payload";
 import type { PersonaExclusionAssessment } from "@/lib/scoring/persona-exclusions";
 
@@ -33,6 +30,12 @@ export type ComponentScores = {
   overallScore: number;
   unknownDimensionCount: number;
   scoredDimensionCount: number;
+  componentCoverage: {
+    icp: { evaluated: number; total: number };
+    persona: { evaluated: number; total: number };
+    company: { evaluated: number; total: number };
+    product: { evaluated: number; total: number };
+  };
 };
 
 export function assessmentToNumeric(
@@ -95,13 +98,25 @@ export function calculateComponentScores(
   const product: number[] = [];
   let unknownDimensionCount = 0;
   const exclude = options?.excludeIcpDimensionNames ?? new Set<string>();
+  const totals = {
+    icp: 0,
+    persona: 0,
+    company: 0,
+    product: 0,
+  };
 
   for (const dim of dimensions) {
-    if (dim.component === "ICP" && exclude.has(dim.dimension)) {
-      // Asymmetry guard: unverifiable TARGETED_SEARCH never contributes (not even UNKNOWN=50).
+    const componentKey =
+      dim.component === "PRODUCT" ? "product" : dim.component.toLowerCase();
+    totals[componentKey as keyof typeof totals] += 1;
+    if (dim.assessment === "UNKNOWN") unknownDimensionCount += 1;
+    if (
+      dim.component === "ICP" &&
+      (exclude.has(dim.dimension) || dim.assessment === "UNKNOWN")
+    ) {
+      // Unresolvable ICP criteria never contribute a midpoint or remain in the denominator.
       continue;
     }
-    if (dim.assessment === "UNKNOWN") unknownDimensionCount += 1;
     const score = assessmentToNumeric(dim.assessment, dim.confidence);
     switch (dim.component) {
       case "ICP":
@@ -141,7 +156,14 @@ export function calculateComponentScores(
     productRelevanceScore,
     overallScore,
     unknownDimensionCount,
-    scoredDimensionCount: dimensions.length - exclude.size,
+    scoredDimensionCount:
+      icp.length + persona.length + company.length + product.length,
+    componentCoverage: {
+      icp: { evaluated: icp.length, total: totals.icp },
+      persona: { evaluated: persona.length, total: totals.persona },
+      company: { evaluated: company.length, total: totals.company },
+      product: { evaluated: product.length, total: totals.product },
+    },
   };
 }
 
@@ -196,10 +218,7 @@ export function calculateScoresFromAssessment(input: {
     return {
       ...dim,
       assessment: clamped.assessment as DimensionAssessment["assessment"],
-      concerns: [
-        ...dim.concerns,
-        ...(clamped.reason ? [clamped.reason] : []),
-      ],
+      concerns: [...dim.concerns, ...(clamped.reason ? [clamped.reason] : [])],
     };
   });
 
@@ -240,14 +259,33 @@ export function calculateScoresFromAssessment(input: {
     ...deterministicPersonaDisqualifiers,
   ];
   const disqualified = disqualifiers.length > 0;
-  const scoreLabel = assignScoreLabel(components.overallScore, disqualified);
+  let scoreLabel = assignScoreLabel(components.overallScore, disqualified);
+  const icpCoverage = components.componentCoverage.icp;
+  const hasUnresolvableIcpCriteria = icpCoverage.evaluated < icpCoverage.total;
+  const knownIcpEvidenceDoesNotFail =
+    icpCoverage.evaluated === 0 ||
+    components.icpScore >= SCORE_LABEL_THRESHOLDS.goodMin;
+  if (
+    scoreLabel === "POOR" &&
+    hasUnresolvableIcpCriteria &&
+    knownIcpEvidenceDoesNotFail
+  ) {
+    // FAIR maps to Needs review ("Maybe") in qualification. Missing facts alone never exclude.
+    scoreLabel = "FAIR";
+  }
+  const unresolvedIcpGaps = (input.criterionEvidenceAssessments ?? [])
+    .filter((assessment) => assessment.excludeFromScore)
+    .map((assessment) => assessment.reasoning);
+  const fitRisks = Array.from(
+    new Set([...input.assessment.fitRisks, ...unresolvedIcpGaps]),
+  );
 
   return {
     ...components,
     scoreLabel,
     dimensions,
     fitStrengths: input.assessment.fitStrengths,
-    fitRisks: input.assessment.fitRisks,
+    fitRisks,
     disqualifiers,
     recommendedAction: input.assessment.recommendedAction,
     reasoning: input.assessment.reasoning,

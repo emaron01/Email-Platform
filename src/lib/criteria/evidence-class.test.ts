@@ -11,12 +11,18 @@ import {
   isTargetedSearchDecisionStale,
   normalizeEvidenceClass,
 } from "@/lib/criteria/evidence-class";
-import { normalizeInOperatorValues, splitEmbeddedListValue } from "@/lib/criteria/multi-value";
+import {
+  normalizeInOperatorValues,
+  splitEmbeddedListValue,
+} from "@/lib/criteria/multi-value";
 import {
   clampFactualAiDimension,
   evaluateIcpCriterionWithEvidenceClass,
 } from "@/lib/criteria/targeted-search-eval";
-import { calculateComponentScores, calculateScoresFromAssessment } from "@/lib/scoring/calculate";
+import {
+  calculateComponentScores,
+  calculateScoresFromAssessment,
+} from "@/lib/scoring/calculate";
 import { ICP_INTERPRETATION_PROMPT_VERSION } from "@/lib/criteria/types";
 import { parseIcpInterpretedCriteria } from "@/lib/interpretation/schema";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
@@ -213,6 +219,19 @@ describe("TARGETED_SEARCH asymmetry", () => {
     expect(["STRONG", "MODERATE"]).toContain(result.assessment);
   });
 
+  it("unrelated discovered technologies are absence, not contradiction", () => {
+    const result = evaluateIcpCriterionWithEvidenceClass({
+      criterion: targeted,
+      actualValue:
+        "DMS analytics, workflow tooling, benchmarking, and FusionAuth",
+    });
+    expect(result).toMatchObject({
+      evidenceOutcome: "UNVERIFIABLE",
+      assessment: "NEUTRAL",
+      excludeFromScore: true,
+    });
+  });
+
   it("contradicting evidence → CONTRADICTED / normal negative", () => {
     const result = evaluateIcpCriterionWithEvidenceClass({
       criterion: targeted,
@@ -221,6 +240,38 @@ describe("TARGETED_SEARCH asymmetry", () => {
     expect(result.evidenceOutcome).toBe("CONTRADICTED");
     expect(result.excludeFromScore).toBe(false);
     expect(["NO_FIT", "WEAK"]).toContain(result.assessment);
+  });
+
+  it("does not mistake a negated target mention for confirming evidence", () => {
+    const result = evaluateIcpCriterionWithEvidenceClass({
+      criterion: targeted,
+      actualValue: "The company does not use Salesforce and uses Dynamics.",
+    });
+    expect(result).toMatchObject({
+      evidenceOutcome: "CONTRADICTED",
+      assessment: "NO_FIT",
+      excludeFromScore: false,
+    });
+  });
+
+  it("missing LIST_DATA is unresolvable and excluded from scoring", () => {
+    const result = evaluateIcpCriterionWithEvidenceClass({
+      criterion: criterion({
+        name: "Employee Count",
+        criterionType: "employee_count",
+        dataType: "NUMBER",
+        operator: "BETWEEN",
+        minValue: 50,
+        maxValue: 500,
+        evidenceClass: "LIST_DATA",
+      }),
+      actualValue: null,
+    });
+    expect(result).toMatchObject({
+      evidenceOutcome: "UNVERIFIABLE",
+      assessment: "NEUTRAL",
+      excludeFromScore: true,
+    });
   });
 });
 
@@ -315,6 +366,116 @@ describe("factual AI guard", () => {
     expect(result.dimensions[0]?.assessment).toBe("UNKNOWN");
     // Excluded from ICP average → neutral 50 component default when no scored dims.
     expect(result.icpScore).toBe(50);
+    expect(result.componentCoverage.icp).toEqual({ evaluated: 0, total: 1 });
+    expect(result.scoreLabel).toBe("FAIR");
+  });
+
+  it("scores one passing ICP criterion while excluding three unresolvable criteria", () => {
+    const criteria = [
+      criterion({
+        id: "industry",
+        name: "Industry",
+        criterionType: "industry",
+        dataType: "MULTI_SELECT",
+        operator: "IN",
+        targetValue: ["SaaS", "B2B"],
+        evidenceClass: "LIST_DATA",
+        isRequired: true,
+      }),
+      criterion({
+        id: "employees",
+        name: "Employee Count",
+        criterionType: "employee_count",
+        dataType: "NUMBER",
+        operator: "BETWEEN",
+        minValue: 50,
+        maxValue: 500,
+        evidenceClass: "LIST_DATA",
+      }),
+      criterion({
+        id: "revenue",
+        name: "Company Revenue",
+        criterionType: "company_revenue",
+        dataType: "CURRENCY",
+        operator: "BETWEEN",
+        minValue: 10_000_000,
+        maxValue: 100_000_000,
+        evidenceClass: "LIST_DATA",
+      }),
+      criterion({
+        id: "technologies",
+        name: "Required Technologies",
+        criterionType: "technology",
+        dataType: "MULTI_SELECT",
+        operator: "IN",
+        targetValue: ["Salesforce", "HubSpot"],
+        evidenceClass: "TARGETED_SEARCH",
+        isRequired: true,
+      }),
+    ];
+    const actualValues = [
+      "B2B SaaS",
+      null,
+      null,
+      "DMS analytics, workflow tooling, benchmarking, and FusionAuth",
+    ];
+    const criterionEvidenceAssessments = criteria.map((entry, index) =>
+      evaluateIcpCriterionWithEvidenceClass({
+        criterion: entry,
+        actualValue: actualValues[index],
+      }),
+    );
+
+    const result = calculateScoresFromAssessment({
+      assessment: {
+        dimensions: criteria.map((entry) => ({
+          dimension: entry.name,
+          component: "ICP" as const,
+          assessment: "STRONG" as const,
+          evidence: [],
+          concerns: [],
+          confidence: "HIGH" as const,
+        })),
+        fitStrengths: [],
+        fitRisks: [],
+        potentialDisqualifiers: [],
+        recommendedAction: "Review the evidence gaps.",
+        reasoning: "One criterion is confirmed.",
+      },
+      applicable: criteria.map((entry) => ({
+        component: "ICP" as const,
+        dimension: entry.name,
+      })),
+      icp: {
+        id: "primary-target",
+        name: "Primary Target",
+        description: null,
+        definition: null,
+        targetIndustries: null,
+        minEmployees: null,
+        maxEmployees: null,
+        minRevenue: null,
+        maxRevenue: null,
+        targetGeographies: null,
+        requiredTechnologies: null,
+        positiveSignals: null,
+        negativeSignals: null,
+        notes: null,
+        criteria,
+      },
+      criterionEvidenceAssessments,
+    });
+
+    expect(result.icpScore).toBe(100);
+    expect(result.componentCoverage.icp).toEqual({ evaluated: 1, total: 4 });
+    expect(result.scoreLabel).toBe("FAIR");
+    expect(result.fitRisks).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Employee Count"),
+        expect.stringContaining("Company Revenue"),
+        expect.stringContaining("Required Technologies"),
+      ]),
+    );
   });
 });
 
@@ -342,7 +503,9 @@ describe("ICP interpretation prose + definition isolation", () => {
     const parsed = parseIcpInterpretedCriteria({
       understoodSummary:
         "You want mid-market SaaS companies with a CRM already in place.",
-      undetermined: ["Preferred CRM brand mix when both Salesforce and HubSpot appear"],
+      undetermined: [
+        "Preferred CRM brand mix when both Salesforce and HubSpot appear",
+      ],
       criteria: [
         {
           name: "Industry",
@@ -364,8 +527,12 @@ describe("ICP interpretation prose + definition isolation", () => {
 
   it("interpretation persist path never writes Icp.definition", () => {
     const src = readFileSync("src/lib/interpretation/icp.ts", "utf8");
-    expect(src).toMatch(/icp\.definition\?\.trim\(\) \|\| icp\.description\?\.trim\(\)/);
-    expect(src).toContain("interpretationSummary: parsed.understoodSummary.trim()");
+    expect(src).toMatch(
+      /icp\.definition\?\.trim\(\) \|\| icp\.description\?\.trim\(\)/,
+    );
+    expect(src).toContain(
+      "interpretationSummary: parsed.understoodSummary.trim()",
+    );
     expect(src).not.toMatch(/data:\s*\{[\s\S]{0,400}definition:/);
   });
 });

@@ -18,10 +18,7 @@ import {
 import type { CriterionSnapshot } from "@/lib/criteria/types";
 
 export type TargetedSearchEvidenceOutcome =
-  | "CONFIRMED"
-  | "CONTRADICTED"
-  | "UNVERIFIABLE"
-  | "NOT_APPLICABLE";
+  "CONFIRMED" | "CONTRADICTED" | "UNVERIFIABLE" | "NOT_APPLICABLE";
 
 export type CriterionEvidenceAssessment = {
   scope: "ICP" | "PERSONA";
@@ -40,9 +37,38 @@ export type CriterionEvidenceAssessment = {
   factualAiForbidden: boolean;
 };
 
+function unverifiableAssessment(input: {
+  criterion: CriterionSnapshot;
+  evidenceClass: CriterionEvidenceClassValue;
+  reasoning: string;
+}): CriterionEvidenceAssessment {
+  return {
+    scope: "ICP",
+    name: input.criterion.name,
+    criterionId: input.criterion.id,
+    evidenceClass: input.evidenceClass,
+    assessment: "NEUTRAL",
+    confidence: "LOW",
+    method: "ASYMMETRIC",
+    reasoning: input.reasoning,
+    evidenceOutcome: "UNVERIFIABLE",
+    excludeFromScore: true,
+    factualAiForbidden: true,
+  };
+}
+
+function hasExplicitContradiction(actualValue: unknown): boolean {
+  const text = Array.isArray(actualValue)
+    ? actualValue.map(String).join(" ")
+    : String(actualValue ?? "");
+  return /\b(?:no|not|never|without|only|exclusively|lacks?|instead of|does not|doesn't)\b/i.test(
+    text,
+  );
+}
+
 /**
  * Evaluate one ICP criterion with evidence-class rules.
- * TARGETED_SEARCH with no evidence → NEUTRAL / UNVERIFIABLE (never NO_FIT, never exclusion).
+ * TARGETED_SEARCH with no evidence → NEUTRAL / UNVERIFIABLE (never NO_FIT, never disqualification).
  */
 export function evaluateIcpCriterionWithEvidenceClass(input: {
   criterion: CriterionSnapshot;
@@ -58,6 +84,16 @@ export function evaluateIcpCriterionWithEvidenceClass(input: {
   const factualAiForbidden = isFactualEvidenceClass(evidenceClass);
 
   if (evidenceClass !== "TARGETED_SEARCH") {
+    if (
+      factualAiForbidden &&
+      (base.assessment === "UNKNOWN" || base.method === "UNKNOWN")
+    ) {
+      return unverifiableAssessment({
+        criterion: input.criterion,
+        evidenceClass,
+        reasoning: `Unverified: no ${evidenceClass === "LIST_DATA" ? "list data" : "company research evidence"} for "${input.criterion.name}". Not scored against the company.`,
+      });
+    }
     return {
       scope: "ICP",
       name: input.criterion.name,
@@ -80,17 +116,25 @@ export function evaluateIcpCriterionWithEvidenceClass(input: {
     base.assessment === "UNKNOWN" ||
     base.method === "UNKNOWN"
   ) {
+    return unverifiableAssessment({
+      criterion: input.criterion,
+      evidenceClass,
+      reasoning: `Unverified: no online evidence for "${input.criterion.name}". Not scored against the company.`,
+    });
+  }
+
+  if (hasExplicitContradiction(input.actualValue)) {
     return {
       scope: "ICP",
       name: input.criterion.name,
       criterionId: input.criterion.id,
       evidenceClass,
-      assessment: "NEUTRAL",
-      confidence: "LOW",
+      assessment: "NO_FIT",
+      confidence: "MEDIUM",
       method: "ASYMMETRIC",
-      reasoning: `Unverified: no online evidence for "${input.criterion.name}". Not scored against the company.`,
-      evidenceOutcome: "UNVERIFIABLE",
-      excludeFromScore: true,
+      reasoning: `Contradicted: explicit evidence conflicts with "${input.criterion.name}".`,
+      evidenceOutcome: "CONTRADICTED",
+      excludeFromScore: false,
       factualAiForbidden: true,
     };
   }
@@ -111,6 +155,17 @@ export function evaluateIcpCriterionWithEvidenceClass(input: {
     };
   }
 
+  if (
+    base.assessment === "WEAK" &&
+    !hasExplicitContradiction(input.actualValue)
+  ) {
+    return unverifiableAssessment({
+      criterion: input.criterion,
+      evidenceClass,
+      reasoning: `Unverified: available online evidence does not confirm "${input.criterion.name}", and absence is not treated as contradiction. Not scored against the company.`,
+    });
+  }
+
   // Contradicting evidence — normal negative / disqualification path.
   return {
     scope: "ICP",
@@ -129,8 +184,8 @@ export function evaluateIcpCriterionWithEvidenceClass(input: {
 
 /**
  * Guard: strip or clamp AI dimension assessments that try to invent factual results.
- * TARGETED_SEARCH UNVERIFIABLE dimensions are forced to UNKNOWN and marked excludeFromScore
- * by the caller via criterionAssessments.
+ * Unverifiable factual dimensions are forced to UNKNOWN and marked excludeFromScore by
+ * the caller via criterionAssessments.
  */
 export function clampFactualAiDimension(input: {
   dimensionName: string;
@@ -150,14 +205,13 @@ export function clampFactualAiDimension(input: {
     return {
       assessment: "UNKNOWN",
       forced: true,
-      reason: `Factual TARGETED_SEARCH criterion "${input.dimensionName}" has no evidence — AI may not invent a result.`,
+      reason: `Factual criterion "${input.dimensionName}" has no evidence — AI may not invent a result.`,
     };
   }
 
   // Prefer deterministic/asymmetric assessment over AI for factual classes.
   if (ev.method === "DETERMINISTIC" || ev.method === "ASYMMETRIC") {
-    const mapped =
-      ev.assessment === "NEUTRAL" ? "UNKNOWN" : ev.assessment;
+    const mapped = ev.assessment === "NEUTRAL" ? "UNKNOWN" : ev.assessment;
     if (mapped !== input.aiAssessment) {
       return {
         assessment: mapped,

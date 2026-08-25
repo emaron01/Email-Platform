@@ -156,7 +156,9 @@ export async function scoreSingleContact(input: {
   });
 
   if (!scoreRow) {
-    throw new TenantError("Contact score not found in the active organization.");
+    throw new TenantError(
+      "Contact score not found in the active organization.",
+    );
   }
 
   await prisma.contactScore.update({
@@ -198,9 +200,8 @@ export async function scoreSingleContact(input: {
     if (!titleExclusionConfirmed) {
       try {
         const { getResearchPolicy } = await import("@/lib/usage/policy");
-        const { researchContactRole } = await import(
-          "@/lib/contact-research/service"
-        );
+        const { researchContactRole } =
+          await import("@/lib/contact-research/service");
         const policy = await getResearchPolicy(input.organizationId);
         const cr = await researchContactRole({
           organizationId: input.organizationId,
@@ -236,12 +237,10 @@ export async function scoreSingleContact(input: {
     });
 
     // Deterministic / asymmetric ICP criterion pre-evaluation.
-    const { resolveCompanyActualForCriterion } = await import(
-      "@/lib/criteria/evaluate"
-    );
-    const { evaluateIcpCriterionWithEvidenceClass } = await import(
-      "@/lib/criteria/targeted-search-eval"
-    );
+    const { resolveCompanyActualForCriterion } =
+      await import("@/lib/criteria/evaluate");
+    const { evaluateIcpCriterionWithEvidenceClass } =
+      await import("@/lib/criteria/targeted-search-eval");
     const criterionAssessments: Array<
       ReturnType<typeof evaluateIcpCriterionWithEvidenceClass>
     > = [];
@@ -455,6 +454,7 @@ export async function scoreSingleContact(input: {
         assessmentData: {
           dimensions: calculated.dimensions,
           unknownDimensionCount: calculated.unknownDimensionCount,
+          componentCoverage: calculated.componentCoverage,
           fitStrengths: calculated.fitStrengths,
           fitRisks: calculated.fitRisks,
           disqualifiers: calculated.disqualifiers,
@@ -560,7 +560,8 @@ export async function getScoringReadiness(scoringRunId: string): Promise<{
     where: { id: scoringRunId, organizationId },
     select: { id: true, contactListId: true },
   });
-  if (!run) throw new TenantError("Scoring run not found in the active organization.");
+  if (!run)
+    throw new TenantError("Scoring run not found in the active organization.");
 
   const scores = await prisma.contactScore.findMany({
     where: { organizationId, scoringRunId },
@@ -684,8 +685,7 @@ export async function runScoringForRun(
     (r) => r.scoringStatus === "FAILED",
   ).length;
   const pendingTotal = refreshed.filter(
-    (r) =>
-      r.scoringStatus === "PENDING" || r.scoringStatus === "IN_PROGRESS",
+    (r) => r.scoringStatus === "PENDING" || r.scoringStatus === "IN_PROGRESS",
   ).length;
 
   let status: RunScoringSummary["status"] = "COMPLETED";

@@ -11,6 +11,12 @@ describe("ScoreReportClient table layout", () => {
     expect(source).toContain("tabular-nums");
   });
 
+  it("shows how many ICP criteria contributed to the score", () => {
+    expect(source).toContain("componentCoverage");
+    expect(source).toContain("of {coverage.total} criteria");
+    expect(source).toContain('return "Maybe"');
+  });
+
   it("caps recommendations at two lines and keeps the full text available", () => {
     expect(source).toContain("line-clamp-2 max-h-10");
     expect(source).toContain('title={row.recommendedAction ?? "Pending"}');
