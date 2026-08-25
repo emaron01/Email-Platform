@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AiConfigError } from "@/lib/ai/errors";
 import { runScoringForRun } from "@/lib/scoring/engine";
+import { ALL_PERSONAS_VALUE } from "@/lib/scoring/title-fit";
 import { createScoringRun } from "@/lib/tenant/data";
 import { TenantError } from "@/lib/tenant/getCurrentOrganization";
 
@@ -28,9 +29,10 @@ export async function createScoringRunAction(
   const contactListId = requiredString(formData, "contactListId");
   const productId = requiredString(formData, "productId");
   const icpId = requiredString(formData, "icpId");
-  const personaId = requiredString(formData, "personaId");
+  const personaRaw = requiredString(formData, "personaId");
+  const allPersonas = personaRaw === ALL_PERSONAS_VALUE;
 
-  if (!contactListId || !productId || !icpId || !personaId) {
+  if (!contactListId || !productId || !icpId || (!allPersonas && !personaRaw)) {
     return { ok: false, message: "Product, ICP, and Persona are required." };
   }
 
@@ -87,7 +89,7 @@ export async function createScoringRunAction(
       contactListId,
       productId,
       icpId,
-      personaId,
+      personaId: allPersonas ? null : personaRaw,
     });
   } catch (error) {
     return { ok: false, message: toSafeScoringRunActionError(error) };

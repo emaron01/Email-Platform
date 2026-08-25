@@ -201,7 +201,10 @@ export async function getCampaignQualificationView(
     return { scoringRunId: null, companyRows: [], contactRows: [] };
   }
   const guidance = new Map<string, string | null>();
-  for (const criterion of [...run.icp.criteria, ...run.persona.criteria]) {
+  for (const criterion of [
+    ...run.icp.criteria,
+    ...(run.persona?.criteria ?? []),
+  ]) {
     guidance.set(criterion.id, criterion.researchGuidance);
     guidance.set(
       criterion.name.trim().toLowerCase(),

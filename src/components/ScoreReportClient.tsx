@@ -213,15 +213,17 @@ export function ScoreReportClient({
   productName,
   icpName,
   personaName,
+  personas = [],
   rows,
 }: {
   runId: string;
   productId: string;
   icpId: string;
-  personaId: string;
+  personaId: string | null;
   productName: string;
   icpName: string;
   personaName: string;
+  personas?: Array<{ id: string; name: string }>;
   rows: ScoreReportClientRow[];
 }) {
   const router = useRouter();
@@ -670,7 +672,28 @@ export function ScoreReportClient({
               ) : null}
               <input type="hidden" name="productId" value={productId} />
               <input type="hidden" name="icpId" value={icpId} />
-              <input type="hidden" name="personaId" value={personaId} />
+              {personaId ? (
+                <input type="hidden" name="personaId" value={personaId} />
+              ) : (
+                <label className="block text-sm">
+                  <span className="font-medium text-slate-700">Persona</span>
+                  <select
+                    name="personaId"
+                    required
+                    defaultValue=""
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="" disabled>
+                      Select persona for this campaign
+                    </option>
+                    {personas.map((persona) => (
+                      <option key={persona.id} value={persona.id}>
+                        {persona.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <Field label="Campaign Name" name="name" required />
               <Field
                 label="Offer Name"

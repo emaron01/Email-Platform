@@ -17,14 +17,40 @@ export const QUALIFICATION_BUCKET_LABELS: Record<QualificationBucket, string> =
     EXCLUDED: "Excluded",
   };
 
+export type PersonaMatchStatus = "MATCHED" | "EXCLUDED" | "UNKNOWN";
+
+export function readPersonaMatch(assessmentData: unknown): {
+  status: PersonaMatchStatus;
+  matchedPersonaId: string | null;
+} | null {
+  if (!assessmentData || typeof assessmentData !== "object") return null;
+  const raw = (assessmentData as { personaMatch?: unknown }).personaMatch;
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as { status?: unknown; matchedPersonaId?: unknown };
+  if (
+    row.status !== "MATCHED" &&
+    row.status !== "EXCLUDED" &&
+    row.status !== "UNKNOWN"
+  ) {
+    return null;
+  }
+  return {
+    status: row.status,
+    matchedPersonaId:
+      typeof row.matchedPersonaId === "string" ? row.matchedPersonaId : null,
+  };
+}
+
 export function scoreLabelToBucket(
   scoreLabel: ScoreLabel | null,
   assessmentData?: unknown,
 ): QualificationBucket {
-  return icpQualificationToBucket(
-    readIcpQualification(assessmentData),
-    scoreLabel,
-  );
+  const personaMatch = readPersonaMatch(assessmentData);
+  const icp = readIcpQualification(assessmentData);
+  if (personaMatch?.status === "EXCLUDED") return "EXCLUDED";
+  if (icp?.bucket === "NO") return "EXCLUDED";
+  if (personaMatch?.status === "UNKNOWN") return "NEEDS_REVIEW";
+  return icpQualificationToBucket(icp, scoreLabel);
 }
 
 export type UnresolvedCriterion = {

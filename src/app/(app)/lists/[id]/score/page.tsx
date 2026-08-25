@@ -60,7 +60,7 @@ export default async function ScoreListPage({ params }: PageProps) {
     <div>
       <PageHeader
         title={`Score: ${list.name}`}
-        description="Select Product → ICP → Persona. Scores stay tied to this combination via ScoringRun snapshots."
+        description="Select Product → ICP → Persona. Default is All personas so mixed lists are scored against every buyer role."
         actions={
           <Link
             href={`/lists/${id}`}

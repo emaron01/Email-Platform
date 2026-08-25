@@ -13,6 +13,7 @@ import {
 import {
   getScoreReportRows,
   getScoringRun,
+  listPersonas,
   type ScoreReportSort,
 } from "@/lib/tenant/data";
 import { getCompaniesNeedingResearchForScoringRun } from "@/lib/tenant/companies";
@@ -79,7 +80,7 @@ export default async function ScoringReportPage({
     ? Number.parseInt(query.minOverallScore, 10)
     : null;
 
-  const [rows, researchPlan, scoringReadiness] = await Promise.all([
+  const [rows, researchPlan, scoringReadiness, personas] = await Promise.all([
     getScoreReportRows(runId, {
       scoreLabel: (query.scoreLabel as ScoreLabel | undefined) || "",
       researchStatus:
@@ -91,6 +92,7 @@ export default async function ScoringReportPage({
     }),
     getCompaniesNeedingResearchForScoringRun(runId),
     getScoringReadiness(runId),
+    listPersonas(run.productId),
   ]);
 
   return (
@@ -112,7 +114,7 @@ export default async function ScoringReportPage({
         <Meta label="List" value={run.contactList.name} />
         <Meta label="Product" value={run.product.name} />
         <Meta label="ICP" value={run.icp.name} />
-        <Meta label="Persona" value={run.persona.name} />
+        <Meta label="Persona" value={run.persona?.name ?? "All personas"} />
         <Meta label="Total Contacts" value={formatNumber(run.totalContacts)} />
         <Meta label="Scored Contacts" value={formatNumber(run.scoredContacts)} />
         <Meta label="Status" value={run.status} />
@@ -240,7 +242,11 @@ export default async function ScoringReportPage({
           personaId={run.personaId}
           productName={run.product.name}
           icpName={run.icp.name}
-          personaName={run.persona.name}
+          personaName={run.persona?.name ?? "All personas"}
+          personas={personas.map((persona) => ({
+            id: persona.id,
+            name: persona.name,
+          }))}
           rows={rows.map((row) => ({
             id: row.id,
             contactId: row.contactId,

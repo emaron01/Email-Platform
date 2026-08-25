@@ -814,7 +814,7 @@ export type ScoringRunWithRelations = ScoringRun & {
   contactList: { id: string; name: string };
   product: { id: string; name: string };
   icp: { id: string; name: string };
-  persona: { id: string; name: string };
+  persona: { id: string; name: string } | null;
 };
 
 export async function listScoringRunsForList(
@@ -858,11 +858,11 @@ export async function createScoringRun(input: {
   contactListId: string;
   productId: string;
   icpId: string;
-  personaId: string;
+  personaId: string | null;
 }): Promise<ScoringRun> {
   const organizationId = await orgId();
 
-  const [list, product, icp, persona] = await Promise.all([
+  const [list, product, icp] = await Promise.all([
     prisma.contactList.findFirst({
       where: { id: input.contactListId, organizationId },
     }),
@@ -871,9 +871,6 @@ export async function createScoringRun(input: {
     }),
     prisma.icp.findFirst({
       where: { id: input.icpId, organizationId },
-    }),
-    prisma.persona.findFirst({
-      where: { id: input.personaId, organizationId },
     }),
   ]);
 
@@ -886,13 +883,27 @@ export async function createScoringRun(input: {
   if (!icp) {
     throw new TenantError("ICP does not belong to the active organization.");
   }
-  if (!persona) {
-    throw new TenantError("Persona does not belong to the active organization.");
-  }
   if (icp.productId !== product.id) {
     throw new TenantError("ICP does not belong to the selected product.");
   }
-  if (persona.productId !== product.id) {
+
+  const personaRows = input.personaId
+    ? await prisma.persona.findMany({
+        where: { id: input.personaId, organizationId, archivedAt: null },
+      })
+    : await prisma.persona.findMany({
+        where: { organizationId, productId: product.id, archivedAt: null },
+        orderBy: { createdAt: "asc" },
+      });
+
+  if (personaRows.length === 0) {
+    throw new TenantError(
+      input.personaId
+        ? "Persona does not belong to the active organization."
+        : "This product has no personas to score against.",
+    );
+  }
+  if (personaRows.some((persona) => persona.productId !== product.id)) {
     throw new TenantError("Persona does not belong to the selected product.");
   }
 
@@ -918,22 +929,35 @@ export async function createScoringRun(input: {
 
   await Promise.all([
     ensureIcpLegacyCriteriaBackfilled(organizationId, icp.id),
-    ensurePersonaLegacyCriteriaBackfilled(organizationId, persona.id),
+    ...personaRows.map((persona) =>
+      ensurePersonaLegacyCriteriaBackfilled(organizationId, persona.id),
+    ),
   ]);
 
-  const [icpCriteriaRows, personaCriteriaRows] = await Promise.all([
-    prisma.icpCriterion.findMany({
-      where: { organizationId, icpId: icp.id },
-      orderBy: { sortOrder: "asc" },
+  const icpCriteriaRows = await prisma.icpCriterion.findMany({
+    where: { organizationId, icpId: icp.id },
+    orderBy: { sortOrder: "asc" },
+  });
+  const personaCriteriaById = new Map<
+    string,
+    ReturnType<typeof snapshotCriterionRow>[]
+  >();
+  await Promise.all(
+    personaRows.map(async (persona) => {
+      const rows = await prisma.personaCriterion.findMany({
+        where: { organizationId, personaId: persona.id },
+        orderBy: { sortOrder: "asc" },
+      });
+      personaCriteriaById.set(persona.id, rows.map(snapshotCriterionRow));
     }),
-    prisma.personaCriterion.findMany({
-      where: { organizationId, personaId: persona.id },
-      orderBy: { sortOrder: "asc" },
-    }),
-  ]);
+  );
 
   const icpCriteria = icpCriteriaRows.map(snapshotCriterionRow);
-  const personaCriteria = personaCriteriaRows.map(snapshotCriterionRow);
+  const personaSnapshots = personaRows.map((persona) =>
+    snapshotPersona(persona, personaCriteriaById.get(persona.id) ?? []),
+  );
+  const primaryPersona = personaRows[0]!;
+  const primarySnapshot = personaSnapshots[0]!;
 
   return prisma.$transaction(async (tx) => {
     const run = await tx.scoringRun.create({
@@ -942,13 +966,14 @@ export async function createScoringRun(input: {
         contactListId: list.id,
         productId: product.id,
         icpId: icp.id,
-        personaId: persona.id,
+        personaId: input.personaId ? primaryPersona.id : null,
         status: "PENDING",
         totalContacts: contacts.length,
         scoredContacts: 0,
         productSnapshot: snapshotProduct(product),
         icpSnapshot: snapshotIcp(icp, icpCriteria) as Prisma.InputJsonValue,
-        personaSnapshot: snapshotPersona(persona, personaCriteria) as Prisma.InputJsonValue,
+        personaSnapshot: primarySnapshot as Prisma.InputJsonValue,
+        personaSnapshots: personaSnapshots as Prisma.InputJsonValue,
       },
     });
 

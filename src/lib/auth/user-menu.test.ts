@@ -81,6 +81,7 @@ describe("buildSidebarNavItems", () => {
     );
     expect(items.some((i) => i.href === "/settings/account")).toBe(true);
     expect(items.some((i) => i.href === "/lists")).toBe(false);
+    expect(items.some((i) => i.href === "/contacts")).toBe(false);
     expect(items.some((i) => i.href === "/")).toBe(false);
   });
 
@@ -93,6 +94,9 @@ describe("buildSidebarNavItems", () => {
     expect(items.some((i) => i.href === "/lists" && i.label === "Lists")).toBe(
       true,
     );
+    expect(
+      items.some((i) => i.href === "/contacts" && i.label === "Contacts"),
+    ).toBe(true);
     expect(
       items.some((i) => i.href === "/campaigns" && i.label === "Campaigns"),
     ).toBe(true);

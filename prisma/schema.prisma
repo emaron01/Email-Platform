@@ -915,9 +915,10 @@ model Persona {
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product      Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
   criteria     PersonaCriterion[]
-  campaigns    Campaign[]
-  scoringRuns  ScoringRun[]
-  setupRuns    PersonaSetupRun[]
+  campaigns     Campaign[]
+  scoringRuns   ScoringRun[]
+  matchedScores ContactScore[] @relation("ContactScoreMatchedPersona")
+  setupRuns     PersonaSetupRun[]
   sources      PersonaSource[]
 
   @@index([organizationId])
@@ -1344,13 +1345,17 @@ model ScoringRun {
   contactListId   String
   productId       String
   icpId           String
-  personaId       String
+  /// Null means the run scores against every product persona (see personaSnapshots).
+  personaId       String?
   status          ScoringRunStatus @default(PENDING)
   totalContacts   Int              @default(0)
   scoredContacts  Int              @default(0)
   productSnapshot Json
   icpSnapshot     Json
+  /// Single-persona audit snapshot. All-persona runs still store the first snapshot here.
   personaSnapshot Json
+  /// Snapshots for every persona in the run. Length 1 for a single-persona run.
+  personaSnapshots Json            @default("[]")
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   completedAt     DateTime?
@@ -1359,7 +1364,7 @@ model ScoringRun {
   contactList            ContactList                   @relation(fields: [contactListId], references: [id], onDelete: Cascade)
   product                Product                       @relation(fields: [productId], references: [id], onDelete: Restrict)
   icp                    Icp                           @relation(fields: [icpId], references: [id], onDelete: Restrict)
-  persona                Persona                       @relation(fields: [personaId], references: [id], onDelete: Restrict)
+  persona                Persona?                      @relation(fields: [personaId], references: [id], onDelete: Restrict)
   scores                 ContactScore[]
   qualificationOverrides QualificationBucketOverride[]
 
@@ -1415,12 +1420,18 @@ model ContactScore {
   scoringLogicVersion   String?
   scoredAt              DateTime?
   scoringError          String?
+  /// Best-matching persona for this contact when the run covers several personas.
+  matchedPersonaId      String?
+  matchedPersonaSnapshot Json?
+  /// Per-persona gate + score outcomes for audit (one ContactScore row per contact).
+  personaAssessments    Json?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  scoringRun   ScoringRun   @relation(fields: [scoringRunId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact        Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  scoringRun     ScoringRun   @relation(fields: [scoringRunId], references: [id], onDelete: Cascade)
+  matchedPersona Persona?     @relation("ContactScoreMatchedPersona", fields: [matchedPersonaId], references: [id], onDelete: SetNull)
 
   @@unique([scoringRunId, contactId])
   @@index([organizationId])
@@ -1431,6 +1442,7 @@ model ContactScore {
   @@index([organizationId, scoreLabel])
   @@index([organizationId, researchStatus])
   @@index([organizationId, scoringStatus])
+  @@index([matchedPersonaId])
 }
 
 model QualificationBucketOverride {

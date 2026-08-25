@@ -9,6 +9,7 @@ import {
   firstUnresolvedCriterion,
   QUALIFICATION_BUCKET_LABELS,
   QUALIFICATION_BUCKETS,
+  scoreLabelToBucket,
 } from "@/lib/workflow/qualification";
 
 const prismaMock = vi.hoisted(() => ({
@@ -208,6 +209,20 @@ describe("qualification bucket contract", () => {
     expect(
       QUALIFICATION_BUCKETS.map((key) => QUALIFICATION_BUCKET_LABELS[key]),
     ).toEqual(["Good", "Needs review", "Excluded"]);
+  });
+
+  it("sends unmatched titles to Needs review and all-excluded contacts to Excluded", () => {
+    expect(
+      scoreLabelToBucket("FAIR", {
+        personaMatch: { status: "UNKNOWN", matchedPersonaId: null },
+        icpQualification: { bucket: "GOOD" },
+      }),
+    ).toBe("NEEDS_REVIEW");
+    expect(
+      scoreLabelToBucket("DISQUALIFIED", {
+        personaMatch: { status: "EXCLUDED", matchedPersonaId: null },
+      }),
+    ).toBe("EXCLUDED");
   });
 
   it("surfaces an unresolved criterion for a research action", () => {

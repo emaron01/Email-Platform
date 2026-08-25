@@ -124,7 +124,8 @@ export default async function ListDetailPage({
                       {formatDate(run.createdAt)} · {run.product.name}
                     </p>
                     <p className="mt-1 text-slate-600">
-                      ICP: {run.icp.name} · Persona: {run.persona.name} ·{" "}
+                      ICP: {run.icp.name} · Persona:{" "}
+                      {run.persona?.name ?? "All personas"} ·{" "}
                       {formatNumber(run.totalContacts)} contacts · {run.status}
                     </p>
                   </div>

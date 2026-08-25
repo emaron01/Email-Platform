@@ -6,6 +6,7 @@ import {
   type ScoringRunActionResult,
 } from "@/app/actions/scoring";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
+import { ALL_PERSONAS_VALUE } from "@/lib/scoring/title-fit";
 
 type Option = { id: string; name: string; productId: string };
 
@@ -24,7 +25,7 @@ export function ScoreListForm({
 }) {
   const [productId, setProductId] = useState("");
   const [icpId, setIcpId] = useState("");
-  const [personaId, setPersonaId] = useState("");
+  const [personaId, setPersonaId] = useState(ALL_PERSONAS_VALUE);
   const [state, formAction, pending] = useActionState(
     createScoringRunAction,
     initial,
@@ -42,9 +43,10 @@ export function ScoreListForm({
   const canSubmit =
     Boolean(productId) &&
     Boolean(icpId) &&
-    Boolean(personaId) &&
     productIcps.some((icp) => icp.id === icpId) &&
-    productPersonas.some((persona) => persona.id === personaId);
+    productPersonas.length > 0 &&
+    (personaId === ALL_PERSONAS_VALUE ||
+      productPersonas.some((persona) => persona.id === personaId));
 
   return (
     <form action={formAction} className="grid gap-4 md:grid-cols-2">
@@ -69,7 +71,7 @@ export function ScoreListForm({
           onChange={(event) => {
             setProductId(event.target.value);
             setIcpId("");
-            setPersonaId("");
+            setPersonaId(ALL_PERSONAS_VALUE);
           }}
           className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2"
         >
@@ -115,8 +117,8 @@ export function ScoreListForm({
           onChange={(event) => setPersonaId(event.target.value)}
           className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2 disabled:bg-slate-50"
         >
-          <option value="" disabled>
-            {productId ? "Select persona" : "Select a product first"}
+          <option value={ALL_PERSONAS_VALUE}>
+            {productId ? "All personas" : "Select a product first"}
           </option>
           {productPersonas.map((persona) => (
             <option key={persona.id} value={persona.id}>
@@ -135,7 +137,7 @@ export function ScoreListForm({
           onClick={() => {
             setProductId("");
             setIcpId("");
-            setPersonaId("");
+            setPersonaId(ALL_PERSONAS_VALUE);
           }}
         >
           Clear

@@ -142,6 +142,7 @@ export function buildSidebarNavItems(input: {
     { href: "/", label: "Home" },
     { href: "/setup", label: "Setup" },
     { href: "/lists", label: "Lists" },
+    { href: "/contacts", label: "Contacts" },
     { href: "/campaigns", label: "Campaigns" },
     { href: "/settings/voice", label: "Your Voice" },
     { href: "/settings/email", label: "Email Connection" },
