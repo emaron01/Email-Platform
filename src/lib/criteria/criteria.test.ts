@@ -3,6 +3,7 @@
  * contact research triggers, deterministic evaluation, merge protection, snapshots.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { seedContactOnList } from "@/test/contact-seed";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -497,13 +498,11 @@ describe.skipIf(!hasDatabase)(
           name: `List ${suffix}`,
         },
       });
-      const contact = await prisma.contact.create({
-        data: {
-          organizationId: a.organization.id,
-          contactListId: list.id,
-          title: "VP Infrastructure",
-          firstName: "Pat",
-        },
+      const contact = await seedContactOnList(prisma, {
+        organizationId: a.organization.id,
+        contactListId: list.id,
+        title: "VP Infrastructure",
+        firstName: "Pat",
       });
       await prisma.contactResearch.create({
         data: {
@@ -574,13 +573,11 @@ describe.skipIf(!hasDatabase)(
           totalContacts: 1,
         },
       });
-      await prisma.contact.create({
-        data: {
-          organizationId: ws.organization.id,
-          contactListId: list.id,
-          title: "CEO",
-          firstName: "Alex",
-        },
+      await seedContactOnList(prisma, {
+        organizationId: ws.organization.id,
+        contactListId: list.id,
+        title: "CEO",
+        firstName: "Alex",
       });
 
       const { createScoringRun } = await import("@/lib/tenant/data");

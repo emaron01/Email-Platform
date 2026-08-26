@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { seedContactOnList } from "@/test/contact-seed";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -72,16 +73,14 @@ describe.skipIf(!hasDatabase)("scoring engine tenant isolation (Phase 3C)", () =
         totalContacts: 1,
       },
     });
-    const contact = await prisma.contact.create({
-      data: {
-        organizationId: orgAId,
-        contactListId: list.id,
-        firstName: "Sam",
-        lastName: "Seller",
-        title: "VP Sales",
-        company: "Acme",
-        email: `sam-${suffix}@example.test`,
-      },
+    const contact = await seedContactOnList(prisma, {
+      organizationId: orgAId,
+      contactListId: list.id,
+      firstName: "Sam",
+      lastName: "Seller",
+      title: "VP Sales",
+      company: "Acme",
+      email: `sam-${suffix}@example.test`,
     });
 
     const productSnapshot = {
@@ -228,15 +227,13 @@ describe.skipIf(!hasDatabase)("scoring engine tenant isolation (Phase 3C)", () =
     });
     expect(list).toBeTruthy();
 
-    const contact2 = await prisma.contact.create({
-      data: {
-        organizationId: orgAId,
-        contactListId: list!.id,
-        firstName: "Pat",
-        lastName: "Prospect",
-        title: "Director",
-        company: "Beta",
-      },
+    const contact2 = await seedContactOnList(prisma, {
+      organizationId: orgAId,
+      contactListId: list!.id,
+      firstName: "Pat",
+      lastName: "Prospect",
+      title: "Director",
+      company: "Beta",
     });
 
     const failed = await prisma.contactScore.create({

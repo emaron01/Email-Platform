@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { seedContactOnList } from "@/test/contact-seed";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -9,6 +10,7 @@ describe.skipIf(!hasDatabase)("tenant-scoped list import", () => {
 
     try {
       await prisma.$queryRaw`SELECT "sourceType" FROM "ContactList" LIMIT 0`;
+      await prisma.$queryRaw`SELECT "contactListId" FROM "ContactListMembership" LIMIT 0`;
     } catch {
       await prisma.$disconnect();
       console.warn(
@@ -43,15 +45,13 @@ describe.skipIf(!hasDatabase)("tenant-scoped list import", () => {
       },
     });
 
-    await prisma.contact.create({
-      data: {
-        organizationId: orgA.id,
-        contactListId: listA.id,
-        email: `a-${suffix}@example.test`,
-        firstName: "Ann",
-        lastName: "Alpha",
-        rawData: { source: "test" },
-      },
+    await seedContactOnList(prisma, {
+      organizationId: orgA.id,
+      contactListId: listA.id,
+      email: `a-${suffix}@example.test`,
+      firstName: "Ann",
+      lastName: "Alpha",
+      rawData: { source: "test" },
     });
 
     await prisma.contactList.update({
@@ -70,7 +70,10 @@ describe.skipIf(!hasDatabase)("tenant-scoped list import", () => {
     expect(visibleToB).toBeNull();
 
     const contactsForB = await prisma.contact.findMany({
-      where: { organizationId: orgB.id, contactListId: listA.id },
+      where: {
+        organizationId: orgB.id,
+        memberships: { some: { contactListId: listA.id } },
+      },
     });
     expect(contactsForB).toHaveLength(0);
 

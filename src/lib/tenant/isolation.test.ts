@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { seedContactOnList } from "@/test/contact-seed";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -92,14 +93,12 @@ describe.skipIf(!hasDatabase)("tenant isolation", () => {
       },
     });
 
-    const contactB = await prisma.contact.create({
-      data: {
-        organizationId: orgBId,
-        contactListId: listB.id,
-        email: `b-${suffix}@example.test`,
-        firstName: "OrgB",
-        lastName: "Contact",
-      },
+    const contactB = await seedContactOnList(prisma, {
+      organizationId: orgBId,
+      contactListId: listB.id,
+      email: `b-${suffix}@example.test`,
+      firstName: "OrgB",
+      lastName: "Contact",
     });
     contactBId = contactB.id;
 

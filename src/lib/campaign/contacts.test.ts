@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { TenantError } from "@/lib/tenant/errors";
+import { seedContactOnList } from "@/test/contact-seed";
 
 describe("campaign contact management seams", () => {
   it("routes campaign rows to detail and renders generation there only", () => {
@@ -134,41 +135,33 @@ describe.skipIf(!hasDatabase)(
         },
       });
       const [contactA1, contactA2, contactA3, contactA4] = await Promise.all([
-        prisma.contact.create({
-          data: {
-            organizationId: orgAId,
-            contactListId: list.id,
-            firstName: "Already",
-            lastName: "Attached",
-            email: `attached-${suffix}@example.test`,
-          },
+        seedContactOnList(prisma, {
+          organizationId: orgAId,
+          contactListId: list.id,
+          firstName: "Already",
+          lastName: "Attached",
+          email: `attached-${suffix}@example.test`,
         }),
-        prisma.contact.create({
-          data: {
-            organizationId: orgAId,
-            contactListId: list.id,
-            firstName: "Manual",
-            lastName: "Candidate",
-            email: `manual-${suffix}@example.test`,
-          },
+        seedContactOnList(prisma, {
+          organizationId: orgAId,
+          contactListId: list.id,
+          firstName: "Manual",
+          lastName: "Candidate",
+          email: `manual-${suffix}@example.test`,
         }),
-        prisma.contact.create({
-          data: {
-            organizationId: orgAId,
-            contactListId: list.id,
-            firstName: "Scored",
-            lastName: "Candidate",
-            email: `scored-${suffix}@example.test`,
-          },
+        seedContactOnList(prisma, {
+          organizationId: orgAId,
+          contactListId: list.id,
+          firstName: "Scored",
+          lastName: "Candidate",
+          email: `scored-${suffix}@example.test`,
         }),
-        prisma.contact.create({
-          data: {
-            organizationId: orgAId,
-            contactListId: list.id,
-            firstName: "All",
-            lastName: "Personas",
-            email: `all-personas-${suffix}@example.test`,
-          },
+        seedContactOnList(prisma, {
+          organizationId: orgAId,
+          contactListId: list.id,
+          firstName: "All",
+          lastName: "Personas",
+          email: `all-personas-${suffix}@example.test`,
         }),
       ]);
       contactA1Id = contactA1.id;
@@ -295,12 +288,10 @@ describe.skipIf(!hasDatabase)(
         },
       });
       foreignContactId = (
-        await prisma.contact.create({
-          data: {
-            organizationId: orgBId,
-            contactListId: foreignList.id,
-            email: `foreign-${suffix}@example.test`,
-          },
+        await seedContactOnList(prisma, {
+          organizationId: orgBId,
+          contactListId: foreignList.id,
+          email: `foreign-${suffix}@example.test`,
         })
       ).id;
 

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TenantError } from "@/lib/tenant/errors";
 import { buildEmailPrompt } from "@/lib/email-generation/prompt";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
+import { seedContactOnList } from "@/test/contact-seed";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -203,14 +204,12 @@ describe.skipIf(!hasDatabase)(
       const list = await prisma.contactList.create({
         data: { organizationId, name: `List ${email}` },
       });
-      const contact = await prisma.contact.create({
-        data: {
-          organizationId,
-          contactListId: list.id,
-          firstName: "Alex",
-          lastName: "Rivera",
-          email,
-        },
+      const contact = await seedContactOnList(prisma, {
+        organizationId,
+        contactListId: list.id,
+        firstName: "Alex",
+        lastName: "Rivera",
+        email,
       });
       const campaign = await prisma.campaign.create({
         data: {

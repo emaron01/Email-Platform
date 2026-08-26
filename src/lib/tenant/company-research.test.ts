@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { seedContactOnList } from "@/test/contact-seed";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -167,13 +168,11 @@ describe.skipIf(!hasDatabase)("company research (Phase 3B)", {
         totalContacts: 1,
       },
     });
-    const contactA = await prisma.contact.create({
-      data: {
-        organizationId: orgAId,
-        contactListId: listA.id,
-        email: `attach-${suffix}@example.test`,
-        company: "Org B Only",
-      },
+    const contactA = await seedContactOnList(prisma, {
+      organizationId: orgAId,
+      contactListId: listA.id,
+      email: `attach-${suffix}@example.test`,
+      company: "Org B Only",
     });
 
     process.env.DEV_ORGANIZATION_ID = orgAId;
@@ -406,16 +405,14 @@ describe.skipIf(!hasDatabase)("company research (Phase 3B)", {
     });
 
     for (let i = 0; i < 3; i += 1) {
-      await prisma.contact.create({
-        data: {
-          organizationId: orgAId,
-          contactListId: list.id,
-          firstName: `Person${i}`,
-          lastName: "SameCo",
-          email: `sameco-${i}-${suffix}@dup-research.com`,
-          company: "Dup Research Inc",
-          companyWebsite: "https://www.dup-research.com",
-        },
+      await seedContactOnList(prisma, {
+        organizationId: orgAId,
+        contactListId: list.id,
+        firstName: `Person${i}`,
+        lastName: "SameCo",
+        email: `sameco-${i}-${suffix}@dup-research.com`,
+        company: "Dup Research Inc",
+        companyWebsite: "https://www.dup-research.com",
       });
     }
 
@@ -505,23 +502,19 @@ describe.skipIf(!hasDatabase)("company research (Phase 3B)", {
       },
     });
 
-    const c1 = await prisma.contact.create({
-      data: {
-        organizationId: orgAId,
-        contactListId: list1.id,
-        email: `l1-${suffix}@multi-list-co.com`,
-        company: "Multi List Co",
-        companyWebsite: "https://multi-list-co.com",
-      },
+    const c1 = await seedContactOnList(prisma, {
+      organizationId: orgAId,
+      contactListId: list1.id,
+      email: `l1-${suffix}@multi-list-co.com`,
+      company: "Multi List Co",
+      companyWebsite: "https://multi-list-co.com",
     });
-    const c2 = await prisma.contact.create({
-      data: {
-        organizationId: orgAId,
-        contactListId: list2.id,
-        email: `l2-${suffix}@multi-list-co.com`,
-        company: "Multi List Co",
-        companyWebsite: "https://www.multi-list-co.com",
-      },
+    const c2 = await seedContactOnList(prisma, {
+      organizationId: orgAId,
+      contactListId: list2.id,
+      email: `l2-${suffix}@multi-list-co.com`,
+      company: "Multi List Co",
+      companyWebsite: "https://www.multi-list-co.com",
     });
 
     const linked1 = await associateContactWithCompany(c1.id);

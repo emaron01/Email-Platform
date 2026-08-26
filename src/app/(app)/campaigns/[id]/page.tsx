@@ -595,7 +595,9 @@ export default async function CampaignDetailPage({
                 email: contact.email,
                 title: contact.title,
                 company: contact.company,
-                listName: contact.contactList.name,
+                listName:
+                  contact.contactLists.map((list) => list.name).join(", ") ||
+                  "Unlisted",
               }))}
               scoringRuns={scoringRuns.map((run) => ({
                 id: run.id,

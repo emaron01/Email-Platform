@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { seedContactOnList } from "@/test/contact-seed";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -133,13 +134,11 @@ describe.skipIf(!hasDatabase)(
           totalContacts: 1,
         },
       });
-      const contact = await prisma.contact.create({
-        data: {
-          organizationId,
-          contactListId: list.id,
-          firstName: "Alex",
-          email: `recipient-${suffix}@example.test`,
-        },
+      const contact = await seedContactOnList(prisma, {
+        organizationId,
+        contactListId: list.id,
+        firstName: "Alex",
+        email: `recipient-${suffix}@example.test`,
       });
       const campaign = await prisma.campaign.create({
         data: {

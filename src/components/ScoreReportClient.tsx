@@ -404,7 +404,9 @@ export function ScoreReportClient({
                         type="checkbox"
                         checked={selected.has(row.contactId)}
                         disabled={
-                          row.suppressed || row.scoringStatus === "SUPPRESSED"
+                          row.suppressed ||
+                          row.scoringStatus === "SUPPRESSED" ||
+                          row.scoringStatus === "UNUSABLE"
                         }
                         onChange={() => toggleOne(row.contactId)}
                       />
@@ -416,8 +418,13 @@ export function ScoreReportClient({
                       )}
                       <div className="text-xs font-normal text-slate-500">
                         {row.contact.email ?? (
-                          <span className="text-amber-700">Missing email</span>
+                          <span className="text-slate-500">No email — unusable</span>
                         )}
+                        {row.scoringStatus === "UNUSABLE" ? (
+                          <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">
+                            Unusable
+                          </span>
+                        ) : null}
                         {row.suppressed || row.scoringStatus === "SUPPRESSED" ? (
                           <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">
                             Opted out

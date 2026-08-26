@@ -112,6 +112,8 @@ enum ContactScoringStatus {
   COMPLETED
   FAILED
   SUPPRESSED
+  /// No email — cannot be scored, emailed, or suppressed.
+  UNUSABLE
 }
 
 enum EmailSuppressionReason {
@@ -452,6 +454,8 @@ model Organization {
   mailboxOAuthStates       MailboxOAuthState[]
   emailSendRecords         EmailSendRecord[]
   emailSuppressions        EmailSuppression[]
+  contactListMemberships   ContactListMembership[]
+  contactMergeAudits       ContactMergeAudit[]
 
   @@index([status])
   @@index([createdAt])
@@ -490,6 +494,9 @@ model User {
   productTitleDismissals   ProductTitleDismissal[]       @relation("ProductTitleDismissedBy")
   emailSuppressionsCreated EmailSuppression[]            @relation("EmailSuppressedBy")
   emailSuppressionsReleased EmailSuppression[]           @relation("EmailReleasedBy")
+  contactListsCreated      ContactList[]                 @relation("ContactListCreatedBy")
+  contactsCreated          Contact[]                     @relation("ContactCreatedBy")
+  contactMembershipsAdded  ContactListMembership[]       @relation("ContactMembershipAddedBy")
 
   @@index([platformRole])
   @@index([activeOrganizationId])
@@ -1213,54 +1220,113 @@ model ContactList {
   totalContacts    Int               @default(0)
   /// Soft-archive: hidden from selectors; scoring history stays attached.
   archivedAt       DateTime?
+  /// Rep who created the list. UI filters to current user by default.
+  createdByUserId  String?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contacts     Contact[]
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                   @relation("ContactListCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  memberships  ContactListMembership[]
   scoringRuns  ScoringRun[]
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
   @@index([organizationId, sourceType])
   @@index([organizationId, archivedAt])
+  @@index([createdByUserId])
+  @@index([organizationId, createdByUserId])
 }
 
+/// Org-scoped person. Unique on normalized email when present.
+/// Email-less rows are allowed but marked unusable (cannot email/score/suppress).
 model Contact {
-  id             String   @id @default(cuid())
-  organizationId String
-  contactListId  String
-  companyId      String?
-  firstName      String?
-  lastName       String?
-  email          String?
-  title          String?
-  company        String?
-  companyWebsite String?
-  industry       String?
-  employeeCount  Int?
-  revenue        Decimal? @db.Decimal(14, 2)
-  location       String?
-  linkedinUrl    String?
-  phone          String?
-  rawData        Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String    @id @default(cuid())
+  organizationId  String
+  /// Suppression/dedupe key. Null when the row has no usable email.
+  normalizedEmail String?
+  createdByUserId String?
+  companyId       String?
+  firstName       String?
+  lastName        String?
+  email           String?
+  title           String?
+  /// Prior title when an import overwrote title (persona-matching audit).
+  previousTitle   String?
+  titleChangedAt  DateTime?
+  company         String?
+  companyWebsite  String?
+  industry        String?
+  employeeCount   Int?
+  revenue         Decimal?  @db.Decimal(14, 2)
+  location        String?
+  linkedinUrl     String?
+  phone           String?
+  rawData         Json?
+  /// Soft-archive: used when campaign/send history blocks hard delete.
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contactList      ContactList       @relation(fields: [contactListId], references: [id], onDelete: Cascade)
-  companyRecord    Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  organization     Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy        User?                   @relation("ContactCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  companyRecord    Company?                @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  memberships      ContactListMembership[]
   scores           ContactScore[]
   campaignContacts CampaignContact[]
   contactResearch  ContactResearch[]
 
+  @@unique([organizationId, normalizedEmail])
   @@index([organizationId])
   @@index([organizationId, createdAt])
   @@index([organizationId, email])
-  @@index([organizationId, contactListId])
-  @@index([contactListId])
+  @@index([organizationId, archivedAt])
   @@index([companyId])
   @@index([organizationId, companyId])
+  @@index([createdByUserId])
+}
+
+model ContactListMembership {
+  id             String   @id @default(cuid())
+  organizationId String
+  contactListId  String
+  contactId      String
+  addedAt        DateTime @default(now())
+  addedByUserId  String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactList  ContactList  @relation(fields: [contactListId], references: [id], onDelete: Cascade)
+  contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  addedBy      User?        @relation("ContactMembershipAddedBy", fields: [addedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([contactListId, contactId])
+  @@index([organizationId])
+  @@index([contactListId])
+  @@index([contactId])
+  @@index([organizationId, contactId])
+  @@index([addedByUserId])
+}
+
+/// Durable merge audit from Contact normalization. Ids are plain strings — no FK
+/// cascade — so rows survive after loser contacts are deleted.
+model ContactMergeAudit {
+  id               String   @id @default(cuid())
+  organizationId   String
+  winnerContactId  String
+  loserContactId   String
+  normalizedEmail  String?
+  /// Snapshot of loser fields and which winner fields were overwritten.
+  mergePayload     Json
+  createdAt        DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, winnerContactId])
+  @@index([organizationId, loserContactId])
+  @@index([organizationId, normalizedEmail])
+  @@index([createdAt])
 }
 
 model Company {

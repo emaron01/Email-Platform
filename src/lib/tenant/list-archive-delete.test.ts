@@ -4,7 +4,7 @@
  */
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { TenantError } from "@/lib/tenant/errors";
+import { seedContactOnList } from "@/test/contact-seed";
 import {
   decideListDelete,
   listArchiveConfirmBody,
@@ -18,31 +18,35 @@ describe("list archive/delete contracts", () => {
     const schema = readFileSync("prisma/schema.prisma", "utf8");
     const list = schema.match(/model ContactList \{[\s\S]*?\n\}/)?.[0] ?? "";
     const contact = schema.match(/model Contact \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const membership =
+      schema.match(/model ContactListMembership \{[\s\S]*?\n\}/)?.[0] ?? "";
     const scoringRun = schema.match(/model ScoringRun \{[\s\S]*?\n\}/)?.[0] ?? "";
     const campaignContact =
       schema.match(/model CampaignContact \{[\s\S]*?\n\}/)?.[0] ?? "";
-    expect(list).toContain("contacts");
+    expect(list).toContain("memberships");
     expect(list).toContain("scoringRuns");
     expect(list).toContain("archivedAt");
-    expect(contact).toMatch(/contactListId\s+String/);
-    expect(contact).toMatch(/onDelete: Cascade/);
+    expect(contact).not.toMatch(/contactListId\s+String/);
+    expect(contact).toContain("memberships");
+    expect(membership).toMatch(/contactListId\s+String/);
+    expect(membership).toMatch(/onDelete: Cascade/);
     expect(scoringRun).toMatch(/contactListId\s+String/);
     expect(scoringRun).toMatch(/onDelete: Cascade/);
     expect(campaignContact).toMatch(/contactId\s+String/);
     expect(campaignContact).toMatch(/onDelete: Cascade/);
     const src = readFileSync("src/lib/tenant/list-delete.ts", "utf8");
-    expect(src).toContain("Contact.contactListId");
+    expect(src).toContain("ContactListMembership");
+    expect(src).not.toContain("Contact.contactListId");
     expect(src).toContain("ScoringRun.contactListId");
-    expect(src).toContain("CampaignContact.contactId");
-    expect(src).toContain("EmailDraft.campaignContactId");
-    expect(src).toContain("EmailSendRecord.campaignContactId");
+    expect(src).toContain("CampaignContact");
+    expect(src).toContain("EmailDraft");
+    expect(src).toContain("EmailSendRecord");
     expect(src).toContain("ContactScore");
-    expect(src).toContain("ContactResearch");
     expect(src).toContain("TitleSuggestion");
     expect(src).toContain("QualificationBucketOverride");
   });
 
-  it("delete confirmation names contacts, scoring runs, and campaigns", () => {
+  it("delete confirmation names memberships, scoring runs, and campaigns", () => {
     const body = listDeleteConfirmBody({
       mode: "delete",
       impact: {
@@ -55,13 +59,12 @@ describe("list archive/delete contracts", () => {
       },
       message: "",
     });
-    expect(body).toContain("4 contact(s)");
+    expect(body).toContain("4 membership(s)");
     expect(body).toContain("2 scoring run(s)");
-    expect(body).toContain("1 campaign(s) affected");
     expect(listArchiveConfirmBody()).toMatch(/reversible/i);
   });
 
-  it("block vs archive vs delete decisions follow Product/Persona rules", () => {
+  it("archive vs delete: scoring history archives; campaigns do not block", () => {
     expect(
       decideListDelete({
         contactCount: 3,
@@ -71,7 +74,7 @@ describe("list archive/delete contracts", () => {
         draftCount: 0,
         sentCount: 0,
       }).mode,
-    ).toBe("blocked");
+    ).toBe("delete");
     expect(
       decideListDelete({
         contactCount: 3,
@@ -111,6 +114,7 @@ describe.skipIf(!hasDatabase)(
       prisma = new PrismaClient();
       try {
         await prisma.$queryRaw`SELECT "archivedAt" FROM "ContactList" LIMIT 0`;
+        await prisma.$queryRaw`SELECT "contactListId" FROM "ContactListMembership" LIMIT 0`;
         const org = await prisma.organization.create({
           data: {
             name: `[TEST] ListArch ${suffix}`,
@@ -164,14 +168,12 @@ describe.skipIf(!hasDatabase)(
       const list = await prisma.contactList.create({
         data: { organizationId: orgA, name: `Archived list ${suffix}` },
       });
-      const contact = await prisma.contact.create({
-        data: {
-          organizationId: orgA,
-          contactListId: list.id,
-          firstName: "Hidden",
-          lastName: "Row",
-          email: `hidden-${suffix}@example.test`,
-        },
+      const contact = await seedContactOnList(prisma, {
+        organizationId: orgA,
+        contactListId: list.id,
+        firstName: "Hidden",
+        lastName: "Row",
+        email: `hidden-${suffix}@example.test`,
       });
       const campaign = await prisma.campaign.create({
         data: {
@@ -256,12 +258,10 @@ describe.skipIf(!hasDatabase)(
       const list = await prisma.contactList.create({
         data: { organizationId: orgA, name: `Scored list ${suffix}` },
       });
-      const contact = await prisma.contact.create({
-        data: {
-          organizationId: orgA,
-          contactListId: list.id,
-          email: `scored-list-${suffix}@example.test`,
-        },
+      const contact = await seedContactOnList(prisma, {
+        organizationId: orgA,
+        contactListId: list.id,
+        email: `scored-list-${suffix}@example.test`,
       });
       await prisma.scoringRun.create({
         data: {
@@ -288,18 +288,16 @@ describe.skipIf(!hasDatabase)(
       ).not.toBeNull();
     });
 
-    it("a list attached to an active campaign blocks delete and offers archive", async () => {
+    it("a list attached to an active campaign deletes; campaign contacts survive", async () => {
       if (!ready) return;
       const { product, icp, persona } = await seedProduct();
       const list = await prisma.contactList.create({
         data: { organizationId: orgA, name: `Active-campaign list ${suffix}` },
       });
-      const contact = await prisma.contact.create({
-        data: {
-          organizationId: orgA,
-          contactListId: list.id,
-          email: `active-camp-${suffix}@example.test`,
-        },
+      const contact = await seedContactOnList(prisma, {
+        organizationId: orgA,
+        contactListId: list.id,
+        email: `active-camp-${suffix}@example.test`,
       });
       const campaign = await prisma.campaign.create({
         data: {
@@ -317,17 +315,22 @@ describe.skipIf(!hasDatabase)(
           contactId: contact.id,
         },
       });
-      const { deleteOrArchiveContactList, archiveContactList } = await import(
+      const { deleteOrArchiveContactList } = await import(
         "@/lib/tenant/list-delete"
       );
-      await expect(deleteOrArchiveContactList(list.id)).rejects.toBeInstanceOf(
-        TenantError,
-      );
-      await expect(deleteOrArchiveContactList(list.id)).rejects.toThrow(
-        /archive/i,
-      );
-      const archived = await archiveContactList(list.id);
-      expect(archived.mode).toBe("archived");
+      const deleted = await deleteOrArchiveContactList(list.id);
+      expect(deleted.mode).toBe("deleted");
+      expect(
+        await prisma.contactList.findUnique({ where: { id: list.id } }),
+      ).toBeNull();
+      expect(
+        await prisma.contactListMembership.count({
+          where: { contactListId: list.id },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.contact.findUnique({ where: { id: contact.id } }),
+      ).not.toBeNull();
       expect(
         await prisma.campaignContact.findFirst({
           where: { campaignId: campaign.id, contactId: contact.id },
@@ -335,28 +338,24 @@ describe.skipIf(!hasDatabase)(
       ).not.toBeNull();
     });
 
-    it("hard-deleting a list does not orphan contacts referenced elsewhere", async () => {
+    it("hard-deleting a list keeps contacts; campaign drafts survive", async () => {
       if (!ready) return;
       const { product, icp, persona } = await seedProduct();
       const disposable = await prisma.contactList.create({
         data: { organizationId: orgA, name: `Disposable ${suffix}` },
       });
-      const disposableContact = await prisma.contact.create({
-        data: {
-          organizationId: orgA,
-          contactListId: disposable.id,
-          email: `disposable-${suffix}@example.test`,
-        },
+      const disposableContact = await seedContactOnList(prisma, {
+        organizationId: orgA,
+        contactListId: disposable.id,
+        email: `disposable-${suffix}@example.test`,
       });
       const referenced = await prisma.contactList.create({
         data: { organizationId: orgA, name: `Referenced ${suffix}` },
       });
-      const referencedContact = await prisma.contact.create({
-        data: {
-          organizationId: orgA,
-          contactListId: referenced.id,
-          email: `referenced-${suffix}@example.test`,
-        },
+      const referencedContact = await seedContactOnList(prisma, {
+        organizationId: orgA,
+        contactListId: referenced.id,
+        email: `referenced-${suffix}@example.test`,
       });
       const campaign = await prisma.campaign.create({
         data: {
@@ -367,11 +366,21 @@ describe.skipIf(!hasDatabase)(
           personaId: persona.id,
         },
       });
-      await prisma.campaignContact.create({
+      const campaignContact = await prisma.campaignContact.create({
         data: {
           organizationId: orgA,
           campaignId: campaign.id,
           contactId: referencedContact.id,
+        },
+      });
+      await prisma.emailDraft.create({
+        data: {
+          organizationId: orgA,
+          campaignContactId: campaignContact.id,
+          sequenceNumber: 1,
+          subject: "Keep me",
+          body: "Campaign draft must survive list delete",
+          status: "DRAFT",
         },
       });
 
@@ -382,11 +391,15 @@ describe.skipIf(!hasDatabase)(
       expect(deleted.mode).toBe("deleted");
       expect(
         await prisma.contact.findUnique({ where: { id: disposableContact.id } }),
-      ).toBeNull();
+      ).not.toBeNull();
+      expect(
+        await prisma.contactListMembership.count({
+          where: { contactId: disposableContact.id },
+        }),
+      ).toBe(0);
 
-      await expect(deleteOrArchiveContactList(referenced.id)).rejects.toThrow(
-        /campaign/i,
-      );
+      const deletedRef = await deleteOrArchiveContactList(referenced.id);
+      expect(deletedRef.mode).toBe("deleted");
       expect(
         await prisma.contact.findUnique({ where: { id: referencedContact.id } }),
       ).not.toBeNull();
@@ -395,6 +408,62 @@ describe.skipIf(!hasDatabase)(
           where: { campaignId: campaign.id, contactId: referencedContact.id },
         }),
       ).toBe(1);
+      expect(
+        await prisma.emailDraft.count({
+          where: { campaignContactId: campaignContact.id },
+        }),
+      ).toBe(1);
+    });
+
+    it("deleting a Contact does not clear EmailSuppression for that address", async () => {
+      if (!ready) return;
+      const list = await prisma.contactList.create({
+        data: { organizationId: orgA, name: `Supp contact ${suffix}` },
+      });
+      const email = `supp-contact-${suffix}@example.test`;
+      const contact = await seedContactOnList(prisma, {
+        organizationId: orgA,
+        contactListId: list.id,
+        email,
+      });
+      const user = await prisma.user.create({
+        data: {
+          email: `supp-actor-${suffix}@example.test`,
+          emailNormalized: `supp-actor-${suffix}@example.test`,
+          name: "Supp Actor",
+        },
+      });
+      const { normalizeSuppressionEmail } = await import(
+        "@/lib/suppression/normalize"
+      );
+      const normalized = normalizeSuppressionEmail(email)!;
+      await prisma.emailSuppression.create({
+        data: {
+          organizationId: orgA,
+          normalizedEmail: normalized,
+          reason: "DO_NOT_CONTACT",
+          status: "ACTIVE",
+          suppressedById: user.id,
+        },
+      });
+
+      const { deleteOrArchiveContact } = await import(
+        "@/lib/tenant/contact-delete"
+      );
+      const result = await deleteOrArchiveContact(contact.id);
+      expect(result.mode).toBe("deleted");
+      expect(
+        await prisma.contact.findUnique({ where: { id: contact.id } }),
+      ).toBeNull();
+      const suppression = await prisma.emailSuppression.findUnique({
+        where: {
+          organizationId_normalizedEmail: {
+            organizationId: orgA,
+            normalizedEmail: normalized,
+          },
+        },
+      });
+      expect(suppression?.status).toBe("ACTIVE");
     });
   },
 );

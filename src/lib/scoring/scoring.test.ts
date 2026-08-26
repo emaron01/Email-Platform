@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { seedContactOnList } from "@/test/contact-seed";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -105,15 +106,13 @@ describe.skipIf(!hasDatabase)("scoring framework", () => {
     });
     listAId = listA.id;
 
-    const contactA = await prisma.contact.create({
-      data: {
-        organizationId: orgAId,
-        contactListId: listAId,
-        firstName: "Ann",
-        lastName: "Alpha",
-        email: `ann-${suffix}@example.test`,
-        company: "Alpha Co",
-      },
+    const contactA = await seedContactOnList(prisma, {
+      organizationId: orgAId,
+      contactListId: listAId,
+      firstName: "Ann",
+      lastName: "Alpha",
+      email: `ann-${suffix}@example.test`,
+      company: "Alpha Co",
     });
     contactAId = contactA.id;
 
@@ -125,14 +124,12 @@ describe.skipIf(!hasDatabase)("scoring framework", () => {
         totalContacts: 1,
       },
     });
-    const contactB = await prisma.contact.create({
-      data: {
-        organizationId: orgBId,
-        contactListId: listB.id,
-        firstName: "Bob",
-        lastName: "Beta",
-        email: `bob-${suffix}@example.test`,
-      },
+    const contactB = await seedContactOnList(prisma, {
+      organizationId: orgBId,
+      contactListId: listB.id,
+      firstName: "Bob",
+      lastName: "Beta",
+      email: `bob-${suffix}@example.test`,
     });
     contactBId = contactB.id;
   });

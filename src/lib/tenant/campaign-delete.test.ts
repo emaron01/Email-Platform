@@ -8,6 +8,7 @@ import {
   campaignDeleteConfirmBody,
   deleteCampaignGraph,
 } from "@/lib/tenant/campaign-delete";
+import { seedContactOnList } from "@/test/contact-seed";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -103,14 +104,12 @@ describe.skipIf(!hasDatabase)(
       const list = await prisma.contactList.create({
         data: { organizationId, name: `List ${label} ${suffix}` },
       });
-      const contact = await prisma.contact.create({
-        data: {
-          organizationId,
-          contactListId: list.id,
-          firstName: "Alex",
-          lastName: label,
-          email: `alex-${label}-${suffix}@example.test`,
-        },
+      const contact = await seedContactOnList(prisma, {
+        organizationId,
+        contactListId: list.id,
+        firstName: "Alex",
+        lastName: label,
+        email: `alex-${label}-${suffix}@example.test`,
       });
       const campaign = await prisma.campaign.create({
         data: {

@@ -254,8 +254,11 @@ export default async function ListDetailPage({
                           ) : null}
                         </>
                       ) : (
-                        <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">
-                          Missing
+                        <span
+                          className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700"
+                          title="No email address — cannot be emailed, scored, or suppressed."
+                        >
+                          No email — unusable
                         </span>
                       )}
                     </td>
@@ -277,14 +280,18 @@ export default async function ListDetailPage({
                         : "—"}
                     </td>
                     <td className="px-4 py-3">
-                      <SuppressContactForm
-                        contactId={contact.id}
-                        email={contact.email}
-                        suppressed={contactMatchesSuppressionSet(
-                          contact.email,
-                          suppressedEmails,
-                        )}
-                      />
+                      {contact.email ? (
+                        <SuppressContactForm
+                          contactId={contact.id}
+                          email={contact.email}
+                          suppressed={contactMatchesSuppressionSet(
+                            contact.email,
+                            suppressedEmails,
+                          )}
+                        />
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

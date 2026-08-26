@@ -57,6 +57,9 @@ export function AddContactsWizard() {
     listId: string;
     importedCount: number;
     suppressedCount: number;
+    emailMissingCount: number;
+    mergedCount: number;
+    titleChangedCount: number;
   } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -209,6 +212,9 @@ export function AddContactsWizard() {
         listId: result.listId,
         importedCount: result.importedCount ?? 0,
         suppressedCount: result.suppressedCount ?? 0,
+        emailMissingCount: result.emailMissingCount ?? 0,
+        mergedCount: result.mergedCount ?? 0,
+        titleChangedCount: result.titleChangedCount ?? 0,
       });
       setStep("done");
       router.refresh();
@@ -570,6 +576,27 @@ export function AddContactsWizard() {
                   <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                     Imported {importResult.importedCount} contacts into “
                     {listName}”.
+                    {importResult.mergedCount > 0 ? (
+                      <p className="mt-2">
+                        {importResult.mergedCount} matched an existing person in
+                        this organization and were linked to this list
+                        (incoming non-empty fields win).
+                      </p>
+                    ) : null}
+                    {importResult.titleChangedCount > 0 ? (
+                      <p className="mt-2">
+                        {importResult.titleChangedCount} had a title change
+                        recorded (previous title kept for persona-matching
+                        audit).
+                      </p>
+                    ) : null}
+                    {importResult.emailMissingCount > 0 ? (
+                      <p className="mt-2">
+                        {importResult.emailMissingCount} have no email address.
+                        They are stored and marked unusable — they cannot be
+                        emailed, scored, or suppressed.
+                      </p>
+                    ) : null}
                     {importResult.suppressedCount > 0 ? (
                       <p className="mt-2">
                         {importResult.suppressedCount} match the organization

@@ -38,6 +38,8 @@ describe("archived and suppressed selector audit", () => {
   it("campaign stage 5 and scoring-run add exclude archived lists and suppressions", () => {
     const contacts = read("src/lib/campaign/contacts.ts");
     expect(contacts).toContain("contactList: { archivedAt: null }");
+    expect(contacts).toContain("memberships");
+    expect(contacts).toContain("normalizedEmail");
     expect(contacts).toContain("listActiveNormalizedEmails");
     expect(contacts).toContain("contactMatchesSuppressionSet");
     expect(contacts).toContain("assertCampaignNotArchived");

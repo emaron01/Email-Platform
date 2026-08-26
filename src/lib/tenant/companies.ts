@@ -219,7 +219,11 @@ export async function associateContactsForList(
   if (!list) notFound("Contact list");
 
   const contacts = await prisma.contact.findMany({
-    where: { organizationId, contactListId },
+    where: {
+      organizationId,
+      archivedAt: null,
+      memberships: { some: { contactListId } },
+    },
   });
 
   const companyIds = new Set<string>();
@@ -362,7 +366,8 @@ export async function getCompaniesNeedingResearchForScoringRun(
   const contacts = await prisma.contact.findMany({
     where: {
       organizationId,
-      contactListId: run.contactListId,
+      archivedAt: null,
+      memberships: { some: { contactListId: run.contactListId } },
       companyId: { not: null },
     },
     select: {
@@ -436,7 +441,11 @@ export async function getCompaniesNeedingResearchForScoringRun(
   }
 
   const totalContacts = await prisma.contact.count({
-    where: { organizationId, contactListId: run.contactListId },
+    where: {
+      organizationId,
+      archivedAt: null,
+      memberships: { some: { contactListId: run.contactListId } },
+    },
   });
 
   return {

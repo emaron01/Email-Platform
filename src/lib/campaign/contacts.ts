@@ -110,7 +110,7 @@ export type AvailableCampaignContact = {
   email: string | null;
   title: string | null;
   company: string | null;
-  contactList: { id: string; name: string };
+  contactLists: Array<{ id: string; name: string }>;
 };
 
 export type CompatibleScoringRun = {
@@ -451,7 +451,11 @@ export async function searchAvailableCampaignContacts(
   const rows = await prisma.contact.findMany({
     where: {
       organizationId,
-      contactList: { archivedAt: null },
+      archivedAt: null,
+      normalizedEmail: { not: null },
+      memberships: {
+        some: { contactList: { archivedAt: null } },
+      },
       campaignContacts: {
         none: { organizationId, campaignId },
       },
@@ -474,7 +478,12 @@ export async function searchAvailableCampaignContacts(
       email: true,
       title: true,
       company: true,
-      contactList: { select: { id: true, name: true } },
+      memberships: {
+        where: { contactList: { archivedAt: null } },
+        select: {
+          contactList: { select: { id: true, name: true } },
+        },
+      },
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { createdAt: "asc" }],
     take: 80,
@@ -485,7 +494,16 @@ export async function searchAvailableCampaignContacts(
   );
   return rows
     .filter((row) => !contactMatchesSuppressionSet(row.email, suppressed))
-    .slice(0, 50);
+    .slice(0, 50)
+    .map((row) => ({
+      id: row.id,
+      firstName: row.firstName,
+      lastName: row.lastName,
+      email: row.email,
+      title: row.title,
+      company: row.company,
+      contactLists: row.memberships.map((membership) => membership.contactList),
+    }));
 }
 
 export async function listCompatibleScoringRuns(
@@ -539,11 +557,17 @@ async function insertCampaignContacts(input: {
     where: {
       organizationId: input.organizationId,
       id: { in: contactIds },
+      archivedAt: null,
     },
     select: {
       id: true,
       email: true,
-      contactList: { select: { archivedAt: true } },
+      normalizedEmail: true,
+      memberships: {
+        select: {
+          contactList: { select: { archivedAt: true } },
+        },
+      },
     },
   });
   if (contacts.length !== contactIds.length) {
@@ -551,9 +575,22 @@ async function insertCampaignContacts(input: {
       "One or more selected contacts do not belong to the active organization.",
     );
   }
-  if (contacts.some((contact) => contact.contactList.archivedAt)) {
+  if (
+    contacts.some(
+      (contact) =>
+        contact.memberships.length > 0 &&
+        contact.memberships.every(
+          (membership) => membership.contactList.archivedAt != null,
+        ),
+    )
+  ) {
     throw new TenantError(
-      "Contacts from archived lists cannot be added to a campaign.",
+      "Contacts whose only lists are archived cannot be added to a campaign.",
+    );
+  }
+  if (contacts.some((contact) => !contact.normalizedEmail)) {
+    throw new TenantError(
+      "Contacts without an email address cannot be added to a campaign.",
     );
   }
   const { listActiveNormalizedEmails, contactMatchesSuppressionSet } =

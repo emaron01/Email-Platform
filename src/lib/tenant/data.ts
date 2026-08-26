@@ -22,6 +22,9 @@ import {
   snapshotPersona,
   snapshotProduct,
 } from "@/lib/scoring/snapshots";
+import { getCurrentUser } from "@/lib/auth/session";
+import { normalizeContactEmail } from "@/lib/contact/identity";
+import { upsertContactIntoList } from "@/lib/contact/upsert";
 import { requireOrganizationId, TenantError } from "@/lib/tenant/getCurrentOrganization";
 import {
   deleteCampaignGraph,
@@ -34,6 +37,11 @@ import {
 
 async function orgId(): Promise<string> {
   return requireOrganizationId();
+}
+
+async function currentUserId(): Promise<string | null> {
+  const user = await getCurrentUser();
+  return user?.id ?? null;
 }
 
 function notFound(entity: string): never {
@@ -483,13 +491,16 @@ export async function getContactListContacts(
   const page = Math.max(1, options?.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, options?.pageSize ?? 50));
   const skip = (page - 1) * pageSize;
+  const memberWhere = {
+    organizationId,
+    archivedAt: null,
+    memberships: { some: { contactListId: listId } },
+  };
 
   const [total, contacts] = await Promise.all([
-    prisma.contact.count({
-      where: { organizationId, contactListId: listId },
-    }),
+    prisma.contact.count({ where: memberWhere }),
     prisma.contact.findMany({
-      where: { organizationId, contactListId: listId },
+      where: memberWhere,
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { createdAt: "asc" }],
       skip,
       take: pageSize,
@@ -544,8 +555,12 @@ export async function importContactList(input: {
   listId: string;
   importedCount: number;
   suppressedCount: number;
+  emailMissingCount: number;
+  mergedCount: number;
+  titleChangedCount: number;
 }> {
   const organizationId = await orgId();
+  const userId = await currentUserId();
   const name = input.name.trim();
 
   if (!name) {
@@ -564,40 +579,46 @@ export async function importContactList(input: {
           sourceType: input.sourceType,
           originalFilename: input.originalFilename?.trim() || null,
           totalContacts: 0,
+          createdByUserId: userId,
         },
       });
 
-      // Create in chunks to keep transactions manageable
-      const chunkSize = 500;
-      let created = 0;
+      let importedCount = 0;
+      let emailMissingCount = 0;
+      let mergedCount = 0;
+      let titleChangedCount = 0;
+      const memberContactIds = new Set<string>();
 
-      for (let i = 0; i < input.contacts.length; i += chunkSize) {
-        const chunk = input.contacts.slice(i, i + chunkSize);
-        const createdChunk = await tx.contact.createMany({
-          data: chunk.map((contact) => ({
-            organizationId,
-            contactListId: list.id,
-            firstName: contact.firstName,
-            lastName: contact.lastName,
-            email: contact.email,
-            title: contact.title,
-            company: contact.company,
-            companyWebsite: contact.companyWebsite,
-            industry: contact.industry,
-            employeeCount: contact.employeeCount,
-            revenue: contact.revenue,
-            location: contact.location,
-            linkedinUrl: contact.linkedinUrl,
-            phone: contact.phone,
-            rawData: contact.rawData,
-          })),
+      for (const contact of input.contacts) {
+        const upserted = await upsertContactIntoList(tx, {
+          organizationId,
+          createdByUserId: userId,
+          addedByUserId: userId,
+          contactListId: list.id,
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          email: contact.email,
+          title: contact.title,
+          company: contact.company,
+          companyWebsite: contact.companyWebsite,
+          industry: contact.industry,
+          employeeCount: contact.employeeCount,
+          revenue: contact.revenue,
+          location: contact.location,
+          linkedinUrl: contact.linkedinUrl,
+          phone: contact.phone,
+          rawData: contact.rawData,
         });
-        created += createdChunk.count;
+        memberContactIds.add(upserted.contact.id);
+        importedCount += 1;
+        if (upserted.emailMissing) emailMissingCount += 1;
+        if (upserted.merged) mergedCount += 1;
+        if (upserted.titleChanged) titleChangedCount += 1;
       }
 
       await tx.contactList.update({
         where: { id: list.id },
-        data: { totalContacts: created },
+        data: { totalContacts: memberContactIds.size },
       });
 
       const { listActiveNormalizedEmails, contactMatchesSuppressionSet } =
@@ -616,8 +637,11 @@ export async function importContactList(input: {
 
       return {
         listId: list.id,
-        importedCount: created,
+        importedCount,
         suppressedCount,
+        emailMissingCount,
+        mergedCount,
+        titleChangedCount,
       };
     });
 
@@ -635,16 +659,23 @@ export type ContactWithLatestScore = Contact & {
     overallScore: number | null;
     scoreLabel: string | null;
   }>;
-  contactList?: { id: string; name: string } | null;
+  memberships: Array<{
+    contactList: { id: string; name: string; archivedAt: Date | null };
+  }>;
 };
 
 export async function listContacts(options?: {
   listId?: string;
   search?: string;
+  /** When true, include contacts with no list memberships. Default hides them. */
+  includeUnlisted?: boolean;
+  includeArchivedContacts?: boolean;
 }): Promise<ContactWithLatestScore[]> {
   const organizationId = await orgId();
   const listId = options?.listId?.trim() || undefined;
   const search = options?.search?.trim() || undefined;
+  const includeUnlisted = options?.includeUnlisted === true;
+  const includeArchivedContacts = options?.includeArchivedContacts === true;
 
   if (listId) {
     const list = await prisma.contactList.findFirst({
@@ -657,7 +688,12 @@ export async function listContacts(options?: {
   return prisma.contact.findMany({
     where: {
       organizationId,
-      ...(listId ? { contactListId: listId } : {}),
+      ...(includeArchivedContacts ? {} : { archivedAt: null }),
+      ...(listId
+        ? { memberships: { some: { contactListId: listId } } }
+        : includeUnlisted
+          ? {}
+          : { memberships: { some: {} } }),
       ...(search
         ? {
             OR: [
@@ -680,8 +716,12 @@ export async function listContacts(options?: {
           scoreLabel: true,
         },
       },
-      contactList: {
-        select: { id: true, name: true },
+      memberships: {
+        include: {
+          contactList: {
+            select: { id: true, name: true, archivedAt: true },
+          },
+        },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -811,17 +851,43 @@ export async function createCampaign(input: {
       where: {
         organizationId,
         id: { in: contactIds },
+        archivedAt: null,
       },
-      select: { id: true, email: true, contactList: { select: { archivedAt: true } } },
+      select: {
+        id: true,
+        email: true,
+        normalizedEmail: true,
+        memberships: {
+          select: {
+            contactList: { select: { archivedAt: true } },
+          },
+        },
+      },
     });
     if (contacts.length !== contactIds.length) {
       throw new TenantError(
         "One or more selected contacts do not belong to the active organization.",
       );
     }
-    if (contacts.some((contact) => contact.contactList.archivedAt)) {
+    if (
+      contacts.some((contact) =>
+        contact.memberships.every(
+          (membership) => membership.contactList.archivedAt != null,
+        ) && contact.memberships.length > 0,
+      )
+    ) {
       throw new TenantError(
-        "Contacts from archived lists cannot be added to a campaign.",
+        "Contacts whose only lists are archived cannot be added to a campaign.",
+      );
+    }
+    if (
+      contacts.some(
+        (contact) =>
+          !contact.normalizedEmail && !normalizeContactEmail(contact.email),
+      )
+    ) {
+      throw new TenantError(
+        "Contacts without an email address cannot be added to a campaign.",
       );
     }
     const { listActiveNormalizedEmails, contactMatchesSuppressionSet } =
@@ -1038,8 +1104,12 @@ export async function createScoringRun(input: {
   }
 
   const contacts = await prisma.contact.findMany({
-    where: { organizationId, contactListId: list.id },
-    select: { id: true, email: true },
+    where: {
+      organizationId,
+      archivedAt: null,
+      memberships: { some: { contactListId: list.id } },
+    },
+    select: { id: true, email: true, normalizedEmail: true },
     orderBy: { createdAt: "asc" },
   });
 
@@ -1114,6 +1184,7 @@ export async function createScoringRun(input: {
     // Placeholder score rows only — no fabricated scores.
     // Suppressed contacts stay on the run (so the list does not silently shrink)
     // and are marked SUPPRESSED instead of being scored.
+    // Email-less contacts are marked UNUSABLE (cannot email, score, or suppress).
     const { listActiveNormalizedEmails, contactMatchesSuppressionSet } =
       await import("@/lib/suppression/service");
     const suppressed = await listActiveNormalizedEmails(
@@ -1123,13 +1194,29 @@ export async function createScoringRun(input: {
     );
     await tx.contactScore.createMany({
       data: contacts.map((contact) => {
+        const usable = Boolean(
+          contact.normalizedEmail ?? normalizeContactEmail(contact.email),
+        );
+        if (!usable) {
+          return {
+            organizationId,
+            contactId: contact.id,
+            scoringRunId: run.id,
+            scoringStatus: "UNUSABLE" as const,
+            researchStatus: "NOT_REQUIRED" as const,
+            scoringError:
+              "No email address — cannot be emailed, scored, or suppressed.",
+          };
+        }
         const skipped = contactMatchesSuppressionSet(contact.email, suppressed);
         return {
           organizationId,
           contactId: contact.id,
           scoringRunId: run.id,
-          scoringStatus: skipped ? "SUPPRESSED" : "PENDING",
-          researchStatus: skipped ? "NOT_REQUIRED" : "NOT_STARTED",
+          scoringStatus: skipped ? ("SUPPRESSED" as const) : ("PENDING" as const),
+          researchStatus: skipped
+            ? ("NOT_REQUIRED" as const)
+            : ("NOT_STARTED" as const),
           scoringError: skipped
             ? "Organization-level suppression — not scored."
             : null,

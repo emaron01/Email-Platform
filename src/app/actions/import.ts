@@ -26,6 +26,9 @@ export type ImportActionResult = {
   listId?: string;
   importedCount?: number;
   suppressedCount?: number;
+  emailMissingCount?: number;
+  mergedCount?: number;
+  titleChangedCount?: number;
 };
 
 function sanitizeContacts(contacts: PreparedContact[]): PreparedContact[] {
@@ -140,6 +143,9 @@ export async function importContactsAction(input: {
       listId: result.listId,
       importedCount: result.importedCount,
       suppressedCount: result.suppressedCount,
+      emailMissingCount: result.emailMissingCount,
+      mergedCount: result.mergedCount,
+      titleChangedCount: result.titleChangedCount,
     };
   } catch (error) {
     if (error instanceof TenantError) {

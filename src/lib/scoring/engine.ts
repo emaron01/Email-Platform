@@ -202,6 +202,7 @@ export async function runScoringForRun(
     : null;
   const targets = scores.filter((row) => {
     if (row.scoringStatus === "SUPPRESSED") return false;
+    if (row.scoringStatus === "UNUSABLE") return false;
     if (allowedIds) return allowedIds.has(row.id);
     if (options?.forceRescore) return true;
     if (options?.rescoreFailedOnly) return row.scoringStatus === "FAILED";

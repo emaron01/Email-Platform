@@ -8,6 +8,7 @@ import {
   replyStrategy,
 } from "@/lib/email-generation/prompt";
 import { TenantError } from "@/lib/tenant/errors";
+import { seedContactOnList } from "@/test/contact-seed";
 
 function contextFixture(
   overrides: Partial<EmailGenerationContext> = {},
@@ -940,15 +941,13 @@ describe.skipIf(!hasDatabase)(
         },
       });
       contactListId = list.id;
-      const contact = await prisma.contact.create({
-        data: {
-          organizationId,
-          contactListId: list.id,
-          firstName: "Alex",
-          email: `alex-${suffix}@example.test`,
-          title: "Chief Revenue Officer",
-          company: "Acme",
-        },
+      const contact = await seedContactOnList(prisma, {
+        organizationId,
+        contactListId: list.id,
+        firstName: "Alex",
+        email: `alex-${suffix}@example.test`,
+        title: "Chief Revenue Officer",
+        company: "Acme",
       });
       contactId = contact.id;
       const campaign = await prisma.campaign.create({
@@ -1045,12 +1044,10 @@ describe.skipIf(!hasDatabase)(
           totalContacts: 1,
         },
       });
-      const foreignContact = await prisma.contact.create({
-        data: {
-          organizationId: foreign.organization.id,
-          contactListId: foreignList.id,
-          email: `foreign-${suffix}@example.test`,
-        },
+      const foreignContact = await seedContactOnList(prisma, {
+        organizationId: foreign.organization.id,
+        contactListId: foreignList.id,
+        email: `foreign-${suffix}@example.test`,
       });
       const foreignCampaign = await prisma.campaign.create({
         data: {
@@ -1139,14 +1136,12 @@ describe.skipIf(!hasDatabase)(
           painPoints: "Rollup hygiene",
         },
       });
-      const matchedContact = await prisma.contact.create({
-        data: {
-          organizationId,
-          contactListId,
-          firstName: "Jordan",
-          email: `jordan-${suffix}@example.test`,
-          title: "Head of RevOps",
-        },
+      const matchedContact = await seedContactOnList(prisma, {
+        organizationId,
+        contactListId,
+        firstName: "Jordan",
+        email: `jordan-${suffix}@example.test`,
+        title: "Head of RevOps",
       });
       const matchedCampaignContact = await prisma.campaignContact.create({
         data: {
@@ -1615,14 +1610,12 @@ describe.skipIf(!hasDatabase)(
         await prisma.contact.count({ where: { organizationId } }),
       ).toBe(contactCountBeforeReferral);
 
-      const secondContact = await prisma.contact.create({
-        data: {
-          organizationId,
-          contactListId: contactListId,
-          firstName: "Second",
-          lastName: "Contact",
-          email: `second-${suffix}@example.com`,
-        },
+      const secondContact = await seedContactOnList(prisma, {
+        organizationId,
+        contactListId: contactListId,
+        firstName: "Second",
+        lastName: "Contact",
+        email: `second-${suffix}@example.com`,
       });
       const secondCampaignContact = await prisma.campaignContact.create({
         data: {

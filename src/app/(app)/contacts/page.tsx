@@ -6,6 +6,10 @@ import {
 } from "@/components/ui";
 import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import { SuppressContactForm } from "@/components/SuppressContactForm";
+import {
+  CONTACT_UNUSABLE_REASON,
+  isContactEmailUsable,
+} from "@/lib/contact/identity";
 import { listContactLists, listContacts } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import {
@@ -18,8 +22,28 @@ import {
 } from "@/lib/utils";
 
 type PageProps = {
-  searchParams: Promise<{ listId?: string; q?: string; archived?: string }>;
+  searchParams: Promise<{
+    listId?: string;
+    q?: string;
+    archived?: string;
+    unlisted?: string;
+  }>;
 };
+
+function contactsQuery(params: {
+  listId?: string;
+  search?: string;
+  includeArchived?: boolean;
+  includeUnlisted?: boolean;
+}): string {
+  const q = new URLSearchParams();
+  if (params.listId) q.set("listId", params.listId);
+  if (params.search) q.set("q", params.search);
+  if (params.includeArchived) q.set("archived", "1");
+  if (params.includeUnlisted) q.set("unlisted", "1");
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
 
 export default async function ContactsPage({ searchParams }: PageProps) {
   const organization = await getCurrentOrganization();
@@ -40,9 +64,10 @@ export default async function ContactsPage({ searchParams }: PageProps) {
   const listId = query.listId?.trim() || undefined;
   const search = query.q?.trim() || undefined;
   const includeArchived = query.archived === "1";
+  const includeUnlisted = query.unlisted === "1";
 
   const [contacts, lists] = await Promise.all([
-    listContacts({ listId, search }),
+    listContacts({ listId, search, includeUnlisted }),
     listContactLists({ includeArchived }),
   ]);
   const suppressedEmails = await listActiveNormalizedEmails(
@@ -56,19 +81,37 @@ export default async function ContactsPage({ searchParams }: PageProps) {
         title="Contacts"
         description="All contacts for this organization. Filter by list or search name, email, company, or title."
         actions={
-          <ShowArchivedToggle
-            href={
-              includeArchived
-                ? `/contacts${listId || search ? `?${new URLSearchParams({ ...(listId ? { listId } : {}), ...(search ? { q: search } : {}) }).toString()}` : ""}`
-                : `/contacts?${new URLSearchParams({
-                    ...(listId ? { listId } : {}),
-                    ...(search ? { q: search } : {}),
-                    archived: "1",
-                  }).toString()}`
-            }
-            includeArchived={includeArchived}
-            label="lists"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={`/contacts${contactsQuery({
+                listId,
+                search,
+                includeArchived,
+                includeUnlisted: !includeUnlisted,
+              })}`}
+              className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+            >
+              {includeUnlisted ? "Hide unlisted" : "Show unlisted"}
+            </a>
+            <ShowArchivedToggle
+              href={
+                includeArchived
+                  ? `/contacts${contactsQuery({
+                      listId,
+                      search,
+                      includeUnlisted,
+                    })}`
+                  : `/contacts${contactsQuery({
+                      listId,
+                      search,
+                      includeArchived: true,
+                      includeUnlisted,
+                    })}`
+              }
+              includeArchived={includeArchived}
+              label="lists"
+            />
+          </div>
         }
       />
 
@@ -101,6 +144,9 @@ export default async function ContactsPage({ searchParams }: PageProps) {
         {includeArchived ? (
           <input type="hidden" name="archived" value="1" />
         ) : null}
+        {includeUnlisted ? (
+          <input type="hidden" name="unlisted" value="1" />
+        ) : null}
       </form>
 
       {contacts.length === 0 ? (
@@ -109,7 +155,9 @@ export default async function ContactsPage({ searchParams }: PageProps) {
           description={
             search || listId
               ? "Try clearing filters or importing another list."
-              : "Contacts will appear here after you import a list."
+              : includeUnlisted
+                ? "No contacts in this organization yet."
+                : "Contacts will appear here after you import a list. Use Show unlisted for people with no list membership."
           }
         />
       ) : (
@@ -132,13 +180,17 @@ export default async function ContactsPage({ searchParams }: PageProps) {
             <tbody className="divide-y divide-slate-100">
               {contacts.map((contact) => {
                 const latestScore = contact.scores[0];
+                const usable = isContactEmailUsable(contact);
+                const listNames = contact.memberships
+                  .map((membership) => membership.contactList.name)
+                  .filter(Boolean);
                 return (
                   <tr key={contact.id}>
                     <td className="px-4 py-3 font-medium text-slate-900">
                       {contactDisplayName(contact.firstName, contact.lastName)}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
-                      {contact.email ? (
+                      {usable && contact.email ? (
                         <>
                           {contact.email}
                           {contactMatchesSuppressionSet(
@@ -151,13 +203,28 @@ export default async function ContactsPage({ searchParams }: PageProps) {
                           ) : null}
                         </>
                       ) : (
-                        <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">
-                          Missing
+                        <span
+                          className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700"
+                          title={CONTACT_UNUSABLE_REASON}
+                        >
+                          No email — unusable
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {contact.title ?? "—"}
+                      {contact.previousTitle ? (
+                        <span
+                          className="mt-1 block text-xs text-slate-400"
+                          title={
+                            contact.titleChangedAt
+                              ? `Changed ${contact.titleChangedAt.toISOString()}`
+                              : undefined
+                          }
+                        >
+                          was {contact.previousTitle}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {contact.company ?? "—"}
@@ -169,7 +236,7 @@ export default async function ContactsPage({ searchParams }: PageProps) {
                       {formatNumber(contact.employeeCount)}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
-                      {contact.contactList?.name ?? "—"}
+                      {listNames.length > 0 ? listNames.join(", ") : "Unlisted"}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {latestScore?.overallScore != null
@@ -180,14 +247,18 @@ export default async function ContactsPage({ searchParams }: PageProps) {
                       {latestScore?.scoreLabel ?? "—"}
                     </td>
                     <td className="px-4 py-3">
-                      <SuppressContactForm
-                        contactId={contact.id}
-                        email={contact.email}
-                        suppressed={contactMatchesSuppressionSet(
-                          contact.email,
-                          suppressedEmails,
-                        )}
-                      />
+                      {usable ? (
+                        <SuppressContactForm
+                          contactId={contact.id}
+                          email={contact.email}
+                          suppressed={contactMatchesSuppressionSet(
+                            contact.email,
+                            suppressedEmails,
+                          )}
+                        />
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
                     </td>
                   </tr>
                 );
