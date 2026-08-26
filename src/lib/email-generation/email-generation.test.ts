@@ -30,8 +30,6 @@ function contextFixture(
       offerNotes: null,
       offerValidationJson: null,
       offerValidationHash: null,
-      offerConflictAcknowledgedHash: null,
-      offerConflictAcknowledgedAt: null,
       emailLength: "MEDIUM",
       emailGuidance: "Emphasize the free trial",
     },
@@ -513,8 +511,11 @@ describe("sequence and claim guards", () => {
       body: "We promise installation timelines.",
       claimsNotToMake: ["promise installation timelines"],
       terminologyToAvoid: [],
-      offerText: "",
-      offerConflictsAcknowledged: false,
+      repSources: {
+        offerText: "",
+        emailGuidance: null,
+        regenerationGuidance: null,
+      },
     });
     expect(
       violations.some((violation) => violation.type === "PROHIBITED_CLAIM"),
@@ -833,10 +834,10 @@ describe("email generation action and UI seams", () => {
     expect(action).toContain("parseEmailLength");
     expect(form).toContain("selectedLength");
     expect(form).toContain("regenerateEmailDraftAction");
-    expect(action).toContain("acknowledgeEmailDraftClaimConflictsAction");
-    expect(action).toContain("requiresClaimAcknowledgment");
+    expect(action).not.toContain("acknowledgeEmailDraftClaimConflictsAction");
+    expect(action).not.toContain("requiresClaimAcknowledgment");
     expect(form).toContain("Claim conflicts in this draft");
-    expect(form).toContain("Acknowledge conflicts and allow send");
+    expect(form).not.toContain("Acknowledge conflicts and allow send");
     expect(form).toContain("Offending copy:");
     expect(form).toContain("Product restriction:");
     const service = readFileSync("src/lib/email-generation/service.ts", "utf8");

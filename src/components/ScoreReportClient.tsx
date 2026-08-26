@@ -740,29 +740,6 @@ export function ScoreReportClient({
                   {campaignState.message}
                 </p>
               ) : null}
-              {campaignState?.offerConflicts?.length ? (
-                <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-4">
-                  <ul className="list-disc space-y-1 pl-5 text-sm text-amber-900">
-                    {campaignState.offerConflicts.map((conflict) => (
-                      <li key={`${conflict.code}-${conflict.message}`}>
-                        {conflict.message}
-                      </li>
-                    ))}
-                  </ul>
-                  <label className="flex items-start gap-2 text-sm text-amber-950">
-                    <input
-                      type="checkbox"
-                      name="acknowledgeOfferConflicts"
-                      value="1"
-                      className="mt-0.5"
-                    />
-                    <span>
-                      Keep this offer anyway. I understand it differs from the
-                      current product claims or evidence.
-                    </span>
-                  </label>
-                </div>
-              ) : null}
               <input type="hidden" name="productId" value={productId} />
               <input type="hidden" name="icpId" value={icpId} />
               {personaId ? (

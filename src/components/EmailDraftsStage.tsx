@@ -47,7 +47,6 @@ export type EmailDraftsStageContact = {
     personalizationTier: "BEST" | "COMPANY" | "THIN" | null;
     personalizationSources: string | null;
     claimConflicts: ClaimValidationViolation[];
-    claimConflictsAcknowledged: boolean;
   }>;
 };
 

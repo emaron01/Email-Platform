@@ -41,18 +41,19 @@ describe("campaign contact management seams", () => {
     );
   });
 
-  it("warns and records explicit offer conflict acknowledgment at save time", () => {
+  it("validates offer against product materials at save time without acknowledgment gates", () => {
     const form = readFileSync("src/components/CampaignOfferForm.tsx", "utf8");
     const action = readFileSync("src/app/actions/campaign-offer.ts", "utf8");
     const validation = readFileSync(
       "src/lib/campaign/offer-validation.ts",
       "utf8",
     );
-    expect(form).toContain('name="acknowledgeOfferConflicts"');
-    expect(form).toContain("Keep this offer anyway");
+    expect(form).not.toContain('name="acknowledgeOfferConflicts"');
+    expect(form).not.toContain("Keep this offer anyway");
     expect(action).toContain("validateCampaignOffer");
-    expect(action).toContain("offerConflictAcknowledgedHash");
-    expect(action).toContain("offerConflictAcknowledgedAt");
+    expect(action).not.toContain("offerConflictAcknowledgedHash");
+    expect(action).not.toContain("offerConflictAcknowledgedAt");
+    expect(action).not.toContain("requiresOfferAcknowledgment");
     expect(validation).toContain(
       'structuredOutputRequest("campaignOfferValidation")',
     );

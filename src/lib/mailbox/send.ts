@@ -76,8 +76,6 @@ export async function sendEmailDraftWithConnectedMailbox(input: {
       generatedBody: true,
       campaignContactId: true,
       sequenceNumber: true,
-      claimConflictsJson: true,
-      claimConflictsAcknowledgedAt: true,
       campaignContact: {
         select: {
           campaignId: true,
@@ -94,19 +92,6 @@ export async function sendEmailDraftWithConnectedMailbox(input: {
   }
   if (draft.status === "SENT" || draft.sentAt) {
     throw new TenantError("This email has already been sent.");
-  }
-  const { claimConflictsBlockSend } = await import(
-    "@/lib/email-generation/claim-conflicts"
-  );
-  if (
-    claimConflictsBlockSend({
-      claimConflictsJson: draft.claimConflictsJson,
-      claimConflictsAcknowledgedAt: draft.claimConflictsAcknowledgedAt,
-    })
-  ) {
-    throw new TenantError(
-      "This draft still has unresolved claim conflicts. Edit the copy or acknowledge the conflicts before sending.",
-    );
   }
   const recipient = draft.campaignContact.contact.email?.trim();
   if (!recipient) {

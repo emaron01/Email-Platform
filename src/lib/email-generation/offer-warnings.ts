@@ -1,26 +1,12 @@
+import type { OfferConflict } from "@/lib/campaign/offer-validation";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
-import {
-  campaignOfferText,
-  detectDeterministicOfferConflicts,
-  offerConflictsFromJson,
-  type OfferConflict,
-} from "@/lib/campaign/offer-validation";
 
+/**
+ * Offer conflicts are informational for validation storage only —
+ * rep input is never challenged, so generation never surfaces warnings.
+ */
 export function unacknowledgedOfferWarnings(
-  context: EmailGenerationContext,
+  _context: EmailGenerationContext,
 ): OfferConflict[] {
-  const acknowledged =
-    Boolean(context.campaign.offerConflictAcknowledgedAt) &&
-    context.campaign.offerConflictAcknowledgedHash ===
-      context.campaign.offerValidationHash;
-  if (acknowledged) return [];
-  const stored = offerConflictsFromJson(
-    context.campaign.offerValidationJson,
-  );
-  if (stored.length > 0) return stored;
-  return detectDeterministicOfferConflicts({
-    offerText: campaignOfferText(context.campaign),
-    claimsNotToMake: context.product.messaging.claimsNotToMake,
-    terminologyToAvoid: context.product.messaging.terminologyToAvoid,
-  });
+  return [];
 }

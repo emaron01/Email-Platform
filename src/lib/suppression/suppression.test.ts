@@ -33,8 +33,6 @@ function contextFor(input: {
       offerNotes: null,
       offerValidationJson: null,
       offerValidationHash: null,
-      offerConflictAcknowledgedHash: null,
-      offerConflictAcknowledgedAt: null,
       emailLength: "MEDIUM",
       emailGuidance: null,
     },

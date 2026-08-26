@@ -57,9 +57,7 @@ export type GenerateEmailDraftActionResult = {
   referralSuggested?: boolean;
   offerWarnings?: OfferConflict[];
   claimConflicts?: import("@/lib/email-generation/claim-validation-contract").ClaimValidationViolation[];
-  claimConflictsAcknowledged?: boolean;
   claimConflictsCleared?: boolean;
-  requiresClaimAcknowledgment?: boolean;
   sentAt?: string;
   handoffAt?: string;
   sendUsage?: {
@@ -111,7 +109,9 @@ export async function generateEmailDraftAction(
       { personaId, emailLength: parseEmailLength(emailLength) },
     );
     const messages = buildEmailPrompt(context, normalizedGuidance);
-    const draft = await generateEmailDraft(context, messages);
+    const draft = await generateEmailDraft(context, messages, {
+      regenerationGuidance: normalizedGuidance,
+    });
 
     revalidateCampaign(context.campaign.id);
     const hasClaimConflicts = draft.claimConflicts.length > 0;
@@ -130,8 +130,6 @@ export async function generateEmailDraftAction(
       status: "DRAFT",
       offerWarnings: unacknowledgedOfferWarnings(context),
       claimConflicts: draft.claimConflicts,
-      claimConflictsAcknowledged: draft.claimConflictsAcknowledged,
-      requiresClaimAcknowledgment: hasClaimConflicts,
       emailLength: draft.emailLength,
       personaId: draft.personaId,
       personalizationTier: draft.personalizationTier,
@@ -213,6 +211,7 @@ export async function regenerateEmailDraftAction(
       prospectReplyText: existing.prospectReplyText,
       referralSuggested: existing.referralSuggested,
       inReplyToDraftId: existing.inReplyToDraftId,
+      regenerationGuidance: normalizedGuidance,
     });
     revalidateCampaign(context.campaign.id);
     const hasClaimConflicts = regenerated.claimConflicts.length > 0;
@@ -231,8 +230,6 @@ export async function regenerateEmailDraftAction(
       referralSuggested: regenerated.referralSuggested,
       offerWarnings: unacknowledgedOfferWarnings(context),
       claimConflicts: regenerated.claimConflicts,
-      claimConflictsAcknowledged: regenerated.claimConflictsAcknowledged,
-      requiresClaimAcknowledgment: hasClaimConflicts,
       emailLength: regenerated.emailLength,
       personaId: regenerated.personaId,
       personalizationTier: regenerated.personalizationTier,
@@ -277,8 +274,6 @@ export async function addFollowUpEmailAction(
       status: "DRAFT",
       offerWarnings: unacknowledgedOfferWarnings(context),
       claimConflicts: draft.claimConflicts,
-      claimConflictsAcknowledged: draft.claimConflictsAcknowledged,
-      requiresClaimAcknowledgment: hasClaimConflicts,
       emailLength: draft.emailLength,
       personaId: draft.personaId,
       personalizationTier: draft.personalizationTier,
@@ -286,82 +281,6 @@ export async function addFollowUpEmailAction(
     };
   } catch (error) {
     console.error("Follow-up email generation failed.", error);
-    return { ok: false, message: toSafeEmailGenerationError(error) };
-  }
-}
-
-export async function acknowledgeEmailDraftClaimConflictsAction(
-  emailDraftId: string,
-): Promise<GenerateEmailDraftActionResult> {
-  try {
-    const user = await requireCurrentUser();
-    const { prisma } = await import("@/lib/prisma");
-    const { resolveActiveOrganization } = await import("@/lib/auth/session");
-    const membership = await resolveActiveOrganization(user);
-    if (!membership) {
-      return {
-        ok: false,
-        message: "No active organization membership was found.",
-      };
-    }
-    const draft = await prisma.emailDraft.findFirst({
-      where: {
-        id: emailDraftId,
-        organizationId: membership.organization.id,
-      },
-      select: {
-        id: true,
-        subject: true,
-        body: true,
-        sequenceNumber: true,
-        kind: true,
-        status: true,
-        claimConflictsJson: true,
-        campaignContact: { select: { campaignId: true } },
-      },
-    });
-    if (!draft) {
-      return { ok: false, message: "Email draft was not found." };
-    }
-    const { claimConflictsFromJson } = await import(
-      "@/lib/email-generation/claim-conflicts"
-    );
-    const conflicts = claimConflictsFromJson(draft.claimConflictsJson);
-    if (conflicts.length === 0) {
-      return {
-        ok: true,
-        message: "This draft has no claim conflicts to acknowledge.",
-        draftId: draft.id,
-        subject: draft.subject ?? undefined,
-        body: draft.body ?? undefined,
-        sequenceNumber: draft.sequenceNumber,
-        kind: draft.kind,
-        status: draft.status === "SENT" ? "SENT" : "DRAFT",
-        claimConflicts: [],
-        claimConflictsAcknowledged: true,
-      };
-    }
-    await prisma.emailDraft.update({
-      where: { id: draft.id },
-      data: { claimConflictsAcknowledgedAt: new Date() },
-    });
-    revalidateCampaign(draft.campaignContact.campaignId);
-    return {
-      ok: true,
-      message:
-        "Claim conflicts acknowledged. You can send or open this draft in your email client.",
-      draftId: draft.id,
-      subject: draft.subject ?? undefined,
-      body: draft.body ?? undefined,
-      sequenceNumber: draft.sequenceNumber,
-      kind: draft.kind,
-      status: "DRAFT",
-      claimConflicts: conflicts,
-      claimConflictsAcknowledged: true,
-      requiresClaimAcknowledgment: false,
-    };
-  } catch (error) {
-    console.error("Acknowledge claim conflicts failed.", error);
     return { ok: false, message: toSafeEmailGenerationError(error) };
   }
 }
@@ -410,9 +329,7 @@ export async function saveEmailDraftAction(input: {
     revalidateCampaign(saved.campaignId);
     return {
       ok: true,
-      message: saved.claimConflictsCleared
-        ? "Draft saved. Prior claim conflicts were cleared because the copy changed."
-        : "Draft saved.",
+      message: "Draft saved.",
       draftId: input.emailDraftId,
       subject: saved.subject,
       body: saved.body,
@@ -421,9 +338,6 @@ export async function saveEmailDraftAction(input: {
       emailLength: saved.emailLength ?? undefined,
       claimConflictsCleared: saved.claimConflictsCleared,
       claimConflicts: saved.claimConflictsCleared ? [] : undefined,
-      claimConflictsAcknowledged: saved.claimConflictsCleared
-        ? false
-        : undefined,
     };
   } catch (error) {
     console.error("Failed to save email draft.", error);
@@ -566,8 +480,6 @@ export async function draftReplyAction(
       referralSuggested: classification.referralSuggested,
       offerWarnings: unacknowledgedOfferWarnings(context),
       claimConflicts: draft.claimConflicts,
-      claimConflictsAcknowledged: draft.claimConflictsAcknowledged,
-      requiresClaimAcknowledgment: hasClaimConflicts,
       emailLength: draft.emailLength,
       personaId: draft.personaId,
       personalizationTier: draft.personalizationTier,

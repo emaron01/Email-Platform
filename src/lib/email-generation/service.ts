@@ -167,6 +167,7 @@ export async function generateEmailDraft(
     prospectReplyText?: string | null;
     referralSuggested?: boolean;
     inReplyToDraftId?: string | null;
+    regenerationGuidance?: string | null;
   } = {},
 ): Promise<{
   draftId: string;
@@ -182,7 +183,6 @@ export async function generateEmailDraft(
   personalizationTier: string;
   personalizationSources: string;
   claimConflicts: import("@/lib/email-generation/claim-validation-contract").ClaimValidationViolation[];
-  claimConflictsAcknowledged: boolean;
 }> {
   const sequenceNumber = options.sequenceNumber ?? 1;
   const kind = options.kind ?? (sequenceNumber === 1 ? "INITIAL" : "FOLLOW_UP");
@@ -286,6 +286,7 @@ export async function generateEmailDraft(
       context,
       subject,
       body,
+      regenerationGuidance: options.regenerationGuidance,
     });
     const claimConflicts = claimValidation.violations;
 
@@ -325,7 +326,6 @@ export async function generateEmailDraft(
         personalizationSources,
         claimConflictsJson:
           claimConflicts.length > 0 ? claimConflicts : undefined,
-        claimConflictsAcknowledgedAt: null,
       },
       update: {
         subject,
@@ -344,7 +344,6 @@ export async function generateEmailDraft(
         personalizationSources,
         claimConflictsJson:
           claimConflicts.length > 0 ? claimConflicts : Prisma.DbNull,
-        claimConflictsAcknowledgedAt: null,
       },
     });
 
@@ -433,7 +432,6 @@ export async function generateEmailDraft(
         personalizationSources:
           draft.personalizationSources ?? personalizationSources,
         claimConflicts,
-        claimConflictsAcknowledged: false,
       };
     }
 
@@ -485,7 +483,6 @@ export async function generateEmailDraft(
       personalizationSources:
         draft.personalizationSources ?? personalizationSources,
       claimConflicts: [],
-      claimConflictsAcknowledged: false,
     };
   } catch (error) {
     const classified = classifyEmailGenerationError(error);

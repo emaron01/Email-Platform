@@ -25,12 +25,6 @@ import {
 import { TenantError } from "@/lib/tenant/errors";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { contactDisplayName, formatDate } from "@/lib/utils";
-import {
-  campaignOfferGuardContext,
-  campaignOfferText,
-  detectDeterministicOfferConflicts,
-  offerConflictsFromJson,
-} from "@/lib/campaign/offer-validation";
 import { claimConflictsFromJson } from "@/lib/email-generation/claim-conflicts";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { getEffectiveUsagePolicy } from "@/lib/usage/policy";
@@ -166,30 +160,12 @@ export default async function CampaignDetailPage({
     campaign.offerDescription ?? campaign.offer?.description ?? null;
   const offerCta = campaign.offerCta ?? campaign.offer?.primaryCta ?? null;
   const offerNotes = campaign.offerNotes ?? campaign.offer?.notes ?? null;
-  const storedOfferConflicts = offerConflictsFromJson(
-    campaign.offerValidationJson,
-  );
   const offer = {
     offerName,
     offerDescription,
     offerCta,
     offerNotes,
   };
-  const guardContext = campaignOfferGuardContext({
-    product: campaign.product,
-    persona: campaign.persona,
-  });
-  const offerConflicts =
-    storedOfferConflicts.length > 0
-      ? storedOfferConflicts
-      : detectDeterministicOfferConflicts({
-          offerText: campaignOfferText(offer),
-          claimsNotToMake: guardContext.claimsNotToMake,
-          terminologyToAvoid: guardContext.terminologyToAvoid,
-        });
-  const offerConflictsAcknowledged =
-    Boolean(campaign.offerConflictAcknowledgedAt) &&
-    campaign.offerConflictAcknowledgedHash === campaign.offerValidationHash;
   const generatedEmailCount = campaign.contacts.reduce(
     (total, entry) => total + entry.emailDrafts.length,
     0,
@@ -404,8 +380,6 @@ export default async function CampaignDetailPage({
               <CampaignOfferForm
                 campaignId={campaign.id}
                 offer={offer}
-                conflicts={offerConflicts}
-                conflictsAcknowledged={offerConflictsAcknowledged}
               />
             )}
           </Panel>
@@ -462,7 +436,7 @@ export default async function CampaignDetailPage({
           {stageContacts.length > 0 ? (
             <EmailDraftsStage
               campaignEmailLength={campaign.emailLength}
-              offerWarnings={offerConflictsAcknowledged ? [] : offerConflicts}
+              offerWarnings={[]}
               emailDeeplinkMaxUrlLength={
                 usagePolicy.emailDeeplinkMaxUrlLength
               }
@@ -547,9 +521,6 @@ export default async function CampaignDetailPage({
                         draft.personalizationSources,
                       claimConflicts: claimConflictsFromJson(
                         draft.claimConflictsJson,
-                      ),
-                      claimConflictsAcknowledged: Boolean(
-                        draft.claimConflictsAcknowledgedAt,
                       ),
                     })),
                 };

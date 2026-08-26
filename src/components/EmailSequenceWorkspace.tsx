@@ -3,7 +3,6 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  acknowledgeEmailDraftClaimConflictsAction,
   addFollowUpEmailAction,
   draftReplyAction,
   generateEmailDraftAction,
@@ -53,7 +52,6 @@ type SequenceDraft = {
   personalizationTier: "BEST" | "COMPANY" | "THIN" | null;
   personalizationSources: string | null;
   claimConflicts: ClaimValidationViolation[];
-  claimConflictsAcknowledged: boolean;
 };
 
 const EMAIL_CLIENT_OPTIONS: Array<{
@@ -154,11 +152,6 @@ export function EmailSequenceWorkspace({
   const latest = drafts.at(-1) ?? null;
   const selected =
     drafts.find((draft) => draft.id === selectedId) ?? latest ?? null;
-  const claimSendBlocked = Boolean(
-    selected &&
-      selected.claimConflicts.length > 0 &&
-      !selected.claimConflictsAcknowledged,
-  );
   const [selectedLength, setSelectedLength] = useState<CampaignEmailLength>(
     selected?.emailLength ?? campaignEmailLength,
   );
@@ -209,7 +202,6 @@ export function EmailSequenceWorkspace({
           : null,
       personalizationSources: next.personalizationSources ?? null,
       claimConflicts: next.claimConflicts ?? [],
-      claimConflictsAcknowledged: Boolean(next.claimConflictsAcknowledged),
     };
     if (next.emailLength) setSelectedLength(next.emailLength);
     setDrafts((current) => {
@@ -273,7 +265,6 @@ export function EmailSequenceWorkspace({
                 ...(saved.claimConflictsCleared
                   ? {
                       claimConflicts: [],
-                      claimConflictsAcknowledged: false,
                     }
                   : {}),
               }
@@ -472,10 +463,7 @@ export function EmailSequenceWorkspace({
                     >
                       {draft.status}
                     </span>
-                    {draft.claimConflicts.length > 0 &&
-                    !draft.claimConflictsAcknowledged
-                      ? " · claims"
-                      : ""}
+                    {draft.claimConflicts.length > 0 ? " · claims" : ""}
                     {activity ? ` · ${activity}` : ""}
                   </span>
                   <span className="text-slate-500">
@@ -519,7 +507,7 @@ export function EmailSequenceWorkspace({
         {displayWarnings.length > 0 ? (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
             <p className="text-sm font-medium text-amber-900">
-              Unacknowledged offer conflicts
+              Offer validation notes
             </p>
             <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-amber-900">
               {displayWarnings.map((warning) => (
@@ -528,10 +516,6 @@ export function EmailSequenceWorkspace({
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-xs text-amber-800">
-              Generation remains available. Review or acknowledge these in the
-              Campaign offer panel.
-            </p>
           </div>
         ) : null}
 
@@ -541,20 +525,14 @@ export function EmailSequenceWorkspace({
               className={
                 !result.ok
                   ? "text-sm text-red-600"
-                  : result.requiresClaimAcknowledgment ||
-                      (result.claimConflicts &&
-                        result.claimConflicts.length > 0 &&
-                        !result.claimConflictsAcknowledged)
+                  : result.claimConflicts && result.claimConflicts.length > 0
                     ? "text-sm text-amber-800"
                     : "text-sm text-emerald-700"
               }
             >
               {result.message}
             </p>
-            {result.requiresClaimAcknowledgment ||
-            (result.claimConflicts &&
-              result.claimConflicts.length > 0 &&
-              !result.claimConflictsAcknowledged) ? (
+            {result.claimConflicts && result.claimConflicts.length > 0 ? (
               <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-900">
                 {(result.claimConflicts ?? []).map((conflict, index) => (
                   <li key={`${conflict.type}-${index}`}>
@@ -751,6 +729,10 @@ export function EmailSequenceWorkspace({
                   <p className="text-sm font-medium text-amber-950">
                     Claim conflicts in this draft
                   </p>
+                  <p className="text-xs text-amber-900">
+                    Model-invented claims were flagged. Sending is still
+                    allowed — review the copy if you want to edit it.
+                  </p>
                   <ul className="space-y-2 text-sm text-amber-950">
                     {selected.claimConflicts.map((conflict, index) => (
                       <li
@@ -774,27 +756,6 @@ export function EmailSequenceWorkspace({
                       </li>
                     ))}
                   </ul>
-                  {selected.claimConflictsAcknowledged ? (
-                    <p className="text-xs text-amber-900">
-                      Conflicts acknowledged. Sending is allowed.
-                    </p>
-                  ) : selected.status !== "SENT" &&
-                    selected.status !== "SENDING" ? (
-                    <button
-                      type="button"
-                      disabled={pending || readOnly}
-                      onClick={() =>
-                        run(() =>
-                          acknowledgeEmailDraftClaimConflictsAction(
-                            selected.id,
-                          ),
-                        )
-                      }
-                      className="rounded-md border border-amber-700 bg-white px-3 py-1.5 text-sm font-medium text-amber-950 disabled:opacity-60"
-                    >
-                      Acknowledge conflicts and allow send
-                    </button>
-                  ) : null}
                 </div>
               ) : null}
             </article>
@@ -853,15 +814,11 @@ export function EmailSequenceWorkspace({
                         <button
                           key={option.client}
                           type="button"
-                          disabled={
-                            pending || !contactEmail || claimSendBlocked
-                          }
+                          disabled={pending || !contactEmail}
                           title={
-                            claimSendBlocked
-                              ? "Resolve or acknowledge claim conflicts first."
-                              : contactEmail
-                                ? `Save and open in ${option.label}.`
-                                : "Add an email address to this contact first."
+                            contactEmail
+                              ? `Save and open in ${option.label}.`
+                              : "Add an email address to this contact first."
                           }
                           onClick={() => openInEmailClient(option.client)}
                           className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
@@ -873,15 +830,12 @@ export function EmailSequenceWorkspace({
                         type="button"
                         disabled={
                           pending ||
-                          claimSendBlocked ||
                           mailboxConnection?.status !== "CONNECTED"
                         }
                         title={
-                          claimSendBlocked
-                            ? "Resolve or acknowledge claim conflicts first."
-                            : mailboxConnection?.status === "CONNECTED"
-                              ? `Send from ${mailboxConnection.mailboxAddress}.`
-                              : "Connect Microsoft 365 in Email connection settings first."
+                          mailboxConnection?.status === "CONNECTED"
+                            ? `Send from ${mailboxConnection.mailboxAddress}.`
+                            : "Connect Microsoft 365 in Email connection settings first."
                         }
                         onClick={sendConnected}
                         className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -890,12 +844,7 @@ export function EmailSequenceWorkspace({
                       </button>
                       <button
                         type="button"
-                        disabled={pending || claimSendBlocked}
-                        title={
-                          claimSendBlocked
-                            ? "Resolve or acknowledge claim conflicts first."
-                            : undefined
-                        }
+                        disabled={pending}
                         onClick={markSent}
                         className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
                       >
@@ -904,12 +853,6 @@ export function EmailSequenceWorkspace({
                     </>
                   ) : null}
                 </div>
-                {claimSendBlocked ? (
-                  <p className="text-xs font-medium text-amber-800">
-                    Sending is blocked until you edit the flagged copy or
-                    acknowledge the claim conflicts above.
-                  </p>
-                ) : null}
                 {mode === "SEND" &&
                 mailboxConnection?.status !== "CONNECTED" ? (
                   <a

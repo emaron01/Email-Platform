@@ -1,3 +1,6 @@
+/**
+ * Claim-conflict persistence helpers. Flags are informational only — never block send.
+ */
 import type { ClaimValidationViolation } from "@/lib/email-generation/claim-validation-contract";
 
 export type { ClaimValidationViolation };
@@ -16,15 +19,6 @@ export function claimConflictsFromJson(
       typeof candidate.description === "string"
     );
   });
-}
-
-export function claimConflictsBlockSend(input: {
-  claimConflictsJson: unknown;
-  claimConflictsAcknowledgedAt: Date | null;
-}): boolean {
-  const conflicts = claimConflictsFromJson(input.claimConflictsJson);
-  if (conflicts.length === 0) return false;
-  return input.claimConflictsAcknowledgedAt == null;
 }
 
 /** Map claim-guard violations into AiValidationIssue-shaped records for UsageEvent. */

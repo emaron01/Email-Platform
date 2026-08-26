@@ -481,21 +481,6 @@ export async function createCampaignAction(
         offerNotes: parsed.fields.offerNotes,
       },
     });
-    if (
-      offerValidation.conflicts.length > 0 &&
-      !parsed.values.acknowledgeOfferConflicts
-    ) {
-      return {
-        ok: false,
-        message: "Review the offer conflicts before creating this campaign.",
-        values: parsed.values,
-        offerConflicts: offerValidation.conflicts,
-        requiresOfferAcknowledgment: true,
-        semanticValidationCompleted:
-          offerValidation.semanticValidationCompleted,
-      };
-    }
-
     const campaign = await createCampaign({
       ...parsed.fields,
       contactIds: parsed.contactIds,
@@ -505,12 +490,6 @@ export async function createCampaignAction(
           offerValidation.semanticValidationCompleted,
       },
       offerValidationHash: offerValidation.hash,
-      offerConflictAcknowledgedHash:
-        offerValidation.conflicts.length > 0
-          ? offerValidation.hash
-          : null,
-      offerConflictAcknowledgedAt:
-        offerValidation.conflicts.length > 0 ? new Date() : null,
     });
     revalidatePath("/campaigns");
     revalidatePath("/");

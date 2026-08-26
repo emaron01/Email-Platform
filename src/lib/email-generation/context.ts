@@ -89,8 +89,6 @@ export type EmailGenerationContext = {
     offerNotes: string | null;
     offerValidationJson: unknown;
     offerValidationHash: string | null;
-    offerConflictAcknowledgedHash: string | null;
-    offerConflictAcknowledgedAt: Date | null;
     emailLength: EmailLength;
     emailGuidance: string | null;
   };
@@ -384,10 +382,6 @@ export async function loadEmailGenerationContext(
       offerNotes: campaign.offerNotes,
       offerValidationJson: campaign.offerValidationJson,
       offerValidationHash: campaign.offerValidationHash,
-      offerConflictAcknowledgedHash:
-        campaign.offerConflictAcknowledgedHash,
-      offerConflictAcknowledgedAt:
-        campaign.offerConflictAcknowledgedAt,
       emailLength: campaign.emailLength,
       emailGuidance: campaign.emailGuidance,
     },

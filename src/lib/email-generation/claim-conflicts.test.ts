@@ -1,9 +1,8 @@
 /**
- * Claim-conflict helpers and keep-draft behavior.
+ * Claim-conflict helpers — informational flags only; never block send.
  */
 import { describe, expect, it } from "vitest";
 import {
-  claimConflictsBlockSend,
   claimConflictsFromJson,
   claimViolationsToIssues,
 } from "@/lib/email-generation/claim-conflicts";
@@ -29,7 +28,7 @@ describe("claim conflict helpers", () => {
     });
   });
 
-  it("blocks send until conflicts are acknowledged", () => {
+  it("parses claimConflictsJson arrays", () => {
     const conflicts = [
       {
         type: "PROHIBITED_TERM" as const,
@@ -38,24 +37,8 @@ describe("claim conflict helpers", () => {
         bodyExcerpt: "ROI guarantee",
       },
     ];
-    expect(
-      claimConflictsBlockSend({
-        claimConflictsJson: conflicts,
-        claimConflictsAcknowledgedAt: null,
-      }),
-    ).toBe(true);
-    expect(
-      claimConflictsBlockSend({
-        claimConflictsJson: conflicts,
-        claimConflictsAcknowledgedAt: new Date(),
-      }),
-    ).toBe(false);
-    expect(
-      claimConflictsBlockSend({
-        claimConflictsJson: [],
-        claimConflictsAcknowledgedAt: null,
-      }),
-    ).toBe(false);
     expect(claimConflictsFromJson(conflicts)).toHaveLength(1);
+    expect(claimConflictsFromJson([])).toHaveLength(0);
+    expect(claimConflictsFromJson(null)).toHaveLength(0);
   });
 });

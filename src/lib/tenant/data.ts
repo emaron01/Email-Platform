@@ -774,8 +774,6 @@ export async function createCampaign(input: {
   offerNotes?: string | null;
   offerValidationJson?: Prisma.InputJsonValue | null;
   offerValidationHash?: string | null;
-  offerConflictAcknowledgedHash?: string | null;
-  offerConflictAcknowledgedAt?: Date | null;
   emailLength?: EmailLength;
   emailGuidance?: string | null;
   contactIds?: string[];
@@ -918,10 +916,6 @@ export async function createCampaign(input: {
         offerNotes: input.offerNotes?.trim() || null,
         offerValidationJson: input.offerValidationJson ?? undefined,
         offerValidationHash: input.offerValidationHash ?? null,
-        offerConflictAcknowledgedHash:
-          input.offerConflictAcknowledgedHash ?? null,
-        offerConflictAcknowledgedAt:
-          input.offerConflictAcknowledgedAt ?? null,
         emailLength: input.emailLength ?? "MEDIUM",
         emailGuidance: input.emailGuidance?.trim() || null,
         status: input.status ?? "DRAFT",

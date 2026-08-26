@@ -1634,8 +1634,6 @@ model Campaign {
   offerNotes                    String?
   offerValidationJson           Json?
   offerValidationHash           String?
-  offerConflictAcknowledgedHash String?
-  offerConflictAcknowledgedAt   DateTime?
   emailLength                   EmailLength    @default(MEDIUM)
   emailGuidance                 String?
   status                        CampaignStatus @default(DRAFT)
@@ -1725,8 +1723,6 @@ model EmailDraft {
   personalizationSources String?
   /// Claim-guard violations from the last AI generation (null when clean).
   claimConflictsJson   Json?
-  /// Rep acknowledgment that conflicting generated copy may still be sent.
-  claimConflictsAcknowledgedAt DateTime?
   approvedAt           DateTime?
   sentAt               DateTime?
   sentMethod           EmailSentMethod?

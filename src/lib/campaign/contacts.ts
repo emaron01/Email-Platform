@@ -92,7 +92,6 @@ const campaignDetailInclude = {
           personalizationTier: true,
           personalizationSources: true,
           claimConflictsJson: true,
-          claimConflictsAcknowledgedAt: true,
           createdAt: true,
           updatedAt: true,
         },

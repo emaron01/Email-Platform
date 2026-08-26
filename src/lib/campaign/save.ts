@@ -3,7 +3,6 @@
  */
 
 import { TenantError } from "@/lib/tenant/errors";
-import type { OfferConflict } from "@/lib/campaign/offer-validation";
 import {
   parseCampaignPersonaSelection,
   type CampaignPersonaSelection,
@@ -40,8 +39,6 @@ export type CampaignActionResult = {
   /** Echo submitted values so the form can restore them after a failed save. */
   values?: CampaignFormValues;
   fieldErrors?: Partial<Record<keyof CampaignFormValues, string>>;
-  offerConflicts?: OfferConflict[];
-  requiresOfferAcknowledgment?: boolean;
   semanticValidationCompleted?: boolean;
 };
 
@@ -70,16 +67,10 @@ export type CampaignFormValues = {
   offerNotes: string;
   emailLength: string;
   emailGuidance: string;
-  acknowledgeOfferConflicts: boolean;
 };
 
 function readString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
-}
-
-function readBoolean(formData: FormData, key: string): boolean {
-  const value = String(formData.get(key) ?? "").trim().toLowerCase();
-  return value === "1" || value === "true" || value === "on";
 }
 
 export function parseCampaignEmailSettingsFormData(formData: FormData): {
@@ -141,10 +132,6 @@ export function readCampaignFormValues(formData: FormData): CampaignFormValues {
     offerNotes: readString(formData, "offerNotes"),
     emailLength: readString(formData, "emailLength") || DEFAULT_EMAIL_LENGTH,
     emailGuidance: readString(formData, "emailGuidance"),
-    acknowledgeOfferConflicts: readBoolean(
-      formData,
-      "acknowledgeOfferConflicts",
-    ),
   };
 }
 

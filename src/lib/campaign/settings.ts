@@ -71,8 +71,6 @@ export async function updateCampaignOffer(input: {
   offerNotes: string | null;
   offerValidationJson: Prisma.InputJsonValue;
   offerValidationHash: string;
-  offerConflictAcknowledgedHash: string | null;
-  offerConflictAcknowledgedAt: Date | null;
 }): Promise<void> {
   const organizationId = await requireOrganizationId();
   const { assertCampaignNotArchived } = await import(
@@ -88,8 +86,6 @@ export async function updateCampaignOffer(input: {
       offerNotes: input.offerNotes?.trim() || null,
       offerValidationJson: input.offerValidationJson,
       offerValidationHash: input.offerValidationHash,
-      offerConflictAcknowledgedHash: input.offerConflictAcknowledgedHash,
-      offerConflictAcknowledgedAt: input.offerConflictAcknowledgedAt,
     },
   });
   if (result.count !== 1) {

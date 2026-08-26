@@ -13,6 +13,7 @@ export const claimValidationSchema = z.object({
       description: z.string().trim().min(1).max(500),
       matchedGuard: z.string().trim().max(500).nullable(),
       bodyExcerpt: z.string().trim().max(500).nullable(),
+      origin: z.literal("MODEL_ORIGINATED").optional(),
     }),
   ),
 });

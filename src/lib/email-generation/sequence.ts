@@ -64,8 +64,6 @@ export async function markEmailDraftSent(input: {
       sequenceNumber: true,
       status: true,
       sentAt: true,
-      claimConflictsJson: true,
-      claimConflictsAcknowledgedAt: true,
       campaignContact: { select: { campaignId: true, contactId: true, contact: { select: { email: true } } } },
     },
   });
@@ -84,19 +82,6 @@ export async function markEmailDraftSent(input: {
   }
   if (draft.status !== "DRAFT" && draft.status !== "APPROVED") {
     throw new TenantError("Only a completed draft can be marked as sent.");
-  }
-  const { claimConflictsBlockSend } = await import(
-    "@/lib/email-generation/claim-conflicts"
-  );
-  if (
-    claimConflictsBlockSend({
-      claimConflictsJson: draft.claimConflictsJson,
-      claimConflictsAcknowledgedAt: draft.claimConflictsAcknowledgedAt,
-    })
-  ) {
-    throw new TenantError(
-      "This draft still has unresolved claim conflicts. Edit the copy or acknowledge the conflicts before sending.",
-    );
   }
   const {
     assertCampaignNotArchived,
@@ -251,7 +236,6 @@ export async function updateEmailDraftContent(input: {
       ...(claimConflictsCleared
         ? {
             claimConflictsJson: Prisma.DbNull,
-            claimConflictsAcknowledgedAt: null,
           }
         : {}),
       ...(input.emailLength ? { emailLength: input.emailLength } : {}),
@@ -294,8 +278,6 @@ export async function recordEmailClientIntent(input: {
       subject: true,
       body: true,
       generatedBody: true,
-      claimConflictsJson: true,
-      claimConflictsAcknowledgedAt: true,
       campaignContact: {
         select: {
           campaignId: true,
@@ -308,19 +290,6 @@ export async function recordEmailClientIntent(input: {
   if (!draft) {
     throw new TenantError(
       "Email draft does not belong to the active organization.",
-    );
-  }
-  const { claimConflictsBlockSend } = await import(
-    "@/lib/email-generation/claim-conflicts"
-  );
-  if (
-    claimConflictsBlockSend({
-      claimConflictsJson: draft.claimConflictsJson,
-      claimConflictsAcknowledgedAt: draft.claimConflictsAcknowledgedAt,
-    })
-  ) {
-    throw new TenantError(
-      "This draft still has unresolved claim conflicts. Edit the copy or acknowledge the conflicts before opening an email client.",
     );
   }
   const recipient = draft.campaignContact.contact.email?.trim();

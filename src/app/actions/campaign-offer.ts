@@ -5,7 +5,6 @@ import { requireCurrentUser } from "@/lib/auth/authz";
 import {
   validateCampaignOffer,
   type CampaignOfferFields,
-  type OfferConflict,
 } from "@/lib/campaign/offer-validation";
 import {
   getCampaignOfferValidationTarget,
@@ -17,8 +16,6 @@ export type CampaignOfferActionResult = {
   ok: boolean;
   message: string;
   values?: CampaignOfferFields;
-  offerConflicts?: OfferConflict[];
-  requiresOfferAcknowledgment?: boolean;
   semanticValidationCompleted?: boolean;
 };
 
@@ -38,8 +35,6 @@ export async function updateCampaignOfferAction(
 ): Promise<CampaignOfferActionResult> {
   const campaignId = String(formData.get("campaignId") ?? "").trim();
   const values = readOffer(formData);
-  const acknowledged =
-    String(formData.get("acknowledgeOfferConflicts") ?? "") === "1";
   if (!campaignId) {
     return { ok: false, message: "Campaign is required.", values };
   }
@@ -56,16 +51,6 @@ export async function updateCampaignOfferAction(
       personaId: campaign.personaId,
       offer: values,
     });
-    if (validation.conflicts.length > 0 && !acknowledged) {
-      return {
-        ok: false,
-        message: "Review the offer conflicts before saving.",
-        values,
-        offerConflicts: validation.conflicts,
-        requiresOfferAcknowledgment: true,
-        semanticValidationCompleted: validation.semanticValidationCompleted,
-      };
-    }
 
     await updateCampaignOffer({
       campaignId,
@@ -75,21 +60,13 @@ export async function updateCampaignOfferAction(
         semanticValidationCompleted: validation.semanticValidationCompleted,
       },
       offerValidationHash: validation.hash,
-      offerConflictAcknowledgedHash:
-        validation.conflicts.length > 0 ? validation.hash : null,
-      offerConflictAcknowledgedAt:
-        validation.conflicts.length > 0 ? new Date() : null,
     });
     revalidatePath("/campaigns");
     revalidatePath(`/campaigns/${campaignId}`);
     return {
       ok: true,
-      message:
-        validation.conflicts.length > 0
-          ? "Offer saved with acknowledged conflicts."
-          : "Offer saved.",
+      message: "Offer saved.",
       values,
-      offerConflicts: validation.conflicts,
       semanticValidationCompleted: validation.semanticValidationCompleted,
     };
   } catch (error) {
