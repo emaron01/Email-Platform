@@ -14,9 +14,81 @@ import {
   type ClaimValidationResult,
   type ClaimValidationViolation,
 } from "@/lib/email-generation/claim-validation-contract";
+import {
+  contactResearchForPrompt,
+  resolvePersonalization,
+} from "@/lib/email-generation/personalization";
 
 export { claimValidationSchema, deterministicClaimViolations };
 export type { ClaimValidationViolation };
+
+/** Product + prospect research texts that can support a claim (silent when matched). */
+export function claimEvidenceTexts(context: EmailGenerationContext): string[] {
+  const personalization = resolvePersonalization({
+    companyResearch: context.companyResearch,
+    contactResearch: contactResearchForPrompt(context.contactResearch),
+  });
+  const company = personalization.companyResearch;
+  const contact = personalization.contactResearch;
+  return [
+    ...context.product.evidence,
+    ...context.product.messaging.supportedClaims,
+    context.product.description,
+    context.product.valueProposition,
+    // Recipient identity is known contact-record data, not invention.
+    context.contact.firstName,
+    context.contact.lastName,
+    context.contact.title,
+    context.contact.company,
+    context.contact.industry,
+    context.contact.location,
+    company?.companySummary,
+    company?.whatTheySell,
+    company?.businessModel,
+    company?.companySizeContext,
+    ...(company?.customerTypes ?? []),
+    ...(company?.primaryMarkets ?? []),
+    contact?.roleSummary,
+    ...(contact?.responsibilities ?? []),
+    ...(contact?.ownershipAreas ?? []),
+  ].filter((value): value is string => Boolean(value?.trim()));
+}
+
+export function prospectResearchPayload(context: EmailGenerationContext): {
+  tier: string;
+  companyResearchUsable: boolean;
+  contactResearchUsable: boolean;
+  companyResearch: ReturnType<typeof resolvePersonalization>["companyResearch"];
+  contactResearch: ReturnType<typeof resolvePersonalization>["contactResearch"];
+  recipientIdentity: {
+    firstName: string | null;
+    lastName: string | null;
+    title: string | null;
+    company: string | null;
+    industry: string | null;
+    location: string | null;
+  };
+} {
+  const personalization = resolvePersonalization({
+    companyResearch: context.companyResearch,
+    contactResearch: contactResearchForPrompt(context.contactResearch),
+  });
+  return {
+    tier: personalization.tier,
+    companyResearchUsable: personalization.companyResearchUsable,
+    contactResearchUsable: personalization.contactResearchUsable,
+    companyResearch: personalization.companyResearch,
+    contactResearch: personalization.contactResearch,
+    recipientIdentity: {
+      firstName: context.contact.firstName,
+      lastName: context.contact.lastName,
+      title: context.contact.title,
+      company: context.contact.company,
+      industry: context.contact.industry,
+      location: context.contact.location,
+    },
+  };
+}
 
 export async function validateGeneratedEmailClaims(input: {
   ai: AiProvider;
@@ -36,12 +108,8 @@ export async function validateGeneratedEmailClaims(input: {
     regenerationGuidance: input.regenerationGuidance,
     repEditText: input.repEditText,
   });
-  const evidenceTexts = [
-    ...input.context.product.evidence,
-    ...input.context.product.messaging.supportedClaims,
-    input.context.product.description,
-    input.context.product.valueProposition,
-  ].filter((value): value is string => Boolean(value?.trim()));
+  const evidenceTexts = claimEvidenceTexts(input.context);
+  const prospect = prospectResearchPayload(input.context);
 
   const deterministic = deterministicClaimViolations({
     body: input.body,
@@ -55,7 +123,7 @@ export async function validateGeneratedEmailClaims(input: {
       {
         role: "system",
         content:
-          "You check whether the MODEL invented unsupported assertions. The rep is trusted: anything supported by the campaign offer, email guidance, regeneration guidance, or rep edit text must NOT be flagged. Anything supported by product evidence or supportedClaims must NOT be flagged. Only flag MODEL_ORIGINATED inventions — assertions in the generated email that appear in neither rep sources nor evidence. Return JSON only.",
+          "You check whether the MODEL invented unsupported assertions. The rep is trusted: anything supported by the campaign offer, email guidance, regeneration guidance, or rep edit text must NOT be flagged. Anything supported by product evidence, supportedClaims, or usable company/contact research must NOT be flagged. Recipient identity fields (name, title, company name) are allowed. Only flag MODEL_ORIGINATED inventions. At personalization tier THIN with no usable research, any specific claim about the prospect's business, role situation, or company internals beyond recipient identity is unsupported by definition — flag it with the offending sentence. Return JSON only.",
       },
       {
         role: "user",
@@ -71,6 +139,14 @@ export async function validateGeneratedEmailClaims(input: {
               regenerationGuidance: repSources.regenerationGuidance,
               repEditText: repSources.repEditText ?? null,
             },
+            personalization: {
+              tier: prospect.tier,
+              companyResearchUsable: prospect.companyResearchUsable,
+              contactResearchUsable: prospect.contactResearchUsable,
+            },
+            recipientIdentity: prospect.recipientIdentity,
+            companyResearch: prospect.companyResearch,
+            contactResearch: prospect.contactResearch,
             claimsNotToMake: input.context.product.messaging.claimsNotToMake,
             terminologyToAvoid:
               input.context.product.messaging.terminologyToAvoid,
@@ -78,7 +154,7 @@ export async function validateGeneratedEmailClaims(input: {
             productEvidence: input.context.product.evidence,
             personaMessagingNotes: input.context.persona.messagingNotes,
             instruction:
-              "Flag only model inventions. If a claim is present in repSources (including emailGuidance such as website-visitor knowledge), it is rep-asserted — never flag it. If evidence supports it, never flag it.",
+              "Flag only model inventions about the product, offer, or prospect. Never flag repSources (including emailGuidance such as website-visitor knowledge). Never flag facts supported by companyResearch or contactResearch. At THIN with null research, flag specific prospect/company claims beyond recipientIdentity.",
           },
           null,
           2,

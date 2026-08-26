@@ -747,6 +747,149 @@ describe("sequence and claim guards", () => {
     ).toBe(true);
   });
 
+  it("passes company and contact research into claim validation", async () => {
+    const { validateGeneratedEmailClaims } = await import(
+      "@/lib/email-generation/claim-validation"
+    );
+    const generateStructured = vi.fn(async (request) => {
+      const userContent = String(request.messages[1]?.content ?? "");
+      expect(userContent).toContain("companyResearch");
+      expect(userContent).toContain("contactResearch");
+      expect(userContent).toContain("multi-rooftop dealer groups");
+      expect(userContent).toContain("Owns forecast process");
+      expect(userContent).toMatch(/"tier":\s*"BEST"/);
+      expect(request.messages[0].content).toMatch(/THIN/i);
+      return {
+        data: { compliant: true, violations: [] },
+        rawText: "{}",
+        provider: "fixture",
+        model: "semantic-fixture",
+        modelUrlIdentifier: "semantic-fixture",
+      };
+    });
+    await validateGeneratedEmailClaims({
+      ai: {
+        generateStructured:
+          generateStructured as unknown as import("@/lib/ai/types").AiProvider["generateStructured"],
+      },
+      context: contextFixture({
+        companyResearch: {
+          companySummary: "Automotive retail group",
+          whatTheySell: "Vehicles and service products",
+          customerTypes: ["multi-rooftop dealer groups"],
+          primaryMarkets: ["US"],
+          businessModel: "Franchise retail",
+          companySizeContext: "Large",
+          confidence: "HIGH",
+        },
+        contactResearch: {
+          id: "cr_1",
+          currentTitle: "VP Sales",
+          roleSummary: "Owns forecast process",
+          responsibilities: ["Forecast ownership"],
+          ownershipAreas: ["Revenue planning"],
+          professionalSignals: [],
+          negativeRoleSignals: [],
+          confidence: "HIGH",
+          researchedAt: new Date(),
+        },
+      }),
+      subject: "Quick note",
+      body: "Hi Alex, happy to share how peers in multi-rooftop dealer groups handle ownership of planning.",
+    });
+    expect(generateStructured).toHaveBeenCalledOnce();
+  });
+
+  it("keeps research-supported prospect facts silent after origin filtering", async () => {
+    const { validateGeneratedEmailClaims } = await import(
+      "@/lib/email-generation/claim-validation"
+    );
+    const body =
+      "Teams selling to multi-rooftop dealer groups often struggle with forecast ownership.";
+    const generateStructured = vi.fn(async () => ({
+      data: {
+        compliant: false,
+        violations: [
+          {
+            type: "UNSUPPORTED_FACT" as const,
+            description:
+              "Claims the company sells to multi-rooftop dealer groups",
+            matchedGuard: null,
+            bodyExcerpt: "multi-rooftop dealer groups",
+          },
+        ],
+      },
+      rawText: "{}",
+      provider: "fixture",
+      model: "semantic-fixture",
+      modelUrlIdentifier: "semantic-fixture",
+    }));
+    const result = await validateGeneratedEmailClaims({
+      ai: {
+        generateStructured:
+          generateStructured as unknown as import("@/lib/ai/types").AiProvider["generateStructured"],
+      },
+      context: contextFixture({
+        companyResearch: {
+          companySummary: null,
+          whatTheySell: null,
+          customerTypes: ["multi-rooftop dealer groups"],
+          primaryMarkets: [],
+          businessModel: null,
+          companySizeContext: null,
+          confidence: "HIGH",
+        },
+      }),
+      subject: "Note",
+      body,
+    });
+    expect(result.violations).toEqual([]);
+  });
+
+  it("does not flag emailGuidance website-visitor knowledge used in the draft", async () => {
+    const { validateGeneratedEmailClaims } = await import(
+      "@/lib/email-generation/claim-validation"
+    );
+    const guidance = "These are prospects that visited my website.";
+    const body =
+      "Hi Alex, since you visited my website I wanted to share a short note.";
+    const generateStructured = vi.fn(async () => ({
+      data: {
+        compliant: false,
+        violations: [
+          {
+            type: "UNSUPPORTED_FACT" as const,
+            description:
+              "Claims the prospect visited the website without research support",
+            matchedGuard: "visited my website",
+            bodyExcerpt: "visited my website",
+          },
+        ],
+      },
+      rawText: "{}",
+      provider: "fixture",
+      model: "semantic-fixture",
+      modelUrlIdentifier: "semantic-fixture",
+    }));
+    const result = await validateGeneratedEmailClaims({
+      ai: {
+        generateStructured:
+          generateStructured as unknown as import("@/lib/ai/types").AiProvider["generateStructured"],
+      },
+      context: contextFixture({
+        campaign: {
+          ...contextFixture().campaign,
+          emailGuidance: guidance,
+        },
+        companyResearch: null,
+        contactResearch: null,
+      }),
+      subject: "Following up",
+      body,
+    });
+    expect(result.violations).toEqual([]);
+  });
+
   it("contains no fitted product vocabulary or fixed evidence extractors", () => {
     const offerValidator = readFileSync(
       "src/lib/campaign/offer-validation.ts",
