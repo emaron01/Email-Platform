@@ -289,7 +289,7 @@ describe("workflow view contracts", () => {
     }
     expect(page).toContain("No company qualification results yet");
     expect(page).toContain("No contact qualification results yet");
-    expect(page).toContain("No qualified contacts are ready for this stage");
+    expect(page).toContain("No contacts are attached to this campaign yet");
     expect(page).toContain("No campaign activity has been recorded yet");
   });
 

@@ -6,18 +6,13 @@ import { updateCampaignEmailSettingsAction } from "@/app/actions/campaign-email-
 import {
   EMAIL_GUIDANCE_MAX_CHARS,
   EMAIL_LENGTH_OPTIONS,
+  emailLengthLabel,
   type CampaignEmailLength,
   type CampaignEmailSettingsActionResult,
 } from "@/lib/campaign/save";
 import { SubmitButton } from "@/components/ui";
 
 const initial: CampaignEmailSettingsActionResult | null = null;
-
-function emailLengthLabel(value: CampaignEmailLength): string {
-  if (value === "SHORT") return "Short";
-  if (value === "MEDIUM") return "Medium";
-  return "Long";
-}
 
 export function CampaignEmailSettingsForm({
   campaignId,
@@ -58,8 +53,11 @@ export function CampaignEmailSettingsForm({
 
       <fieldset>
         <legend className="text-sm font-medium text-slate-700">
-          Email length
+          Default email length
         </legend>
+        <p className="mt-1 text-xs text-slate-500">
+          Used for new drafts. Override length on each email.
+        </p>
         <div className="mt-2 flex flex-wrap gap-3">
           {EMAIL_LENGTH_OPTIONS.map((value) => (
             <label

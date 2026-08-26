@@ -24,7 +24,7 @@ describe("campaign contact management seams", () => {
 
     expect(listPage).toContain("href={`/campaigns/${campaign.id}`}");
     expect(listPage).not.toContain("GenerateEmailDraftForm");
-    expect(detailPage).toContain("EmailSequenceWorkspace");
+    expect(detailPage).toContain("EmailDraftsStage");
     expect(detailPage).toContain("CampaignContactsManager");
     expect(detailPage).toContain(
       'mode={currentStage === "emails" ? "EMAILS" : "SEND"}',

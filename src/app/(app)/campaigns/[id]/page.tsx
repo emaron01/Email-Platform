@@ -5,7 +5,7 @@ import { CampaignContactsManager } from "@/components/CampaignContactsManager";
 import { CampaignEmailSettingsForm } from "@/components/CampaignEmailSettingsForm";
 import { CampaignOfferForm } from "@/components/CampaignOfferForm";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
-import { EmailSequenceWorkspace } from "@/components/EmailSequenceWorkspace";
+import { EmailDraftsStage } from "@/components/EmailDraftsStage";
 import { CampaignStageRail } from "@/components/CampaignStageRail";
 import { QualificationBuckets } from "@/components/QualificationBuckets";
 import { PageHeader, Panel, TenantMissing } from "@/components/ui";
@@ -34,6 +34,7 @@ import {
   buildCampaignStages,
   resolveCampaignStage,
 } from "@/lib/workflow/campaign-stages";
+import { parseEmailLength } from "@/lib/campaign/save";
 import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
 import { loadEmailDraftScreenStates } from "@/lib/email-generation/context";
 
@@ -41,6 +42,13 @@ type PageProps = {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ q?: string; stage?: string }>;
 };
+
+function asPersonalizationTier(
+  value: string | null | undefined,
+): "BEST" | "COMPANY" | "THIN" | null {
+  if (value === "BEST" || value === "COMPANY" || value === "THIN") return value;
+  return null;
+}
 
 function Meta({ label, value }: { label: string; value: string | null }) {
   return (
@@ -133,6 +141,10 @@ export default async function CampaignDetailPage({
       campaignContactId: entry.id,
       contactId: entry.contact.id,
       companyId: entry.contact.companyId,
+      storedPersonaId:
+        [...entry.emailDrafts]
+          .reverse()
+          .find((draft) => draft.personaId)?.personaId ?? null,
     })),
   });
 
@@ -229,22 +241,12 @@ export default async function CampaignDetailPage({
     sentEmailCount,
   });
   const currentStage = resolveCampaignStage(query.stage, stages);
-  const qualifiedIds =
-    survivingContactRows.length > 0
-      ? new Set(
-          survivingContactRows
-            .filter((row) => row.bucket === "GOOD")
-            .map((row) => row.id),
-        )
-      : null;
-  const qualifiedCampaignContacts = campaign.contacts.filter((entry) =>
-    qualifiedIds
-      ? qualifiedIds.has(entry.contact.id)
-      : entry.status !== "EXCLUDED",
+  const bucketByContactId = new Map(
+    campaignContactRows.map((row) => [row.id, row.bucket]),
   );
   const stageContacts =
     currentStage === "emails"
-      ? qualifiedCampaignContacts
+      ? campaign.contacts
       : campaign.contacts.filter((entry) => entry.emailDrafts.length > 0);
   const companyCount = new Set(
     campaign.contacts
@@ -367,7 +369,7 @@ export default async function CampaignDetailPage({
 
           <Panel
             title="Email settings"
-            description="Control the length and campaign-specific guidance used for generated drafts."
+            description="Default length and campaign-specific guidance. Length can be overridden on each draft."
           >
             <CampaignEmailSettingsForm
               campaignId={campaign.id}
@@ -387,7 +389,7 @@ export default async function CampaignDetailPage({
           }
           description={
             currentStage === "emails"
-              ? "Generate and edit drafts for qualified contacts."
+              ? "Generate and edit drafts for every contact in this campaign."
               : "Send from your mailbox, mark external sends, and draft replies."
           }
         >
@@ -409,102 +411,103 @@ export default async function CampaignDetailPage({
             </div>
           ) : null}
           {stageContacts.length > 0 ? (
-            <div className="space-y-4">
-              {stageContacts.map((campaignContact) => {
+            <EmailDraftsStage
+              campaignEmailLength={campaign.emailLength}
+              offerWarnings={offerConflictsAcknowledged ? [] : offerConflicts}
+              emailDeeplinkMaxUrlLength={
+                usagePolicy.emailDeeplinkMaxUrlLength
+              }
+              mailboxConnection={
+                mailboxConnection
+                  ? {
+                      status: mailboxConnection.status,
+                      mailboxAddress: mailboxConnection.mailboxAddress,
+                    }
+                  : null
+              }
+              dailySendUsage={{
+                used: dailySendUsage.used,
+                warningLimit: dailySendUsage.warningLimit,
+                limit: dailySendUsage.limit,
+              }}
+              mode={currentStage === "emails" ? "EMAILS" : "SEND"}
+              contacts={stageContacts.map((campaignContact) => {
                 const contact = campaignContact.contact;
                 const draftScreen = draftScreens[campaignContact.id];
-
-                return (
-                  <section
-                    key={campaignContact.id}
-                    className="grid gap-4 rounded-md border border-slate-200 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"
-                  >
-                    <EmailSequenceWorkspace
-                      campaignContactId={campaignContact.id}
-                      contactName={contactDisplayName(
-                        contact.firstName,
-                        contact.lastName,
-                      )}
-                      contactDetails={
-                        [contact.title, contact.company]
-                          .filter(Boolean)
-                          .join(" · ") || "No role details"
-                      }
-                      contactEmail={contact.email}
-                      contactStatus={campaignContact.status}
-                      emailDeeplinkMaxUrlLength={
-                        usagePolicy.emailDeeplinkMaxUrlLength
-                      }
-                      mailboxConnection={
-                        mailboxConnection
-                          ? {
-                              status: mailboxConnection.status,
-                              mailboxAddress: mailboxConnection.mailboxAddress,
-                            }
-                          : null
-                      }
-                      dailySendUsage={{
-                        used: dailySendUsage.used,
-                        warningLimit: dailySendUsage.warningLimit,
-                        limit: dailySendUsage.limit,
-                      }}
-                      mode={currentStage === "emails" ? "EMAILS" : "SEND"}
-                      personaOptions={draftScreen?.personaOptions ?? []}
-                      resolvedPersonaId={draftScreen?.resolvedPersonaId ?? null}
-                      resolvedPersonaName={
-                        draftScreen?.resolvedPersonaName ?? null
-                      }
-                      usedCampaignFallback={
-                        draftScreen?.usedCampaignFallback ?? false
-                      }
-                      personalizationTier={
-                        draftScreen?.personalizationTier ?? "THIN"
-                      }
-                      personalizationLabel={
-                        draftScreen?.personalizationLabel ??
-                        "Persona and product only"
-                      }
-                      personalizationDetail={
-                        draftScreen?.personalizationDetail ??
-                        "No usable company or contact research."
-                      }
-                      initialDrafts={campaignContact.emailDrafts
-                        .filter(
-                          (draft) =>
-                            Boolean(draft.subject) && Boolean(draft.body),
-                        )
-                        .map((draft) => ({
-                          id: draft.id,
-                          sequenceNumber: draft.sequenceNumber,
-                          subject: draft.subject ?? "",
-                          body: draft.body ?? "",
-                          status: draft.status,
-                          kind: draft.kind,
-                          sentAt: draft.sentAt?.toISOString() ?? null,
-                          handoffAt:
-                            draft.sendRecords[0]?.occurredAt.toISOString() ??
-                            null,
-                          replyClassification: draft.replyClassification,
-                          referralSuggested: draft.referralSuggested,
-                        }))}
-                      offerWarnings={
-                        offerConflictsAcknowledged ? [] : offerConflicts
-                      }
-                    />
-                  </section>
-                );
+                return {
+                  campaignContactId: campaignContact.id,
+                  contactName: contactDisplayName(
+                    contact.firstName,
+                    contact.lastName,
+                  ),
+                  contactDetails:
+                    [contact.title, contact.company]
+                      .filter(Boolean)
+                      .join(" · ") || "No role details",
+                  contactEmail: contact.email,
+                  contactStatus: campaignContact.status,
+                  qualificationBucket:
+                    bucketByContactId.get(contact.id) ?? null,
+                  personaOptions: draftScreen?.personaOptions ?? [],
+                  resolvedPersonaId: draftScreen?.resolvedPersonaId ?? null,
+                  resolvedPersonaName:
+                    draftScreen?.resolvedPersonaName ?? null,
+                  usedCampaignFallback:
+                    draftScreen?.usedCampaignFallback ?? false,
+                  personalizationTier:
+                    draftScreen?.personalizationTier ?? "THIN",
+                  personalizationLabel:
+                    draftScreen?.personalizationLabel ??
+                    "Persona and product only",
+                  personalizationDetail:
+                    draftScreen?.personalizationDetail ??
+                    "No usable company or contact research.",
+                  personalizationSources:
+                    draftScreen?.personalizationSources ??
+                    "No company research available. No contact research available.",
+                  drafts: campaignContact.emailDrafts
+                    .filter(
+                      (draft) =>
+                        Boolean(draft.subject) && Boolean(draft.body),
+                    )
+                    .map((draft) => ({
+                      id: draft.id,
+                      sequenceNumber: draft.sequenceNumber,
+                      subject: draft.subject ?? "",
+                      body: draft.body ?? "",
+                      status: draft.status,
+                      kind: draft.kind,
+                      sentAt: draft.sentAt?.toISOString() ?? null,
+                      handoffAt:
+                        draft.sendRecords[0]?.occurredAt.toISOString() ??
+                        null,
+                      replyClassification: draft.replyClassification,
+                      referralSuggested: draft.referralSuggested,
+                      emailLength: parseEmailLength(draft.emailLength),
+                      personaId: draft.personaId,
+                      personalizationTier: asPersonalizationTier(
+                        draft.personalizationTier,
+                      ),
+                      personalizationSources:
+                        draft.personalizationSources,
+                    })),
+                };
               })}
-            </div>
+            />
           ) : (
             <div className="rounded-md border border-dashed border-slate-300 p-6 text-center">
               <p className="text-sm text-slate-600">
-                No qualified contacts are ready for this stage.
+                {currentStage === "emails"
+                  ? "No contacts are attached to this campaign yet."
+                  : "No drafts are ready to send."}
               </p>
               <Link
-                href={`/campaigns/${campaign.id}?stage=contacts`}
+                href={`/campaigns/${campaign.id}?stage=${currentStage === "emails" ? "list" : "emails"}`}
                 className="mt-3 inline-flex text-sm font-medium text-slate-900 underline"
               >
-                Review contact qualification
+                {currentStage === "emails"
+                  ? "Add contacts"
+                  : "Open email drafts"}
               </Link>
             </div>
           )}

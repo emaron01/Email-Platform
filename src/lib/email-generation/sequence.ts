@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { EmailLength } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveActiveOrganization } from "@/lib/auth/session";
 import { TenantError } from "@/lib/tenant/errors";
@@ -143,12 +144,14 @@ export async function updateEmailDraftContent(input: {
   userId: string;
   subject: string;
   body: string;
+  emailLength?: EmailLength | null;
 }): Promise<{
   campaignId: string;
   campaignContactId: string;
   sequenceNumber: number;
   subject: string;
   body: string;
+  emailLength: EmailLength | null;
 }> {
   const subject = input.subject.trim();
   const body = normalizeEmailBody(input.body).trim();
@@ -200,7 +203,12 @@ export async function updateEmailDraftContent(input: {
   }
   await prisma.emailDraft.update({
     where: { id: draft.id },
-    data: { subject, body, status: "DRAFT" },
+    data: {
+      subject,
+      body,
+      status: "DRAFT",
+      ...(input.emailLength ? { emailLength: input.emailLength } : {}),
+    },
   });
   return {
     campaignId: draft.campaignContact.campaignId,
@@ -208,6 +216,7 @@ export async function updateEmailDraftContent(input: {
     sequenceNumber: draft.sequenceNumber,
     subject,
     body,
+    emailLength: input.emailLength ?? null,
   };
 }
 

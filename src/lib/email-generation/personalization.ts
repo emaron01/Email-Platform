@@ -24,6 +24,7 @@ export type PersonalizationDecision = {
   contactResearch: ContactResearchSlice;
   label: string;
   detail: string;
+  sources: string;
 };
 
 export function hasSellingMotionSignals(
@@ -58,6 +59,46 @@ export function isUsableContactResearch(
   );
 }
 
+export function personalizationSourceSummary(input: {
+  companyResearch: EmailCompanyResearch | null;
+  contactResearch: ContactResearchSlice;
+  companyResearchUsable: boolean;
+  contactResearchUsable: boolean;
+}): string {
+  const companyParts: string[] = [];
+  if (input.companyResearchUsable && input.companyResearch) {
+    const research = input.companyResearch;
+    if (research.businessModel?.trim()) companyParts.push("business model");
+    if (research.customerTypes.some((value) => value.trim())) {
+      companyParts.push("customer types");
+    }
+    if (research.whatTheySell?.trim()) companyParts.push("what they sell");
+    if (research.primaryMarkets.some((value) => value.trim())) {
+      companyParts.push("primary markets");
+    }
+    if (research.companySummary?.trim()) companyParts.push("company summary");
+    if (research.companySizeContext?.trim()) companyParts.push("company size");
+  }
+  const contactParts: string[] = [];
+  if (input.contactResearchUsable && input.contactResearch) {
+    const research = input.contactResearch;
+    if (research.roleSummary?.trim()) contactParts.push("role summary");
+    if (research.responsibilities.some((value) => value.trim())) {
+      contactParts.push("responsibilities");
+    }
+    if (research.ownershipAreas.some((value) => value.trim())) {
+      contactParts.push("ownership areas");
+    }
+  }
+  const companyLine = companyParts.length
+    ? `Company research used: ${companyParts.join(", ")}.`
+    : "No company research available.";
+  const contactLine = contactParts.length
+    ? `Contact research used: ${contactParts.join(", ")}.`
+    : "No contact research available.";
+  return `${companyLine} ${contactLine}`;
+}
+
 export function resolvePersonalization(input: {
   companyResearch: EmailCompanyResearch | null;
   contactResearch: ContactResearchSlice;
@@ -66,6 +107,12 @@ export function resolvePersonalization(input: {
   const contactResearchUsable = isUsableContactResearch(input.contactResearch);
   const companyResearch = companyResearchUsable ? input.companyResearch : null;
   const contactResearch = contactResearchUsable ? input.contactResearch : null;
+  const sources = personalizationSourceSummary({
+    companyResearch,
+    contactResearch,
+    companyResearchUsable,
+    contactResearchUsable,
+  });
 
   if (companyResearchUsable && contactResearchUsable) {
     return {
@@ -77,6 +124,7 @@ export function resolvePersonalization(input: {
       label: "This person's role and their company",
       detail:
         "References this person's role and the company's selling motion. Review before sending.",
+      sources,
     };
   }
   if (companyResearchUsable) {
@@ -89,6 +137,7 @@ export function resolvePersonalization(input: {
       label: "Company selling motion",
       detail:
         "Infers selling motion from company research. No usable contact research — add a personal touch if you know this person. Do not invent one.",
+      sources,
     };
   }
   return {
@@ -101,6 +150,7 @@ export function resolvePersonalization(input: {
     detail: contactResearchUsable
       ? "No usable company research. Role notes are included where they exist. Do not invent a company situation."
       : "No usable company or contact research. A clean, honestly generic email is the right outcome — add your own specifics before sending, and do not invent them.",
+    sources,
   };
 }
 
@@ -165,17 +215,26 @@ export function tokenJaccard(a: Set<string>, b: Set<string>): number {
 
 export function resolveEmailGenerationPersona(input: {
   overridePersonaId?: string | null;
+  storedPersonaId?: string | null;
   matchedPersonaId: string | null;
   campaignFallbackPersonaId: string | null;
+  inPlayPersonaIds?: string[] | null;
 }): {
   personaId: string | null;
-  source: "override" | "matched" | "campaign_fallback";
+  source: "override" | "stored" | "matched" | "campaign_fallback" | "in_play";
   usedCampaignFallback: boolean;
 } {
   if (input.overridePersonaId) {
     return {
       personaId: input.overridePersonaId,
       source: "override",
+      usedCampaignFallback: false,
+    };
+  }
+  if (input.storedPersonaId) {
+    return {
+      personaId: input.storedPersonaId,
+      source: "stored",
       usedCampaignFallback: false,
     };
   }
@@ -190,6 +249,14 @@ export function resolveEmailGenerationPersona(input: {
     return {
       personaId: input.campaignFallbackPersonaId,
       source: "campaign_fallback",
+      usedCampaignFallback: true,
+    };
+  }
+  const inPlay = (input.inPlayPersonaIds ?? []).filter((id) => id.trim());
+  if (inPlay.length === 1 && inPlay[0]) {
+    return {
+      personaId: inPlay[0],
+      source: "in_play",
       usedCampaignFallback: true,
     };
   }

@@ -18,6 +18,21 @@ export type CampaignEmailLength = (typeof EMAIL_LENGTH_OPTIONS)[number];
 export const DEFAULT_EMAIL_LENGTH: CampaignEmailLength = "MEDIUM";
 export const EMAIL_GUIDANCE_MAX_CHARS = 500;
 
+export function parseEmailLength(
+  value: unknown,
+): CampaignEmailLength | null {
+  if (typeof value !== "string") return null;
+  return EMAIL_LENGTH_OPTIONS.includes(value as CampaignEmailLength)
+    ? (value as CampaignEmailLength)
+    : null;
+}
+
+export function emailLengthLabel(value: CampaignEmailLength): string {
+  if (value === "SHORT") return "Short";
+  if (value === "MEDIUM") return "Medium";
+  return "Long";
+}
+
 export type CampaignActionResult = {
   ok: boolean;
   message: string;

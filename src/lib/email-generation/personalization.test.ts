@@ -5,6 +5,7 @@ import { buildEmailPrompt } from "@/lib/email-generation/prompt";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import {
   distinctiveContentTokens,
+  personalizationSourceSummary,
   resolveEmailGenerationPersona,
   resolvePersonalization,
   tokenJaccard,
@@ -70,6 +71,7 @@ function contextFixture(
       emailLength: "MEDIUM",
       emailGuidance: null,
     },
+    emailLength: "MEDIUM",
     contact: {
       id: "contact_1",
       firstName: "Alex",
@@ -305,6 +307,84 @@ describe("persona resolution for generation", () => {
       usedCampaignFallback: true,
     });
   });
+
+  it("uses the persona stored on the draft when match and campaign fallback are absent", () => {
+    expect(
+      resolveEmailGenerationPersona({
+        storedPersonaId: "persona_stored",
+        matchedPersonaId: null,
+        campaignFallbackPersonaId: null,
+        inPlayPersonaIds: ["persona_a", "persona_b"],
+      }),
+    ).toEqual({
+      personaId: "persona_stored",
+      source: "stored",
+      usedCampaignFallback: false,
+    });
+  });
+
+  it("uses the sole persona in play when campaign.personaId is null", () => {
+    expect(
+      resolveEmailGenerationPersona({
+        matchedPersonaId: null,
+        campaignFallbackPersonaId: null,
+        inPlayPersonaIds: ["persona_only"],
+      }),
+    ).toEqual({
+      personaId: "persona_only",
+      source: "in_play",
+      usedCampaignFallback: true,
+    });
+  });
+
+  it("does not pick among multiple personas in play", () => {
+    expect(
+      resolveEmailGenerationPersona({
+        matchedPersonaId: null,
+        campaignFallbackPersonaId: null,
+        inPlayPersonaIds: ["persona_a", "persona_b"],
+      }),
+    ).toEqual({
+      personaId: null,
+      source: "campaign_fallback",
+      usedCampaignFallback: true,
+    });
+  });
+
+  it("prefers the stored draft persona over a later matched persona", () => {
+    expect(
+      resolveEmailGenerationPersona({
+        storedPersonaId: "persona_used_on_draft",
+        matchedPersonaId: "persona_matched",
+        campaignFallbackPersonaId: "persona_campaign",
+      }),
+    ).toEqual({
+      personaId: "persona_used_on_draft",
+      source: "stored",
+      usedCampaignFallback: false,
+    });
+  });
+});
+
+describe("personalization source summary", () => {
+  it("lists company research fields that were used and states when contact research is absent", () => {
+    const decision = resolvePersonalization({
+      companyResearch: stoneEagleResearch,
+      contactResearch: null,
+    });
+    expect(decision.tier).toBe("COMPANY");
+    expect(decision.sources).toMatch(/Company research used: .*business model/i);
+    expect(decision.sources).toMatch(/customer types/i);
+    expect(decision.sources).toMatch(/No contact research available/i);
+    expect(
+      personalizationSourceSummary({
+        companyResearch: stoneEagleResearch,
+        contactResearch: null,
+        companyResearchUsable: true,
+        contactResearchUsable: false,
+      }),
+    ).toBe(decision.sources);
+  });
 });
 
 describe("materially different emails from company research", () => {
@@ -459,5 +539,21 @@ describe("generation constraints", () => {
     expect(workspace).toContain("Using campaign persona");
     expect(workspace).toContain("data-testid=\"personalization-tier\"");
     expect(workspace).toContain("data-testid=\"resolved-persona\"");
+    expect(workspace).toContain("data-testid=\"email-length\"");
+    expect(workspace).toContain("Length for this email");
+    expect(workspace).toContain("personalizationSources");
+    expect(workspace).toContain("regenerateEmailDraftAction");
+    expect(workspace).toContain("selectedLength");
+    const stage = readFileSync("src/components/EmailDraftsStage.tsx", "utf8");
+    expect(stage).toContain("Compare drafts");
+    expect(stage).toContain("data-testid=\"campaign-draft-compare\"");
+    expect(stage).toContain("Campaign contacts");
+    const page = readFileSync("src/app/(app)/campaigns/[id]/page.tsx", "utf8");
+    expect(page).toContain("campaign.contacts");
+    expect(page).not.toContain("qualifiedCampaignContacts");
+    expect(page).toContain("Generate and edit drafts for every contact");
+    const context = readFileSync("src/lib/email-generation/context.ts", "utf8");
+    expect(context).toContain("storedPersonaId: row.personaId");
+    expect(context).toContain("inPlayPersonaIds");
   });
 });

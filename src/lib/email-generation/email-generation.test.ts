@@ -38,6 +38,7 @@ function contextFixture(
       emailLength: "MEDIUM",
       emailGuidance: "Emphasize the free trial",
     },
+    emailLength: "MEDIUM",
     contact: {
       id: "contact_1",
       firstName: "Alex",
@@ -222,6 +223,7 @@ describe("buildEmailPrompt", () => {
           ...base.campaign,
           emailLength,
         },
+        emailLength,
       }),
     );
 
@@ -234,6 +236,17 @@ describe("buildEmailPrompt", () => {
     expect(messages[0].content).toMatch(
       /greeting on its own line, followed by exactly one blank line/i,
     );
+  });
+
+  it("uses a per-draft length override instead of the campaign default", () => {
+    const base = contextFixture();
+    const messages = buildEmailPrompt({
+      ...base,
+      campaign: { ...base.campaign, emailLength: "MEDIUM" },
+      emailLength: "SHORT",
+    });
+    expect(messages[1].content).toContain('"emailLength": "SHORT"');
+    expect(messages[1].content).toContain("exactly 1 content paragraph");
   });
 
   it("places prefixed campaign guidance immediately after the offer", () => {
@@ -819,7 +832,10 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("Sent");
     expect(campaignDetailPage).toContain("handoffAt");
     expect(action).toContain("saveEmailDraftAction");
-    expect(campaignDetailPage).toContain("EmailSequenceWorkspace");
+    expect(campaignDetailPage).toContain("EmailDraftsStage");
+    expect(action).toContain("parseEmailLength");
+    expect(form).toContain("selectedLength");
+    expect(form).toContain("regenerateEmailDraftAction");
   });
 });
 

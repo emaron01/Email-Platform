@@ -14,6 +14,11 @@ import type { AiMessage } from "@/lib/ai/types";
 import { validateGeneratedEmailClaims } from "@/lib/email-generation/claim-validation";
 import { normalizeEmailBody } from "@/lib/email-generation/email-body";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
+import {
+  contactResearchForPrompt,
+  personalizationSourceSummary,
+  resolvePersonalization,
+} from "@/lib/email-generation/personalization";
 import { EMAIL_GENERATION_PROMPT_VERSION } from "@/lib/email-generation/prompt";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
@@ -188,6 +193,10 @@ export async function generateEmailDraft(
   kind: EmailDraftKind;
   replyClassification: ReplyClassification | null;
   referralSuggested: boolean;
+  emailLength: EmailGenerationContext["emailLength"];
+  personaId: string;
+  personalizationTier: string;
+  personalizationSources: string;
 }> {
   const sequenceNumber = options.sequenceNumber ?? 1;
   const kind = options.kind ?? (sequenceNumber === 1 ? "INITIAL" : "FOLLOW_UP");
@@ -294,6 +303,13 @@ export async function generateEmailDraft(
       );
     }
 
+    const personalization = resolvePersonalization({
+      companyResearch: context.companyResearch,
+      contactResearch: contactResearchForPrompt(context.contactResearch),
+    });
+    const emailLength = context.emailLength ?? context.campaign.emailLength;
+    const personalizationSources = personalizationSourceSummary(personalization);
+
     const draft = await prisma.emailDraft.upsert({
       where: {
         organizationId_campaignContactId_sequenceNumber: {
@@ -316,6 +332,10 @@ export async function generateEmailDraft(
         prospectReplyText: options.prospectReplyText?.trim() || null,
         referralSuggested: options.referralSuggested ?? false,
         inReplyToDraftId: options.inReplyToDraftId ?? null,
+        emailLength,
+        personaId: context.persona.id,
+        personalizationTier: personalization.tier,
+        personalizationSources,
       },
       update: {
         subject,
@@ -328,6 +348,10 @@ export async function generateEmailDraft(
         prospectReplyText: options.prospectReplyText?.trim() || null,
         referralSuggested: options.referralSuggested ?? false,
         inReplyToDraftId: options.inReplyToDraftId ?? null,
+        emailLength,
+        personaId: context.persona.id,
+        personalizationTier: personalization.tier,
+        personalizationSources,
       },
     });
 
@@ -372,6 +396,11 @@ export async function generateEmailDraft(
       kind: draft.kind,
       replyClassification: draft.replyClassification,
       referralSuggested: draft.referralSuggested,
+      emailLength: draft.emailLength ?? emailLength,
+      personaId: draft.personaId ?? context.persona.id,
+      personalizationTier: draft.personalizationTier ?? personalization.tier,
+      personalizationSources:
+        draft.personalizationSources ?? personalizationSources,
     };
   } catch (error) {
     await recordUsageEvent({

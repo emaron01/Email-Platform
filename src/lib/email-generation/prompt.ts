@@ -58,20 +58,20 @@ export function buildEmailPrompt(
   const firstVoiceSample = context.voiceSamples[0] ?? null;
   const regenerationGuidance = additionalGuidance?.trim() || null;
   const emailStructure =
-    context.campaign.emailLength === "SHORT"
+    (context.emailLength ?? context.campaign.emailLength) === "SHORT"
       ? {
-          emailLength: "SHORT",
+          emailLength: "SHORT" as const,
           instruction:
             "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. One hook, one soft close question. Target 40-60 words excluding the greeting.",
         }
-      : context.campaign.emailLength === "LONG"
+      : (context.emailLength ?? context.campaign.emailLength) === "LONG"
         ? {
-            emailLength: "LONG",
+            emailLength: "LONG" as const,
             instruction:
               "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: problem, 2 sentences max. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and close question, 2 sentences max. Target 120-150 words excluding the greeting.",
           }
         : {
-            emailLength: "MEDIUM",
+            emailLength: "MEDIUM" as const,
             instruction:
               "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: problem or context, 2 sentences max. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
           };

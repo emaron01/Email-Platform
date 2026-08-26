@@ -40,6 +40,8 @@ import {
 } from "@/lib/email-generation/email-body";
 import { sendEmailDraftWithConnectedMailbox } from "@/lib/mailbox/send";
 import { MailboxConnectionError } from "@/lib/mailbox/microsoft-oauth";
+import { parseEmailLength } from "@/lib/campaign/save";
+import type { EmailLength } from "@prisma/client";
 
 export type GenerateEmailDraftActionResult = {
   ok: boolean;
@@ -62,6 +64,10 @@ export type GenerateEmailDraftActionResult = {
     limit: number;
     warning: boolean;
   };
+  emailLength?: EmailLength;
+  personaId?: string;
+  personalizationTier?: string;
+  personalizationSources?: string;
   recoveryAction?:
     | "RECONNECT"
     | "ASK_ADMIN"
@@ -80,6 +86,7 @@ export async function generateEmailDraftAction(
   campaignContactId: string,
   additionalGuidance?: string,
   personaId?: string | null,
+  emailLength?: string | null,
 ): Promise<GenerateEmailDraftActionResult> {
   const normalizedGuidance = additionalGuidance?.trim() || null;
   if (
@@ -97,7 +104,7 @@ export async function generateEmailDraftAction(
     const context = await loadEmailGenerationContext(
       campaignContactId,
       user.id,
-      { personaId },
+      { personaId, emailLength: parseEmailLength(emailLength) },
     );
     const messages = buildEmailPrompt(context, normalizedGuidance);
     const draft = await generateEmailDraft(context, messages);
@@ -115,6 +122,10 @@ export async function generateEmailDraftAction(
       kind: draft.kind,
       status: "DRAFT",
       offerWarnings: unacknowledgedOfferWarnings(context),
+      emailLength: draft.emailLength,
+      personaId: draft.personaId,
+      personalizationTier: draft.personalizationTier,
+      personalizationSources: draft.personalizationSources,
     };
   } catch (error) {
     console.error("Email draft generation failed.", error);
@@ -129,6 +140,7 @@ export async function regenerateEmailDraftAction(
   emailDraftId: string,
   additionalGuidance?: string,
   personaId?: string | null,
+  emailLength?: string | null,
 ): Promise<GenerateEmailDraftActionResult> {
   const normalizedGuidance = additionalGuidance?.trim() || null;
   if (
@@ -146,7 +158,7 @@ export async function regenerateEmailDraftAction(
     const { context, draft: existing } = await loadExistingEmailDraftContext(
       emailDraftId,
       user.id,
-      { personaId },
+      { personaId, emailLength: parseEmailLength(emailLength) },
     );
     let messages: AiMessage[];
     if (existing.kind === "INITIAL") {
@@ -205,6 +217,10 @@ export async function regenerateEmailDraftAction(
       replyClassification: regenerated.replyClassification ?? undefined,
       referralSuggested: regenerated.referralSuggested,
       offerWarnings: unacknowledgedOfferWarnings(context),
+      emailLength: regenerated.emailLength,
+      personaId: regenerated.personaId,
+      personalizationTier: regenerated.personalizationTier,
+      personalizationSources: regenerated.personalizationSources,
     };
   } catch (error) {
     console.error("Email draft regeneration failed.", error);
@@ -214,12 +230,15 @@ export async function regenerateEmailDraftAction(
 
 export async function addFollowUpEmailAction(
   campaignContactId: string,
+  personaId?: string | null,
+  emailLength?: string | null,
 ): Promise<GenerateEmailDraftActionResult> {
   try {
     const user = await requireVerifiedForAiSpend();
     const context = await loadEmailGenerationContext(
       campaignContactId,
       user.id,
+      { personaId, emailLength: parseEmailLength(emailLength) },
     );
     const sequenceNumber = nextSequencePosition(context);
     const draft = await generateEmailDraft(
@@ -238,6 +257,10 @@ export async function addFollowUpEmailAction(
       kind: "FOLLOW_UP",
       status: "DRAFT",
       offerWarnings: unacknowledgedOfferWarnings(context),
+      emailLength: draft.emailLength,
+      personaId: draft.personaId,
+      personalizationTier: draft.personalizationTier,
+      personalizationSources: draft.personalizationSources,
     };
   } catch (error) {
     console.error("Follow-up email generation failed.", error);
@@ -275,6 +298,7 @@ export async function saveEmailDraftAction(input: {
   emailDraftId: string;
   subject: string;
   body: string;
+  emailLength?: string | null;
 }): Promise<GenerateEmailDraftActionResult> {
   try {
     const user = await requireCurrentUser();
@@ -283,6 +307,7 @@ export async function saveEmailDraftAction(input: {
       userId: user.id,
       subject: input.subject,
       body: input.body,
+      emailLength: parseEmailLength(input.emailLength),
     });
     revalidateCampaign(saved.campaignId);
     return {
@@ -293,6 +318,7 @@ export async function saveEmailDraftAction(input: {
       body: saved.body,
       sequenceNumber: saved.sequenceNumber,
       status: "DRAFT",
+      emailLength: saved.emailLength ?? undefined,
     };
   } catch (error) {
     console.error("Failed to save email draft.", error);

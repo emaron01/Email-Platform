@@ -1631,6 +1631,10 @@ model EmailDraft {
   prospectReplyText    String?
   referralSuggested    Boolean              @default(false)
   inReplyToDraftId     String?
+  emailLength          EmailLength?
+  personaId            String?
+  personalizationTier  String?
+  personalizationSources String?
   approvedAt           DateTime?
   sentAt               DateTime?
   sentMethod           EmailSentMethod?

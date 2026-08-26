@@ -17,6 +17,11 @@ import { ADDITIONAL_GUIDANCE_MAX_CHARS } from "@/lib/email-generation/prompt";
 import { PROSPECT_REPLY_MAX_CHARS } from "@/lib/email-generation/reply-contract";
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
 import {
+  EMAIL_LENGTH_OPTIONS,
+  emailLengthLabel,
+  type CampaignEmailLength,
+} from "@/lib/campaign/save";
+import {
   buildEmailClientLaunch,
   EMAIL_BODY_MAX_CHARS,
   EMAIL_SUBJECT_MAX_CHARS,
@@ -40,6 +45,10 @@ type SequenceDraft = {
     | "NOT_INTERESTED"
     | null;
   referralSuggested: boolean;
+  emailLength: CampaignEmailLength | null;
+  personaId: string | null;
+  personalizationTier: "BEST" | "COMPANY" | "THIN" | null;
+  personalizationSources: string | null;
 };
 
 const EMAIL_CLIENT_OPTIONS: Array<{
@@ -85,6 +94,8 @@ export function EmailSequenceWorkspace({
   personalizationTier = "THIN",
   personalizationLabel = "Persona and product only",
   personalizationDetail = "No usable company or contact research.",
+  personalizationSources = "No company research available. No contact research available.",
+  campaignEmailLength = "MEDIUM",
 }: {
   campaignContactId: string;
   contactName: string;
@@ -111,6 +122,8 @@ export function EmailSequenceWorkspace({
   personalizationTier?: "BEST" | "COMPANY" | "THIN";
   personalizationLabel?: string;
   personalizationDetail?: string;
+  personalizationSources?: string;
+  campaignEmailLength?: CampaignEmailLength;
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState(initialDrafts);
@@ -125,11 +138,14 @@ export function EmailSequenceWorkspace({
   const [showReplyBox, setShowReplyBox] = useState(false);
   const [pending, startTransition] = useTransition();
   const [selectedPersonaId, setSelectedPersonaId] = useState(
-    resolvedPersonaId ?? "",
+    resolvedPersonaId ?? personaOptions[0]?.id ?? "",
   );
   const latest = drafts.at(-1) ?? null;
   const selected =
     drafts.find((draft) => draft.id === selectedId) ?? latest ?? null;
+  const [selectedLength, setSelectedLength] = useState<CampaignEmailLength>(
+    selected?.emailLength ?? campaignEmailLength,
+  );
   const canAdd = Boolean(latest?.status === "SENT" && latest.sentAt);
   const addDisabledReason = latest
     ? `Email ${latest.sequenceNumber} must be marked as sent first.`
@@ -162,7 +178,17 @@ export function EmailSequenceWorkspace({
       handoffAt: null,
       replyClassification: next.replyClassification ?? null,
       referralSuggested: next.referralSuggested ?? false,
+      emailLength: next.emailLength ?? selectedLength,
+      personaId: next.personaId ?? (selectedPersonaId || null),
+      personalizationTier:
+        next.personalizationTier === "BEST" ||
+        next.personalizationTier === "COMPANY" ||
+        next.personalizationTier === "THIN"
+          ? next.personalizationTier
+          : null,
+      personalizationSources: next.personalizationSources ?? null,
     };
+    if (next.emailLength) setSelectedLength(next.emailLength);
     setDrafts((current) => {
       const exists = current.some((draft) => draft.id === nextDraft.id);
       return exists
@@ -200,6 +226,7 @@ export function EmailSequenceWorkspace({
       emailDraftId: draft.id,
       subject: draft.subject,
       body: draft.body,
+      emailLength: selectedLength,
     });
     setResult(saved);
     if (saved.ok && saved.subject && saved.body) {
@@ -361,6 +388,7 @@ export function EmailSequenceWorkspace({
                     setSelectedId(draft.id);
                     setShowReplyBox(false);
                     setResult(null);
+                    if (draft.emailLength) setSelectedLength(draft.emailLength);
                   }}
                   className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-xs ${
                     isSelected
@@ -401,7 +429,13 @@ export function EmailSequenceWorkspace({
               disabled={!canAdd || pending}
               title={canAdd ? "Generate the next email." : addDisabledReason}
               onClick={() =>
-                run(() => addFollowUpEmailAction(campaignContactId))
+                run(() =>
+                  addFollowUpEmailAction(
+                    campaignContactId,
+                    selectedPersonaId || null,
+                    selectedLength,
+                  ),
+                )
               }
               className="mt-3 text-sm font-medium text-slate-900 disabled:cursor-not-allowed disabled:text-slate-400"
             >
@@ -467,17 +501,45 @@ export function EmailSequenceWorkspace({
               Personalization
             </p>
             <p className="mt-1 text-sm font-medium text-slate-900">
-              {personalizationLabel}
+              {selected?.personalizationTier ?? personalizationTier}
               <span className="ml-2 font-normal text-slate-500">
-                ({personalizationTier === "BEST"
-                  ? "role and company"
-                  : personalizationTier === "COMPANY"
-                    ? "company motion"
-                    : "generic"})
+                ({personalizationLabel})
               </span>
             </p>
-            <p className="mt-1 text-xs text-slate-600">{personalizationDetail}</p>
+            <p className="mt-1 text-xs text-slate-700">
+              {selected?.personalizationSources ?? personalizationSources}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{personalizationDetail}</p>
           </div>
+          <fieldset data-testid="email-length">
+            <legend className="text-sm font-medium text-slate-700">
+              Length for this email
+            </legend>
+            <p className="mt-1 text-xs text-slate-500">
+              Campaign default is {emailLengthLabel(campaignEmailLength)}.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              {EMAIL_LENGTH_OPTIONS.map((value) => (
+                <label
+                  key={value}
+                  className="flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                >
+                  <input
+                    type="radio"
+                    name={`emailLength-${campaignContactId}`}
+                    value={value}
+                    checked={selectedLength === value}
+                    disabled={pending || selected?.status === "SENT"}
+                    onChange={() => {
+                      setSelectedLength(value);
+                      updateSelectedDraft({ emailLength: value });
+                    }}
+                  />
+                  {emailLengthLabel(value)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <div data-testid="resolved-persona">
             <label className="block text-sm">
               <span className="font-medium text-slate-700">Persona for this email</span>
@@ -522,6 +584,7 @@ export function EmailSequenceWorkspace({
                   campaignContactId,
                   undefined,
                   selectedPersonaId || null,
+                  selectedLength,
                 ),
               )
             }
@@ -629,13 +692,14 @@ export function EmailSequenceWorkspace({
                   </button>
                   <button
                     type="button"
-                    disabled={pending}
+                    disabled={pending || !selectedPersonaId}
                     onClick={() =>
                       run(() =>
                         regenerateEmailDraftAction(
                           selected.id,
                           regenerationGuidance,
                           selectedPersonaId || null,
+                          selectedLength,
                         ),
                       )
                     }

@@ -36,6 +36,7 @@ function baseContext(
       emailLength: "MEDIUM",
       emailGuidance: null,
     },
+    emailLength: "MEDIUM",
     contact: {
       id: "contact_1",
       firstName: "Alex",
