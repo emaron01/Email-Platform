@@ -26,6 +26,20 @@ export type CollapseGroupPreview = {
   loserContactIds: string[];
   contactIds: string[];
   listIds: string[];
+  /** What apply would write for each loser (field decisions + loser snapshot). */
+  proposedMerges: Array<{
+    loserContactId: string;
+    loserSnapshot: {
+      id: string;
+      email: string | null;
+      firstName: string | null;
+      lastName: string | null;
+      title: string | null;
+      company: string | null;
+      companyId: string | null;
+    };
+    fieldMerges: CollapseFieldMerge[];
+  }>;
 };
 
 export type CollapsePreviewReport = {
@@ -61,6 +75,21 @@ export async function previewContactCollapse(
       email: true,
       normalizedEmail: true,
       createdAt: true,
+      firstName: true,
+      lastName: true,
+      title: true,
+      previousTitle: true,
+      titleChangedAt: true,
+      company: true,
+      companyWebsite: true,
+      industry: true,
+      employeeCount: true,
+      revenue: true,
+      location: true,
+      linkedinUrl: true,
+      phone: true,
+      companyId: true,
+      rawData: true,
       memberships: { select: { contactListId: true } },
     },
     orderBy: { createdAt: "asc" },
@@ -97,6 +126,41 @@ export async function previewContactCollapse(
         ),
       ),
     );
+    // Simulate sequential incoming-non-null merges for preview accuracy.
+    let rolling = { ...winner } as MergeContact;
+    const proposedMerges: CollapseGroupPreview["proposedMerges"] = [];
+    for (const loser of losers) {
+      const { data, merges } = mergeScalarFields(rolling, loser as MergeContact);
+      proposedMerges.push({
+        loserContactId: loser.id,
+        loserSnapshot: {
+          id: loser.id,
+          email: loser.email,
+          firstName: loser.firstName,
+          lastName: loser.lastName,
+          title: loser.title,
+          company: loser.company,
+          companyId: loser.companyId,
+        },
+        fieldMerges: merges,
+      });
+      rolling = {
+        ...rolling,
+        ...(data.title !== undefined ? { title: String(data.title) } : {}),
+        ...(data.previousTitle !== undefined
+          ? { previousTitle: String(data.previousTitle) }
+          : {}),
+        ...(data.firstName !== undefined
+          ? { firstName: data.firstName as string | null }
+          : {}),
+        ...(data.lastName !== undefined
+          ? { lastName: data.lastName as string | null }
+          : {}),
+        ...(data.company !== undefined
+          ? { company: data.company as string | null }
+          : {}),
+      };
+    }
     groups.push({
       organizationId,
       normalizedEmail,
@@ -104,6 +168,7 @@ export async function previewContactCollapse(
       loserContactIds: losers.map((row) => row.id),
       contactIds: rows.map((row) => row.id),
       listIds,
+      proposedMerges,
     });
   }
 
@@ -160,7 +225,16 @@ function mergeScalarFields(
     const intoWinner = winner[field];
     if (fromLoser == null || fromLoser === "") return;
     if (intoWinner != null && intoWinner !== "") {
-      if (options?.title && fromLoser !== intoWinner) {
+      if (options?.title) {
+        if (fromLoser === intoWinner) {
+          merges.push({
+            field: "title",
+            fromLoser,
+            intoWinner,
+            kept: "winner",
+          });
+          return;
+        }
         data.previousTitle = String(intoWinner);
         data.titleChangedAt = now;
         data.title = String(fromLoser);
@@ -176,14 +250,16 @@ function mergeScalarFields(
           intoWinner: winner.previousTitle,
           kept: "loser",
         });
-      } else {
-        merges.push({
-          field: String(field),
-          fromLoser,
-          intoWinner,
-          kept: "winner",
-        });
+        return;
       }
+      // Incoming (loser) non-null wins for every other scalar field.
+      (data as Record<string, unknown>)[field as string] = fromLoser;
+      merges.push({
+        field: String(field),
+        fromLoser,
+        intoWinner,
+        kept: "loser",
+      });
       return;
     }
     (data as Record<string, unknown>)[field as string] = fromLoser;
@@ -207,7 +283,7 @@ function mergeScalarFields(
   takeLoser("linkedinUrl");
   takeLoser("phone");
   takeLoser("rawData");
-  if (!winner.companyId && loser.companyId) {
+  if (loser.companyId && loser.companyId !== winner.companyId) {
     data.companyRecord = { connect: { id: loser.companyId } };
     merges.push({
       field: "companyId",
@@ -262,10 +338,73 @@ async function remapLoserToWinner(
       },
     });
     if (existing) {
-      await tx.emailDraft.updateMany({
+      // Move drafts one-by-one so (campaignContactId, sequenceNumber) stays unique.
+      const loserDrafts = await tx.emailDraft.findMany({
         where: { campaignContactId: cc.id },
-        data: { campaignContactId: existing.id },
       });
+      for (const draft of loserDrafts) {
+        const conflict = await tx.emailDraft.findFirst({
+          where: {
+            organizationId: draft.organizationId,
+            campaignContactId: existing.id,
+            sequenceNumber: draft.sequenceNumber,
+          },
+        });
+        if (!conflict) {
+          await tx.emailDraft.update({
+            where: { id: draft.id },
+            data: { campaignContactId: existing.id },
+          });
+          await tx.emailSendRecord.updateMany({
+            where: { emailDraftId: draft.id },
+            data: { campaignContactId: existing.id },
+          });
+          continue;
+        }
+        // Prefer keeping a SENT draft; otherwise keep the survivor's existing draft.
+        const preferLoserDraft =
+          draft.status === "SENT" && conflict.status !== "SENT";
+        const keep = preferLoserDraft ? draft : conflict;
+        const drop = preferLoserDraft ? conflict : draft;
+
+        if (preferLoserDraft) {
+          // Make room: move winner draft's replies/sends onto loser draft, then
+          // re-point loser draft at the surviving CampaignContact.
+          await tx.emailDraft.updateMany({
+            where: { inReplyToDraftId: drop.id },
+            data: { inReplyToDraftId: keep.id },
+          });
+          await tx.emailSendRecord.updateMany({
+            where: { emailDraftId: drop.id },
+            data: {
+              emailDraftId: keep.id,
+              campaignContactId: existing.id,
+            },
+          });
+          await tx.emailDraft.delete({ where: { id: drop.id } });
+          await tx.emailDraft.update({
+            where: { id: keep.id },
+            data: { campaignContactId: existing.id },
+          });
+          await tx.emailSendRecord.updateMany({
+            where: { emailDraftId: keep.id },
+            data: { campaignContactId: existing.id },
+          });
+        } else {
+          await tx.emailDraft.updateMany({
+            where: { inReplyToDraftId: drop.id },
+            data: { inReplyToDraftId: keep.id },
+          });
+          await tx.emailSendRecord.updateMany({
+            where: { emailDraftId: drop.id },
+            data: {
+              emailDraftId: keep.id,
+              campaignContactId: existing.id,
+            },
+          });
+          await tx.emailDraft.delete({ where: { id: drop.id } });
+        }
+      }
       await tx.emailSendRecord.updateMany({
         where: { campaignContactId: cc.id },
         data: { campaignContactId: existing.id },
