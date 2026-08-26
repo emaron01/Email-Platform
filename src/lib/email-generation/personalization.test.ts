@@ -124,6 +124,11 @@ function contextFixture(
     },
     contactResearch: null,
     companyResearch: null,
+    excludedCopySignals: {
+      riskSignals: [],
+      professionalSignals: [],
+      negativeRoleSignals: [],
+    },
     personaResolution: {
       source: "matched",
       usedCampaignFallback: false,
@@ -525,6 +530,23 @@ describe("generation constraints", () => {
     );
     expect(messages[1]!.content).not.toContain("riskSignals");
     expect(messages[1]!.content).toContain("auto dealer groups");
+  });
+
+  it("keeps excludedCopySignals out of the generation prompt", () => {
+    const messages = buildEmailPrompt(
+      contextFixture({
+        excludedCopySignals: {
+          riskSignals: ["secret churn marker"],
+          professionalSignals: ["secret hiring signal"],
+          negativeRoleSignals: ["secret role risk"],
+        },
+      }),
+    );
+    const user = messages[1]!.content;
+    expect(user).not.toContain("secret churn marker");
+    expect(user).not.toContain("secret hiring signal");
+    expect(user).not.toContain("secret role risk");
+    expect(user).not.toContain("excludedCopySignals");
   });
 
   it("draft screen surfaces fallback persona and personalization tier", () => {

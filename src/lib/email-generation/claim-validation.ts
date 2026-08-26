@@ -6,6 +6,7 @@ import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import {
   buildRepClaimSources,
   deterministicClaimViolations,
+  deterministicSignalLeakageViolations,
   keepModelOriginatedViolations,
   normalizedClaimText,
 } from "@/lib/email-generation/claim-origin";
@@ -111,12 +112,21 @@ export async function validateGeneratedEmailClaims(input: {
   const evidenceTexts = claimEvidenceTexts(input.context);
   const prospect = prospectResearchPayload(input.context);
 
-  const deterministic = deterministicClaimViolations({
-    body: input.body,
-    claimsNotToMake: input.context.product.messaging.claimsNotToMake,
-    terminologyToAvoid: input.context.product.messaging.terminologyToAvoid,
-    repSources,
-  });
+  const deterministic = [
+    ...deterministicClaimViolations({
+      body: input.body,
+      claimsNotToMake: input.context.product.messaging.claimsNotToMake,
+      terminologyToAvoid: input.context.product.messaging.terminologyToAvoid,
+      repSources,
+    }),
+    ...deterministicSignalLeakageViolations({
+      body: input.body,
+      riskSignals: input.context.excludedCopySignals.riskSignals,
+      professionalSignals: input.context.excludedCopySignals.professionalSignals,
+      negativeRoleSignals: input.context.excludedCopySignals.negativeRoleSignals,
+      repSources,
+    }),
+  ];
   const response = await input.ai.generateStructured({
     ...structuredOutputRequest("emailClaimValidation"),
     messages: [

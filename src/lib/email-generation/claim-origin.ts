@@ -87,6 +87,46 @@ export function computeRepEditDelta(
     .join("\n");
 }
 
+/**
+ * Deterministic leakage: excluded research signals appearing in copy.
+ * These fields are stripped from the generation prompt; any appearance is model leakage.
+ */
+export function deterministicSignalLeakageViolations(input: {
+  body: string;
+  riskSignals: string[];
+  professionalSignals: string[];
+  negativeRoleSignals: string[];
+  repSources: RepClaimSources;
+}): ClaimValidationViolation[] {
+  const bodyNormalized = normalizedClaimText(input.body);
+  const repNormalized = normalizedClaimText(combinedRepSourceText(input.repSources));
+  const violations: ClaimValidationViolation[] = [];
+
+  const check = (
+    signals: string[],
+    label: string,
+  ) => {
+    for (const signal of signals) {
+      const signalNormalized = normalizedClaimText(signal);
+      if (signalNormalized.length < 4) continue;
+      if (!bodyNormalized.includes(signalNormalized)) continue;
+      if (repNormalized.includes(signalNormalized)) continue;
+      violations.push({
+        type: "UNSUPPORTED_FACT",
+        description: `Generated copy leaks an excluded ${label}: ${signal}`,
+        matchedGuard: signal,
+        bodyExcerpt: signal,
+        origin: "MODEL_ORIGINATED",
+      });
+    }
+  };
+
+  check(input.riskSignals, "risk signal");
+  check(input.professionalSignals, "professional signal");
+  check(input.negativeRoleSignals, "negative role signal");
+  return violations;
+}
+
 export function buildRepClaimSources(input: {
   offer: {
     offerName?: string | null;

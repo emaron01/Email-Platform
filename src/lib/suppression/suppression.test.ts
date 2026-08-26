@@ -91,6 +91,11 @@ function contextFor(input: {
     },
     contactResearch: null,
     companyResearch: null,
+    excludedCopySignals: {
+      riskSignals: [],
+      professionalSignals: [],
+      negativeRoleSignals: [],
+    },
     personaResolution: {
       source: "campaign_fallback",
       usedCampaignFallback: true,

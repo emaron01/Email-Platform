@@ -7,6 +7,7 @@ import {
   classifyClaimOrigin,
   computeRepEditDelta,
   deterministicClaimViolations,
+  deterministicSignalLeakageViolations,
   keepModelOriginatedViolations,
 } from "@/lib/email-generation/claim-origin";
 
@@ -131,5 +132,26 @@ describe("claim origin", () => {
       "visited my website",
     );
     expect(computeRepEditDelta(generated, generated)).toBe("");
+  });
+
+  it("flags excluded research signals that leak into the copy", () => {
+    const sources = buildRepClaimSources({
+      offer: {
+        offerName: null,
+        offerDescription: "Friendly intro",
+        offerCta: null,
+        offerNotes: null,
+      },
+    });
+    const violations = deterministicSignalLeakageViolations({
+      body: "I noticed recent churn risk around renewals at your account.",
+      riskSignals: ["churn risk around renewals"],
+      professionalSignals: [],
+      negativeRoleSignals: [],
+      repSources: sources,
+    });
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.type).toBe("UNSUPPORTED_FACT");
+    expect(violations[0]?.origin).toBe("MODEL_ORIGINATED");
   });
 });

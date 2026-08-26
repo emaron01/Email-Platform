@@ -158,6 +158,15 @@ export type EmailGenerationContext = {
     researchedAt: Date;
   } | null;
   companyResearch: EmailCompanyResearch | null;
+  /**
+   * Research fields intentionally excluded from the generation prompt.
+   * Used only by the claim guard to detect model leakage into copy.
+   */
+  excludedCopySignals: {
+    riskSignals: string[];
+    professionalSignals: string[];
+    negativeRoleSignals: string[];
+  };
   voiceSamples: Array<{
     id: string;
     label: string;
@@ -482,6 +491,17 @@ export async function loadEmailGenerationContext(
           confidence: freshCompanyResearch.researchConfidence,
         }
       : null,
+    excludedCopySignals: {
+      riskSignals: freshCompanyResearch
+        ? parseStringArray(freshCompanyResearch.riskSignals)
+        : [],
+      professionalSignals: freshContactResearch
+        ? stringList(freshContactResearch.professionalSignals)
+        : [],
+      negativeRoleSignals: freshContactResearch
+        ? stringList(freshContactResearch.negativeRoleSignals)
+        : [],
+    },
     voiceSamples,
     sequence: campaignContact.emailDrafts,
     personaResolution: {
