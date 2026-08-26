@@ -15,6 +15,8 @@ export type ResearchTelemetryEvent = {
   status: "COMPLETED" | "PARTIAL" | "FAILED" | "SKIPPED";
   retries: number;
   errorCategory: string | null;
+  /** True when strict website gate would have skipped search (prefetch-only mode). */
+  websitePrefetchGatePass?: boolean | null;
 };
 
 export function logResearchTelemetry(event: ResearchTelemetryEvent): void {

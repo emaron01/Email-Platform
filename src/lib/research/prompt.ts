@@ -7,6 +7,8 @@ export function buildCompanyResearchMessages(input: {
   company: CompanyResearchInput;
   evidence: RetrievedEvidenceBundle;
   webSearchEnabled: boolean;
+  /** Set when HTTP fetch returned no usable first-party pages (403, empty, etc.). */
+  firstPartyFetchUnavailable?: boolean;
   searchFocus?: string | null;
   stage?: "initial" | "follow_up" | "final_synthesis";
   searchesRemaining?: number;
@@ -37,8 +39,10 @@ Source priority: official company pages > reputable business/tech publications >
         input.stage === "follow_up"
           ? "Perform a targeted follow-up search for missing company research dimensions. Avoid repeating prior broad searches."
           : input.webSearchEnabled
-            ? "Research this company. Answer: what they sell, who they sell to, markets, business model, relevant technologies, public buying/growth signals, public risk signals, and whether credible AOV/deal-size evidence exists."
-            : "Synthesize company research from the supplied first-party website evidence only. Do not invent facts absent from that evidence. If the evidence is thin, leave fields null/empty and set confidence LOW — the application will run web search only when needed.",
+            ? input.firstPartyFetchUnavailable
+              ? "Official company website could not be retrieved (blocked, empty, or unavailable). Research this company using web search. Answer: what they sell, who they sell to, markets, business model, relevant technologies, public buying/growth signals, public risk signals, and whether credible AOV/deal-size evidence exists."
+              : "Research this company. Answer: what they sell, who they sell to, markets, business model, relevant technologies, public buying/growth signals, public risk signals, and whether credible AOV/deal-size evidence exists."
+            : "Synthesize company research from the supplied first-party website evidence only. Do not invent facts absent from that evidence. If the evidence is thin, leave fields null/empty — web search will run next to fill gaps.",
       searchFocus: input.searchFocus ?? null,
       stage: input.stage ?? "initial",
       searchesRemaining: input.searchesRemaining ?? null,

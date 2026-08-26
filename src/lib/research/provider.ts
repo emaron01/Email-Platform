@@ -17,7 +17,10 @@ import {
 } from "@/lib/research/evidence";
 import { finalizeResearchSources } from "@/lib/research/finalize-sources";
 import { buildCompanyResearchMessages } from "@/lib/research/prompt";
-import { getCompanySourceRetriever } from "@/lib/research/sources";
+import {
+  getCompanySourceRetriever,
+  hasFirstPartyWebsiteEvidence,
+} from "@/lib/research/sources";
 import {
   buildTargetedSearchFocus,
   evaluateEvidenceSufficiency,
@@ -38,6 +41,10 @@ import {
   validateCompanyResearchResult,
 } from "@/lib/research/validate";
 import { evaluateWebsiteFirstSufficiency } from "@/lib/research/website-first-sufficiency";
+import {
+  shouldSkipWebsiteOnlySynthesis,
+  WEBSITE_FETCH_UNAVAILABLE_FOCUS,
+} from "@/lib/research/provider-routing";
 import { DEFAULT_RESEARCH_POLICY_VALUES } from "@/lib/usage/defaults";
 
 export type ResearchUsageSnapshot = {
@@ -52,6 +59,8 @@ export type AutomatedCompanyResearchResult = CompanyResearchResult & {
   usage?: ResearchUsageSnapshot;
   identityAmbiguous?: boolean;
   searchStagesUsed?: number;
+  /** Telemetry only — true when strict website gate would have skipped search (prefetch never stops). */
+  websitePrefetchGatePass?: boolean;
   stoppedReason?:
     | "sufficient"
     | "website_sufficient"
@@ -106,11 +115,11 @@ function dedupeSources(sources: ResearchSource[]): ResearchSource[] {
 
 /**
  * Progressive evidence acquisition:
- * Known data → website-only synthesis → sufficiency gate → web_search only if needed
+ * Known data → website prefetch synthesis (when fetch succeeds) → always web_search
  * (bounded by Organization ResearchPolicy.maxSearchQueriesPerCompany).
  *
- * Application owns whether another search is permitted.
- * Research AI synthesizes; it does not own unbounded search spend.
+ * When first-party fetch returns nothing (403, empty), skip prefetch synthesis
+ * and start with web_search immediately.
  */
 export class AiCompanyResearchProvider implements CompanyResearchProvider {
   async research(
@@ -139,6 +148,12 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
       const retriever = getCompanySourceRetriever();
       const websiteEvidence = await retriever.retrieve(input);
       const webSearchAvailable = config.provider === "openai-responses";
+      const hasFirstPartyEvidence =
+        hasFirstPartyWebsiteEvidence(websiteEvidence);
+      const skipWebsiteOnlySynthesis = shouldSkipWebsiteOnlySynthesis({
+        hasFirstPartyEvidence,
+        webSearchAvailable,
+      });
       const websiteExcerptText = websiteEvidence.excerpts
         .map((excerpt) => excerpt.text)
         .join("\n");
@@ -146,6 +161,8 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
       let evidence = websiteEvidence;
       let lastValidated: CompanyResearchResult | null = null;
       let identityAmbiguous = false;
+      let current: CompanyResearchResult | undefined;
+      let websitePrefetchGatePass: boolean | undefined;
 
       const maxQueries = Math.max(1, depth.maxSearchQueriesPerCompany);
 
@@ -164,6 +181,8 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
                 company: input,
                 evidence,
                 webSearchEnabled: opts.webSearchEnabled,
+                firstPartyFetchUnavailable:
+                  skipWebsiteOnlySynthesis && opts.webSearchEnabled,
                 searchFocus: opts.searchFocus,
                 stage: opts.stage,
                 searchesRemaining: opts.searchesRemaining,
@@ -209,31 +228,15 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         return next;
       };
 
-      // Stage 1: website-only synthesis (no web_search tools / tokens).
-      let current = await runStage({
-        stage: "initial",
-        searchesRemaining: webSearchAvailable ? maxQueries : 0,
-        webSearchEnabled: false,
-      });
-
-      const websiteGate = evaluateWebsiteFirstSufficiency({
-        websiteExcerptText,
-        sources: current.sources,
-        fields: current,
-      });
-
-      if (!webSearchAvailable) {
-        stoppedReason = "no_web_search";
-      } else if (websiteGate.sufficient) {
-        stoppedReason = "website_sufficient";
-      } else {
-        // Stage 2+: web_search only when the strict website gate fails.
+      const runWebSearchStages = async (
+        initialFocus: string,
+        searchBudget: number,
+        firstStage: "initial" | "follow_up",
+      ): Promise<void> => {
         current = await runStage({
-          stage: "follow_up",
-          searchFocus:
-            websiteGate.failReasons.join("; ") ||
-            "Website evidence insufficient; find official and reputable third-party sources for primary company dimensions.",
-          searchesRemaining: Math.max(0, maxQueries - 1),
+          stage: firstStage,
+          searchFocus: initialFocus,
+          searchesRemaining: searchBudget,
           webSearchEnabled: true,
         });
 
@@ -273,6 +276,45 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         }
 
         stoppedReason = sufficiency.sufficient ? "sufficient" : "max_queries";
+      };
+
+      if (!webSearchAvailable) {
+        current = await runStage({
+          stage: "initial",
+          searchesRemaining: 0,
+          webSearchEnabled: false,
+        });
+        stoppedReason = "no_web_search";
+      } else if (skipWebsiteOnlySynthesis) {
+        await runWebSearchStages(
+          WEBSITE_FETCH_UNAVAILABLE_FOCUS,
+          maxQueries,
+          "initial",
+        );
+      } else {
+        current = await runStage({
+          stage: "initial",
+          searchesRemaining: maxQueries,
+          webSearchEnabled: false,
+        });
+
+        const websiteGate = evaluateWebsiteFirstSufficiency({
+          websiteExcerptText,
+          sources: current.sources,
+          fields: current,
+        });
+        websitePrefetchGatePass = websiteGate.sufficient;
+
+        const searchFocus = websiteGate.sufficient
+          ? "First-party website evidence is available; use web search to corroborate findings and fill gaps (especially employee count, revenue, and third-party directory sources)."
+          : websiteGate.failReasons.join("; ") ||
+            "Website evidence insufficient; find official and reputable third-party sources for primary company dimensions.";
+
+        await runWebSearchStages(
+          searchFocus,
+          Math.max(0, maxQueries - 1),
+          "follow_up",
+        );
       }
 
       // Prefer the latest stage result (`current`); `lastValidated` is only a
@@ -318,6 +360,7 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         },
         identityAmbiguous,
         searchStagesUsed,
+        websitePrefetchGatePass,
         stoppedReason,
       };
 
@@ -336,6 +379,7 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
             : "COMPLETED",
         retries,
         errorCategory: null,
+        websitePrefetchGatePass: websitePrefetchGatePass ?? null,
       });
 
       return result;

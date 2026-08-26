@@ -9,16 +9,23 @@ import Module from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const moduleLoad = Module._load as (
+type ModuleLoad = (
   request: string,
   parent: NodeModule | null,
   isMain: boolean,
 ) => unknown;
-Module._load = function load(request, parent, isMain) {
+
+const patchedModule = Module as typeof Module & { _load: ModuleLoad };
+const moduleLoad = patchedModule._load.bind(patchedModule);
+patchedModule._load = function load(
+  request: string,
+  parent: NodeModule | null,
+  isMain: boolean,
+): unknown {
   if (request === "server-only") {
     return {};
   }
-  return moduleLoad.call(this, request, parent, isMain);
+  return moduleLoad(request, parent, isMain);
 };
 
 import { PrismaClient } from "@prisma/client";

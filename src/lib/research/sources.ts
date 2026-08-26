@@ -18,6 +18,13 @@ export type RetrievedEvidenceBundle = {
   excerpts: SourceExcerpt[];
 };
 
+/** True when at least one first-party page returned usable body text. */
+export function hasFirstPartyWebsiteEvidence(
+  bundle: RetrievedEvidenceBundle,
+): boolean {
+  return bundle.excerpts.some((excerpt) => excerpt.text.trim().length > 0);
+}
+
 /** Combined excerpt budget sent to stage-1 synthesis (unchanged from single-page era). */
 export const WEBSITE_EVIDENCE_TOTAL_CHAR_BUDGET = 4000;
 

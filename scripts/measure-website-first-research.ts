@@ -58,6 +58,7 @@ type SnapshotRow = {
 type AfterSnapshotRow = SnapshotRow & {
   stoppedReason?: string | null;
   searchStagesUsed?: number | null;
+  websitePrefetchGatePass?: boolean | null;
   error?: string;
 };
 
@@ -263,7 +264,7 @@ function buildComparisonReport(
     const confidenceChanged = b.confidence !== a.confidence;
     const regressions = primaryRegressions(b, a);
     const firmographics = compareFirmographics(b, a);
-    const stage1Pass = a.stoppedReason === "website_sufficient";
+    const stage1Pass = a.websitePrefetchGatePass === true;
     const changeScore =
       Math.abs(inputDelta) / 1000 +
       contentChange * 10 +
@@ -326,9 +327,7 @@ function buildComparisonReport(
   const afterSummary = summarize(afterOk);
 
   const stage1Before = before.filter((r) => (r.webSearchCallCount ?? 0) === 0);
-  const stage1After = afterOk.filter(
-    (r) => r.stoppedReason === "website_sufficient",
-  );
+  const stage1After = afterOk.filter((r) => r.websitePrefetchGatePass === true);
 
   const firmographicByCompany = comparison.map((c) => ({
     name: c.name,
@@ -641,6 +640,7 @@ async function refreshAll(prisma: PrismaClient) {
         researchedAt: saved.researchedAt?.toISOString() ?? null,
         stoppedReason: result.stoppedReason ?? null,
         searchStagesUsed: result.searchStagesUsed ?? null,
+        websitePrefetchGatePass: result.websitePrefetchGatePass ?? null,
       });
       console.log(
         `ok in=${saved.inputTokens} web=${saved.webSearchCallCount} sources=${saved.sourceCount} stop=${result.stoppedReason}`,
