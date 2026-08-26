@@ -1,5 +1,12 @@
 import { getScoringAiConfig } from "@/lib/ai";
-import { isScoringAiConfigured } from "@/lib/ai/config";
+import {
+  isContactResearchAiConfigured,
+  isScoringAiConfigured,
+} from "@/lib/ai/config";
+import {
+  assertScoringAiRolesConfigured,
+  listUnconfiguredScoringRoles,
+} from "@/lib/ai/roles";
 import { SCORING_CONCURRENCY } from "@/lib/scoring/config";
 import { scoreSingleContact } from "@/lib/scoring/score-contact";
 import { resolvePersonaSnapshots } from "@/lib/scoring/title-fit";
@@ -74,6 +81,8 @@ export async function getScoringReadiness(scoringRunId: string): Promise<{
   pending: number;
   failed: number;
   aiConfigured: boolean;
+  contactResearchAiConfigured: boolean;
+  unconfiguredRoleLabels: string[];
 }> {
   const organizationId = await requireOrganizationId();
   const run = await prisma.scoringRun.findFirst({
@@ -135,6 +144,10 @@ export async function getScoringReadiness(scoringRunId: string): Promise<{
     ).length,
     failed: scores.filter((s) => s.scoringStatus === "FAILED").length,
     aiConfigured: isScoringAiConfigured(),
+    contactResearchAiConfigured: isContactResearchAiConfigured(),
+    unconfiguredRoleLabels: listUnconfiguredScoringRoles().map(
+      (role) => role.label,
+    ),
   };
 }
 
@@ -144,7 +157,10 @@ export async function runScoringForRun(
 ): Promise<RunScoringSummary> {
   const organizationId = await requireOrganizationId();
 
-  // Fail closed before mutating run state
+  // Fail closed before mutating run state — scoring and contact research
+  // must both be configured. Unset contact research used to write PARTIAL/LOW
+  // rows and continue silently.
+  assertScoringAiRolesConfigured();
   getScoringAiConfig();
 
   const run = await prisma.scoringRun.findFirst({

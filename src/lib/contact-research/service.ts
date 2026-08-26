@@ -18,6 +18,7 @@ import { CONTACT_RESEARCH_PROMPT_VERSION } from "@/lib/criteria/types";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
 import { researchExpiresAt } from "@/lib/research/freshness";
 import { prisma } from "@/lib/prisma";
+import { AiConfigError } from "@/lib/ai/errors";
 import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
 import { shouldResearchContactRole } from "@/lib/contact-research/trigger";
@@ -237,27 +238,6 @@ export async function researchContactRole(input: {
   }
 
   if (!isContactResearchAiConfigured()) {
-    const saved = await prisma.contactResearch.upsert({
-      where: {
-        organizationId_contactId: {
-          organizationId: input.organizationId,
-          contactId: input.contactId,
-        },
-      },
-      create: {
-        organizationId: input.organizationId,
-        contactId: input.contactId,
-        status: "PARTIAL",
-        currentTitle: contact.title,
-        roleSummary: null,
-        confidence: "LOW",
-      },
-      update: {
-        status: "PARTIAL",
-        currentTitle: contact.title,
-        confidence: "LOW",
-      },
-    });
     await recordContactResearchUsage({
       ...usageBase,
       status: "SKIPPED",
@@ -265,7 +245,9 @@ export async function researchContactRole(input: {
       durationMs: 0,
       metadata: { reason: trigger.reason },
     });
-    return saved;
+    throw new AiConfigError(
+      "Contact role research is not configured. Set CONTACT_RESEARCH_AI_PROVIDER, CONTACT_RESEARCH_AI_MODEL, CONTACT_RESEARCH_AI_MODEL_URL, and CONTACT_RESEARCH_AI_API_KEY.",
+    );
   }
 
   const started = Date.now();

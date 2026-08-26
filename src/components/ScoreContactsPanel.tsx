@@ -13,6 +13,8 @@ export type ScoringReadinessView = {
   pending: number;
   failed: number;
   aiConfigured: boolean;
+  contactResearchAiConfigured: boolean;
+  unconfiguredRoleLabels: string[];
 };
 
 export function ScoreContactsPanel({
@@ -27,6 +29,8 @@ export function ScoreContactsPanel({
   const [message, setMessage] = useState<string | null>(null);
 
   const incompleteResearch = readiness.companiesMissingResearch > 0;
+  const canScore =
+    readiness.aiConfigured && readiness.contactResearchAiConfigured;
 
   function runScore(forceRescore: boolean) {
     const formData = new FormData();
@@ -55,11 +59,13 @@ export function ScoreContactsPanel({
         <Stat label="Already scored" value={readiness.alreadyScored} />
       </div>
 
-      {!readiness.aiConfigured ? (
+      {!canScore ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          AI scoring is not configured. Set SCORING_AI_PROVIDER, SCORING_AI_MODEL,
-          SCORING_AI_MODEL_URL, and SCORING_AI_API_KEY in .env.local (or Render
-          Environment), then restart. Company research remains available.
+          Scoring cannot run until required AI roles are configured
+          {readiness.unconfiguredRoleLabels.length > 0
+            ? `: ${readiness.unconfiguredRoleLabels.join(", ")}`
+            : ""}
+          . Set the matching environment variables and restart. See Settings.
         </p>
       ) : null}
 
@@ -72,11 +78,7 @@ export function ScoreContactsPanel({
 
       <div className="flex flex-wrap gap-2">
         <PrimaryButton
-          disabled={
-            pending ||
-            !readiness.aiConfigured ||
-            readiness.totalContacts === 0
-          }
+          disabled={pending || !canScore || readiness.totalContacts === 0}
           onClick={() => runScore(false)}
         >
           {pending ? "Scoring…" : "Score Contacts"}
@@ -84,7 +86,7 @@ export function ScoreContactsPanel({
         <SecondaryButton
           disabled={
             pending ||
-            !readiness.aiConfigured ||
+            !canScore ||
             readiness.alreadyScored + readiness.failed === 0
           }
           onClick={() => runScore(true)}

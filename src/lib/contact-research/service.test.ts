@@ -145,32 +145,30 @@ describe("contact research metering", () => {
     );
   });
 
-  it("records SKIPPED with triggerReason unconfigured when contact research AI is missing", async () => {
+  it("throws and records SKIPPED unconfigured instead of writing a fake PARTIAL row", async () => {
     aiMocks.isContactResearchAiConfigured.mockReturnValue(false);
-    prismaMock.contactResearch.upsert.mockResolvedValue({
-      id: "research_partial",
-      status: "PARTIAL",
-      confidence: "LOW",
-    });
 
-    await researchContactRole({
-      organizationId: "org_1",
-      contactId: "contact_1",
-      personaCriteria: [
-        {
-          name: "Owns infrastructure",
-          criterionType: "responsibility",
-          dataType: "TEXT",
-          operator: "EXISTS",
-          importance: "HIGH",
-          isRequired: false,
-          isDisqualifier: false,
-          sortOrder: 0,
-        },
-      ],
-      policy: POLICY,
-    });
+    await expect(
+      researchContactRole({
+        organizationId: "org_1",
+        contactId: "contact_1",
+        personaCriteria: [
+          {
+            name: "Owns infrastructure",
+            criterionType: "responsibility",
+            dataType: "TEXT",
+            operator: "EXISTS",
+            importance: "HIGH",
+            isRequired: false,
+            isDisqualifier: false,
+            sortOrder: 0,
+          },
+        ],
+        policy: POLICY,
+      }),
+    ).rejects.toThrow(/Contact role research is not configured/);
 
+    expect(prismaMock.contactResearch.upsert).not.toHaveBeenCalled();
     expect(aiMocks.getContactResearchAiProvider).not.toHaveBeenCalled();
     expect(recordUsageEvent).toHaveBeenCalledWith(
       expect.objectContaining({

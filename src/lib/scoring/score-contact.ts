@@ -1,4 +1,5 @@
 import { getScoringAiConfig, getScoringAiProvider } from "@/lib/ai";
+import { AiConfigError } from "@/lib/ai/errors";
 import { generateScoringAssessment } from "@/lib/scoring/ai-assessment";
 import { calculateScoresFromAssessment } from "@/lib/scoring/calculate";
 import { resolveIcpQualification } from "@/lib/scoring/icp-qualification";
@@ -291,7 +292,8 @@ export async function scoreSingleContact(input: {
           professionalSignals: cr.professionalSignals,
           negativeRoleSignals: cr.negativeRoleSignals,
         };
-      } catch {
+      } catch (error) {
+        if (error instanceof AiConfigError) throw error;
         contactResearchRow = null;
       }
     }

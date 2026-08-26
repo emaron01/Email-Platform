@@ -24,6 +24,11 @@ import type { IcpSnapshot } from "@/lib/scoring/types";
 import { listTitleSuggestionsForRun } from "@/lib/scoring/title-suggestions";
 import { isResearchAiConfigured } from "@/lib/ai/config";
 import {
+  listAiRoleStatuses,
+  listUnconfiguredScoringRoles,
+} from "@/lib/ai/roles";
+import { AiRoleStatusList } from "@/components/AiRoleStatusList";
+import {
   getCurrentOrganization,
   TenantError,
 } from "@/lib/tenant/getCurrentOrganization";
@@ -136,6 +141,26 @@ export default async function ScoringReportPage({
         <Meta label="Scored Contacts" value={formatNumber(run.scoredContacts)} />
         <Meta label="Status" value={run.status} />
         <Meta label="Created" value={formatDate(run.createdAt)} />
+      </div>
+
+      <div className="mb-6">
+        <Panel
+          title="AI roles for this run"
+          description="Scoring needs Contact scoring and Contact research. Company research is optional but shown so an unset role cannot hide."
+        >
+          <AiRoleStatusList
+            roles={listAiRoleStatuses().filter(
+              (role) =>
+                role.requiredForScoring || role.role === "research",
+            )}
+          />
+          {listUnconfiguredScoringRoles().length > 0 ? (
+            <p className="mt-3 text-sm text-amber-950">
+              Score Contacts stays disabled until every required role is
+              configured. Set the listed environment variables and restart.
+            </p>
+          ) : null}
+        </Panel>
       </div>
 
       <div className="mb-6">

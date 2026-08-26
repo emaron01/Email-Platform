@@ -1,0 +1,177 @@
+import type { AiRole } from "@/lib/ai/config";
+import {
+  isContactResearchAiConfigured,
+  isEmailAiConfigured,
+  isInterpretationAiConfigured,
+  isPersonaAiConfigured,
+  isProductAiConfigured,
+  isResearchAiConfigured,
+  isScoringAiConfigured,
+} from "@/lib/ai/config";
+import { AiConfigError } from "@/lib/ai/errors";
+
+export type AiRoleCatalogEntry = {
+  role: AiRole;
+  label: string;
+  requiredEnv: readonly string[];
+  operations: readonly string[];
+  requiredForScoring: boolean;
+};
+
+/**
+ * Which AI role is required for which paid operation.
+ * Required env is provider/model/url/key only — timeouts and temperature are optional.
+ */
+export const AI_ROLE_CATALOG: readonly AiRoleCatalogEntry[] = [
+  {
+    role: "research",
+    label: "Company research",
+    requiredEnv: [
+      "RESEARCH_AI_PROVIDER",
+      "RESEARCH_AI_MODEL",
+      "RESEARCH_AI_MODEL_URL",
+      "RESEARCH_AI_API_KEY",
+    ],
+    operations: [
+      "Company research (RESEARCH_SYNTHESIS)",
+      "Company web search",
+    ],
+    requiredForScoring: false,
+  },
+  {
+    role: "scoring",
+    label: "Contact scoring",
+    requiredEnv: [
+      "SCORING_AI_PROVIDER",
+      "SCORING_AI_MODEL",
+      "SCORING_AI_MODEL_URL",
+      "SCORING_AI_API_KEY",
+    ],
+    operations: ["Contact scoring (CONTACT_SCORING)", "Title suggestions"],
+    requiredForScoring: true,
+  },
+  {
+    role: "contact_research",
+    label: "Contact research",
+    requiredEnv: [
+      "CONTACT_RESEARCH_AI_PROVIDER",
+      "CONTACT_RESEARCH_AI_MODEL",
+      "CONTACT_RESEARCH_AI_MODEL_URL",
+      "CONTACT_RESEARCH_AI_API_KEY",
+    ],
+    operations: ["Contact role research (CONTACT_RESEARCH_SYNTHESIS)"],
+    requiredForScoring: true,
+  },
+  {
+    role: "interpretation",
+    label: "ICP and persona interpretation",
+    requiredEnv: [
+      "INTERPRETATION_AI_PROVIDER",
+      "INTERPRETATION_AI_MODEL",
+      "INTERPRETATION_AI_MODEL_URL",
+      "INTERPRETATION_AI_API_KEY",
+    ],
+    operations: ["ICP interpretation", "Persona interpretation"],
+    requiredForScoring: false,
+  },
+  {
+    role: "product",
+    label: "Product research",
+    requiredEnv: [
+      "PRODUCT_AI_PROVIDER",
+      "PRODUCT_AI_MODEL",
+      "PRODUCT_AI_MODEL_URL",
+      "PRODUCT_AI_API_KEY",
+    ],
+    operations: [
+      "Product synthesis",
+      "Product web search",
+      "Product document extraction",
+    ],
+    requiredForScoring: false,
+  },
+  {
+    role: "persona",
+    label: "Persona research",
+    requiredEnv: [
+      "PERSONA_AI_PROVIDER",
+      "PERSONA_AI_MODEL",
+      "PERSONA_AI_MODEL_URL",
+      "PERSONA_AI_API_KEY",
+    ],
+    operations: ["Persona synthesis", "Persona web search"],
+    requiredForScoring: false,
+  },
+  {
+    role: "email",
+    label: "Email generation",
+    requiredEnv: [
+      "EMAIL_AI_PROVIDER",
+      "EMAIL_AI_MODEL",
+      "EMAIL_AI_MODEL_URL",
+      "EMAIL_AI_API_KEY",
+    ],
+    operations: [
+      "Email drafts",
+      "Offer validation",
+      "Reply classification",
+    ],
+    requiredForScoring: false,
+  },
+] as const;
+
+const CONFIGURED: Record<AiRole, () => boolean> = {
+  research: isResearchAiConfigured,
+  scoring: isScoringAiConfigured,
+  contact_research: isContactResearchAiConfigured,
+  interpretation: isInterpretationAiConfigured,
+  product: isProductAiConfigured,
+  persona: isPersonaAiConfigured,
+  email: isEmailAiConfigured,
+};
+
+export type AiRoleStatus = AiRoleCatalogEntry & {
+  configured: boolean;
+  missingEnv: string[];
+};
+
+function missingRequiredEnv(keys: readonly string[]): string[] {
+  return keys.filter((key) => !process.env[key]?.trim());
+}
+
+export function listAiRoleStatuses(): AiRoleStatus[] {
+  return AI_ROLE_CATALOG.map((entry) => ({
+    ...entry,
+    configured: CONFIGURED[entry.role](),
+    missingEnv: missingRequiredEnv(entry.requiredEnv),
+  }));
+}
+
+export function listUnconfiguredScoringRoles(): AiRoleStatus[] {
+  return listAiRoleStatuses().filter(
+    (entry) => entry.requiredForScoring && !entry.configured,
+  );
+}
+
+export function scoringAiReady(): boolean {
+  return listUnconfiguredScoringRoles().length === 0;
+}
+
+export function assertAiRolesConfigured(roles: readonly AiRole[]): void {
+  const statuses = listAiRoleStatuses();
+  const missing = roles
+    .map((role) => statuses.find((entry) => entry.role === role))
+    .filter((entry): entry is AiRoleStatus => Boolean(entry && !entry.configured));
+  if (missing.length === 0) return;
+  const detail = missing
+    .map(
+      (entry) =>
+        `${entry.label} is not configured. Set ${entry.missingEnv.join(", ") || entry.requiredEnv.join(", ")}.`,
+    )
+    .join(" ");
+  throw new AiConfigError(detail);
+}
+
+export function assertScoringAiRolesConfigured(): void {
+  assertAiRolesConfigured(["scoring", "contact_research"]);
+}
