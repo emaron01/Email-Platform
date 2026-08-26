@@ -205,7 +205,7 @@ function evaluateIcpCriterionCore(input: {
       return unverifiableAssessment({
         criterion: input.criterion,
         evidenceClass,
-        reasoning: `Unverified: no list data or company research evidence for "${input.criterion.name}". Not scored against the company.`,
+        reasoning: `Unverified: no list data or research evidence for "${input.criterion.name}". Not scored.`,
       });
     }
     const failed = base.assessment === "NO_FIT";
@@ -246,7 +246,7 @@ function evaluateIcpCriterionCore(input: {
     return unverifiableAssessment({
       criterion: input.criterion,
       evidenceClass,
-      reasoning: `Unverified: no online evidence for "${input.criterion.name}". Not scored against the company.`,
+      reasoning: `Unverified: no online evidence for "${input.criterion.name}". Not scored.`,
     });
   }
 
@@ -294,7 +294,7 @@ function evaluateIcpCriterionCore(input: {
     return unverifiableAssessment({
       criterion: input.criterion,
       evidenceClass,
-      reasoning: `Unverified: available online evidence does not confirm "${input.criterion.name}", and absence is not treated as contradiction. Not scored against the company.`,
+      reasoning: `Unverified: available online evidence does not confirm "${input.criterion.name}", and absence is not treated as contradiction. Not scored.`,
     });
   }
 

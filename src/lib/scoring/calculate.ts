@@ -226,7 +226,7 @@ function factualEvidenceForDimension(
     assessment: "NEUTRAL",
     confidence: "LOW",
     method: "ASYMMETRIC",
-    reasoning: `Unverified: no evidence for "${criterion.name}". Not scored against the company.`,
+    reasoning: `Unverified: no evidence for "${criterion.name}". Not scored.`,
     evidenceOutcome: "UNVERIFIABLE",
     excludeFromScore: true,
     factualAiForbidden: true,

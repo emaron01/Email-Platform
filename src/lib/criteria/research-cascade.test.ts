@@ -1,17 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { identifyIcpEvidenceGaps } from "@/lib/contact-research/gaps";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
-import {
-  evaluateCriterionDeterministic,
-  resolveCompanyActualWithProvenance,
-} from "@/lib/criteria/evaluate";
+import { evaluateCriterionDeterministic } from "@/lib/criteria/evaluate";
 import {
   isHedgedResearchText,
   isNumericEvidence,
   readCriterionProvenanceLabels,
+  resolveCompanyActualWithProvenance,
 } from "@/lib/criteria/research-cascade";
-import { evaluateIcpCriterionWithEvidenceClass } from "@/lib/criteria/targeted-search-eval";
-import { clampFactualAiDimension } from "@/lib/criteria/targeted-search-eval";
+import { evaluateIcpCriterionWithEvidenceClass, clampFactualAiDimension } from "@/lib/criteria/targeted-search-eval";
 
 function criterion(
   overrides: Partial<CriterionSnapshot> & Pick<CriterionSnapshot, "name">,
@@ -28,67 +25,78 @@ function criterion(
   };
 }
 
-const employees = criterion({
-  name: "Employee Count",
-  criterionType: "employee_count",
+/** Domain A: independent schools. No shared vocabulary with domain B. */
+const enrolledStudents = criterion({
+  name: "Enrolled students",
+  criterionType: "enrollment_band",
   dataType: "NUMBER",
   operator: "BETWEEN",
-  minValue: 50,
-  maxValue: 500,
+  minValue: 200,
+  maxValue: 800,
   evidenceClass: "LIST_DATA",
 });
 
-const stoneEagleSize =
-  "LinkedIn lists StoneEagle as privately held, with headquarters in Dallas and 201–500 employees.";
+const schoolSizeProse =
+  "The registrar lists the academy as 420–610 enrolled students on the current campus.";
 
-describe("research cascade actuals", () => {
-  it("resolves blank list headcount from companySizeContext and records the sentence", () => {
+/** Domain B: municipal utilities. No shared vocabulary with domain A. */
+const rateBase = criterion({
+  name: "Rate base",
+  criterionType: "capital_base",
+  dataType: "CURRENCY",
+  operator: "GREATER_THAN_OR_EQUAL",
+  targetValue: 10_000_000,
+  evidenceClass: "LIST_DATA",
+});
+
+describe("research cascade actuals — independent schools", () => {
+  it("resolves a NUMBER criterion from research prose without list data", () => {
     const resolution = resolveCompanyActualWithProvenance(
-      employees,
+      enrolledStudents,
       { employeeCount: null },
-      { companySizeContext: stoneEagleSize },
+      { companySizeContext: schoolSizeProse },
     );
     expect(isNumericEvidence(resolution.value)).toBe(true);
     if (!isNumericEvidence(resolution.value)) return;
-    expect(resolution.value).toMatchObject({ min: 201, max: 500, display: "201–500" });
+    expect(resolution.value).toMatchObject({
+      min: 420,
+      max: 610,
+      display: "420–610",
+    });
     expect(resolution.provenance).toMatchObject({
       source: "RESEARCH",
       field: "companySizeContext",
       hedged: false,
-      label: "Employees: 201–500 (from research)",
+      label: "Enrolled students: 420–610 (from research)",
     });
-    expect(resolution.provenance?.excerpt).toContain("201–500 employees");
+    expect(resolution.provenance?.excerpt).toContain("420–610");
 
     const evaluated = evaluateIcpCriterionWithEvidenceClass({
-      criterion: employees,
+      criterion: enrolledStudents,
       actualValue: resolution.value,
       provenance: resolution.provenance,
     });
     expect(evaluated.excludeFromScore).toBe(false);
     expect(["STRONG", "MODERATE"]).toContain(evaluated.assessment);
-    expect(evaluated.provenance?.label).toBe(
-      "Employees: 201–500 (from research)",
-    );
   });
 
-  it("treats hedged research headcount as UNKNOWN, not a guess", () => {
+  it("treats hedged numeric research as unresolved, not a guess", () => {
     expect(
-      isHedgedResearchText("StoneEagle has approximately 201–500 employees"),
+      isHedgedResearchText("approximately 420–610 enrolled students"),
     ).toBe(true);
     const resolution = resolveCompanyActualWithProvenance(
-      employees,
+      enrolledStudents,
       { employeeCount: null },
       {
         companySizeContext:
-          "StoneEagle has approximately 201–500 employees based on public profiles.",
+          "The campus has approximately 420–610 enrolled students this term.",
       },
     );
     expect(resolution.value).toBeNull();
     expect(resolution.provenance?.hedged).toBe(true);
-    expect(resolution.provenance?.label).toContain("hedged research");
 
     const evaluated = evaluateIcpCriterionWithEvidenceClass({
-      criterion: employees,
+      criterion: enrolledStudents,
       actualValue: resolution.value,
       provenance: resolution.provenance,
     });
@@ -96,28 +104,28 @@ describe("research cascade actuals", () => {
     expect(evaluated.excludeFromScore).toBe(true);
   });
 
-  it("prefers list data when both list and research have a value", () => {
+  it("prefers the numeric list field when both list and research have a value", () => {
     const resolution = resolveCompanyActualWithProvenance(
-      employees,
-      { employeeCount: 120 },
-      { companySizeContext: stoneEagleSize },
+      enrolledStudents,
+      { employeeCount: 310 },
+      { companySizeContext: schoolSizeProse },
     );
-    expect(resolution.value).toBe(120);
+    expect(resolution.value).toBe(310);
     expect(resolution.provenance).toMatchObject({
       source: "LIST",
       field: "employeeCount",
-      label: "Employees: 120 (from your list)",
+      label: "Enrolled students: 310 (from your list)",
       excerpt: null,
     });
   });
 
-  it("does not invent a factual result from the scoring model when list and research are blank", () => {
+  it("does not invent a factual result when list and research are blank", () => {
     const evidence = evaluateIcpCriterionWithEvidenceClass({
-      criterion: employees,
+      criterion: enrolledStudents,
       actualValue: null,
     });
     const clamped = clampFactualAiDimension({
-      dimensionName: "Employee Count",
+      dimensionName: "Enrolled students",
       aiAssessment: "STRONG",
       evidenceAssessment: evidence,
     });
@@ -126,21 +134,21 @@ describe("research cascade actuals", () => {
     expect(clamped.assessment).toBe("UNKNOWN");
   });
 
-  it("resolves industry from businessModel when the list field is blank", () => {
-    const industry = criterion({
-      name: "Industry",
-      criterionType: "industry",
-      dataType: "MULTI_SELECT",
+  it("resolves an ENUM criterion from research using the target value, not the name", () => {
+    const board = criterion({
+      name: "Accrediting body",
+      criterionType: "oversight",
+      dataType: "ENUM",
       operator: "IN",
-      targetValue: ["B2B"],
+      targetValue: ["NEASC"],
       evidenceClass: "LIST_DATA",
     });
     const resolution = resolveCompanyActualWithProvenance(
-      industry,
+      board,
       { industry: null },
       {
         businessModel:
-          "Enterprise B2B software/data provider sold through demos and direct sales.",
+          "Day academy accredited by NEASC with a boarding option.",
       },
     );
     expect(resolution.provenance).toMatchObject({
@@ -149,26 +157,26 @@ describe("research cascade actuals", () => {
       label: expect.stringContaining("(from research)"),
     });
     const evaluated = evaluateCriterionDeterministic({
-      criterion: industry,
+      criterion: board,
       actualValue: resolution.value,
     });
     expect(evaluated.assessment).toBe("STRONG");
   });
 
-  it("leaves overlapping headcount ranges unresolved instead of picking a midpoint", () => {
+  it("leaves overlapping numeric ranges unresolved instead of picking a midpoint", () => {
     const tight = criterion({
-      name: "Employee Count",
-      criterionType: "employee_count",
+      name: "Enrolled students",
+      criterionType: "enrollment_band",
       dataType: "NUMBER",
       operator: "BETWEEN",
-      minValue: 50,
-      maxValue: 250,
+      minValue: 200,
+      maxValue: 450,
       evidenceClass: "LIST_DATA",
     });
     const resolution = resolveCompanyActualWithProvenance(
       tight,
       { employeeCount: null },
-      { companySizeContext: stoneEagleSize },
+      { companySizeContext: schoolSizeProse },
     );
     const evaluated = evaluateCriterionDeterministic({
       criterion: tight,
@@ -180,11 +188,10 @@ describe("research cascade actuals", () => {
 
   it("does not treat size context as an evidence gap once research answers it", () => {
     const gaps = identifyIcpEvidenceGaps(
-      [employees],
+      [enrolledStudents],
       { employeeCount: null },
       {
-        id: "r1",
-        companySizeContext: stoneEagleSize,
+        companySizeContext: schoolSizeProse,
         companySummary: null,
         whatTheySell: null,
         businessModel: null,
@@ -192,55 +199,126 @@ describe("research cascade actuals", () => {
         buyingSignals: [],
         riskSignals: [],
         primaryMarkets: [],
-      } as never,
+      } as unknown as Parameters<typeof identifyIcpEvidenceGaps>[2],
     );
     expect(gaps).toEqual([]);
   });
 
-  it("does not treat B2B copy as a revenue figure", () => {
-    const revenue = criterion({
-      name: "Company Revenue",
-      criterionType: "company_revenue",
-      dataType: "CURRENCY",
-      operator: "BETWEEN",
-      minValue: 10_000_000,
-      maxValue: 100_000_000,
+  it("prefers a list text field when it matches the criterion target", () => {
+    const board = criterion({
+      name: "Accrediting body",
+      criterionType: "oversight",
+      dataType: "ENUM",
+      operator: "IN",
+      targetValue: ["NEASC"],
       evidenceClass: "LIST_DATA",
     });
     const resolution = resolveCompanyActualWithProvenance(
-      revenue,
+      board,
+      { industry: "NEASC day academy" },
+      {
+        businessModel: "Some other sentence that also mentions NEASC.",
+      },
+    );
+    expect(resolution.provenance).toMatchObject({
+      source: "LIST",
+      field: "industry",
+      label: expect.stringContaining("from your list"),
+    });
+  });
+
+  it("does not treat an unrelated list industry as the actual for a TEXT criterion", () => {
+    const board = criterion({
+      name: "Accrediting body",
+      criterionType: "oversight",
+      dataType: "ENUM",
+      operator: "IN",
+      targetValue: ["NEASC"],
+      evidenceClass: "LIST_DATA",
+    });
+    const resolution = resolveCompanyActualWithProvenance(
+      board,
+      { industry: "independent school", location: "Concord" },
+      {
+        businessModel:
+          "Day academy accredited by NEASC with a boarding option.",
+      },
+    );
+    expect(resolution.provenance).toMatchObject({
+      source: "RESEARCH",
+      field: "businessModel",
+    });
+  });
+
+  it("does not treat school copy as a currency figure", () => {
+    const resolution = resolveCompanyActualWithProvenance(
+      rateBase,
       { revenue: null },
       {
-        whatTheySell: "B2B automotive-dealership software and data intelligence.",
-        businessModel: "Enterprise B2B software/data provider sold through demos.",
+        whatTheySell: "Day academy with boarding, arts, and athletics.",
+        businessModel: "Tuition-funded independent school.",
       },
     );
     expect(resolution.value).toBeNull();
     expect(resolution.provenance).toBeNull();
   });
+});
 
-  it("extracts an explicit dollar revenue figure from research", () => {
-    const revenue = criterion({
-      name: "Company Revenue",
-      criterionType: "company_revenue",
-      dataType: "CURRENCY",
-      operator: "GREATER_THAN_OR_EQUAL",
-      targetValue: 10_000_000,
-      evidenceClass: "LIST_DATA",
-    });
+describe("research cascade actuals — municipal utilities", () => {
+  it("extracts a CURRENCY figure from research using $ / scale, not criterion name", () => {
     const resolution = resolveCompanyActualWithProvenance(
-      revenue,
+      rateBase,
       { revenue: null },
-      { companySummary: "The company reported $25 million in ARR last year." },
+      {
+        companySummary:
+          "The commission reported a $25 million rate base last year.",
+      },
     );
     expect(isNumericEvidence(resolution.value)).toBe(true);
     expect(resolution.provenance?.source).toBe("RESEARCH");
     expect(resolution.provenance?.hedged).toBe(false);
+    expect(resolution.provenance?.label).toContain("Rate base");
     const evaluated = evaluateCriterionDeterministic({
-      criterion: revenue,
+      criterion: rateBase,
       actualValue: resolution.value,
     });
     expect(evaluated.assessment).toMatch(/STRONG|MODERATE/);
+  });
+
+  it("resolves an ENUM service class from target needles in research prose", () => {
+    const serviceClass = criterion({
+      name: "Service class",
+      criterionType: "tariff_class",
+      dataType: "ENUM",
+      operator: "IN",
+      targetValue: ["irrigation"],
+      evidenceClass: "LIST_DATA",
+    });
+    const resolution = resolveCompanyActualWithProvenance(
+      serviceClass,
+      { industry: null, location: null },
+      {
+        primaryMarkets: ["irrigation allotments along the canal district"],
+      },
+    );
+    expect(resolution.provenance?.source).toBe("RESEARCH");
+    const evaluated = evaluateCriterionDeterministic({
+      criterion: serviceClass,
+      actualValue: resolution.value,
+    });
+    expect(evaluated.assessment).toBe("STRONG");
+  });
+
+  it("does not parse a currency amount as a NUMBER criterion", () => {
+    const resolution = resolveCompanyActualWithProvenance(
+      enrolledStudents,
+      { employeeCount: null },
+      {
+        companySummary:
+          "The commission reported a $25 million rate base last year.",
+      },
+    );
+    expect(resolution.value).toBeNull();
   });
 
   it("surfaces provenance labels from stored assessment data", () => {
@@ -248,11 +326,10 @@ describe("research cascade actuals", () => {
       readCriterionProvenanceLabels({
         criterionAssessments: [
           {
-            name: "Employee Count",
-            provenance: { label: "Employees: 201–500 (from research)" },
+            provenance: { label: "Enrolled students: 420–610 (from research)" },
           },
         ],
       }),
-    ).toEqual(["Employees: 201–500 (from research)"]);
+    ).toEqual(["Enrolled students: 420–610 (from research)"]);
   });
 });

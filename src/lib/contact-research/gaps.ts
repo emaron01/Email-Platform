@@ -1,6 +1,6 @@
 import type { CompanyResearch } from "@prisma/client";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
-import { resolveCompanyActualWithProvenance } from "@/lib/criteria/evaluate";
+import { resolveCompanyActualWithProvenance } from "@/lib/criteria/research-cascade";
 
 function hasText(value: unknown): boolean {
   if (value == null) return false;

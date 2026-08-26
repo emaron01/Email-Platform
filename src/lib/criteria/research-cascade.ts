@@ -1,8 +1,8 @@
 /**
- * Factual ICP actuals: list fields first, then company research, else unresolved.
+ * Fact resolver: list fields first, then research prose, else unresolved.
  *
- * Evidence class says where to look first, not the only permitted source.
- * Hedged or incomplete research is UNKNOWN — never a midpoint or a guess.
+ * Kind comes from the criterion's dataType / operator / target at runtime.
+ * This module is the company-shaped fact source. Evaluation does not live here.
  */
 
 import type { CriterionSnapshot } from "@/lib/criteria/types";
@@ -52,12 +52,13 @@ export type CompanyActualResolution = {
 
 /**
  * Hedge words on the claim itself. A cited source ("LinkedIn lists…") is not a hedge.
- * "approximately 200 employees" is; "201–500 employees" is not.
+ * "approximately 200" is; "201–500" is not.
  */
 export const RESEARCH_HEDGE_PATTERN =
   /\b(approximately|approx\.?|around|about|roughly|estimated|estimates?|perhaps|maybe|possibly|likely|appears?|seems?|could be|might be|unclear|unknown|reportedly|believed|allegedly|or so)\b/i;
 
-const EMPLOYEE_WORD = /(?:employees?|headcount|people|staff|ftes?)/i;
+const CURRENCY_MARK =
+  /\$|\busd\b|\bmillion\b|\bbillion\b|\bmm\b/i;
 
 export function isNumericEvidence(value: unknown): value is NumericEvidence {
   return Boolean(
@@ -179,23 +180,25 @@ function researchResolution(
   };
 }
 
-type HeadcountHit = {
+type NumericHit = {
   evidence: NumericEvidence;
   excerpt: string;
   hedged: boolean;
 };
 
-function extractHeadcount(text: string, requireEmployeeWord: boolean): HeadcountHit | null {
+function looksLikeCurrency(text: string): boolean {
+  return CURRENCY_MARK.test(text);
+}
+
+function extractNumericEvidence(text: string): NumericHit | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
 
   const rangeRe =
-    /(\d{1,3}(?:,\d{3})*)\s*[–—-]\s*(\d{1,3}(?:,\d{3})*)(?:\s*\+)?(?:\s*(?:employees?|headcount|people|staff|ftes?))?/gi;
+    /(\d{1,3}(?:,\d{3})*)\s*[–—-]\s*(\d{1,3}(?:,\d{3})*)(?:\s*\+)?/gi;
   for (const match of trimmed.matchAll(rangeRe)) {
     const excerpt = sentenceAt(trimmed, match.index ?? 0, match[0].length);
-    if (requireEmployeeWord && !EMPLOYEE_WORD.test(excerpt) && !EMPLOYEE_WORD.test(match[0])) {
-      continue;
-    }
+    if (looksLikeCurrency(excerpt) || looksLikeCurrency(match[0])) continue;
     const min = parseCountToken(match[1] ?? "");
     const max = parseCountToken(match[2] ?? "");
     if (min == null || max == null || min > max) continue;
@@ -212,12 +215,10 @@ function extractHeadcount(text: string, requireEmployeeWord: boolean): Headcount
   }
 
   const atLeastRe =
-    /(?:at least|more than|over|minimum of)\s+(\d{1,3}(?:,\d{3})*)(?:\s*(?:employees?|headcount|people|staff|ftes?))?/gi;
+    /(?:at least|more than|over|minimum of)\s+(\d{1,3}(?:,\d{3})*)/gi;
   for (const match of trimmed.matchAll(atLeastRe)) {
     const excerpt = sentenceAt(trimmed, match.index ?? 0, match[0].length);
-    if (requireEmployeeWord && !EMPLOYEE_WORD.test(excerpt) && !EMPLOYEE_WORD.test(match[0])) {
-      continue;
-    }
+    if (looksLikeCurrency(excerpt) || looksLikeCurrency(match[0])) continue;
     const min = parseCountToken(match[1] ?? "");
     if (min == null) continue;
     return {
@@ -233,12 +234,10 @@ function extractHeadcount(text: string, requireEmployeeWord: boolean): Headcount
   }
 
   const upToRe =
-    /(?:up to|fewer than|less than|under|no more than)\s+(\d{1,3}(?:,\d{3})*)(?:\s*(?:employees?|headcount|people|staff|ftes?))?/gi;
+    /(?:up to|fewer than|less than|under|no more than)\s+(\d{1,3}(?:,\d{3})*)/gi;
   for (const match of trimmed.matchAll(upToRe)) {
     const excerpt = sentenceAt(trimmed, match.index ?? 0, match[0].length);
-    if (requireEmployeeWord && !EMPLOYEE_WORD.test(excerpt) && !EMPLOYEE_WORD.test(match[0])) {
-      continue;
-    }
+    if (looksLikeCurrency(excerpt) || looksLikeCurrency(match[0])) continue;
     const max = parseCountToken(match[1] ?? "");
     if (max == null) continue;
     return {
@@ -253,18 +252,18 @@ function extractHeadcount(text: string, requireEmployeeWord: boolean): Headcount
     };
   }
 
-  const singleRe =
-    /(\d{1,3}(?:,\d{3})*)\+?\s*(?:employees?|headcount|people|staff|ftes?)/gi;
-  for (const match of trimmed.matchAll(singleRe)) {
+  const plusRe = /(\d{1,3}(?:,\d{3})*)\+/gi;
+  for (const match of trimmed.matchAll(plusRe)) {
     const excerpt = sentenceAt(trimmed, match.index ?? 0, match[0].length);
-    const value = parseCountToken(match[1] ?? "");
-    if (value == null) continue;
+    if (looksLikeCurrency(excerpt) || looksLikeCurrency(match[0])) continue;
+    const min = parseCountToken(match[1] ?? "");
+    if (min == null) continue;
     return {
       evidence: {
         kind: NUMERIC_EVIDENCE_KIND,
-        min: value,
-        max: value,
-        display: value.toLocaleString("en-US"),
+        min,
+        max: null,
+        display: `${min.toLocaleString("en-US")}+`,
       },
       excerpt,
       hedged: isHedgedResearchText(excerpt),
@@ -274,7 +273,7 @@ function extractHeadcount(text: string, requireEmployeeWord: boolean): Headcount
   return null;
 }
 
-function revenueMultiplier(suffix: string): number | null {
+function scaleSuffix(suffix: string): number | null {
   const s = suffix.toLowerCase();
   if (s === "k") return 1_000;
   if (s === "m" || s === "million") return 1_000_000;
@@ -282,17 +281,17 @@ function revenueMultiplier(suffix: string): number | null {
   return null;
 }
 
-function extractRevenue(text: string): HeadcountHit | null {
+function extractCurrencyEvidence(text: string): NumericHit | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
   const re =
-    /(?:\$|usd|arr|revenue|sales)\s*(\d+(?:\.\d+)?)\s*(k|m|b|million|billion)\b|(?<![A-Za-z])(\d+(?:\.\d+)?)\s*(million|billion)\b/gi;
+    /(?:\$|usd)\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s*(k|m|b|million|billion)?\b|(?<![A-Za-z])(\d+(?:\.\d+)?)\s*(million|billion)\b/gi;
   for (const match of trimmed.matchAll(re)) {
     const excerpt = sentenceAt(trimmed, match.index ?? 0, match[0].length);
     const amountRaw = match[1] ?? match[3];
     const suffix = match[2] ?? match[4] ?? "";
-    const amount = Number(amountRaw);
-    const multiplier = revenueMultiplier(suffix);
+    const amount = Number(String(amountRaw ?? "").replace(/,/g, ""));
+    const multiplier = suffix ? scaleSuffix(suffix) : 1;
     if (!Number.isFinite(amount) || multiplier == null) continue;
     const value = amount * multiplier;
     return {
@@ -310,11 +309,18 @@ function extractRevenue(text: string): HeadcountHit | null {
 }
 
 function targetNeedles(criterion: CriterionSnapshot): string[] {
-  const values = Array.isArray(criterion.targetValue)
-    ? criterion.targetValue
-    : criterion.targetValue != null
-      ? [criterion.targetValue]
-      : [];
+  const values = [
+    ...(Array.isArray(criterion.targetValue)
+      ? criterion.targetValue
+      : criterion.targetValue != null
+        ? [criterion.targetValue]
+        : []),
+    ...(Array.isArray(criterion.allowedValues)
+      ? criterion.allowedValues
+      : criterion.allowedValues != null
+        ? [criterion.allowedValues]
+        : []),
+  ];
   return values
     .map((value) => String(value).trim().toLowerCase())
     .filter(Boolean);
@@ -341,30 +347,6 @@ function joinList(values: string[] | null | undefined): string | null {
   return joined || null;
 }
 
-type CriterionKind =
-  | "employees"
-  | "revenue"
-  | "industry"
-  | "geography"
-  | "technology"
-  | "business_model"
-  | "buying"
-  | "risk"
-  | "other";
-
-function criterionKind(criterion: CriterionSnapshot): CriterionKind {
-  const blob = `${criterion.criterionType} ${criterion.name}`.toLowerCase();
-  if (/\b(employee|headcount|company size)\b/.test(blob)) return "employees";
-  if (/\b(revenue|arr)\b/.test(blob)) return "revenue";
-  if (/\bindustr/.test(blob)) return "industry";
-  if (/\b(geograph|location)\b/.test(blob)) return "geography";
-  if (/\b(technolog|tech stack|tooling)\b/.test(blob)) return "technology";
-  if (/\b(business model|b2b|b2c)\b/.test(blob)) return "business_model";
-  if (/\b(positive|buying signal)\b/.test(blob)) return "buying";
-  if (/\b(negative|risk|disqualif)\b/.test(blob)) return "risk";
-  return "other";
-}
-
 function researchField(
   research: CompanyResearchActuals | null | undefined,
   field: keyof CompanyResearchActuals,
@@ -376,35 +358,25 @@ function researchField(
   return null;
 }
 
-function firstHeadcountFromResearch(
-  research: CompanyResearchActuals | null | undefined,
-): { field: string; hit: HeadcountHit } | null {
-  const size = researchField(research, "companySizeContext");
-  if (size) {
-    const hit = extractHeadcount(size, false);
-    if (hit) return { field: "companySizeContext", hit };
-  }
-  for (const field of ["companySummary", "whatTheySell", "businessModel"] as const) {
-    const text = researchField(research, field);
-    if (!text) continue;
-    const hit = extractHeadcount(text, true);
-    if (hit) return { field, hit };
-  }
-  return null;
-}
+const RESEARCH_TEXT_FIELDS: Array<keyof CompanyResearchActuals> = [
+  "companySizeContext",
+  "companySummary",
+  "whatTheySell",
+  "businessModel",
+  "relevantTechnologies",
+  "buyingSignals",
+  "riskSignals",
+  "primaryMarkets",
+];
 
-function firstRevenueFromResearch(
+function firstExtractedFromResearch(
   research: CompanyResearchActuals | null | undefined,
-): { field: string; hit: HeadcountHit } | null {
-  for (const field of [
-    "companySizeContext",
-    "companySummary",
-    "whatTheySell",
-    "businessModel",
-  ] as const) {
+  extract: (text: string) => NumericHit | null,
+): { field: string; hit: NumericHit } | null {
+  for (const field of RESEARCH_TEXT_FIELDS) {
     const text = researchField(research, field);
     if (!text) continue;
-    const hit = extractRevenue(text);
+    const hit = extract(text);
     if (hit) return { field, hit };
   }
   return null;
@@ -412,21 +384,13 @@ function firstRevenueFromResearch(
 
 function firstTextMatchFromResearch(
   research: CompanyResearchActuals | null | undefined,
-  fields: Array<keyof CompanyResearchActuals>,
   needles: string[],
 ): { field: string; text: string; excerpt: string; hedged: boolean } | null {
+  if (needles.length === 0) return null;
   let hedged: { field: string; text: string; excerpt: string } | null = null;
-  for (const field of fields) {
+  for (const field of RESEARCH_TEXT_FIELDS) {
     const text = researchField(research, field);
     if (!text) continue;
-    if (needles.length === 0) {
-      const excerpt = text.split(/(?<=[.!?])\s+/)[0] ?? text;
-      if (isHedgedResearchText(excerpt)) {
-        hedged = { field, text, excerpt };
-        continue;
-      }
-      return { field, text, excerpt, hedged: false };
-    }
     const found = findTargetExcerpt(text, needles);
     if (!found) continue;
     if (found.hedged) {
@@ -441,179 +405,91 @@ function firstTextMatchFromResearch(
   return null;
 }
 
-/**
- * Cascade for every factual criterion: list value if present, else research, else null.
- */
-export function resolveCompanyActualWithProvenance(
+function applyExtractedHit(
+  criterion: CriterionSnapshot,
+  extracted: { field: string; hit: NumericHit },
+): CompanyActualResolution {
+  if (extracted.hit.hedged) {
+    return hedgedResolution(criterion.name, extracted.field, extracted.hit.excerpt);
+  }
+  return researchResolution(
+    criterion.name,
+    extracted.field,
+    extracted.hit.evidence,
+    extracted.hit.evidence.display,
+    extracted.hit.excerpt,
+  );
+}
+
+function resolveNumeric(
   criterion: CriterionSnapshot,
   company: CompanyListActuals,
   research?: CompanyResearchActuals | null,
 ): CompanyActualResolution {
-  const kind = criterionKind(criterion);
-  const needles = targetNeedles(criterion);
-
-  if (kind === "employees") {
-    if (company.employeeCount != null) {
-      return listResolution(
-        "Employees",
-        "employeeCount",
-        company.employeeCount,
-        String(company.employeeCount),
-      );
-    }
-    const extracted = firstHeadcountFromResearch(research);
-    if (!extracted) return unresolved();
-    if (extracted.hit.hedged) {
-      return hedgedResolution("Employees", extracted.field, extracted.hit.excerpt);
-    }
-    return researchResolution(
-      "Employees",
-      extracted.field,
-      extracted.hit.evidence,
-      extracted.hit.evidence.display,
-      extracted.hit.excerpt,
-    );
-  }
-
-  if (kind === "revenue") {
-    if (hasListValue(company.revenue)) {
-      const display = listText(company.revenue);
-      return listResolution("Revenue", "revenue", company.revenue, display);
-    }
-    const extracted = firstRevenueFromResearch(research);
-    if (!extracted) return unresolved();
-    if (extracted.hit.hedged) {
-      return hedgedResolution("Revenue", extracted.field, extracted.hit.excerpt);
-    }
-    return researchResolution(
-      "Revenue",
-      extracted.field,
-      extracted.hit.evidence,
-      extracted.hit.evidence.display,
-      extracted.hit.excerpt,
-    );
-  }
-
-  if (kind === "industry") {
-    if (hasListValue(company.industry)) {
-      return listResolution(
-        "Industry",
-        "industry",
-        company.industry,
-        listText(company.industry),
-      );
-    }
-    const found = firstTextMatchFromResearch(
-      research,
-      ["businessModel", "whatTheySell", "companySummary", "primaryMarkets"],
-      needles,
-    );
-    if (!found) return unresolved();
-    if (found.hedged) {
-      return hedgedResolution("Industry", found.field, found.excerpt);
-    }
-    return researchResolution(
-      "Industry",
-      found.field,
-      found.text,
-      found.excerpt,
-      found.excerpt,
-    );
-  }
-
-  if (kind === "business_model") {
-    const found = firstTextMatchFromResearch(
-      research,
-      ["businessModel", "whatTheySell", "companySummary"],
-      needles,
-    );
-    if (!found) return unresolved();
-    if (found.hedged) {
-      return hedgedResolution("Business model", found.field, found.excerpt);
-    }
-    return researchResolution(
-      "Business model",
-      found.field,
-      found.text,
-      found.excerpt,
-      found.excerpt,
-    );
-  }
-
-  if (kind === "geography") {
-    if (hasListValue(company.location)) {
-      return listResolution(
-        "Geography",
-        "location",
-        company.location,
-        listText(company.location),
-      );
-    }
-    const markets = joinList(research?.primaryMarkets ?? null);
-    if (!markets) return unresolved();
-    if (isHedgedResearchText(markets)) {
-      return hedgedResolution("Geography", "primaryMarkets", markets);
-    }
-    return researchResolution(
-      "Geography",
-      "primaryMarkets",
-      markets,
-      markets,
-      markets,
-    );
-  }
-
-  if (kind === "technology") {
-    const tech = joinList(research?.relevantTechnologies ?? null);
-    if (!tech) return unresolved();
-    if (isHedgedResearchText(tech)) {
-      return hedgedResolution("Technology", "relevantTechnologies", tech);
-    }
-    return researchResolution(
-      "Technology",
-      "relevantTechnologies",
-      tech,
-      tech,
-      tech,
-    );
-  }
-
-  if (kind === "buying") {
-    const signals = joinList(research?.buyingSignals ?? null);
-    if (!signals) return unresolved();
-    return researchResolution(
+  if (company.employeeCount != null) {
+    return listResolution(
       criterion.name,
-      "buyingSignals",
-      signals,
-      signals,
-      signals,
+      "employeeCount",
+      company.employeeCount,
+      String(company.employeeCount),
     );
   }
+  const extracted = firstExtractedFromResearch(research, extractNumericEvidence);
+  if (!extracted) return unresolved();
+  return applyExtractedHit(criterion, extracted);
+}
 
-  if (kind === "risk") {
-    const signals = joinList(research?.riskSignals ?? null);
-    if (!signals) return unresolved();
-    return researchResolution(
-      criterion.name,
-      "riskSignals",
-      signals,
-      signals,
-      signals,
-    );
+function resolveCurrency(
+  criterion: CriterionSnapshot,
+  company: CompanyListActuals,
+  research?: CompanyResearchActuals | null,
+): CompanyActualResolution {
+  if (hasListValue(company.revenue)) {
+    const display = listText(company.revenue);
+    return listResolution(criterion.name, "revenue", company.revenue, display);
   }
+  const extracted = firstExtractedFromResearch(research, extractCurrencyEvidence);
+  if (!extracted) return unresolved();
+  return applyExtractedHit(criterion, extracted);
+}
 
-  const found = firstTextMatchFromResearch(
-    research,
-    [
-      "companySummary",
-      "whatTheySell",
-      "businessModel",
-      "companySizeContext",
-      "relevantTechnologies",
-      "primaryMarkets",
-    ],
-    needles,
+function listFieldMatchesNeedles(
+  value: unknown,
+  needles: string[],
+): boolean {
+  if (!hasListValue(value) || needles.length === 0) return false;
+  const actual = listText(value).toLowerCase();
+  return needles.some(
+    (needle) => actual === needle || actual.includes(needle),
   );
+}
+
+function resolveText(
+  criterion: CriterionSnapshot,
+  company: CompanyListActuals,
+  research?: CompanyResearchActuals | null,
+): CompanyActualResolution {
+  const needles = targetNeedles(criterion);
+  // List text columns win only when they answer this criterion's target.
+  // dataType TEXT has two list slots (industry, location); neither is used
+  // as a default actual for an unrelated criterion.
+  if (listFieldMatchesNeedles(company.industry, needles)) {
+    return listResolution(
+      criterion.name,
+      "industry",
+      company.industry,
+      listText(company.industry),
+    );
+  }
+  if (listFieldMatchesNeedles(company.location, needles)) {
+    return listResolution(
+      criterion.name,
+      "location",
+      company.location,
+      listText(company.location),
+    );
+  }
+  const found = firstTextMatchFromResearch(research, needles);
   if (!found) return unresolved();
   if (found.hedged) {
     return hedgedResolution(criterion.name, found.field, found.excerpt);
@@ -625,6 +501,36 @@ export function resolveCompanyActualWithProvenance(
     found.excerpt,
     found.excerpt,
   );
+}
+
+/**
+ * List value if present, else research, else unresolved.
+ * Routes by criterion dataType — never by criterion name.
+ */
+export function resolveCompanyActualWithProvenance(
+  criterion: CriterionSnapshot,
+  company: CompanyListActuals,
+  research?: CompanyResearchActuals | null,
+): CompanyActualResolution {
+  switch (criterion.dataType) {
+    case "NUMBER":
+      return resolveNumeric(criterion, company, research);
+    case "CURRENCY":
+      return resolveCurrency(criterion, company, research);
+    case "DATE":
+    case "BOOLEAN":
+      return resolveText(criterion, company, research);
+    default:
+      return resolveText(criterion, company, research);
+  }
+}
+
+export function resolveCompanyActualForCriterion(
+  criterion: CriterionSnapshot,
+  company: CompanyListActuals,
+  research?: CompanyResearchActuals | null,
+): unknown {
+  return resolveCompanyActualWithProvenance(criterion, company, research).value;
 }
 
 export function readCriterionProvenanceLabels(assessmentData: unknown): string[] {

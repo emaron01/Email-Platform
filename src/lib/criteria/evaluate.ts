@@ -7,12 +7,7 @@ import type {
   CriterionOperatorValue,
   CriterionSnapshot,
 } from "@/lib/criteria/types";
-import {
-  isNumericEvidence,
-  resolveCompanyActualWithProvenance,
-  type CompanyListActuals,
-  type CompanyResearchActuals,
-} from "@/lib/criteria/research-cascade";
+import { isNumericEvidence } from "@/lib/criteria/research-cascade";
 
 export type CriterionEvalResult = {
   assessment: "STRONG" | "MODERATE" | "WEAK" | "NO_FIT" | "UNKNOWN";
@@ -416,23 +411,4 @@ export function evaluateCriterionDeterministic(input: {
     reasoning: `Semantic evaluation required for "${criterion.name}".`,
   };
 }
-
-/**
- * Map known company firmographics onto common criterion types for deterministic scoring.
- * List fields win; otherwise company research structured fields; otherwise unresolved.
- */
-export function resolveCompanyActualForCriterion(
-  criterion: CriterionSnapshot,
-  company: CompanyListActuals,
-  research?: CompanyResearchActuals | null,
-): unknown {
-  return resolveCompanyActualWithProvenance(criterion, company, research).value;
-}
-
-export { resolveCompanyActualWithProvenance } from "@/lib/criteria/research-cascade";
-export type {
-  CompanyListActuals,
-  CompanyResearchActuals,
-  CompanyActualResolution,
-} from "@/lib/criteria/research-cascade";
 

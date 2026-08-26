@@ -185,7 +185,7 @@ export async function scoreSingleContact(input: {
     const latestResearch = company?.research[0] ?? null;
 
     const { resolveCompanyActualWithProvenance } =
-      await import("@/lib/criteria/evaluate");
+      await import("@/lib/criteria/research-cascade");
     const { evaluateIcpCriterionWithEvidenceClass } =
       await import("@/lib/criteria/targeted-search-eval");
     const criterionAssessments: Array<
