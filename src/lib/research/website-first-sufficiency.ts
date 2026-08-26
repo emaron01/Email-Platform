@@ -117,6 +117,7 @@ export type WebsiteFirstSufficiencyResult = SufficiencyResult & {
  *
  * Intentionally does NOT use base.sufficient's multi-source quality floor —
  * a single official site is the entire evidence set in stage 1.
+ */
 export function evaluateWebsiteFirstSufficiency(
   input: WebsiteFirstSufficiencyInput,
 ): WebsiteFirstSufficiencyResult {
