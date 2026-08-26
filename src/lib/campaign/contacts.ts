@@ -315,9 +315,7 @@ export async function getCampaignQualificationView(
         ? "EXCLUDED"
         : entry.buckets.some((bucket) => bucket === "NEEDS_REVIEW")
           ? "NEEDS_REVIEW"
-          : entry.buckets.some((bucket) => bucket === "POOR_FIT")
-            ? "POOR_FIT"
-            : "GOOD";
+          : "GOOD";
       const bucket =
         (entry.canOverride ? override.get(`COMPANY:${entry.id}`) : undefined) ??
         inferred;

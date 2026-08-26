@@ -150,7 +150,7 @@ describe("confirmed factual resolution vs AI contradiction", () => {
     expect(result.scoreLabel).toBe("POOR");
     expect(
       icpQualificationToBucket(result.icpQualification, result.scoreLabel),
-    ).toBe("POOR_FIT");
+    ).toBe("NEEDS_REVIEW");
   });
 
   it("a currency-range criterion behaves identically", () => {

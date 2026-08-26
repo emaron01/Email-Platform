@@ -20,6 +20,7 @@ import {
   personalizationSourceSummary,
   resolvePersonalization,
 } from "@/lib/email-generation/personalization";
+import { ensureContactResearchForEmailGeneration } from "@/lib/email-generation/context";
 import {
   emailGenerationFailureUsageMetadata,
   classifyEmailGenerationError,
@@ -158,7 +159,7 @@ async function withRetries<T>(
 }
 
 export async function generateEmailDraft(
-  context: EmailGenerationContext,
+  inputContext: EmailGenerationContext,
   messages: AiMessage[],
   options: {
     sequenceNumber?: number;
@@ -184,6 +185,7 @@ export async function generateEmailDraft(
   personalizationSources: string;
   claimConflicts: import("@/lib/email-generation/claim-validation-contract").ClaimValidationViolation[];
 }> {
+  let context = inputContext;
   const sequenceNumber = options.sequenceNumber ?? 1;
   const kind = options.kind ?? (sequenceNumber === 1 ? "INITIAL" : "FOLLOW_UP");
   if (!Number.isInteger(sequenceNumber) || sequenceNumber < 1) {
@@ -249,6 +251,7 @@ export async function generateEmailDraft(
       userId: context.userId,
       resource: "EMAIL_GENERATION",
     });
+    context = await ensureContactResearchForEmailGeneration(context);
     const config = getEmailAiConfig();
     if (config.model !== EMAIL_GENERATION_MODEL) {
       throw new AiConfigError(

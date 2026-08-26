@@ -1,13 +1,21 @@
 import type { QualificationBucket, ScoreLabel } from "@prisma/client";
 import {
+  coerceIsMandatory,
+  normalizeIcpCriterionTier,
+} from "@/lib/criteria/tier";
+import type { CriterionSnapshot } from "@/lib/criteria/types";
+import type { CriterionEvidenceAssessment } from "@/lib/criteria/targeted-search-eval";
+import {
+  icpCriterionTier,
   icpQualificationToBucket,
   readIcpQualification,
+  type IcpQualification,
 } from "@/lib/scoring/icp-qualification";
 
+/** Active workflow buckets — POOR_FIT remains in the schema for legacy rows only. */
 export const QUALIFICATION_BUCKETS = [
   "GOOD",
   "NEEDS_REVIEW",
-  "POOR_FIT",
   "EXCLUDED",
 ] as const satisfies readonly QualificationBucket[];
 
@@ -20,6 +28,178 @@ export const QUALIFICATION_BUCKET_LABELS: Record<QualificationBucket, string> =
   };
 
 export type PersonaMatchStatus = "MATCHED" | "EXCLUDED" | "UNKNOWN";
+
+export type DeterministicQualificationSkipReason =
+  | "MANDATORY_ICP_FAIL"
+  | "CONFIRMED_PERSONA_EXCLUSION"
+  | "NO_TITLE_FIT"
+  | "MULTI_PERSONA_MATCH"
+  | "UNRESOLVED_MANDATORY"
+  | "SINGLE_PERSONA_MATCH";
+
+export type DeterministicQualificationResult = {
+  bucket: QualificationBucket;
+  reason: string;
+  aiSkipReason: DeterministicQualificationSkipReason;
+  matchedPersonaId: string | null;
+  personaMatchStatus: PersonaMatchStatus;
+};
+
+export function readQualificationBucket(
+  assessmentData: unknown,
+): QualificationBucket | null {
+  if (!assessmentData || typeof assessmentData !== "object") return null;
+  const bucket = (assessmentData as { qualificationBucket?: unknown })
+    .qualificationBucket;
+  if (
+    bucket === "GOOD" ||
+    bucket === "NEEDS_REVIEW" ||
+    bucket === "EXCLUDED" ||
+    bucket === "POOR_FIT"
+  ) {
+    return bucket;
+  }
+  return null;
+}
+
+export function readQualificationReason(
+  assessmentData: unknown,
+): string | null {
+  if (!assessmentData || typeof assessmentData !== "object") return null;
+  const reason = (assessmentData as { qualificationReason?: unknown })
+    .qualificationReason;
+  return typeof reason === "string" && reason.trim() ? reason.trim() : null;
+}
+
+export function hasUnresolvedMandatoryCriterion(input: {
+  criteria: CriterionSnapshot[];
+  assessments: CriterionEvidenceAssessment[];
+}): boolean {
+  const byName = new Map(input.assessments.map((row) => [row.name, row]));
+  for (const criterion of input.criteria) {
+    if (icpCriterionTier(criterion) === "SECONDARY") continue;
+    const mandatory = coerceIsMandatory(
+      normalizeIcpCriterionTier(criterion.tier) ?? "PRIMARY",
+      criterion.isMandatory,
+    );
+    if (!mandatory) continue;
+    const assessment = byName.get(criterion.name);
+    if (!assessment) return true;
+    const outcome = String(assessment.evidenceOutcome ?? "");
+    const value = String(assessment.assessment ?? "");
+    if (
+      outcome === "UNVERIFIABLE" ||
+      value === "UNKNOWN" ||
+      value === "NEUTRAL"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function deterministicContactQualification(input: {
+  icpQualification: IcpQualification;
+  criteria: CriterionSnapshot[];
+  criterionAssessments: CriterionEvidenceAssessment[];
+  candidatePersonas: Array<{ id: string; name: string }>;
+  excludedPersonaIds: string[];
+  titleExcludedPersonaIds: string[];
+  hadTitleCandidate: boolean;
+  anyUnknownTitle: boolean;
+}): DeterministicQualificationResult {
+  if (input.icpQualification.bucket === "NO") {
+    const failed = input.icpQualification.mandatoryFailures;
+    return {
+      bucket: "EXCLUDED",
+      reason:
+        failed.length > 0
+          ? `Mandatory ICP criteria failed: ${failed.join(", ")}.`
+          : "Company failed mandatory ICP qualification.",
+      aiSkipReason: "MANDATORY_ICP_FAIL",
+      matchedPersonaId: null,
+      personaMatchStatus: "EXCLUDED",
+    };
+  }
+
+  const personaExcluded =
+    input.titleExcludedPersonaIds.length > 0 ||
+    input.excludedPersonaIds.length > 0;
+
+  if (
+    personaExcluded &&
+    input.candidatePersonas.length === 0
+  ) {
+    return {
+      bucket: "EXCLUDED",
+      reason: "Contact matches a persona exclusion rule.",
+      aiSkipReason: "CONFIRMED_PERSONA_EXCLUSION",
+      matchedPersonaId: null,
+      personaMatchStatus: "EXCLUDED",
+    };
+  }
+
+  if (
+    input.hadTitleCandidate &&
+    input.candidatePersonas.length === 0 &&
+    input.excludedPersonaIds.length > 0
+  ) {
+    return {
+      bucket: "EXCLUDED",
+      reason: "Contact matches a persona exclusion rule.",
+      aiSkipReason: "CONFIRMED_PERSONA_EXCLUSION",
+      matchedPersonaId: null,
+      personaMatchStatus: "EXCLUDED",
+    };
+  }
+
+  if (input.candidatePersonas.length === 0) {
+    return {
+      bucket: "NEEDS_REVIEW",
+      reason: input.anyUnknownTitle
+        ? "Title did not match a selected persona."
+        : "No persona match for this contact.",
+      aiSkipReason: "NO_TITLE_FIT",
+      matchedPersonaId: null,
+      personaMatchStatus: "UNKNOWN",
+    };
+  }
+
+  if (input.candidatePersonas.length > 1) {
+    const names = input.candidatePersonas.map((row) => row.name).join(", ");
+    return {
+      bucket: "NEEDS_REVIEW",
+      reason: `Title matches multiple personas (${names}).`,
+      aiSkipReason: "MULTI_PERSONA_MATCH",
+      matchedPersonaId: null,
+      personaMatchStatus: "UNKNOWN",
+    };
+  }
+
+  const matched = input.candidatePersonas[0]!;
+  if (
+    hasUnresolvedMandatoryCriterion({
+      criteria: input.criteria,
+      assessments: input.criterionAssessments,
+    })
+  ) {
+    return {
+      bucket: "NEEDS_REVIEW",
+      reason: "Mandatory ICP criteria could not be confirmed from available evidence.",
+      aiSkipReason: "UNRESOLVED_MANDATORY",
+      matchedPersonaId: matched.id,
+      personaMatchStatus: "MATCHED",
+    };
+  }
+
+  return {
+    bucket: "GOOD",
+    reason: `Matched persona: ${matched.name}.`,
+    aiSkipReason: "SINGLE_PERSONA_MATCH",
+    matchedPersonaId: matched.id,
+    personaMatchStatus: "MATCHED",
+  };
+}
 
 export function readPersonaMatch(assessmentData: unknown): {
   status: PersonaMatchStatus;
@@ -47,6 +227,10 @@ export function scoreLabelToBucket(
   scoreLabel: ScoreLabel | null,
   assessmentData?: unknown,
 ): QualificationBucket {
+  const explicit = readQualificationBucket(assessmentData);
+  if (explicit) {
+    return explicit === "POOR_FIT" ? "NEEDS_REVIEW" : explicit;
+  }
   const personaMatch = readPersonaMatch(assessmentData);
   const icp = readIcpQualification(assessmentData);
   if (personaMatch?.status === "EXCLUDED") return "EXCLUDED";

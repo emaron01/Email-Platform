@@ -667,6 +667,109 @@ export async function loadEmailDraftScreenStates(input: {
   return states;
 }
 
+export async function ensureContactResearchForEmailGeneration(
+  context: EmailGenerationContext,
+): Promise<EmailGenerationContext> {
+  if (context.contactResearch) return context;
+
+  const { snapshotCriterionRow } = await import("@/lib/scoring/snapshots");
+  const personaCriteria = (
+    await prisma.personaCriterion.findMany({
+      where: {
+        organizationId: context.organizationId,
+        personaId: context.persona.id,
+      },
+      orderBy: { sortOrder: "asc" },
+    })
+  ).map(snapshotCriterionRow);
+
+  const existing = await prisma.contactResearch.findUnique({
+    where: {
+      organizationId_contactId: {
+        organizationId: context.organizationId,
+        contactId: context.contact.id,
+      },
+    },
+  });
+
+  const { shouldResearchContactRole } = await import(
+    "@/lib/contact-research/trigger"
+  );
+  const trigger = shouldResearchContactRole({
+    title: context.contact.title,
+    personaCriteria,
+    existingResearch: existing,
+    freshnessDays: CONTACT_RESEARCH_FRESHNESS_DAYS,
+  });
+  if (!trigger.needed) {
+    if (trigger.reuseExisting && existing && isFreshContactResearch(existing)) {
+      return {
+        ...context,
+        contactResearch: {
+          id: existing.id,
+          currentTitle: existing.currentTitle,
+          roleSummary: existing.roleSummary,
+          responsibilities: stringList(existing.responsibilities),
+          ownershipAreas: stringList(existing.ownershipAreas),
+          professionalSignals: stringList(existing.professionalSignals),
+          negativeRoleSignals: stringList(existing.negativeRoleSignals),
+          confidence: existing.confidence,
+          researchedAt: existing.researchedAt!,
+        },
+        excludedCopySignals: {
+          ...context.excludedCopySignals,
+          professionalSignals: stringList(existing.professionalSignals),
+          negativeRoleSignals: stringList(existing.negativeRoleSignals),
+        },
+      };
+    }
+    return context;
+  }
+
+  try {
+    const { getResearchPolicy } = await import("@/lib/usage/policy");
+    const { researchContactRole } = await import(
+      "@/lib/contact-research/service"
+    );
+    const policy = await getResearchPolicy(context.organizationId);
+    const researched = await researchContactRole({
+      organizationId: context.organizationId,
+      contactId: context.contact.id,
+      userId: context.userId,
+      personaCriteria,
+      policy: {
+        maxSearchQueriesPerContact: policy.maxSearchQueriesPerContact,
+        maxSourcesPerContact: policy.maxSourcesPerContact,
+        contactResearchFreshnessDays: policy.contactResearchFreshnessDays,
+      },
+    });
+    if (!researched.researchedAt || !isFreshContactResearch(researched)) {
+      return context;
+    }
+    return {
+      ...context,
+      contactResearch: {
+        id: researched.id,
+        currentTitle: researched.currentTitle,
+        roleSummary: researched.roleSummary,
+        responsibilities: stringList(researched.responsibilities),
+        ownershipAreas: stringList(researched.ownershipAreas),
+        professionalSignals: stringList(researched.professionalSignals),
+        negativeRoleSignals: stringList(researched.negativeRoleSignals),
+        confidence: researched.confidence,
+        researchedAt: researched.researchedAt,
+      },
+      excludedCopySignals: {
+        ...context.excludedCopySignals,
+        professionalSignals: stringList(researched.professionalSignals),
+        negativeRoleSignals: stringList(researched.negativeRoleSignals),
+      },
+    };
+  } catch {
+    return context;
+  }
+}
+
 export async function loadEmailReplyContext(
   emailDraftId: string,
   userId: string,

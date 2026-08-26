@@ -135,6 +135,7 @@ describe("scoring engine persona exclusion short circuit", () => {
           assessmentData: expect.objectContaining({
             aiSkipped: true,
             aiSkipReason: "CONFIRMED_PERSONA_EXCLUSION",
+            qualificationBucket: "EXCLUDED",
           }),
         }),
       }),
@@ -232,6 +233,7 @@ describe("scoring engine persona exclusion short circuit", () => {
           assessmentData: expect.objectContaining({
             aiSkipped: true,
             aiSkipReason: "NO_TITLE_FIT",
+            qualificationBucket: "NEEDS_REVIEW",
             personaMatch: expect.objectContaining({ status: "UNKNOWN" }),
           }),
         }),
@@ -239,7 +241,7 @@ describe("scoring engine persona exclusion short circuit", () => {
     );
   });
 
-  it("calls AI only for the title-matching persona on an all-personas run", async () => {
+  it("deterministically matches a single title-fit persona without calling AI", async () => {
     prismaMock.contactScore.findFirst.mockResolvedValue({
       id: "score_1",
       contactId: "contact_1",
@@ -255,31 +257,6 @@ describe("scoring engine persona exclusion short circuit", () => {
         location: null,
         companyRecord: null,
       },
-    });
-    aiMocks.getScoringAiConfig.mockReturnValue({ maxRetries: 0 });
-    aiMocks.getScoringAiProvider.mockReturnValue({});
-    generateScoringAssessment.mockResolvedValue({
-      data: {
-        dimensions: [
-          {
-            dimension: "Role",
-            component: "PERSONA",
-            assessment: "STRONG",
-            evidence: ["CRO title"],
-            concerns: [],
-            confidence: "HIGH",
-          },
-        ],
-        fitStrengths: ["CRO"],
-        fitRisks: [],
-        potentialDisqualifiers: [],
-        recommendedAction: "Pursue",
-        reasoning: "Title matches CRO.",
-      },
-      provider: "openai",
-      model: "test",
-      modelUrlIdentifier: "test",
-      usage: { inputTokens: 10, outputTokens: 5 },
     });
 
     const cro = {
@@ -336,12 +313,17 @@ describe("scoring engine persona exclusion short circuit", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(generateScoringAssessment).toHaveBeenCalledTimes(1);
+    expect(generateScoringAssessment).not.toHaveBeenCalled();
+    expect(researchContactRole).not.toHaveBeenCalled();
     expect(prismaMock.contactScore.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           matchedPersonaId: "persona_cro",
+          overallScore: null,
           assessmentData: expect.objectContaining({
+            aiSkipped: true,
+            aiSkipReason: "SINGLE_PERSONA_MATCH",
+            qualificationBucket: "GOOD",
             personaMatch: expect.objectContaining({
               status: "MATCHED",
               matchedPersonaId: "persona_cro",

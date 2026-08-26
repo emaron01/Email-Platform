@@ -165,7 +165,7 @@ export function icpQualificationToBucket(
   if (qualification?.bucket === "NO") return "EXCLUDED";
   if (scoreLabel === "DISQUALIFIED") return "EXCLUDED";
   if (qualification?.bucket === "MAYBE") return "NEEDS_REVIEW";
-  if (qualification?.bucket === "WEAK") return "POOR_FIT";
+  if (qualification?.bucket === "WEAK") return "NEEDS_REVIEW";
   if (qualification?.bucket === "GOOD") return "GOOD";
   if (scoreLabel === "EXCELLENT" || scoreLabel === "GOOD") return "GOOD";
   if (scoreLabel === "POOR") return "EXCLUDED";

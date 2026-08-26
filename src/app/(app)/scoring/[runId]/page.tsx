@@ -130,7 +130,7 @@ export default async function ScoringReportPage({
     <div>
       <PageHeader
         title="Score Report"
-        description="Pending scores remain empty until the AI scoring engine is added later. Company research is independent of Product/ICP/Persona fit."
+        description="Deterministic qualification by ICP criteria and persona title fit. Numeric scores are deferred; contacts are marked Good, Needs review, or Excluded with a reason."
         actions={
           <Link
             href={`/lists/${run.contactListId}`}
@@ -194,7 +194,7 @@ export default async function ScoringReportPage({
       <div className="mb-6">
         <Panel
           title="AI Scoring"
-          description="Scores this contact at this company for this Product against this ICP and Persona. Uses CompanyResearch — does not browse the web."
+          description="Qualifies contacts using company ICP criteria and persona title fit. Contact role research runs when you generate email, not during scoring."
         >
           <ScoreContactsPanel
             runId={run.id}

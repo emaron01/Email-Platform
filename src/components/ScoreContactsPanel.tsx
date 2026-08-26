@@ -29,8 +29,7 @@ export function ScoreContactsPanel({
   const [message, setMessage] = useState<string | null>(null);
 
   const incompleteResearch = readiness.companiesMissingResearch > 0;
-  const canScore =
-    readiness.aiConfigured && readiness.contactResearchAiConfigured;
+  const canScore = true;
 
   function runScore(forceRescore: boolean) {
     const formData = new FormData();

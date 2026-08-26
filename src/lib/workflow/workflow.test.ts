@@ -237,7 +237,7 @@ describe("qualification bucket contract", () => {
   it("uses identical Good / Needs review / Excluded ordering", () => {
     expect(
       QUALIFICATION_BUCKETS.map((key) => QUALIFICATION_BUCKET_LABELS[key]),
-    ).toEqual(["Good", "Needs review", "Poor fit", "Excluded"]);
+    ).toEqual(["Good", "Needs review", "Excluded"]);
   });
 
   it("sends unmatched titles to Needs review and all-excluded contacts to Excluded", () => {

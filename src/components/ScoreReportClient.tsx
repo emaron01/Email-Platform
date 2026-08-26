@@ -24,6 +24,13 @@ import {
   readIcpQualification,
 } from "@/lib/scoring/icp-qualification";
 import { readCriterionProvenanceLabels } from "@/lib/criteria/research-cascade";
+import {
+  QUALIFICATION_BUCKET_LABELS,
+  readPersonaMatch,
+  readQualificationBucket,
+  readQualificationReason,
+} from "@/lib/workflow/qualification";
+import type { QualificationBucket } from "@prisma/client";
 
 export type CompanyResearchView = {
   id: string;
@@ -100,49 +107,41 @@ export type ScoreReportClientRow = {
   };
 };
 
-function displayScore(value: number | null): string {
-  return value == null ? "Not scored" : String(value);
-}
-
-type ComponentCoverage = {
-  evaluated: number;
-  total: number;
-};
-
-function icpCoverage(assessmentData: unknown): ComponentCoverage | null {
-  if (!assessmentData || typeof assessmentData !== "object") return null;
-  const coverage = (
-    assessmentData as {
-      componentCoverage?: { icp?: Partial<ComponentCoverage> };
-    }
-  ).componentCoverage?.icp;
-  if (
-    typeof coverage?.evaluated !== "number" ||
-    typeof coverage.total !== "number"
-  ) {
-    return null;
+function qualificationBadgeClass(bucket: QualificationBucket | null): string {
+  switch (bucket) {
+    case "GOOD":
+      return "bg-emerald-50 text-emerald-900 ring-emerald-200";
+    case "NEEDS_REVIEW":
+      return "bg-amber-50 text-amber-900 ring-amber-200";
+    case "EXCLUDED":
+      return "bg-slate-100 text-slate-800 ring-slate-300";
+    case "POOR_FIT":
+      return "bg-amber-50 text-amber-900 ring-amber-200";
+    default:
+      return "bg-slate-50 text-slate-600 ring-slate-200";
   }
-  return { evaluated: coverage.evaluated, total: coverage.total };
 }
 
-function displayScoreLabel(
-  label: string | null,
-  coverage: ComponentCoverage | null,
-  bucket: string | null,
-): string {
-  if (bucket === "WEAK" || label === "POOR") return "Poor";
-  if (label === "FAIR" && coverage && coverage.evaluated < coverage.total) {
-    return "Maybe";
-  }
-  return label ?? "Pending";
+function displayQualificationBucket(bucket: QualificationBucket | null): string {
+  if (!bucket) return "Pending";
+  if (bucket === "POOR_FIT") return QUALIFICATION_BUCKET_LABELS.NEEDS_REVIEW;
+  return QUALIFICATION_BUCKET_LABELS[bucket];
 }
 
-function displayIcpScore(
-  score: number | null,
-  coverage: ComponentCoverage | null,
-): string {
-  if (coverage?.total && coverage.evaluated === 0) return "Not scored";
-  return displayScore(score);
+function resolveQualification(row: ScoreReportClientRow): {
+  bucket: QualificationBucket | null;
+  reason: string | null;
+} {
+  const bucket =
+    readQualificationBucket(row.assessmentData) ??
+    (row.scoringStatus === "SUPPRESSED" || row.suppressed
+      ? "EXCLUDED"
+      : null);
+  const reason =
+    readQualificationReason(row.assessmentData) ??
+    row.recommendedAction ??
+    row.reasoning;
+  return { bucket, reason };
 }
 
 function asStringList(value: unknown): string[] {
@@ -348,20 +347,15 @@ export function ScoreReportClient({
       </div>
 
       <div className="max-h-[75vh] overflow-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-[1656px] table-fixed divide-y divide-slate-200 text-sm">
+        <table className="w-[1200px] table-fixed divide-y divide-slate-200 text-sm">
           <colgroup>
             <col className="w-14" />
             <col className="w-48" />
             <col className="w-44" />
             <col className="w-40" />
             <col className="w-28" />
-            <col className="w-20" />
-            <col className="w-40" />
-            <col className="w-20" />
-            <col className="w-24" />
-            <col className="w-20" />
-            <col className="w-24" />
-            <col className="w-72" />
+            <col className="w-32" />
+            <col className="w-80" />
             <col className="w-20" />
           </colgroup>
           <thead className="sticky top-0 z-10 bg-slate-50 text-left text-slate-500 shadow-[0_1px_0_0_rgb(226_232_240)]">
@@ -371,13 +365,8 @@ export function ScoreReportClient({
               <th className="px-3 py-3 font-medium">Title</th>
               <th className="px-3 py-3 font-medium">Company</th>
               <th className="px-3 py-3 font-medium">Research</th>
-              <th className="px-3 py-3 text-center font-medium">Overall</th>
-              <th className="px-3 py-3 text-center font-medium">ICP</th>
-              <th className="px-3 py-3 text-center font-medium">Persona</th>
-              <th className="px-3 py-3 text-center font-medium">Company Fit</th>
-              <th className="px-3 py-3 text-center font-medium">Product</th>
-              <th className="px-3 py-3 font-medium">Label</th>
-              <th className="px-3 py-3 font-medium">Action</th>
+              <th className="px-3 py-3 font-medium">Qualification</th>
+              <th className="px-3 py-3 font-medium">Reason</th>
               <th className="px-3 py-3 font-medium">Details</th>
             </tr>
           </thead>
@@ -385,8 +374,9 @@ export function ScoreReportClient({
             {rows.map((row) => {
               const open = expandedId === row.id;
               const companyResearch = row.contact.companyRecord?.research?.[0];
-              const coverage = icpCoverage(row.assessmentData);
               const qualification = readIcpQualification(row.assessmentData);
+              const personaMatch = readPersonaMatch(row.assessmentData);
+              const resolvedQualification = resolveQualification(row);
               const why = qualification
                 ? icpQualificationWhyLines(qualification)
                 : null;
@@ -452,51 +442,31 @@ export function ScoreReportClient({
                     <td className="px-3 py-2 text-slate-600">
                       Research: {researchLabel}
                     </td>
-                    <td className="px-3 py-2 text-center tabular-nums text-slate-600">
-                      {displayScore(row.overallScore)}
-                    </td>
-                    <td className="px-3 py-2 text-center tabular-nums text-slate-600">
-                      {displayIcpScore(row.icpScore, coverage)}
-                      {coverage?.total ? (
-                        <span className="mt-0.5 block text-[10px] leading-3 text-slate-500">
-                          {coverage.evaluated} of {coverage.total} criteria
-                          evaluated
-                        </span>
-                      ) : null}
-                      {qualification?.secondaryFlags.length ? (
-                        <span className="mt-0.5 block text-[10px] leading-3 text-emerald-800">
-                          {qualification.secondaryFlags
-                            .map((flag) => flag.text)
-                            .join(" · ")}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-2 text-center tabular-nums text-slate-600">
-                      {displayScore(row.personaScore)}
-                    </td>
-                    <td className="px-3 py-2 text-center tabular-nums text-slate-600">
-                      {displayScore(row.companyScore)}
-                    </td>
-                    <td className="px-3 py-2 text-center tabular-nums text-slate-600">
-                      {displayScore(row.productRelevanceScore)}
-                    </td>
-                    <td className="px-3 py-2 text-slate-600">
-                      {displayScoreLabel(
-                        row.scoreLabel,
-                        coverage,
-                        qualification?.bucket ?? null,
-                      )}
+                    <td className="px-3 py-2">
+                      <span
+                        className={cn(
+                          "inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset",
+                          qualificationBadgeClass(resolvedQualification.bucket),
+                        )}
+                      >
+                        {displayQualificationBucket(resolvedQualification.bucket)}
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-slate-600">
                       <button
                         type="button"
                         className="line-clamp-2 max-h-10 w-full text-left leading-5 hover:text-slate-900 hover:underline"
-                        title={row.recommendedAction ?? "Pending"}
+                        title={resolvedQualification.reason ?? "Pending"}
                         aria-expanded={open}
                         onClick={() => setExpandedId(open ? null : row.id)}
                       >
-                        {row.recommendedAction ?? "Pending"}
+                        {resolvedQualification.reason ?? "Pending"}
                       </button>
+                      {personaMatch?.matchedPersonaId ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Persona matched
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2">
                       <button
@@ -510,7 +480,7 @@ export function ScoreReportClient({
                   </tr>
                   {open ? (
                     <tr className="bg-slate-50">
-                      <td colSpan={13} className="px-4 py-4">
+                      <td colSpan={8} className="px-4 py-4">
                         <div className="space-y-5 text-sm text-slate-700">
                           <SuppressContactForm
                             contactId={row.contactId}
@@ -532,6 +502,31 @@ export function ScoreReportClient({
                               </ul>
                             </section>
                           ) : null}
+
+                          <section>
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Qualification
+                            </h4>
+                            <div className="mt-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800">
+                              <p>
+                                Bucket:{" "}
+                                {displayQualificationBucket(
+                                  resolvedQualification.bucket,
+                                )}
+                              </p>
+                              <p className="mt-1">
+                                Reason: {resolvedQualification.reason ?? "—"}
+                              </p>
+                              {row.overallScore != null ? (
+                                <p className="mt-1 tabular-nums text-slate-500">
+                                  Legacy score: overall {row.overallScore}
+                                  {row.icpScore != null
+                                    ? ` · ICP ${row.icpScore}`
+                                    : ""}
+                                </p>
+                              ) : null}
+                            </div>
+                          </section>
 
                           <section>
                             <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
