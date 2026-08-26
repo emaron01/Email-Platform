@@ -77,7 +77,13 @@ export async function provisionIndividualWorkspace(input: {
   const firstName = input.firstName.trim() || "User";
   const lastName = input.lastName.trim() || "";
   const displayName = [firstName, lastName].filter(Boolean).join(" ");
-  const workspaceName = `${firstName}'s Workspace`;
+  const isVitest = Boolean(process.env.VITEST);
+  const workspaceName = isVitest
+    ? `[TEST] ${firstName}'s Workspace`
+    : `${firstName}'s Workspace`;
+  const userDisplayName = isVitest
+    ? `[TEST] ${displayName || firstName}`
+    : displayName;
 
   const existingByAuth = await prisma.user.findUnique({
     where: { authUserId: input.authUserId },
@@ -122,7 +128,7 @@ export async function provisionIndividualWorkspace(input: {
             authUserId: input.authUserId,
             firstName: existingByEmail.firstName ?? firstName,
             lastName: existingByEmail.lastName ?? lastName,
-            name: existingByEmail.name ?? displayName,
+            name: existingByEmail.name ?? userDisplayName,
           },
         });
         let membership = await tx.organizationMembership.findFirst({
@@ -200,7 +206,7 @@ export async function provisionIndividualWorkspace(input: {
         emailNormalized: email,
         firstName,
         lastName,
-        name: displayName,
+        name: userDisplayName,
         platformRole: "NONE",
       },
     });
@@ -220,7 +226,7 @@ export async function provisionIndividualWorkspace(input: {
         emailNormalized: email,
         firstName,
         lastName,
-        name: displayName,
+        name: userDisplayName,
         platformRole: "NONE",
       },
     });

@@ -2,7 +2,6 @@
  * Progressive Product web search + sufficiency + URL safety tests.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { config } from "dotenv";
 import { assertSafeExternalHttpUrl } from "@/lib/research/url-safety";
 import {
   buildProductSearchFocus,
@@ -10,9 +9,6 @@ import {
 } from "@/lib/product-research/sufficiency";
 import { classifyProductSourceQuality } from "@/lib/product-research/progressive-search";
 import { DEFAULT_RESEARCH_POLICY_VALUES } from "@/lib/usage/defaults";
-
-config({ path: ".env.local" });
-config();
 
 describe("URL safety (SSRF)", () => {
   it("allows public https URLs", () => {

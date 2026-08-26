@@ -2,7 +2,6 @@
  * Email verification URL preservation + production tenant fallback contracts.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { config } from "dotenv";
 import {
   decodeHtmlAttrEntities,
   extractFirstHref,
@@ -12,9 +11,6 @@ import {
 import { renderTransactionalTemplate } from "@/lib/transactional-email/render-service";
 import { createEmailVerificationToken } from "better-auth/api";
 import { jwtVerify } from "jose";
-
-config({ path: ".env.local" });
-config();
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 

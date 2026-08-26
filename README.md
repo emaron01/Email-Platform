@@ -35,7 +35,40 @@ npx prisma migrate deploy
 # npx prisma migrate dev
 ```
 
-### Seed development tenant
+### Test database (required for `npm test`)
+
+Tests never load `.env.local`. They use `TEST_DATABASE_URL` from
+`.env.test.example` (or `.env.test` if you override it).
+
+```bash
+npm run db:test:up
+npm run db:test:migrate
+npm test
+```
+
+`npm run db:test:migrate` refuses Render / production hosts. It does not
+load `.env.local`. A suite pointed at production fails with the host name
+unless `ALLOW_PROD_DB_TESTS=1` (never use that against customer data).
+
+If Docker is not installed, create a dedicated local database instead
+(still never Render):
+
+```bash
+psql -U postgres -c "CREATE ROLE email_platform_test LOGIN PASSWORD 'email_platform_test';"
+psql -U postgres -c "CREATE DATABASE email_platform_test OWNER email_platform_test;"
+```
+
+Copy `.env.test.example` to `.env.test` and point `TEST_DATABASE_URL` at
+that database (port 5432 on a local Postgres, or 5433 for docker-compose).
+
+Read-only inventory of existing test rows in the app database:
+
+```bash
+npm run db:test:pollution-report
+```
+
+That command only SELECTs. It does not delete.
+
 
 ```bash
 npm run db:seed
@@ -55,5 +88,7 @@ npm run dev
 | `npm run db:generate` | Generate Prisma client |
 | `npm run db:migrate` | Prisma migrate dev |
 | `npm run db:seed` | Seed [DEV] organization |
-| `npm run db:safety` | Print host/db name; block SalesForecaster targets |
-| `npm test` | Tenant isolation tests (requires DATABASE_URL) |
+| `npm run db:safety` | Print host/db name; block SalesForecaster; warn on production hosts |
+| `npm run db:test:up` | Start local Postgres for tests (docker compose, port 5433) |
+| `npm run db:test:migrate` | Apply Prisma migrations to the test database only |
+| `npm test` | Full suite against TEST_DATABASE_URL (never `.env.local`) |

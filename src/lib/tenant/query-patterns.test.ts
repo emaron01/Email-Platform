@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 /**
  * Pure unit checks for the tenant query patterns used by the data access layer.
- * Database-backed isolation tests live in isolation.test.ts (require DATABASE_URL).
+ * Database-backed isolation tests live in isolation.test.ts (require TEST_DATABASE_URL).
  */
 describe("tenant query patterns", () => {
   it("scopes list queries by organizationId", () => {

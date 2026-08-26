@@ -2,7 +2,6 @@
  * Persona save + interpretation semantics regression tests.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { config } from "dotenv";
 import { buildLegacyPersonaCriteria } from "@/lib/criteria/legacy-backfill";
 import { planCriterionReinterpretation } from "@/lib/criteria/merge";
 import { PERSONA_INTERPRETATION_PROMPT_VERSION } from "@/lib/criteria/types";
@@ -22,9 +21,6 @@ import {
 } from "@/lib/persona/save";
 import { TenantError } from "@/lib/tenant/errors";
 import type { Persona } from "@prisma/client";
-
-config({ path: ".env.local" });
-config();
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -315,7 +311,7 @@ describe.skipIf(!hasDatabase)(
         await prisma.$queryRaw`SELECT 1`;
         const org = await prisma.organization.create({
           data: {
-            name: `Persona Save Org ${suffix}`,
+            name: `[TEST] Persona Save Org ${suffix}`,
             slug: `persona-save-${suffix}`,
           },
         });
@@ -350,7 +346,7 @@ describe.skipIf(!hasDatabase)(
         data: {
           organizationId,
           productId,
-          name: SALES_LEADER_FIXTURE.name,
+          name: `[TEST] ${SALES_LEADER_FIXTURE.name}`,
           definition: SALES_LEADER_FIXTURE.definition,
           additionalContext: SALES_LEADER_FIXTURE.additionalContext,
           targetTitles: SALES_LEADER_FIXTURE.targetTitles,

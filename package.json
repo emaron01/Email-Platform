@@ -12,11 +12,15 @@
     "db:deploy": "dotenv -e .env.local -e .env -- prisma migrate deploy",
     "db:studio": "dotenv -e .env.local -e .env -- prisma studio",
     "db:safety": "node scripts/db-safety-check.mjs",
+    "db:test:up": "docker compose up -d --wait postgres-test",
+    "db:test:down": "docker compose down",
+    "db:test:migrate": "tsx scripts/migrate-test-db.ts",
+    "db:test:pollution-report": "tsx scripts/report-test-pollution.mjs",
     "db:seed": "dotenv -e .env.local -e .env -- tsx prisma/seed.ts",
     "auth:bootstrap": "dotenv -e .env.local -e .env -- tsx scripts/auth-bootstrap.ts",
     "platform:bootstrap-admin": "dotenv -e .env.local -e .env -- tsx scripts/platform-bootstrap-admin.ts",
     "platform:provision-super-admin": "dotenv -e .env.local -e .env -- tsx scripts/platform-provision-super-admin.ts",
-    "test": "dotenv -e .env.local -e .env -- vitest run"
+    "test": "vitest run"
   },
   "dependencies": {
     "@better-auth/prisma-adapter": "^1.7.1",

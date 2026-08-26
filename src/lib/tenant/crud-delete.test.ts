@@ -2,13 +2,9 @@
  * Product / Persona CRUD delete lifecycle tests.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { config } from "dotenv";
 import { canDeleteSetupEntities } from "@/lib/auth/authz";
 import { toSafeCrudDeleteError } from "@/lib/tenant/crud-delete";
 import { TenantError } from "@/lib/tenant/errors";
-
-config({ path: ".env.local" });
-config();
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -84,10 +80,10 @@ describe.skipIf(!hasDatabase)(
       try {
         await prisma.$queryRaw`SELECT "archivedAt" FROM "Persona" LIMIT 0`;
         const a = await prisma.organization.create({
-          data: { name: `CRUD A ${suffix}`, slug: `crud-a-${suffix}` },
+          data: { name: `[TEST] CRUD A ${suffix}`, slug: `test-crud-a-${suffix}` },
         });
         const b = await prisma.organization.create({
-          data: { name: `CRUD B ${suffix}`, slug: `crud-b-${suffix}` },
+          data: { name: `[TEST] CRUD B ${suffix}`, slug: `test-crud-b-${suffix}` },
         });
         orgA = a.id;
         orgB = b.id;

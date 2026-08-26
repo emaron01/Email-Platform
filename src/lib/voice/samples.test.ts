@@ -3,7 +3,6 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { config } from "dotenv";
 import { TenantError } from "@/lib/tenant/errors";
 import {
   VOICE_SAMPLE_MIN_CHARS,
@@ -11,9 +10,6 @@ import {
   VOICE_SAMPLE_READY_MIN,
   voiceReadiness,
 } from "@/lib/voice/types";
-
-config({ path: ".env.local" });
-config();
 
 const SAMPLE_TEXT = "Hi Alex — ".repeat(20); // well over 100 chars of sent-email text
 

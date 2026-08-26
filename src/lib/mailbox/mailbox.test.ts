@@ -95,7 +95,7 @@ describe.skipIf(!hasDatabase)(
         data: {
           email: `mailbox-b-${suffix}@example.test`,
           emailNormalized: `mailbox-b-${suffix}@example.test`,
-          name: "Mailbox B",
+          name: "[TEST] Mailbox B",
           activeOrganizationId: organizationId,
         },
       });

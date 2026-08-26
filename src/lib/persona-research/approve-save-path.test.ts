@@ -3,12 +3,8 @@
  * of all four types — a total-only assertion would miss silent positive loss.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { config } from "dotenv";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import { DEFAULT_RESEARCH_POLICY_VALUES } from "@/lib/usage/defaults";
-
-config({ path: ".env.local" });
-config();
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -73,7 +69,7 @@ describe.skipIf(!hasDatabase)(
       prisma = new PrismaClient();
       try {
         const org = await prisma.organization.create({
-          data: { name: `PosSave ${suffix}`, slug: `pos-save-${suffix}` },
+          data: { name: `[TEST] PosSave ${suffix}`, slug: `test-pos-save-${suffix}` },
         });
         organizationId = org.id;
 
@@ -82,7 +78,7 @@ describe.skipIf(!hasDatabase)(
           data: {
             email,
             emailNormalized: email,
-            name: "Pos Save",
+            name: "[TEST] Pos Save",
           },
         });
         userId = user.id;

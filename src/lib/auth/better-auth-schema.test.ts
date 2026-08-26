@@ -3,16 +3,12 @@
  * Fails if AuthAccount (or other core auth models) drift from installed Better Auth.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { config } from "dotenv";
 import { Prisma } from "@prisma/client";
 import { getAuthTables, createLocalAccountIssuer } from "@better-auth/core/db";
 import {
   formatSafeErrorForLog,
   redactAuthErrorMessage,
 } from "@/lib/auth/safe-error";
-
-config({ path: ".env.local" });
-config();
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -178,7 +174,7 @@ describe.skipIf(!hasDatabase)(
           body: {
             email,
             password,
-            name: "Schema Probe",
+            name: "[TEST] Schema Probe",
             firstName: "Schema",
             lastName: "Probe",
           },

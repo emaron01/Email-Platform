@@ -3,7 +3,6 @@
  */
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { config } from "dotenv";
 import {
   PREVIOUSLY_DROPPED_FROM_FORM,
   PREVIOUSLY_RENDERED_DRAFT_FIELDS,
@@ -16,9 +15,6 @@ import {
   reconcileUnknownFields,
 } from "@/lib/product-research/review";
 import type { ProductDraft } from "@/lib/product-research/contract";
-
-config({ path: ".env.local" });
-config();
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -205,7 +201,7 @@ describe.skipIf(!hasDatabase)(
       prisma = new PrismaClient();
       const org = await prisma.organization.create({
         data: {
-          name: `Review persist ${suffix}`,
+          name: `[TEST] Review persist ${suffix}`,
           slug: `review-persist-${suffix}`,
         },
       });

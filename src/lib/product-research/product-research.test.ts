@@ -2,7 +2,6 @@
  * Product assisted setup — unit + integration tests.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { config } from "dotenv";
 import {
   normalizeProductSourceUrl,
   sha256Hex,
@@ -18,9 +17,6 @@ import {
 } from "@/lib/product-research/contract";
 import { buildProductSynthesisMessages } from "@/lib/product-research/prompt";
 import { DEFAULT_RESEARCH_POLICY_VALUES } from "@/lib/usage/defaults";
-
-config({ path: ".env.local" });
-config();
 
 vi.mock("@/lib/product-research/fetch-url", () => ({
   fetchProductPageUrl: vi.fn(async () => {
@@ -161,7 +157,7 @@ describe.skipIf(!hasDatabase)(
         );
         const org = await prisma.organization.create({
           data: {
-            name: `Prod Research Org ${suffix}`,
+            name: `[TEST] Prod Research Org ${suffix}`,
             slug: `prod-research-${suffix}`,
           },
         });
@@ -203,7 +199,6 @@ describe.skipIf(!hasDatabase)(
 
     it("ingests notes/paste without URL research; one bundle for multiple personas", async () => {
       if (!ready) return;
-
 
       const { acquireProductEvidence } = await import(
         "@/lib/product-research/acquire"
@@ -257,7 +252,7 @@ describe.skipIf(!hasDatabase)(
       if (!ready) return;
       const other = await prisma.organization.create({
         data: {
-          name: `Other ${suffix}`,
+          name: `[TEST] Other ${suffix}`,
           slug: `other-pr-${suffix}`,
         },
       });

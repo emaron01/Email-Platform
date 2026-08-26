@@ -1,10 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { config } from "dotenv";
 import { readFileSync } from "node:fs";
 import { TenantError } from "@/lib/tenant/errors";
-
-config({ path: ".env.local" });
-config();
 
 describe("campaign contact management seams", () => {
   it("routes campaign rows to detail and renders generation there only", () => {
@@ -100,13 +96,13 @@ describe.skipIf(!hasDatabase)(
 
       const orgA = await prisma.organization.create({
         data: {
-          name: `Campaign contacts A ${suffix}`,
+          name: `[TEST] Campaign contacts A ${suffix}`,
           slug: `campaign-contacts-a-${suffix}`,
         },
       });
       const orgB = await prisma.organization.create({
         data: {
-          name: `Campaign contacts B ${suffix}`,
+          name: `[TEST] Campaign contacts B ${suffix}`,
           slug: `campaign-contacts-b-${suffix}`,
         },
       });

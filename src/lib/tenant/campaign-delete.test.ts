@@ -3,15 +3,11 @@
  */
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { config } from "dotenv";
 import { TenantError } from "@/lib/tenant/errors";
 import {
   campaignDeleteConfirmBody,
   deleteCampaignGraph,
 } from "@/lib/tenant/campaign-delete";
-
-config({ path: ".env.local" });
-config();
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -64,10 +60,10 @@ describe.skipIf(!hasDatabase)(
       try {
         await prisma.$queryRaw`SELECT "id" FROM "Campaign" LIMIT 0`;
         const a = await prisma.organization.create({
-          data: { name: `CampDel A ${suffix}`, slug: `camp-del-a-${suffix}` },
+          data: { name: `[TEST] CampDel A ${suffix}`, slug: `test-camp-del-a-${suffix}` },
         });
         const b = await prisma.organization.create({
-          data: { name: `CampDel B ${suffix}`, slug: `camp-del-b-${suffix}` },
+          data: { name: `[TEST] CampDel B ${suffix}`, slug: `test-camp-del-b-${suffix}` },
         });
         orgA = a.id;
         orgB = b.id;

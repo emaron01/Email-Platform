@@ -2,10 +2,6 @@
  * Auth bootstrap: link existing app User/Organization to Better Auth safely.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { config } from "dotenv";
-
-config({ path: ".env.local" });
-config();
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 

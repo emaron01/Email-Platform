@@ -1,9 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { config } from "dotenv";
 import { createHash } from "crypto";
-
-config({ path: ".env.local" });
-config();
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 

@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { config } from "dotenv";
 import { readFileSync } from "node:fs";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import {
@@ -9,9 +8,6 @@ import {
   replyStrategy,
 } from "@/lib/email-generation/prompt";
 import { TenantError } from "@/lib/tenant/errors";
-
-config({ path: ".env.local" });
-config();
 
 function contextFixture(
   overrides: Partial<EmailGenerationContext> = {},
