@@ -3,7 +3,7 @@ import {
   compareFirmographics,
   hasEmployeeCountSignal,
   hasRevenueSignal,
-} from "./research-measure-firmographics";
+} from "@/lib/research/measure-firmographics";
 
 describe("firmographics detection", () => {
   it("detects LinkedIn employee range in companySizeContext", () => {
@@ -13,6 +13,15 @@ describe("firmographics detection", () => {
           "LinkedIn lists Motorcity Systems as privately held with 11–50 employees.",
       }),
     ).toBe(true);
+  });
+
+  it("does not treat negated employee mentions as a signal", () => {
+    expect(
+      hasEmployeeCountSignal({
+        companySizeContext:
+          "Reach metrics only; not employee-count or revenue disclosures.",
+      }),
+    ).toBe(false);
   });
 
   it("detects estimatedAov as revenue signal", () => {

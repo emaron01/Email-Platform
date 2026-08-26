@@ -18,7 +18,7 @@ import {
 import { WEBSITE_FIRST_MIN_EXCERPT_CHARS } from "../src/lib/research/website-first-sufficiency";
 import { DEFAULT_RESEARCH_POLICY_VALUES } from "../src/lib/usage/defaults";
 import { researchExpiresAt } from "../src/lib/research/freshness";
-import { compareFirmographics } from "./research-measure-firmographics";
+import { compareFirmographics } from "../src/lib/research/measure-firmographics";
 
 type SourceRow = {
   url?: string;

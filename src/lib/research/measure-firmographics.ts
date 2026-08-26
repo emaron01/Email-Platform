@@ -33,7 +33,7 @@ export function hasCompanySizeContextPopulated(
 }
 
 const EMPLOYEE_SIGNAL =
-  /\b(\d[\d,]*\s*[-–—]\s*\d[\d,]*|\d[\d,]+\+?)\s+(employees|people|staff)\b|\bemployees?\b|\bheadcount\b|\bteam size\b|\bfte\b|\bfull[- ]time equivalent\b|\blinkedin\b.{0,100}\b(employee|employees|headcount|\d[\d,]*\s*[-–—]\s*\d[\d,]*)\b|\b(employee|employees).{0,60}\blinkedin\b/i;
+  /\b(\d[\d,]*\s*[-–—]\s*\d[\d,]*|\d[\d,]+\+?)\s+(employees|people|staff)\b|\bheadcount\b|\bteam size\b|\bfte\b|\bfull[- ]time equivalent\b|\blinkedin\b.{0,100}\b(employee|employees|headcount|\d[\d,]*\s*[-–—]\s*\d[\d,]*)\b|\b(employee|employees).{0,60}\blinkedin\b|\b\d[\d,]+\s+employees\b/i;
 
 const REVENUE_SIGNAL =
   /\brevenue\b|\barr\b|\bmrr\b|\bannual recurring\b|\$\d[\d,.]*\s*(million|billion|m|b|k)\b|\brevenue.{0,40}\$\d|\bvaluation\b|\bgross merchandise\b|\bgmv\b/i;
