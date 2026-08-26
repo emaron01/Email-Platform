@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getEmailAiConfig, getEmailAiProvider } from "@/lib/ai";
+import { AiValidationError, getEmailAiConfig, getEmailAiProvider } from "@/lib/ai";
 import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import type { ReplyClassification } from "@prisma/client";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
@@ -84,6 +84,14 @@ export async function classifyProspectReply(input: {
       referralDetails: response.data.referralDetails,
     };
   } catch (error) {
+    const {
+      classifyEmailGenerationError,
+      emailGenerationFailureUsageMetadata,
+    } = await import("@/lib/email-generation/errors");
+    const classified = classifyEmailGenerationError(error, "classifyReply");
+    const failureMeta = emailGenerationFailureUsageMetadata(error, classified);
+    const usage =
+      error instanceof AiValidationError ? error.usage : undefined;
     await recordUsageEvent({
       organizationId: input.context.organizationId,
       userId: input.context.userId,
@@ -93,12 +101,11 @@ export async function classifyProspectReply(input: {
       operation: "EMAIL_REPLY_CLASSIFIED",
       provider: config.provider,
       model: config.model,
+      inputTokens: usage?.inputTokens ?? null,
+      outputTokens: usage?.outputTokens ?? null,
       status: "FAILED",
       durationMs: Date.now() - started,
-      metadata: {
-        errorType:
-          error instanceof Error ? error.constructor.name : "UnknownError",
-      },
+      metadata: failureMeta,
     });
     throw error;
   }

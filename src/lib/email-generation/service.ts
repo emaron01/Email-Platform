@@ -19,11 +19,18 @@ import {
   personalizationSourceSummary,
   resolvePersonalization,
 } from "@/lib/email-generation/personalization";
+import {
+  emailGenerationFailureUsageMetadata,
+  classifyEmailGenerationError,
+  logEmailGenerationValidationFailure,
+} from "@/lib/email-generation/errors";
 import { EMAIL_GENERATION_PROMPT_VERSION } from "@/lib/email-generation/prompt";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
-import { assertUsageAllowed, UsageQuotaError } from "@/lib/usage/quota";
+import { assertUsageAllowed } from "@/lib/usage/quota";
+
+export { toSafeEmailGenerationError } from "@/lib/email-generation/errors";
 
 export const EMAIL_GENERATION_MODEL = "gpt-5.6-luna";
 
@@ -147,30 +154,6 @@ async function withRetries<T>(
       onRetry();
     }
   }
-}
-
-export function toSafeEmailGenerationError(error: unknown): string {
-  if (error instanceof TenantError) return error.message;
-  if (error instanceof UsageQuotaError) return error.message;
-  if (
-    error instanceof Error &&
-    error.message === "Verify your email address to continue with this action."
-  ) {
-    return error.message;
-  }
-  if (error instanceof AiConfigError) {
-    return "Email generation AI is not configured.";
-  }
-  if (error instanceof AiTimeoutError) {
-    return "Email generation timed out. Please try again.";
-  }
-  if (error instanceof AiValidationError) {
-    return "Email generation returned an invalid draft. Please try again.";
-  }
-  if (error instanceof AiProviderError) {
-    return "Email generation is temporarily unavailable. Please try again.";
-  }
-  return "Unable to generate this email. Please try again.";
 }
 
 export async function generateEmailDraft(
@@ -415,6 +398,31 @@ export async function generateEmailDraft(
         draft.personalizationSources ?? personalizationSources,
     };
   } catch (error) {
+    const classified = classifyEmailGenerationError(error);
+    const failureMeta = emailGenerationFailureUsageMetadata(error, classified);
+    const usage =
+      error instanceof AiValidationError ? error.usage : undefined;
+
+    if (
+      classified.category === "VALIDATION" ||
+      error instanceof AiValidationError
+    ) {
+      logEmailGenerationValidationFailure({
+        organizationId: context.organizationId,
+        campaignId: context.campaign.id,
+        campaignContactId: context.campaignContact.id,
+        provider,
+        model,
+        classified,
+        rawTextPreview:
+          error instanceof AiValidationError
+            ? error.rawTextPreview ?? null
+            : null,
+        durationMs: Date.now() - started,
+        retryCount,
+      });
+    }
+
     await recordUsageEvent({
       organizationId: context.organizationId,
       userId: context.userId,
@@ -424,6 +432,8 @@ export async function generateEmailDraft(
       operation: "EMAIL_DRAFT_CREATED",
       provider,
       model,
+      inputTokens: usage?.inputTokens ?? null,
+      outputTokens: usage?.outputTokens ?? null,
       status: "FAILED",
       retryCount,
       durationMs: Date.now() - started,
@@ -432,8 +442,7 @@ export async function generateEmailDraft(
         sequenceNumber,
         kind,
         promptVersion: EMAIL_GENERATION_PROMPT_VERSION,
-        errorType:
-          error instanceof Error ? error.constructor.name : "UnknownError",
+        ...failureMeta,
       },
     });
     throw error;

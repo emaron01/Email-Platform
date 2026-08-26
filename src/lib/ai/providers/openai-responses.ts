@@ -83,7 +83,13 @@ function parseStructuredOutput<T>(
   dataJson: unknown,
   label: string,
   usage?: AiUsageMetadata,
+  rawText?: string,
 ): { data: T; coercedFields: string[] } {
+  const rawTextPreview =
+    typeof rawText === "string" && rawText.trim()
+      ? redactSecrets(rawText).slice(0, 800)
+      : undefined;
+
   if (request.parseOutput) {
     try {
       const parsed = request.parseOutput(dataJson);
@@ -106,12 +112,13 @@ function parseStructuredOutput<T>(
                   : undefined,
             })),
             usage,
+            rawTextPreview,
           },
         );
       }
       throw new AiValidationError(
         `${label} structured output failed validation after normalization.`,
-        { usage },
+        { usage, rawTextPreview },
       );
     }
   }
@@ -130,6 +137,7 @@ function parseStructuredOutput<T>(
               : undefined,
         })),
         usage,
+        rawTextPreview,
       },
     );
   }
@@ -340,6 +348,10 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
         } catch {
           throw new AiValidationError(
             `${label} Responses API returned content that is not valid JSON.`,
+            {
+              usage: parsed.usage,
+              rawTextPreview: redactSecrets(parsed.outputText).slice(0, 800),
+            },
           );
         }
 
@@ -352,6 +364,7 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
             webSearchCalls:
               mode === "research_web_search" ? parsed.webSearchCalls : 0,
           },
+          parsed.outputText,
         );
 
         return {

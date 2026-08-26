@@ -90,6 +90,9 @@ export function createOpenAiCompatibleProvider(
         } catch {
           throw new AiValidationError(
             "AI provider returned content that is not valid JSON.",
+            {
+              rawTextPreview: redactSecrets(content).slice(0, 800),
+            },
           );
         }
 
@@ -105,6 +108,17 @@ export function createOpenAiCompatibleProvider(
             if (error instanceof ZodError) {
               throw new AiValidationError(
                 `AI structured output failed validation: ${error.message}`,
+                {
+                  issues: error.issues.slice(0, 30).map((issue) => ({
+                    path: issue.path.join(".") || "(root)",
+                    code: issue.code,
+                    expected:
+                      "expected" in issue && issue.expected != null
+                        ? String(issue.expected).slice(0, 80)
+                        : undefined,
+                  })),
+                  rawTextPreview: redactSecrets(content).slice(0, 800),
+                },
               );
             }
             throw error;
@@ -114,6 +128,17 @@ export function createOpenAiCompatibleProvider(
           if (!validated.success) {
             throw new AiValidationError(
               `AI structured output failed validation: ${validated.error.message}`,
+              {
+                issues: validated.error.issues.slice(0, 30).map((issue) => ({
+                  path: issue.path.join(".") || "(root)",
+                  code: issue.code,
+                  expected:
+                    "expected" in issue && issue.expected != null
+                      ? String(issue.expected).slice(0, 80)
+                      : undefined,
+                })),
+                rawTextPreview: redactSecrets(content).slice(0, 800),
+              },
             );
           }
           data = validated.data;

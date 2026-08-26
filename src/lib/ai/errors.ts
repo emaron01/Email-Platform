@@ -60,6 +60,8 @@ export class AiValidationError extends AiError {
     outputTokens?: number;
     webSearchCalls?: number;
   };
+  /** Truncated, redacted model text for ops when schema validation fails. */
+  readonly rawTextPreview?: string;
 
   constructor(
     message: string,
@@ -70,11 +72,13 @@ export class AiValidationError extends AiError {
         outputTokens?: number;
         webSearchCalls?: number;
       };
+      rawTextPreview?: string;
     },
   ) {
     super(message);
     this.name = "AiValidationError";
     this.issues = options?.issues;
     this.usage = options?.usage;
+    this.rawTextPreview = options?.rawTextPreview;
   }
 }
