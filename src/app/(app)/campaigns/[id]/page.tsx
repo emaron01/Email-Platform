@@ -31,6 +31,7 @@ import {
   detectDeterministicOfferConflicts,
   offerConflictsFromJson,
 } from "@/lib/campaign/offer-validation";
+import { claimConflictsFromJson } from "@/lib/email-generation/claim-conflicts";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { getEffectiveUsagePolicy } from "@/lib/usage/policy";
 import { getMailboxConnectionView } from "@/lib/mailbox/data";
@@ -544,6 +545,12 @@ export default async function CampaignDetailPage({
                       ),
                       personalizationSources:
                         draft.personalizationSources,
+                      claimConflicts: claimConflictsFromJson(
+                        draft.claimConflictsJson,
+                      ),
+                      claimConflictsAcknowledged: Boolean(
+                        draft.claimConflictsAcknowledgedAt,
+                      ),
                     })),
                 };
               })}

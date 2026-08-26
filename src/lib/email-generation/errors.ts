@@ -13,6 +13,7 @@ import {
   classifyProductSynthesisError,
   type ProductSynthesisErrorInfo,
 } from "@/lib/product-research/synthesis-errors";
+import { isClaimGuardViolationCode } from "@/lib/email-generation/claim-conflicts";
 import { TenantError } from "@/lib/tenant/errors";
 import { UsageQuotaError } from "@/lib/usage/quota";
 
@@ -52,8 +53,12 @@ function userFacingDetail(
   }
   if (error instanceof AiValidationError) {
     const first = classified.validationIssues?.[0];
+    if (first && isClaimGuardViolationCode(first.code)) {
+      const detail = first.expected?.trim() || first.code;
+      return `Generated copy conflicts with product restrictions: ${detail}`;
+    }
     if (first) {
-      return `Email draft failed validation (${first.path}: ${first.code}). Please try again.`;
+      return `Email draft failed schema validation (${first.path}: ${first.code}). Please try again.`;
     }
     return "Email generation returned an invalid draft. Please try again.";
   }

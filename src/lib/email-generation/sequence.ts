@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { EmailLength } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveActiveOrganization } from "@/lib/auth/session";
 import { TenantError } from "@/lib/tenant/errors";
@@ -63,6 +64,8 @@ export async function markEmailDraftSent(input: {
       sequenceNumber: true,
       status: true,
       sentAt: true,
+      claimConflictsJson: true,
+      claimConflictsAcknowledgedAt: true,
       campaignContact: { select: { campaignId: true, contactId: true, contact: { select: { email: true } } } },
     },
   });
@@ -81,6 +84,19 @@ export async function markEmailDraftSent(input: {
   }
   if (draft.status !== "DRAFT" && draft.status !== "APPROVED") {
     throw new TenantError("Only a completed draft can be marked as sent.");
+  }
+  const { claimConflictsBlockSend } = await import(
+    "@/lib/email-generation/claim-conflicts"
+  );
+  if (
+    claimConflictsBlockSend({
+      claimConflictsJson: draft.claimConflictsJson,
+      claimConflictsAcknowledgedAt: draft.claimConflictsAcknowledgedAt,
+    })
+  ) {
+    throw new TenantError(
+      "This draft still has unresolved claim conflicts. Edit the copy or acknowledge the conflicts before sending.",
+    );
   }
   const {
     assertCampaignNotArchived,
@@ -164,6 +180,7 @@ export async function updateEmailDraftContent(input: {
   subject: string;
   body: string;
   emailLength: EmailLength | null;
+  claimConflictsCleared: boolean;
 }> {
   const subject = input.subject.trim();
   const body = normalizeEmailBody(input.body).trim();
@@ -197,6 +214,9 @@ export async function updateEmailDraftContent(input: {
       sequenceNumber: true,
       status: true,
       sentAt: true,
+      subject: true,
+      body: true,
+      claimConflictsJson: true,
       campaignContact: { select: { campaignId: true } },
     },
   });
@@ -213,12 +233,27 @@ export async function updateEmailDraftContent(input: {
       "This email is currently being sent and cannot be edited.",
     );
   }
+  const contentChanged =
+    (draft.subject ?? "") !== subject || (draft.body ?? "") !== body;
+  const { claimConflictsFromJson } = await import(
+    "@/lib/email-generation/claim-conflicts"
+  );
+  const hadConflicts =
+    claimConflictsFromJson(draft.claimConflictsJson).length > 0;
+  const claimConflictsCleared = contentChanged && hadConflicts;
   await prisma.emailDraft.update({
     where: { id: draft.id },
     data: {
       subject,
       body,
       status: "DRAFT",
+      // Only clear claim-guard state when the rep actually changes the copy.
+      ...(claimConflictsCleared
+        ? {
+            claimConflictsJson: Prisma.DbNull,
+            claimConflictsAcknowledgedAt: null,
+          }
+        : {}),
       ...(input.emailLength ? { emailLength: input.emailLength } : {}),
     },
   });
@@ -229,6 +264,7 @@ export async function updateEmailDraftContent(input: {
     subject,
     body,
     emailLength: input.emailLength ?? null,
+    claimConflictsCleared,
   };
 }
 
@@ -258,6 +294,8 @@ export async function recordEmailClientIntent(input: {
       subject: true,
       body: true,
       generatedBody: true,
+      claimConflictsJson: true,
+      claimConflictsAcknowledgedAt: true,
       campaignContact: {
         select: {
           campaignId: true,
@@ -270,6 +308,19 @@ export async function recordEmailClientIntent(input: {
   if (!draft) {
     throw new TenantError(
       "Email draft does not belong to the active organization.",
+    );
+  }
+  const { claimConflictsBlockSend } = await import(
+    "@/lib/email-generation/claim-conflicts"
+  );
+  if (
+    claimConflictsBlockSend({
+      claimConflictsJson: draft.claimConflictsJson,
+      claimConflictsAcknowledgedAt: draft.claimConflictsAcknowledgedAt,
+    })
+  ) {
+    throw new TenantError(
+      "This draft still has unresolved claim conflicts. Edit the copy or acknowledge the conflicts before opening an email client.",
     );
   }
   const recipient = draft.campaignContact.contact.email?.trim();

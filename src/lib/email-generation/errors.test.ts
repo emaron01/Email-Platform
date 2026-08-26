@@ -10,14 +10,37 @@ import {
 } from "@/lib/email-generation/errors";
 
 describe("email generation error observability", () => {
-  it("names VALIDATION in the user-facing message with issue path", () => {
+  it("names claim-guard conflicts with the product restriction description", () => {
+    const error = new AiValidationError(
+      "Generated email conflicts with product claims or offer evidence.",
+      {
+        issues: [
+          {
+            path: "body:Guaranteed revenue growth",
+            code: "PROHIBITED_CLAIM",
+            expected:
+              "Generated copy repeats a prohibited claim: Guaranteed revenue growth",
+            matchedGuard: "Guaranteed revenue growth",
+            bodyExcerpt: "Guaranteed revenue growth",
+          },
+        ],
+        usage: { inputTokens: 5871, outputTokens: 694 },
+      },
+    );
+    expect(toSafeEmailGenerationError(error)).toBe(
+      "[VALIDATION] Generated copy conflicts with product restrictions: Generated copy repeats a prohibited claim: Guaranteed revenue growth",
+    );
+    const classified = classifyEmailGenerationError(error);
+    expect(classified.stage).toBe("claimValidation");
+    expect(classified.validationIssues?.[0]?.code).toBe("PROHIBITED_CLAIM");
+  });
+
+  it("keeps schema-validation wording for non-claim AiValidationError", () => {
     const error = new AiValidationError("structured output failed validation.", {
       issues: [{ path: "reasoning", code: "too_small", expected: ">=1" }],
-      usage: { inputTokens: 11, outputTokens: 7 },
-      rawTextPreview: '{"subject":"Hi","body":"Hello"}',
     });
     expect(toSafeEmailGenerationError(error)).toBe(
-      "[VALIDATION] Email draft failed validation (reasoning: too_small). Please try again.",
+      "[VALIDATION] Email draft failed schema validation (reasoning: too_small). Please try again.",
     );
   });
 

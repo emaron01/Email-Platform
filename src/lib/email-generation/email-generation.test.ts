@@ -833,6 +833,18 @@ describe("email generation action and UI seams", () => {
     expect(action).toContain("parseEmailLength");
     expect(form).toContain("selectedLength");
     expect(form).toContain("regenerateEmailDraftAction");
+    expect(action).toContain("acknowledgeEmailDraftClaimConflictsAction");
+    expect(action).toContain("requiresClaimAcknowledgment");
+    expect(form).toContain("Claim conflicts in this draft");
+    expect(form).toContain("Acknowledge conflicts and allow send");
+    expect(form).toContain("Offending copy:");
+    expect(form).toContain("Product restriction:");
+    const service = readFileSync("src/lib/email-generation/service.ts", "utf8");
+    expect(service).toContain("Always persist the draft");
+    expect(service).toContain("claimConflictsJson");
+    expect(service).not.toMatch(
+      /if \(claimConflicts\.length > 0\) \{\s*throw/,
+    );
   });
 });
 

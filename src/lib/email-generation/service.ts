@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { EmailDraftKind, ReplyClassification } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   AiConfigError,
   AiProviderError,
@@ -180,6 +181,8 @@ export async function generateEmailDraft(
   personaId: string;
   personalizationTier: string;
   personalizationSources: string;
+  claimConflicts: import("@/lib/email-generation/claim-validation-contract").ClaimValidationViolation[];
+  claimConflictsAcknowledged: boolean;
 }> {
   const sequenceNumber = options.sequenceNumber ?? 1;
   const kind = options.kind ?? (sequenceNumber === 1 ? "INITIAL" : "FOLLOW_UP");
@@ -284,19 +287,7 @@ export async function generateEmailDraft(
       subject,
       body,
     });
-    if (claimValidation.violations.length > 0) {
-      throw new AiValidationError(
-        "Generated email conflicts with product claims or offer evidence.",
-        {
-          issues: claimValidation.violations.map((violation) => ({
-            path: "body",
-            code: violation.type,
-            expected: violation.description,
-          })),
-          usage: claimValidation.response.usage,
-        },
-      );
-    }
+    const claimConflicts = claimValidation.violations;
 
     const personalization = resolvePersonalization({
       companyResearch: context.companyResearch,
@@ -305,6 +296,7 @@ export async function generateEmailDraft(
     const emailLength = context.emailLength ?? context.campaign.emailLength;
     const personalizationSources = personalizationSourceSummary(personalization);
 
+    // Always persist the draft — claim conflicts are reviewable, not discarded.
     const draft = await prisma.emailDraft.upsert({
       where: {
         organizationId_campaignContactId_sequenceNumber: {
@@ -331,6 +323,9 @@ export async function generateEmailDraft(
         personaId: context.persona.id,
         personalizationTier: personalization.tier,
         personalizationSources,
+        claimConflictsJson:
+          claimConflicts.length > 0 ? claimConflicts : undefined,
+        claimConflictsAcknowledgedAt: null,
       },
       update: {
         subject,
@@ -347,8 +342,100 @@ export async function generateEmailDraft(
         personaId: context.persona.id,
         personalizationTier: personalization.tier,
         personalizationSources,
+        claimConflictsJson:
+          claimConflicts.length > 0 ? claimConflicts : Prisma.DbNull,
+        claimConflictsAcknowledgedAt: null,
       },
     });
+
+    if (claimConflicts.length > 0) {
+      const { claimViolationsToIssues } = await import(
+        "@/lib/email-generation/claim-conflicts"
+      );
+      const { classifyEmailGenerationError, logEmailGenerationValidationFailure } =
+        await import("@/lib/email-generation/errors");
+      const claimError = new AiValidationError(
+        "Generated email conflicts with product claims or offer evidence.",
+        {
+          issues: claimViolationsToIssues(claimConflicts),
+          usage: {
+            inputTokens:
+              (response.usage?.inputTokens ?? 0) +
+              (claimValidation.response.usage?.inputTokens ?? 0),
+            outputTokens:
+              (response.usage?.outputTokens ?? 0) +
+              (claimValidation.response.usage?.outputTokens ?? 0),
+          },
+          rawTextPreview: JSON.stringify({ subject, body }).slice(0, 800),
+        },
+      );
+      const classified = classifyEmailGenerationError(
+        claimError,
+        "claimValidation",
+      );
+      logEmailGenerationValidationFailure({
+        organizationId: context.organizationId,
+        campaignId: context.campaign.id,
+        campaignContactId: context.campaignContact.id,
+        provider: response.provider,
+        model: response.model,
+        classified,
+        rawTextPreview: claimError.rawTextPreview ?? null,
+        durationMs: Date.now() - started,
+        retryCount,
+      });
+      await recordUsageEvent({
+        organizationId: context.organizationId,
+        userId: context.userId,
+        campaignId: context.campaign.id,
+        contactId: context.contact.id,
+        category: "EMAIL_GENERATION",
+        operation: "EMAIL_DRAFT_CREATED",
+        provider: response.provider,
+        model: response.model,
+        inputTokens:
+          (response.usage?.inputTokens ?? 0) +
+            (claimValidation.response.usage?.inputTokens ?? 0) || null,
+        outputTokens:
+          (response.usage?.outputTokens ?? 0) +
+            (claimValidation.response.usage?.outputTokens ?? 0) || null,
+        status: "SUCCESS",
+        retryCount,
+        durationMs: Date.now() - started,
+        metadata: {
+          campaignContactId: context.campaignContact.id,
+          draftId: draft.id,
+          sequenceNumber: draft.sequenceNumber,
+          source: draft.source,
+          promptVersion: EMAIL_GENERATION_PROMPT_VERSION,
+          regenerated,
+          kind,
+          claimValidationCompleted: true,
+          claimConflictCount: claimConflicts.length,
+          claimConflicts: claimViolationsToIssues(claimConflicts),
+          errorCategory: "VALIDATION",
+          stage: "claimValidation",
+        },
+      });
+
+      return {
+        draftId: draft.id,
+        subject,
+        body,
+        regenerated,
+        sequenceNumber: draft.sequenceNumber,
+        kind: draft.kind,
+        replyClassification: draft.replyClassification,
+        referralSuggested: draft.referralSuggested,
+        emailLength: draft.emailLength ?? emailLength,
+        personaId: draft.personaId ?? context.persona.id,
+        personalizationTier: draft.personalizationTier ?? personalization.tier,
+        personalizationSources:
+          draft.personalizationSources ?? personalizationSources,
+        claimConflicts,
+        claimConflictsAcknowledged: false,
+      };
+    }
 
     await recordUsageEvent({
       organizationId: context.organizationId,
@@ -379,6 +466,7 @@ export async function generateEmailDraft(
         regenerated,
         kind,
         claimValidationCompleted: true,
+        claimConflictCount: 0,
       },
     });
 
@@ -396,6 +484,8 @@ export async function generateEmailDraft(
       personalizationTier: draft.personalizationTier ?? personalization.tier,
       personalizationSources:
         draft.personalizationSources ?? personalizationSources,
+      claimConflicts: [],
+      claimConflictsAcknowledged: false,
     };
   } catch (error) {
     const classified = classifyEmailGenerationError(error);

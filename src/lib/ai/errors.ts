@@ -50,6 +50,8 @@ export type AiValidationIssue = {
   path: string;
   code: string;
   expected?: string;
+  matchedGuard?: string | null;
+  bodyExcerpt?: string | null;
 };
 
 export class AiValidationError extends AiError {

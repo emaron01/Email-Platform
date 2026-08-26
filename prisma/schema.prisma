@@ -1723,6 +1723,10 @@ model EmailDraft {
   personaId            String?
   personalizationTier  String?
   personalizationSources String?
+  /// Claim-guard violations from the last AI generation (null when clean).
+  claimConflictsJson   Json?
+  /// Rep acknowledgment that conflicting generated copy may still be sent.
+  claimConflictsAcknowledgedAt DateTime?
   approvedAt           DateTime?
   sentAt               DateTime?
   sentMethod           EmailSentMethod?

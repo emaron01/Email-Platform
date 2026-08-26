@@ -43,6 +43,10 @@ export type ProductSynthesisErrorInfo = {
   messageSafe: string;
 };
 
+function isClaimGuardMessage(message: string): boolean {
+  return /conflicts with product claims or offer evidence/i.test(message);
+}
+
 function parseProviderBodyHints(message: string): {
   code?: string;
   type?: string;
@@ -103,9 +107,13 @@ export function classifyProductSynthesisError(
   if (error instanceof AiValidationError) {
     return {
       category: "VALIDATION",
-      stage: "validation",
+      stage: isClaimGuardMessage(error.message)
+        ? "claimValidation"
+        : "validation",
       validationIssues: error.issues,
-      messageSafe: "Structured output failed schema validation.",
+      messageSafe: isClaimGuardMessage(error.message)
+        ? redactSecrets(error.message).slice(0, 400)
+        : "Structured output failed schema validation.",
     };
   }
 

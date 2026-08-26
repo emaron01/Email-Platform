@@ -56,6 +56,10 @@ export type GenerateEmailDraftActionResult = {
     "INTERESTED" | "OBJECTION" | "REFERRAL" | "NOT_NOW" | "NOT_INTERESTED";
   referralSuggested?: boolean;
   offerWarnings?: OfferConflict[];
+  claimConflicts?: import("@/lib/email-generation/claim-validation-contract").ClaimValidationViolation[];
+  claimConflictsAcknowledged?: boolean;
+  claimConflictsCleared?: boolean;
+  requiresClaimAcknowledgment?: boolean;
   sentAt?: string;
   handoffAt?: string;
   sendUsage?: {
@@ -110,11 +114,14 @@ export async function generateEmailDraftAction(
     const draft = await generateEmailDraft(context, messages);
 
     revalidateCampaign(context.campaign.id);
+    const hasClaimConflicts = draft.claimConflicts.length > 0;
     return {
       ok: true,
-      message: draft.regenerated
-        ? "Email draft regenerated."
-        : "Email draft generated.",
+      message: hasClaimConflicts
+        ? "Draft generated with claim conflicts. Review the flagged copy before sending."
+        : draft.regenerated
+          ? "Email draft regenerated."
+          : "Email draft generated.",
       draftId: draft.draftId,
       subject: draft.subject,
       body: draft.body,
@@ -122,6 +129,9 @@ export async function generateEmailDraftAction(
       kind: draft.kind,
       status: "DRAFT",
       offerWarnings: unacknowledgedOfferWarnings(context),
+      claimConflicts: draft.claimConflicts,
+      claimConflictsAcknowledged: draft.claimConflictsAcknowledged,
+      requiresClaimAcknowledgment: hasClaimConflicts,
       emailLength: draft.emailLength,
       personaId: draft.personaId,
       personalizationTier: draft.personalizationTier,
@@ -205,9 +215,12 @@ export async function regenerateEmailDraftAction(
       inReplyToDraftId: existing.inReplyToDraftId,
     });
     revalidateCampaign(context.campaign.id);
+    const hasClaimConflicts = regenerated.claimConflicts.length > 0;
     return {
       ok: true,
-      message: `Email ${existing.sequenceNumber} regenerated.`,
+      message: hasClaimConflicts
+        ? `Email ${existing.sequenceNumber} regenerated with claim conflicts. Review before sending.`
+        : `Email ${existing.sequenceNumber} regenerated.`,
       draftId: regenerated.draftId,
       subject: regenerated.subject,
       body: regenerated.body,
@@ -217,6 +230,9 @@ export async function regenerateEmailDraftAction(
       replyClassification: regenerated.replyClassification ?? undefined,
       referralSuggested: regenerated.referralSuggested,
       offerWarnings: unacknowledgedOfferWarnings(context),
+      claimConflicts: regenerated.claimConflicts,
+      claimConflictsAcknowledged: regenerated.claimConflictsAcknowledged,
+      requiresClaimAcknowledgment: hasClaimConflicts,
       emailLength: regenerated.emailLength,
       personaId: regenerated.personaId,
       personalizationTier: regenerated.personalizationTier,
@@ -247,9 +263,12 @@ export async function addFollowUpEmailAction(
       { sequenceNumber, kind: "FOLLOW_UP" },
     );
     revalidateCampaign(context.campaign.id);
+    const hasClaimConflicts = draft.claimConflicts.length > 0;
     return {
       ok: true,
-      message: `Email ${sequenceNumber} added to the sequence.`,
+      message: hasClaimConflicts
+        ? `Email ${sequenceNumber} added with claim conflicts. Review before sending.`
+        : `Email ${sequenceNumber} added to the sequence.`,
       draftId: draft.draftId,
       subject: draft.subject,
       body: draft.body,
@@ -257,6 +276,9 @@ export async function addFollowUpEmailAction(
       kind: "FOLLOW_UP",
       status: "DRAFT",
       offerWarnings: unacknowledgedOfferWarnings(context),
+      claimConflicts: draft.claimConflicts,
+      claimConflictsAcknowledged: draft.claimConflictsAcknowledged,
+      requiresClaimAcknowledgment: hasClaimConflicts,
       emailLength: draft.emailLength,
       personaId: draft.personaId,
       personalizationTier: draft.personalizationTier,
@@ -264,6 +286,82 @@ export async function addFollowUpEmailAction(
     };
   } catch (error) {
     console.error("Follow-up email generation failed.", error);
+    return { ok: false, message: toSafeEmailGenerationError(error) };
+  }
+}
+
+export async function acknowledgeEmailDraftClaimConflictsAction(
+  emailDraftId: string,
+): Promise<GenerateEmailDraftActionResult> {
+  try {
+    const user = await requireCurrentUser();
+    const { prisma } = await import("@/lib/prisma");
+    const { resolveActiveOrganization } = await import("@/lib/auth/session");
+    const membership = await resolveActiveOrganization(user);
+    if (!membership) {
+      return {
+        ok: false,
+        message: "No active organization membership was found.",
+      };
+    }
+    const draft = await prisma.emailDraft.findFirst({
+      where: {
+        id: emailDraftId,
+        organizationId: membership.organization.id,
+      },
+      select: {
+        id: true,
+        subject: true,
+        body: true,
+        sequenceNumber: true,
+        kind: true,
+        status: true,
+        claimConflictsJson: true,
+        campaignContact: { select: { campaignId: true } },
+      },
+    });
+    if (!draft) {
+      return { ok: false, message: "Email draft was not found." };
+    }
+    const { claimConflictsFromJson } = await import(
+      "@/lib/email-generation/claim-conflicts"
+    );
+    const conflicts = claimConflictsFromJson(draft.claimConflictsJson);
+    if (conflicts.length === 0) {
+      return {
+        ok: true,
+        message: "This draft has no claim conflicts to acknowledge.",
+        draftId: draft.id,
+        subject: draft.subject ?? undefined,
+        body: draft.body ?? undefined,
+        sequenceNumber: draft.sequenceNumber,
+        kind: draft.kind,
+        status: draft.status === "SENT" ? "SENT" : "DRAFT",
+        claimConflicts: [],
+        claimConflictsAcknowledged: true,
+      };
+    }
+    await prisma.emailDraft.update({
+      where: { id: draft.id },
+      data: { claimConflictsAcknowledgedAt: new Date() },
+    });
+    revalidateCampaign(draft.campaignContact.campaignId);
+    return {
+      ok: true,
+      message:
+        "Claim conflicts acknowledged. You can send or open this draft in your email client.",
+      draftId: draft.id,
+      subject: draft.subject ?? undefined,
+      body: draft.body ?? undefined,
+      sequenceNumber: draft.sequenceNumber,
+      kind: draft.kind,
+      status: "DRAFT",
+      claimConflicts: conflicts,
+      claimConflictsAcknowledged: true,
+      requiresClaimAcknowledgment: false,
+    };
+  } catch (error) {
+    console.error("Acknowledge claim conflicts failed.", error);
     return { ok: false, message: toSafeEmailGenerationError(error) };
   }
 }
@@ -312,13 +410,20 @@ export async function saveEmailDraftAction(input: {
     revalidateCampaign(saved.campaignId);
     return {
       ok: true,
-      message: "Draft saved.",
+      message: saved.claimConflictsCleared
+        ? "Draft saved. Prior claim conflicts were cleared because the copy changed."
+        : "Draft saved.",
       draftId: input.emailDraftId,
       subject: saved.subject,
       body: saved.body,
       sequenceNumber: saved.sequenceNumber,
       status: "DRAFT",
       emailLength: saved.emailLength ?? undefined,
+      claimConflictsCleared: saved.claimConflictsCleared,
+      claimConflicts: saved.claimConflictsCleared ? [] : undefined,
+      claimConflictsAcknowledged: saved.claimConflictsCleared
+        ? false
+        : undefined,
     };
   } catch (error) {
     console.error("Failed to save email draft.", error);
@@ -443,10 +548,12 @@ export async function draftReplyAction(
       },
     );
     revalidateCampaign(context.campaign.id);
+    const hasClaimConflicts = draft.claimConflicts.length > 0;
     return {
       ok: true,
-      message:
-        classification.classification === "REFERRAL"
+      message: hasClaimConflicts
+        ? `Reply drafted as Email ${sequenceNumber} with claim conflicts. Review the flagged copy before sending.`
+        : classification.classification === "REFERRAL"
           ? `Reply drafted as Email ${sequenceNumber}. A new contact may need to be added.`
           : `Reply drafted as Email ${sequenceNumber}.`,
       draftId: draft.draftId,
@@ -458,6 +565,13 @@ export async function draftReplyAction(
       replyClassification: classification.classification,
       referralSuggested: classification.referralSuggested,
       offerWarnings: unacknowledgedOfferWarnings(context),
+      claimConflicts: draft.claimConflicts,
+      claimConflictsAcknowledged: draft.claimConflictsAcknowledged,
+      requiresClaimAcknowledgment: hasClaimConflicts,
+      emailLength: draft.emailLength,
+      personaId: draft.personaId,
+      personalizationTier: draft.personalizationTier,
+      personalizationSources: draft.personalizationSources,
     };
   } catch (error) {
     console.error("Reply draft generation failed.", error);

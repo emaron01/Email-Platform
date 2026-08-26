@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { QualificationBucket } from "@prisma/client";
 import { EmailSequenceWorkspace } from "@/components/EmailSequenceWorkspace";
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
+import type { ClaimValidationViolation } from "@/lib/email-generation/claim-validation-contract";
 import type { CampaignEmailLength } from "@/lib/campaign/save";
 import { QUALIFICATION_BUCKET_LABELS } from "@/lib/workflow/qualification";
 
@@ -45,6 +46,8 @@ export type EmailDraftsStageContact = {
     personaId: string | null;
     personalizationTier: "BEST" | "COMPANY" | "THIN" | null;
     personalizationSources: string | null;
+    claimConflicts: ClaimValidationViolation[];
+    claimConflictsAcknowledged: boolean;
   }>;
 };
 
