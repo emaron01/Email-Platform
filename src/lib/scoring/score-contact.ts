@@ -267,9 +267,12 @@ export async function scoreSingleContact(input: {
         const { researchContactRole } =
           await import("@/lib/contact-research/service");
         const policy = await getResearchPolicy(input.organizationId);
+        const user = await getCurrentUser();
         const cr = await researchContactRole({
           organizationId: input.organizationId,
           contactId: contact.id,
+          userId: user?.id ?? null,
+          scoringRunId: input.scoringRunId,
           personaCriteria: unionCriteria(candidatePersonas),
           policy: {
             maxSearchQueriesPerContact: policy.maxSearchQueriesPerContact,

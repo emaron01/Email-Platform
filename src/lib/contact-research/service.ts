@@ -1,12 +1,16 @@
 import "server-only";
 
-import type { ContactResearch, Prisma } from "@prisma/client";
+import type {
+  ContactResearch,
+  Prisma,
+  UsageEventStatus,
+} from "@prisma/client";
 import {
   getContactResearchAiProvider,
   getAiConfigPublicSummary,
+  getContactResearchAiConfig,
   isContactResearchAiConfigured,
 } from "@/lib/ai";
-import { getContactResearchAiConfig } from "@/lib/ai/config";
 import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import type { AiMessage } from "@/lib/ai/types";
 import { contactResearchAiResultSchema } from "@/lib/contact-research/contract";
@@ -125,12 +129,59 @@ async function upsertNotRequired(
   });
 }
 
+export type ContactResearchTriggerReason =
+  | "fresh-reuse"
+  | "researched"
+  | "not_required"
+  | "unconfigured";
+
+async function recordContactResearchUsage(input: {
+  organizationId: string;
+  userId?: string | null;
+  contactId: string;
+  scoringRunId?: string | null;
+  status: UsageEventStatus;
+  triggerReason: ContactResearchTriggerReason;
+  provider?: string | null;
+  model?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  webSearchCalls?: number | null;
+  durationMs?: number | null;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await recordUsageEvent({
+      organizationId: input.organizationId,
+      userId: input.userId,
+      contactId: input.contactId,
+      scoringRunId: input.scoringRunId,
+      category: "CONTACT_RESEARCH",
+      operation: "CONTACT_RESEARCH_SYNTHESIS",
+      provider: input.provider ?? null,
+      model: input.model ?? null,
+      inputTokens: input.inputTokens ?? null,
+      outputTokens: input.outputTokens ?? null,
+      webSearchCalls: input.webSearchCalls ?? null,
+      status: input.status,
+      durationMs: input.durationMs ?? null,
+      metadata: {
+        triggerReason: input.triggerReason,
+        ...(input.metadata ?? {}),
+      },
+    });
+  } catch (error) {
+    console.error("Failed to record contact research usage event.", error);
+  }
+}
+
 export async function researchContactRole(input: {
   organizationId: string;
   contactId: string;
   personaCriteria: CriterionSnapshot[];
   policy: ContactResearchPolicy;
   userId?: string | null;
+  scoringRunId?: string | null;
 }): Promise<ContactResearch> {
   const contact = await prisma.contact.findFirst({
     where: { id: input.contactId, organizationId: input.organizationId },
@@ -151,20 +202,42 @@ export async function researchContactRole(input: {
     freshnessDays: input.policy.contactResearchFreshnessDays,
   });
 
+  const usageBase = {
+    organizationId: input.organizationId,
+    userId: input.userId,
+    contactId: input.contactId,
+    scoringRunId: input.scoringRunId,
+  };
+
   if (!trigger.needed) {
     if (trigger.reuseExisting && existing) {
+      await recordContactResearchUsage({
+        ...usageBase,
+        status: "SKIPPED",
+        triggerReason: "fresh-reuse",
+        durationMs: 0,
+        metadata: { reason: trigger.reason },
+      });
       return existing;
     }
-    return upsertNotRequired(
+    const saved = await upsertNotRequired(
       input.organizationId,
       input.contactId,
       contact.title,
       trigger.reason,
     );
+    await recordContactResearchUsage({
+      ...usageBase,
+      status: "SKIPPED",
+      triggerReason: "not_required",
+      durationMs: 0,
+      metadata: { reason: trigger.reason },
+    });
+    return saved;
   }
 
   if (!isContactResearchAiConfigured()) {
-    return prisma.contactResearch.upsert({
+    const saved = await prisma.contactResearch.upsert({
       where: {
         organizationId_contactId: {
           organizationId: input.organizationId,
@@ -185,6 +258,14 @@ export async function researchContactRole(input: {
         confidence: "LOW",
       },
     });
+    await recordContactResearchUsage({
+      ...usageBase,
+      status: "SKIPPED",
+      triggerReason: "unconfigured",
+      durationMs: 0,
+      metadata: { reason: trigger.reason },
+    });
+    return saved;
   }
 
   const started = Date.now();
@@ -233,6 +314,7 @@ export async function researchContactRole(input: {
       now,
       input.policy.contactResearchFreshnessDays,
     );
+    const durationMs = Date.now() - started;
 
     const saved = await prisma.contactResearch.upsert({
       where: {
@@ -265,7 +347,7 @@ export async function researchContactRole(input: {
         inputTokens: response.usage?.inputTokens ?? null,
         outputTokens: response.usage?.outputTokens ?? null,
         webSearchCallCount: response.usage?.webSearchCalls ?? null,
-        researchDurationMs: Date.now() - started,
+        researchDurationMs: durationMs,
       },
       update: {
         status,
@@ -289,45 +371,40 @@ export async function researchContactRole(input: {
         inputTokens: response.usage?.inputTokens ?? null,
         outputTokens: response.usage?.outputTokens ?? null,
         webSearchCallCount: response.usage?.webSearchCalls ?? null,
-        researchDurationMs: Date.now() - started,
+        researchDurationMs: durationMs,
       },
     });
 
-    await recordUsageEvent({
-      organizationId: input.organizationId,
-      userId: input.userId,
-      contactId: input.contactId,
-      category: "CONTACT_RESEARCH",
-      operation: "CONTACT_RESEARCH_SYNTHESIS",
+    await recordContactResearchUsage({
+      ...usageBase,
+      status: status === "COMPLETED" ? "SUCCESS" : "PARTIAL",
+      triggerReason: "researched",
       provider: providerSummary.provider,
       model: providerSummary.model,
       inputTokens: response.usage?.inputTokens ?? null,
       outputTokens: response.usage?.outputTokens ?? null,
       webSearchCalls: response.usage?.webSearchCalls ?? null,
-      status: status === "COMPLETED" ? "SUCCESS" : "PARTIAL",
-      durationMs: Date.now() - started,
+      durationMs,
       metadata: {
         confidence: saved.confidence,
         sourceCount: sources.length,
         promptVersion: CONTACT_RESEARCH_PROMPT_VERSION,
-        triggerReason: trigger.reason,
+        reason: trigger.reason,
       },
     });
 
     return saved;
   } catch (error) {
-    await recordUsageEvent({
-      organizationId: input.organizationId,
-      userId: input.userId,
-      contactId: input.contactId,
-      category: "CONTACT_RESEARCH",
-      operation: "CONTACT_RESEARCH_SYNTHESIS",
+    await recordContactResearchUsage({
+      ...usageBase,
+      status: "FAILED",
+      triggerReason: "researched",
       provider: providerSummary.provider,
       model: providerSummary.model,
-      status: "FAILED",
       durationMs: Date.now() - started,
       metadata: {
         error: error instanceof Error ? error.message : String(error),
+        reason: trigger.reason,
       },
     });
     throw error;

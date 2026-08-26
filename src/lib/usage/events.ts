@@ -143,7 +143,9 @@ export async function aggregateUsage(input: {
   let outputTokens = 0;
 
   for (const e of events) {
-    if (e.category === "RESEARCH") researchOperations += 1;
+    if (e.category === "RESEARCH" || e.category === "CONTACT_RESEARCH") {
+      researchOperations += 1;
+    }
     if (e.category === "SCORING") scoringOperations += 1;
     if (e.category === "EMAIL_GENERATION") emailGenerations += 1;
     if (e.operation === "WEB_SEARCH" || e.webSearchCalls) {
@@ -235,7 +237,9 @@ export async function aggregateUsageByUser(input: {
       };
       byUser.set(key, row);
     }
-    if (e.category === "RESEARCH") row.researchOperations += 1;
+    if (e.category === "RESEARCH" || e.category === "CONTACT_RESEARCH") {
+      row.researchOperations += 1;
+    }
     if (e.category === "SCORING") row.scoringOperations += 1;
     if (e.category === "EMAIL_GENERATION") row.emailGenerations += 1;
     row.webSearches +=
