@@ -5,9 +5,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildRepClaimSources,
   classifyClaimOrigin,
+  computeRepEditDelta,
+  deterministicClaimViolations,
   keepModelOriginatedViolations,
 } from "@/lib/email-generation/claim-origin";
-import { deterministicClaimViolations } from "@/lib/email-generation/claim-origin";
 
 describe("claim origin", () => {
   it("treats emailGuidance website-visitor knowledge as rep-asserted (motivating case)", () => {
@@ -119,5 +120,16 @@ describe("claim origin", () => {
     });
     expect(violations).toHaveLength(1);
     expect(violations[0]?.origin).toBe("MODEL_ORIGINATED");
+  });
+
+  it("treats sentences the rep added versus generatedBody as rep edits", () => {
+    const generated =
+      "Hi Alex, we help teams improve planning.\nWould a short review help?";
+    const edited =
+      "Hi Alex, we help teams improve planning.\nI added that you visited my website.\nWould a short review help?";
+    expect(computeRepEditDelta(generated, edited)).toContain(
+      "visited my website",
+    );
+    expect(computeRepEditDelta(generated, generated)).toBe("");
   });
 });

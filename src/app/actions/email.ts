@@ -57,7 +57,6 @@ export type GenerateEmailDraftActionResult = {
   referralSuggested?: boolean;
   offerWarnings?: OfferConflict[];
   claimConflicts?: import("@/lib/email-generation/claim-validation-contract").ClaimValidationViolation[];
-  claimConflictsCleared?: boolean;
   sentAt?: string;
   handoffAt?: string;
   sendUsage?: {
@@ -329,15 +328,17 @@ export async function saveEmailDraftAction(input: {
     revalidateCampaign(saved.campaignId);
     return {
       ok: true,
-      message: "Draft saved.",
+      message:
+        saved.claimConflicts.length > 0
+          ? "Draft saved. Model-invented claims were re-checked and flagged."
+          : "Draft saved.",
       draftId: input.emailDraftId,
       subject: saved.subject,
       body: saved.body,
       sequenceNumber: saved.sequenceNumber,
       status: "DRAFT",
       emailLength: saved.emailLength ?? undefined,
-      claimConflictsCleared: saved.claimConflictsCleared,
-      claimConflicts: saved.claimConflictsCleared ? [] : undefined,
+      claimConflicts: saved.claimConflicts,
     };
   } catch (error) {
     console.error("Failed to save email draft.", error);

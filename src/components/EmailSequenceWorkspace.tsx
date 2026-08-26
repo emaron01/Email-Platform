@@ -261,12 +261,7 @@ export function EmailSequenceWorkspace({
                 ...entry,
                 subject: saved.subject!,
                 body: saved.body!,
-                // Saving changed copy clears claim-guard state on the server.
-                ...(saved.claimConflictsCleared
-                  ? {
-                      claimConflicts: [],
-                    }
-                  : {}),
+                claimConflicts: saved.claimConflicts ?? entry.claimConflicts,
               }
             : entry,
         ),

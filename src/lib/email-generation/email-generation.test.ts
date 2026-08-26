@@ -964,6 +964,10 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("selected.subject");
     expect(form).toContain("selected.body");
     expect(form).toContain("Save draft");
+    const sequence = readFileSync("src/lib/email-generation/sequence.ts", "utf8");
+    expect(sequence).toContain("validateGeneratedEmailClaims");
+    expect(sequence).toContain("computeRepEditDelta");
+    expect(sequence).toContain("repEditText");
     expect(form).toContain("Outlook Web");
     expect(form).toContain("Outlook desktop");
     expect(form).toContain("Gmail");

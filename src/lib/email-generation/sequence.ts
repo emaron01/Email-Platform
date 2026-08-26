@@ -165,7 +165,7 @@ export async function updateEmailDraftContent(input: {
   subject: string;
   body: string;
   emailLength: EmailLength | null;
-  claimConflictsCleared: boolean;
+  claimConflicts: import("@/lib/email-generation/claim-validation-contract").ClaimValidationViolation[];
 }> {
   const subject = input.subject.trim();
   const body = normalizeEmailBody(input.body).trim();
@@ -201,6 +201,7 @@ export async function updateEmailDraftContent(input: {
       sentAt: true,
       subject: true,
       body: true,
+      generatedBody: true,
       claimConflictsJson: true,
       campaignContact: { select: { campaignId: true } },
     },
@@ -218,24 +219,58 @@ export async function updateEmailDraftContent(input: {
       "This email is currently being sent and cannot be edited.",
     );
   }
-  const contentChanged =
-    (draft.subject ?? "") !== subject || (draft.body ?? "") !== body;
+
   const { claimConflictsFromJson } = await import(
     "@/lib/email-generation/claim-conflicts"
   );
-  const hadConflicts =
-    claimConflictsFromJson(draft.claimConflictsJson).length > 0;
-  const claimConflictsCleared = contentChanged && hadConflicts;
+  let claimConflicts = claimConflictsFromJson(draft.claimConflictsJson);
+  const contentChanged =
+    (draft.subject ?? "") !== subject || (draft.body ?? "") !== body;
+
+  if (contentChanged) {
+    const { computeRepEditDelta } = await import(
+      "@/lib/email-generation/claim-origin"
+    );
+    const { loadEmailGenerationContext } = await import(
+      "@/lib/email-generation/context"
+    );
+    const { validateGeneratedEmailClaims } = await import(
+      "@/lib/email-generation/claim-validation"
+    );
+    const { getEmailAiProvider } = await import("@/lib/ai");
+    const repEditText = computeRepEditDelta(draft.generatedBody, body);
+    try {
+      const context = await loadEmailGenerationContext(
+        draft.campaignContactId,
+        input.userId,
+      );
+      const ai = getEmailAiProvider();
+      const validation = await validateGeneratedEmailClaims({
+        ai,
+        context,
+        subject,
+        body,
+        repEditText,
+      });
+      claimConflicts = validation.violations;
+    } catch (error) {
+      console.error(
+        "Claim re-validation after draft edit failed; keeping prior flags.",
+        error,
+      );
+    }
+  }
+
   await prisma.emailDraft.update({
     where: { id: draft.id },
     data: {
       subject,
       body,
       status: "DRAFT",
-      // Only clear claim-guard state when the rep actually changes the copy.
-      ...(claimConflictsCleared
+      ...(contentChanged
         ? {
-            claimConflictsJson: Prisma.DbNull,
+            claimConflictsJson:
+              claimConflicts.length > 0 ? claimConflicts : Prisma.DbNull,
           }
         : {}),
       ...(input.emailLength ? { emailLength: input.emailLength } : {}),
@@ -248,7 +283,7 @@ export async function updateEmailDraftContent(input: {
     subject,
     body,
     emailLength: input.emailLength ?? null,
-    claimConflictsCleared,
+    claimConflicts,
   };
 }
 

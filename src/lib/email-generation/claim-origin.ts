@@ -61,6 +61,32 @@ export function claimContentTokens(value: string): string[] {
     .filter((token) => token.length > 1 && !STOPWORDS.has(token));
 }
 
+/**
+ * Sentences in the current body that are not present in the last AI generatedBody.
+ * Those are rep-owned edits and must never be flagged.
+ */
+export function computeRepEditDelta(
+  generatedBody: string | null | undefined,
+  currentBody: string,
+): string {
+  const current = currentBody.trim();
+  if (!current) return "";
+  const generated = (generatedBody ?? "").trim();
+  if (!generated) return current;
+  const generatedNorm = normalizedClaimText(generated);
+  const sentences = current
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return sentences
+    .filter((sentence) => {
+      const norm = normalizedClaimText(sentence);
+      if (norm.length < 4) return false;
+      return !generatedNorm.includes(norm);
+    })
+    .join("\n");
+}
+
 export function buildRepClaimSources(input: {
   offer: {
     offerName?: string | null;
