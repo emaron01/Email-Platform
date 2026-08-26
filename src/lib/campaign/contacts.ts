@@ -153,7 +153,7 @@ export async function getCampaignQualificationView(
           scores: {
             where: {
               contactId: { in: attachedContactIds },
-              scoringStatus: "COMPLETED",
+              scoringStatus: { in: ["COMPLETED", "SUPPRESSED"] },
             },
           },
         },
@@ -189,7 +189,7 @@ export async function getCampaignQualificationView(
       scores: {
         where: {
           contactId: { in: attachedContactIds },
-          scoringStatus: "COMPLETED",
+          scoringStatus: { in: ["COMPLETED", "SUPPRESSED"] },
         },
         include: {
           contact: {
@@ -224,10 +224,14 @@ export async function getCampaignQualificationView(
     ]),
   );
   const contactRows: QualificationBucketRow[] = run.scores.map((score) => {
-    const unresolved =
-      firstUnresolvedCriterion(score.criterionAssessments) ??
-      firstUnresolvedDimension(score.assessmentData);
-    const inferred = scoreLabelToBucket(score.scoreLabel, score.assessmentData);
+    const suppressed = score.scoringStatus === "SUPPRESSED";
+    const unresolved = suppressed
+      ? null
+      : firstUnresolvedCriterion(score.criterionAssessments) ??
+        firstUnresolvedDimension(score.assessmentData);
+    const inferred = suppressed
+      ? "EXCLUDED"
+      : scoreLabelToBucket(score.scoreLabel, score.assessmentData);
     const bucket = override.get(`CONTACT:${score.contactId}`) ?? inferred;
     const name =
       [score.contact.firstName, score.contact.lastName]
@@ -242,8 +246,10 @@ export async function getCampaignQualificationView(
       targetType: "CONTACT",
       name,
       bucket,
-      unresolvedCriterion: unresolved
-        ? `${unresolved.reasoning.replace(/[.]+$/, "")} · Research this contact`
+      unresolvedCriterion: suppressed
+        ? "Opted out — organization-wide suppression. Cannot be scored or emailed."
+        : unresolved
+          ? `${unresolved.reasoning.replace(/[.]+$/, "")} · Research this contact`
         : bucket === "NEEDS_REVIEW"
           ? "Qualification is incomplete · Review this contact"
           : null,
@@ -253,7 +259,7 @@ export async function getCampaignQualificationView(
           ? (guidance.get(unresolved.name.trim().toLowerCase()) ?? null)
           : null,
       researchHref: `/scoring/${run.id}#contact-${score.contactId}`,
-      canOverride: true,
+      canOverride: !suppressed,
       secondaryFlags:
         readIcpQualification(score.assessmentData)?.secondaryFlags.map(
           (flag) => flag.text,
@@ -408,6 +414,7 @@ async function compatibleScoringRunWhere(
     productId: campaign.productId,
     icpId: campaign.icpId,
     status: { in: ["COMPLETED", "PARTIAL"] },
+    contactList: { archivedAt: null },
     OR: scoringRunPersonaWhere({
       campaignFallbackPersonaId: campaign.personaId,
       campaignInPlayPersonaIds: inPlay.map((row) => row.personaId),
@@ -438,9 +445,13 @@ export async function searchAvailableCampaignContacts(
   await requireCampaignForOrganization(campaignId, organizationId);
   const query = search?.trim() || undefined;
 
-  return prisma.contact.findMany({
+  const { listActiveNormalizedEmails, contactMatchesSuppressionSet } =
+    await import("@/lib/suppression/service");
+
+  const rows = await prisma.contact.findMany({
     where: {
       organizationId,
+      contactList: { archivedAt: null },
       campaignContacts: {
         none: { organizationId, campaignId },
       },
@@ -466,8 +477,15 @@ export async function searchAvailableCampaignContacts(
       contactList: { select: { id: true, name: true } },
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { createdAt: "asc" }],
-    take: 50,
+    take: 80,
   });
+  const suppressed = await listActiveNormalizedEmails(
+    organizationId,
+    rows.map((row) => row.email),
+  );
+  return rows
+    .filter((row) => !contactMatchesSuppressionSet(row.email, suppressed))
+    .slice(0, 50);
 }
 
 export async function listCompatibleScoringRuns(
@@ -522,11 +540,35 @@ async function insertCampaignContacts(input: {
       organizationId: input.organizationId,
       id: { in: contactIds },
     },
-    select: { id: true },
+    select: {
+      id: true,
+      email: true,
+      contactList: { select: { archivedAt: true } },
+    },
   });
   if (contacts.length !== contactIds.length) {
     throw new TenantError(
       "One or more selected contacts do not belong to the active organization.",
+    );
+  }
+  if (contacts.some((contact) => contact.contactList.archivedAt)) {
+    throw new TenantError(
+      "Contacts from archived lists cannot be added to a campaign.",
+    );
+  }
+  const { listActiveNormalizedEmails, contactMatchesSuppressionSet } =
+    await import("@/lib/suppression/service");
+  const suppressed = await listActiveNormalizedEmails(
+    input.organizationId,
+    contacts.map((contact) => contact.email),
+  );
+  if (
+    contacts.some((contact) =>
+      contactMatchesSuppressionSet(contact.email, suppressed),
+    )
+  ) {
+    throw new TenantError(
+      "One or more selected contacts are on the organization do-not-contact list.",
     );
   }
 
@@ -552,6 +594,10 @@ export async function addContactsToCampaign(input: {
     input.campaignId,
     organizationId,
   );
+  const { assertCampaignNotArchived } = await import(
+    "@/lib/suppression/service"
+  );
+  await assertCampaignNotArchived(organizationId, campaign.id);
   return insertCampaignContacts({
     organizationId,
     campaignId: campaign.id,
@@ -580,6 +626,10 @@ export async function addScoringRunContactsToCampaign(input: {
       "Scoring run does not match this campaign in the active organization.",
     );
   }
+  const { assertCampaignNotArchived } = await import(
+    "@/lib/suppression/service"
+  );
+  await assertCampaignNotArchived(organizationId, campaign.id);
 
   const scores = await prisma.contactScore.findMany({
     where: {

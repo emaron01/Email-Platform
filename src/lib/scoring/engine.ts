@@ -201,6 +201,7 @@ export async function runScoringForRun(
     ? new Set(options.contactScoreIds)
     : null;
   const targets = scores.filter((row) => {
+    if (row.scoringStatus === "SUPPRESSED") return false;
     if (allowedIds) return allowedIds.has(row.id);
     if (options?.forceRescore) return true;
     if (options?.rescoreFailedOnly) return row.scoringStatus === "FAILED";

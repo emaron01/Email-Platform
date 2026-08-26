@@ -97,6 +97,15 @@ export async function sendEmailDraftWithConnectedMailbox(input: {
   if (!recipient) {
     throw new TenantError("Add an email address to this contact before sending.");
   }
+  const {
+    assertCampaignNotArchived,
+    assertEmailNotSuppressed,
+  } = await import("@/lib/suppression/service");
+  await assertCampaignNotArchived(
+    organizationId,
+    draft.campaignContact.campaignId,
+  );
+  await assertEmailNotSuppressed(organizationId, recipient);
 
   const attemptId = randomUUID();
   const reservation = await reserveDailyEmailSend({

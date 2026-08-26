@@ -1,15 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { deleteCampaignAction } from "@/app/actions";
+import { deleteCampaignAction, archiveCampaignAction, unarchiveCampaignAction } from "@/app/actions";
 import { CampaignContactsManager } from "@/components/CampaignContactsManager";
 import { CampaignEmailSettingsForm } from "@/components/CampaignEmailSettingsForm";
 import { CampaignOfferForm } from "@/components/CampaignOfferForm";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
+import { UnarchiveForm } from "@/components/UnarchiveForm";
 import { EmailDraftsStage } from "@/components/EmailDraftsStage";
 import { CampaignStageRail } from "@/components/CampaignStageRail";
 import { QualificationBuckets } from "@/components/QualificationBuckets";
 import { PageHeader, Panel, TenantMissing } from "@/components/ui";
 import { campaignDeleteConfirmBody } from "@/lib/tenant/campaign-delete";
+import { campaignArchiveConfirmBody } from "@/lib/tenant/campaign-archive";
+import {
+  contactMatchesSuppressionSet,
+  listActiveNormalizedEmails,
+} from "@/lib/suppression/service";
 import {
   getCampaignDetail,
   getCampaignQualificationView,
@@ -125,6 +131,12 @@ export default async function CampaignDetailPage({
     if (error instanceof TenantError) notFound();
     throw error;
   }
+
+  const campaignArchived = campaign.archivedAt != null;
+  const suppressedEmails = await listActiveNormalizedEmails(
+    organization.id,
+    campaign.contacts.map((entry) => entry.contact.email),
+  );
 
   const draftScreens = await loadEmailDraftScreenStates({
     organizationId: organization.id,
@@ -280,6 +292,24 @@ export default async function CampaignDetailPage({
             >
               Back to campaigns
             </Link>
+            {campaignArchived ? (
+              <UnarchiveForm
+                action={unarchiveCampaignAction}
+                id={campaign.id}
+                label="Unarchive campaign"
+              />
+            ) : (
+              <ConfirmDeleteForm
+                action={archiveCampaignAction}
+                hiddenFields={{ id: campaign.id }}
+                triggerLabel="Archive campaign"
+                confirmTitle={`Archive campaign "${campaign.name}"?`}
+                confirmBody={campaignArchiveConfirmBody()}
+                confirmButtonLabel="Archive campaign"
+                tone="warning"
+                pendingLabel="Archiving…"
+              />
+            )}
             <ConfirmDeleteForm
               action={deleteCampaignAction}
               hiddenFields={{ id: campaign.id }}
@@ -296,6 +326,12 @@ export default async function CampaignDetailPage({
           </div>
         }
       />
+      {campaignArchived ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          This campaign is archived. History is intact. Unarchive it to generate
+          emails or change contacts.
+        </div>
+      ) : null}
       <CampaignStageRail
         campaignId={campaign.id}
         stages={stages}
@@ -359,23 +395,35 @@ export default async function CampaignDetailPage({
             title="Campaign offer"
             description="Offer claims are checked against current product materials when saved."
           >
-            <CampaignOfferForm
-              campaignId={campaign.id}
-              offer={offer}
-              conflicts={offerConflicts}
-              conflictsAcknowledged={offerConflictsAcknowledged}
-            />
+            {campaignArchived ? (
+              <p className="text-sm text-slate-600">
+                Offer settings are read-only while this campaign is archived.
+              </p>
+            ) : (
+              <CampaignOfferForm
+                campaignId={campaign.id}
+                offer={offer}
+                conflicts={offerConflicts}
+                conflictsAcknowledged={offerConflictsAcknowledged}
+              />
+            )}
           </Panel>
 
           <Panel
             title="Email settings"
             description="Default length and campaign-specific guidance. Length can be overridden on each draft."
           >
-            <CampaignEmailSettingsForm
-              campaignId={campaign.id}
-              emailLength={campaign.emailLength}
-              emailGuidance={campaign.emailGuidance}
-            />
+            {campaignArchived ? (
+              <p className="text-sm text-slate-600">
+                Email settings are read-only while this campaign is archived.
+              </p>
+            ) : (
+              <CampaignEmailSettingsForm
+                campaignId={campaign.id}
+                emailLength={campaign.emailLength}
+                emailGuidance={campaign.emailGuidance}
+              />
+            )}
           </Panel>
         </>
       ) : null}
@@ -431,11 +479,13 @@ export default async function CampaignDetailPage({
                 limit: dailySendUsage.limit,
               }}
               mode={currentStage === "emails" ? "EMAILS" : "SEND"}
+              readOnly={campaignArchived}
               contacts={stageContacts.map((campaignContact) => {
                 const contact = campaignContact.contact;
                 const draftScreen = draftScreens[campaignContact.id];
                 return {
                   campaignContactId: campaignContact.id,
+                  contactId: contact.id,
                   contactName: contactDisplayName(
                     contact.firstName,
                     contact.lastName,
@@ -446,6 +496,10 @@ export default async function CampaignDetailPage({
                       .join(" · ") || "No role details",
                   contactEmail: contact.email,
                   contactStatus: campaignContact.status,
+                  suppressed: contactMatchesSuppressionSet(
+                    contact.email,
+                    suppressedEmails,
+                  ),
                   qualificationBucket:
                     bucketByContactId.get(contact.id) ?? null,
                   personaOptions: draftScreen?.personaOptions ?? [],
@@ -527,25 +581,31 @@ export default async function CampaignDetailPage({
               Upload or manage lists
             </Link>
           </div>
-          <CampaignContactsManager
-            campaignId={campaign.id}
-            search={query.q?.trim() ?? ""}
-            contacts={availableContacts.map((contact) => ({
-              id: contact.id,
-              name: contactDisplayName(contact.firstName, contact.lastName),
-              email: contact.email,
-              title: contact.title,
-              company: contact.company,
-              listName: contact.contactList.name,
-            }))}
-            scoringRuns={scoringRuns.map((run) => ({
-              id: run.id,
-              listName: run.contactList.name,
-              status: run.status,
-              completedScoreCount: run.completedScoreCount,
-              createdLabel: formatDate(run.createdAt),
-            }))}
-          />
+          {campaignArchived ? (
+            <p className="text-sm text-slate-600">
+              Contacts cannot be changed while this campaign is archived.
+            </p>
+          ) : (
+            <CampaignContactsManager
+              campaignId={campaign.id}
+              search={query.q?.trim() ?? ""}
+              contacts={availableContacts.map((contact) => ({
+                id: contact.id,
+                name: contactDisplayName(contact.firstName, contact.lastName),
+                email: contact.email,
+                title: contact.title,
+                company: contact.company,
+                listName: contact.contactList.name,
+              }))}
+              scoringRuns={scoringRuns.map((run) => ({
+                id: run.id,
+                listName: run.contactList.name,
+                status: run.status,
+                completedScoreCount: run.completedScoreCount,
+                createdLabel: formatDate(run.createdAt),
+              }))}
+            />
+          )}
         </Panel>
       ) : null}
 

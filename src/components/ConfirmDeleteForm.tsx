@@ -20,6 +20,8 @@ export function ConfirmDeleteForm({
   confirmButtonLabel,
   triggerLabel,
   onSuccessNavigate,
+  tone = "danger",
+  pendingLabel,
 }: {
   action: DeleteAction;
   hiddenFields: Record<string, string>;
@@ -28,6 +30,8 @@ export function ConfirmDeleteForm({
   confirmButtonLabel: string;
   triggerLabel: string;
   onSuccessNavigate?: string;
+  tone?: "danger" | "warning";
+  pendingLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(action, null);
@@ -55,7 +59,11 @@ export function ConfirmDeleteForm({
         </button>
       ) : (
         <div
-          className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-slate-800"
+          className={
+            tone === "warning"
+              ? "rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-slate-800"
+              : "rounded-md border border-red-200 bg-red-50 p-3 text-sm text-slate-800"
+          }
           role="alertdialog"
           aria-labelledby="confirm-delete-title"
         >
@@ -71,10 +79,16 @@ export function ConfirmDeleteForm({
             <button
               type="submit"
               disabled={pending}
-              className="inline-flex items-center justify-center rounded-md bg-red-700 px-3.5 py-2 text-sm font-medium text-white disabled:opacity-60"
+              className={
+                tone === "warning"
+                  ? "inline-flex items-center justify-center rounded-md bg-amber-700 px-3.5 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  : "inline-flex items-center justify-center rounded-md bg-red-700 px-3.5 py-2 text-sm font-medium text-white disabled:opacity-60"
+              }
               data-testid="confirm-delete-submit"
             >
-              {pending ? "Deleting…" : confirmButtonLabel}
+              {pending
+                ? (pendingLabel ?? "Deleting…")
+                : confirmButtonLabel}
             </button>
             <button
               type="button"

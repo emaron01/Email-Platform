@@ -18,6 +18,7 @@ import {
   SubmitButton,
 } from "@/components/ui";
 import { contactDisplayName, cn } from "@/lib/utils";
+import { SuppressContactForm } from "@/components/SuppressContactForm";
 import {
   icpQualificationWhyLines,
   readIcpQualification,
@@ -80,6 +81,7 @@ export type ScoreReportClientRow = {
   scoringLogicVersion: string | null;
   scoredAt: string | null;
   scoringError: string | null;
+  suppressed?: boolean;
   contact: {
     id: string;
     firstName: string | null;
@@ -401,6 +403,9 @@ export function ScoreReportClient({
                       <input
                         type="checkbox"
                         checked={selected.has(row.contactId)}
+                        disabled={
+                          row.suppressed || row.scoringStatus === "SUPPRESSED"
+                        }
                         onChange={() => toggleOne(row.contactId)}
                       />
                     </td>
@@ -413,6 +418,11 @@ export function ScoreReportClient({
                         {row.contact.email ?? (
                           <span className="text-amber-700">Missing email</span>
                         )}
+                        {row.suppressed || row.scoringStatus === "SUPPRESSED" ? (
+                          <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">
+                            Opted out
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-3 py-2 text-slate-600">
@@ -495,6 +505,14 @@ export function ScoreReportClient({
                     <tr className="bg-slate-50">
                       <td colSpan={13} className="px-4 py-4">
                         <div className="space-y-5 text-sm text-slate-700">
+                          <SuppressContactForm
+                            contactId={row.contactId}
+                            email={row.contact.email}
+                            suppressed={Boolean(
+                              row.suppressed ||
+                                row.scoringStatus === "SUPPRESSED",
+                            )}
+                          />
                           {why?.failedLines && why.failedLines !== "None" ? (
                             <section data-testid="icp-confirmed-failures">
                               <h4 className="text-xs font-semibold uppercase tracking-wide text-rose-800">

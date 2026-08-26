@@ -20,10 +20,16 @@ export async function updateCampaignEmailSettings(input: {
     );
   }
 
+  const { assertCampaignNotArchived } = await import(
+    "@/lib/suppression/service"
+  );
+  await assertCampaignNotArchived(organizationId, input.campaignId);
+
   const result = await prisma.campaign.updateMany({
     where: {
       id: input.campaignId,
       organizationId,
+      archivedAt: null,
     },
     data: {
       emailLength: input.emailLength,
@@ -69,8 +75,12 @@ export async function updateCampaignOffer(input: {
   offerConflictAcknowledgedAt: Date | null;
 }): Promise<void> {
   const organizationId = await requireOrganizationId();
+  const { assertCampaignNotArchived } = await import(
+    "@/lib/suppression/service"
+  );
+  await assertCampaignNotArchived(organizationId, input.campaignId);
   const result = await prisma.campaign.updateMany({
-    where: { id: input.campaignId, organizationId },
+    where: { id: input.campaignId, organizationId, archivedAt: null },
     data: {
       offerName: input.offerName?.trim() || null,
       offerDescription: input.offerDescription?.trim() || null,

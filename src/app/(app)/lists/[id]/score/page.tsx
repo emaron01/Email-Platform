@@ -75,7 +75,11 @@ export default async function ScoreListPage({ params }: PageProps) {
         title="Create Scoring Run"
         description="No AI scoring runs yet. This creates the report framework with pending/null score fields."
       >
-        {readyProducts.length === 0 ? (
+        {list.archivedAt ? (
+          <p className="text-sm text-slate-600">
+            This list is archived and cannot be scored until it is unarchived.
+          </p>
+        ) : readyProducts.length === 0 ? (
           <p className="text-sm text-slate-600">
             Add a Product with at least one ICP and one Persona on the Setup page
             first.

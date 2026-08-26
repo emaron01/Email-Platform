@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { EmptyState, PageHeader, Panel, TenantMissing } from "@/components/ui";
 import { NewCampaignForm } from "@/components/NewCampaignForm";
+import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import {
   listCampaigns,
   listIcps,
@@ -12,8 +13,14 @@ import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
 import { formatDate } from "@/lib/utils";
 import { getHomeWorkflow } from "@/lib/workflow/home";
 
-export default async function CampaignsPage() {
+export default async function CampaignsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ archived?: string }>;
+}) {
   const organization = await getCurrentOrganization();
+  const query = await searchParams;
+  const includeArchived = query.archived === "1";
 
   if (!organization) {
     return (
@@ -28,7 +35,7 @@ export default async function CampaignsPage() {
   }
 
   const [campaigns, products, icps, personas, workflow] = await Promise.all([
-    listCampaigns(),
+    listCampaigns({ includeArchived }),
     listProducts(),
     listIcps(),
     listPersonas(),
@@ -46,6 +53,13 @@ export default async function CampaignsPage() {
       <PageHeader
         title="Campaigns"
         description="Each campaign selects a Product, an ICP, and a campaign-specific Offer. Personas in play default to every persona for the product."
+        actions={
+          <ShowArchivedToggle
+            href={includeArchived ? "/campaigns" : "/campaigns?archived=1"}
+            includeArchived={includeArchived}
+            label="campaigns"
+          />
+        }
       />
 
       <div className="mb-6">
@@ -109,6 +123,11 @@ export default async function CampaignsPage() {
                     >
                       {campaign.name}
                     </Link>
+                    {campaign.archivedAt ? (
+                      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                        Archived
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {campaign.status}

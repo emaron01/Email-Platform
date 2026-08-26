@@ -111,6 +111,18 @@ enum ContactScoringStatus {
   IN_PROGRESS
   COMPLETED
   FAILED
+  SUPPRESSED
+}
+
+enum EmailSuppressionReason {
+  OPTED_OUT
+  BOUNCED
+  DO_NOT_CONTACT
+}
+
+enum EmailSuppressionStatus {
+  ACTIVE
+  RELEASED
 }
 
 enum ScoreLabel {
@@ -439,6 +451,7 @@ model Organization {
   mailboxConnections       MailboxConnection[]
   mailboxOAuthStates       MailboxOAuthState[]
   emailSendRecords         EmailSendRecord[]
+  emailSuppressions        EmailSuppression[]
 
   @@index([status])
   @@index([createdAt])
@@ -475,6 +488,8 @@ model User {
   emailSendRecords         EmailSendRecord[]
   titleSuggestionsResolved TitleSuggestion[]             @relation("TitleSuggestionResolvedBy")
   productTitleDismissals   ProductTitleDismissal[]       @relation("ProductTitleDismissedBy")
+  emailSuppressionsCreated EmailSuppression[]            @relation("EmailSuppressedBy")
+  emailSuppressionsReleased EmailSuppression[]           @relation("EmailReleasedBy")
 
   @@index([platformRole])
   @@index([activeOrganizationId])
@@ -1196,6 +1211,8 @@ model ContactList {
   sourceType       ContactListSource @default(UPLOAD)
   originalFilename String?
   totalContacts    Int               @default(0)
+  /// Soft-archive: hidden from selectors; scoring history stays attached.
+  archivedAt       DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -1206,6 +1223,7 @@ model ContactList {
   @@index([organizationId])
   @@index([organizationId, createdAt])
   @@index([organizationId, sourceType])
+  @@index([organizationId, archivedAt])
 }
 
 model Contact {
@@ -1555,6 +1573,8 @@ model Campaign {
   emailLength                   EmailLength    @default(MEDIUM)
   emailGuidance                 String?
   status                        CampaignStatus @default(DRAFT)
+  /// Soft-archive: hidden from home/list by default; history intact, read-only.
+  archivedAt                    DateTime?
   createdAt                     DateTime       @default(now())
   updatedAt                     DateTime       @updatedAt
 
@@ -1569,6 +1589,7 @@ model Campaign {
   @@index([organizationId])
   @@index([organizationId, createdAt])
   @@index([organizationId, status])
+  @@index([organizationId, archivedAt])
   @@index([productId])
   @@index([icpId])
   @@index([personaId])
@@ -1687,6 +1708,34 @@ model EmailSendRecord {
   @@index([emailDraftId])
   @@index([campaignContactId])
   @@index([providerMessageId])
+}
+
+/// Organization-level email suppression. Keyed on normalized email so a later
+/// list upload cannot resurrect an opted-out address. Cross-tenant unique
+/// (organizationId, normalizedEmail) — org A never affects org B.
+model EmailSuppression {
+  id              String                 @id @default(cuid())
+  organizationId  String
+  normalizedEmail String
+  reason          EmailSuppressionReason
+  status          EmailSuppressionStatus @default(ACTIVE)
+  note            String?
+  suppressedById  String
+  suppressedAt    DateTime               @default(now())
+  releasedById    String?
+  releasedAt      DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  suppressedBy User         @relation("EmailSuppressedBy", fields: [suppressedById], references: [id], onDelete: Restrict)
+  releasedBy   User?        @relation("EmailReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, normalizedEmail])
+  @@index([organizationId, status])
+  @@index([organizationId, normalizedEmail])
+  @@index([suppressedById])
+  @@index([releasedById])
 }
 
 model AuthUser {

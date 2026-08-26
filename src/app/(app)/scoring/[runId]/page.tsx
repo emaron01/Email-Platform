@@ -22,6 +22,10 @@ import { getScoringReadiness } from "@/lib/scoring/engine";
 import { collectMandatorySuggestions } from "@/lib/scoring/mandatory-suggestion";
 import type { IcpSnapshot } from "@/lib/scoring/types";
 import { listTitleSuggestionsForRun } from "@/lib/scoring/title-suggestions";
+import {
+  contactMatchesSuppressionSet,
+  listActiveNormalizedEmails,
+} from "@/lib/suppression/service";
 import { isResearchAiConfigured } from "@/lib/ai/config";
 import {
   listAiRoleStatuses,
@@ -107,6 +111,11 @@ export default async function ScoringReportPage({
       listPersonas(run.productId),
       listTitleSuggestionsForRun(runId),
     ]);
+
+  const suppressedEmails = await listActiveNormalizedEmails(
+    organization.id,
+    rows.map((row) => row.contact.email),
+  );
 
   const mandatorySuggestions = collectMandatorySuggestions({
     criteria: (run.icpSnapshot as IcpSnapshot | null)?.criteria ?? [],
@@ -338,6 +347,12 @@ export default async function ScoringReportPage({
             researchStatus: row.researchStatus,
             researchSources: row.researchSources,
             scoringStatus: row.scoringStatus,
+            suppressed:
+              row.scoringStatus === "SUPPRESSED" ||
+              contactMatchesSuppressionSet(
+                row.contact.email,
+                suppressedEmails,
+              ),
             assessmentData: row.assessmentData,
             aiProvider: row.aiProvider,
             aiModel: row.aiModel,

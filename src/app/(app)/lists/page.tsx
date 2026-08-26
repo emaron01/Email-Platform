@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AddContactsWizard } from "@/components/AddContactsWizard";
+import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import {
   EmptyState,
   PageHeader,
@@ -9,8 +10,14 @@ import { listContactLists } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { formatDate, formatNumber } from "@/lib/utils";
 
-export default async function ListsPage() {
+export default async function ListsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ archived?: string }>;
+}) {
   const organization = await getCurrentOrganization();
+  const query = await searchParams;
+  const includeArchived = query.archived === "1";
 
   if (!organization) {
     return (
@@ -24,14 +31,23 @@ export default async function ListsPage() {
     );
   }
 
-  const lists = await listContactLists();
+  const lists = await listContactLists({ includeArchived });
 
   return (
     <div>
       <PageHeader
         title="Lists"
         description="Create lists by pasting contacts or uploading CSV/XLSX files. All data stays in this organization."
-        actions={<AddContactsWizard />}
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            <ShowArchivedToggle
+              href={includeArchived ? "/lists" : "/lists?archived=1"}
+              includeArchived={includeArchived}
+              label="lists"
+            />
+            <AddContactsWizard />
+          </div>
+        }
       />
 
       {lists.length === 0 ? (
@@ -61,6 +77,11 @@ export default async function ListsPage() {
                     >
                       {list.name}
                     </Link>
+                    {list.archivedAt ? (
+                      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                        Archived
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{list.sourceType}</td>
                   <td className="px-4 py-3 text-slate-600">

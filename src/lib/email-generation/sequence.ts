@@ -63,7 +63,7 @@ export async function markEmailDraftSent(input: {
       sequenceNumber: true,
       status: true,
       sentAt: true,
-      campaignContact: { select: { campaignId: true, contactId: true } },
+      campaignContact: { select: { campaignId: true, contactId: true, contact: { select: { email: true } } } },
     },
   });
   if (!draft) {
@@ -82,6 +82,18 @@ export async function markEmailDraftSent(input: {
   if (draft.status !== "DRAFT" && draft.status !== "APPROVED") {
     throw new TenantError("Only a completed draft can be marked as sent.");
   }
+  const {
+    assertCampaignNotArchived,
+    assertEmailNotSuppressed,
+  } = await import("@/lib/suppression/service");
+  await assertCampaignNotArchived(
+    organizationId,
+    draft.campaignContact.campaignId,
+  );
+  await assertEmailNotSuppressed(
+    organizationId,
+    draft.campaignContact.contact.email,
+  );
 
   const sentAt = new Date();
   const reservation = await reserveDailyEmailSend({
@@ -266,6 +278,15 @@ export async function recordEmailClientIntent(input: {
       "A recipient, subject, and body are required before opening an email client.",
     );
   }
+  const {
+    assertCampaignNotArchived,
+    assertEmailNotSuppressed,
+  } = await import("@/lib/suppression/service");
+  await assertCampaignNotArchived(
+    organizationId,
+    draft.campaignContact.campaignId,
+  );
+  await assertEmailNotSuppressed(organizationId, recipient);
   const sendRecord = await prisma.emailSendRecord.create({
     data: {
       organizationId,

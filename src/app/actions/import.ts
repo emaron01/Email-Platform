@@ -25,6 +25,7 @@ export type ImportActionResult = {
   error?: string;
   listId?: string;
   importedCount?: number;
+  suppressedCount?: number;
 };
 
 function sanitizeContacts(contacts: PreparedContact[]): PreparedContact[] {
@@ -138,6 +139,7 @@ export async function importContactsAction(input: {
       ok: true,
       listId: result.listId,
       importedCount: result.importedCount,
+      suppressedCount: result.suppressedCount,
     };
   } catch (error) {
     if (error instanceof TenantError) {

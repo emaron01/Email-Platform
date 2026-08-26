@@ -9,10 +9,12 @@ import { QUALIFICATION_BUCKET_LABELS } from "@/lib/workflow/qualification";
 
 export type EmailDraftsStageContact = {
   campaignContactId: string;
+  contactId: string;
   contactName: string;
   contactDetails: string;
   contactEmail: string | null;
   contactStatus: string;
+  suppressed: boolean;
   qualificationBucket: QualificationBucket | null;
   personaOptions: Array<{ id: string; name: string }>;
   resolvedPersonaId: string | null;
@@ -54,6 +56,7 @@ export function EmailDraftsStage({
   mailboxConnection,
   dailySendUsage,
   mode,
+  readOnly = false,
 }: {
   contacts: EmailDraftsStageContact[];
   campaignEmailLength: CampaignEmailLength;
@@ -69,6 +72,7 @@ export function EmailDraftsStage({
     limit: number;
   };
   mode: "EMAILS" | "SEND";
+  readOnly?: boolean;
 }) {
   const [view, setView] = useState<"write" | "compare">("write");
   const [selectedId, setSelectedId] = useState(
@@ -163,10 +167,13 @@ export function EmailDraftsStage({
             >
               <EmailSequenceWorkspace
                 campaignContactId={selected.campaignContactId}
+                contactId={selected.contactId}
                 contactName={selected.contactName}
                 contactDetails={selected.contactDetails}
                 contactEmail={selected.contactEmail}
                 contactStatus={selected.contactStatus}
+                suppressed={selected.suppressed}
+                readOnly={readOnly}
                 emailDeeplinkMaxUrlLength={emailDeeplinkMaxUrlLength}
                 mailboxConnection={mailboxConnection}
                 dailySendUsage={dailySendUsage}

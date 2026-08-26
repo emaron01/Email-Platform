@@ -442,10 +442,15 @@ export async function deletePersona(id: string): Promise<{
 
 // --- Contact lists ---
 
-export async function listContactLists(): Promise<ContactList[]> {
+export async function listContactLists(options?: {
+  includeArchived?: boolean;
+}): Promise<ContactList[]> {
   const organizationId = await orgId();
   return prisma.contactList.findMany({
-    where: { organizationId },
+    where: {
+      organizationId,
+      ...(options?.includeArchived ? {} : { archivedAt: null }),
+    },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -535,7 +540,11 @@ export async function importContactList(input: {
   sourceType: "PASTE" | "UPLOAD";
   originalFilename?: string | null;
   contacts: ImportContactInput[];
-}): Promise<{ listId: string; importedCount: number }> {
+}): Promise<{
+  listId: string;
+  importedCount: number;
+  suppressedCount: number;
+}> {
   const organizationId = await orgId();
   const name = input.name.trim();
 
@@ -591,7 +600,25 @@ export async function importContactList(input: {
         data: { totalContacts: created },
       });
 
-      return { listId: list.id, importedCount: created };
+      const { listActiveNormalizedEmails, contactMatchesSuppressionSet } =
+        await import("@/lib/suppression/service");
+      const suppressed = await listActiveNormalizedEmails(
+        organizationId,
+        input.contacts.map((contact) => contact.email),
+        tx,
+      );
+      let suppressedCount = 0;
+      for (const contact of input.contacts) {
+        if (contactMatchesSuppressionSet(contact.email, suppressed)) {
+          suppressedCount += 1;
+        }
+      }
+
+      return {
+        listId: list.id,
+        importedCount: created,
+        suppressedCount,
+      };
     });
 
     return result;
@@ -672,10 +699,15 @@ export type CampaignWithRelations = Campaign & {
   _count: { contacts: number };
 };
 
-export async function listCampaigns(): Promise<CampaignWithRelations[]> {
+export async function listCampaigns(options?: {
+  includeArchived?: boolean;
+}): Promise<CampaignWithRelations[]> {
   const organizationId = await orgId();
   return prisma.campaign.findMany({
-    where: { organizationId },
+    where: {
+      organizationId,
+      ...(options?.includeArchived ? {} : { archivedAt: null }),
+    },
     include: {
       product: { select: { id: true, name: true } },
       icp: { select: { id: true, name: true } },
@@ -780,11 +812,27 @@ export async function createCampaign(input: {
         organizationId,
         id: { in: contactIds },
       },
-      select: { id: true },
+      select: { id: true, email: true, contactList: { select: { archivedAt: true } } },
     });
     if (contacts.length !== contactIds.length) {
       throw new TenantError(
         "One or more selected contacts do not belong to the active organization.",
+      );
+    }
+    if (contacts.some((contact) => contact.contactList.archivedAt)) {
+      throw new TenantError(
+        "Contacts from archived lists cannot be added to a campaign.",
+      );
+    }
+    const { listActiveNormalizedEmails, contactMatchesSuppressionSet } =
+      await import("@/lib/suppression/service");
+    const suppressed = await listActiveNormalizedEmails(
+      organizationId,
+      contacts.map((contact) => contact.email),
+    );
+    if (contacts.some((contact) => contactMatchesSuppressionSet(contact.email, suppressed))) {
+      throw new TenantError(
+        "One or more selected contacts are on the organization do-not-contact list.",
       );
     }
   }
@@ -954,6 +1002,11 @@ export async function createScoringRun(input: {
   if (!list) {
     throw new TenantError("Contact list does not belong to the active organization.");
   }
+  if (list.archivedAt) {
+    throw new TenantError(
+      "This list is archived and is read-only. Unarchive it before scoring.",
+    );
+  }
   if (!product) {
     throw new TenantError("Product does not belong to the active organization.");
   }
@@ -986,7 +1039,7 @@ export async function createScoringRun(input: {
 
   const contacts = await prisma.contact.findMany({
     where: { organizationId, contactListId: list.id },
-    select: { id: true },
+    select: { id: true, email: true },
     orderBy: { createdAt: "asc" },
   });
 
@@ -1059,14 +1112,29 @@ export async function createScoringRun(input: {
     });
 
     // Placeholder score rows only — no fabricated scores.
+    // Suppressed contacts stay on the run (so the list does not silently shrink)
+    // and are marked SUPPRESSED instead of being scored.
+    const { listActiveNormalizedEmails, contactMatchesSuppressionSet } =
+      await import("@/lib/suppression/service");
+    const suppressed = await listActiveNormalizedEmails(
+      organizationId,
+      contacts.map((contact) => contact.email),
+      tx,
+    );
     await tx.contactScore.createMany({
-      data: contacts.map((contact) => ({
-        organizationId,
-        contactId: contact.id,
-        scoringRunId: run.id,
-        scoringStatus: "PENDING",
-        researchStatus: "NOT_STARTED",
-      })),
+      data: contacts.map((contact) => {
+        const skipped = contactMatchesSuppressionSet(contact.email, suppressed);
+        return {
+          organizationId,
+          contactId: contact.id,
+          scoringRunId: run.id,
+          scoringStatus: skipped ? "SUPPRESSED" : "PENDING",
+          researchStatus: skipped ? "NOT_REQUIRED" : "NOT_STARTED",
+          scoringError: skipped
+            ? "Organization-level suppression — not scored."
+            : null,
+        };
+      }),
     });
 
     return run;
@@ -1275,7 +1343,9 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     draftEmails,
     emailsSent,
   ] = await Promise.all([
-    prisma.contactList.count({ where: { organizationId } }),
+    prisma.contactList.count({
+      where: { organizationId, archivedAt: null },
+    }),
     prisma.contact.count({ where: { organizationId } }),
     prisma.contactScore.count({
       where: {
@@ -1285,7 +1355,7 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     }),
     prisma.scoringRun.count({ where: { organizationId } }),
     prisma.campaign.count({
-      where: { organizationId, status: "ACTIVE" },
+      where: { organizationId, status: "ACTIVE", archivedAt: null },
     }),
     prisma.emailDraft.count({
       where: { organizationId, status: "DRAFT" },

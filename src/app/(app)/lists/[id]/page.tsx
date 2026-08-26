@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  archiveContactListAction,
+  deleteContactListAction,
+  unarchiveContactListAction,
+} from "@/app/actions";
+import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
+import { SuppressContactForm } from "@/components/SuppressContactForm";
+import { UnarchiveForm } from "@/components/UnarchiveForm";
+import {
   EmptyState,
   PageHeader,
   Panel,
@@ -18,6 +26,16 @@ import {
   getCurrentOrganization,
   TenantError,
 } from "@/lib/tenant/getCurrentOrganization";
+import {
+  decideListDelete,
+  getListLifecycleImpact,
+  listArchiveConfirmBody,
+  listDeleteConfirmBody,
+} from "@/lib/tenant/list-delete";
+import {
+  contactMatchesSuppressionSet,
+  listActiveNormalizedEmails,
+} from "@/lib/suppression/service";
 import {
   contactDisplayName,
   formatDate,
@@ -63,6 +81,15 @@ export default async function ListDetailPage({
       listIcps(),
       listPersonas(),
     ]);
+  const [impact, suppressedEmails] = await Promise.all([
+    getListLifecycleImpact(organization.id, id),
+    listActiveNormalizedEmails(
+      organization.id,
+      contacts.map((contact) => contact.email),
+    ),
+  ]);
+  const deleteDecision = decideListDelete(impact);
+  const listArchived = list.archivedAt != null;
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const readyProducts = products.filter((product) => {
@@ -80,12 +107,47 @@ export default async function ListDetailPage({
         } · ${formatNumber(list.totalContacts)} contacts · imported ${formatDate(list.createdAt)}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Link
-              href={`/lists/${id}/score`}
-              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-            >
-              Score List
-            </Link>
+            {listArchived ? (
+              <UnarchiveForm
+                action={unarchiveContactListAction}
+                id={list.id}
+                label="Unarchive list"
+              />
+            ) : (
+              <>
+                <Link
+                  href={`/lists/${id}/score`}
+                  className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                >
+                  Score List
+                </Link>
+                <ConfirmDeleteForm
+                  action={archiveContactListAction}
+                  hiddenFields={{ id: list.id }}
+                  triggerLabel="Archive list"
+                  confirmTitle={`Archive list "${list.name}"?`}
+                  confirmBody={listArchiveConfirmBody()}
+                  confirmButtonLabel="Archive list"
+                  tone="warning"
+                  pendingLabel="Archiving…"
+                />
+              </>
+            )}
+            <ConfirmDeleteForm
+              action={deleteContactListAction}
+              hiddenFields={{ id: list.id }}
+              triggerLabel="Delete list"
+              confirmTitle={`Delete list "${list.name}"?`}
+              confirmBody={listDeleteConfirmBody(deleteDecision)}
+              confirmButtonLabel={
+                deleteDecision.mode === "delete"
+                  ? "Delete list"
+                  : deleteDecision.mode === "archive"
+                    ? "Archive list"
+                    : "Cannot delete"
+              }
+              onSuccessNavigate="/lists"
+            />
             <Link
               href="/lists"
               className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
@@ -96,6 +158,13 @@ export default async function ListDetailPage({
         }
       />
 
+      {listArchived ? (
+        <div className="mb-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          This list is archived and read-only. Unarchive it to score or attach
+          it to a campaign.
+        </div>
+      ) : null}
+
       <div className="mb-6">
         <Panel
           title="Scoring History"
@@ -104,7 +173,9 @@ export default async function ListDetailPage({
           {scoringRuns.length === 0 ? (
             <p className="text-sm text-slate-600">
               No scoring runs yet.{" "}
-              {readyProducts.length > 0 ? (
+              {listArchived
+                ? "Unarchive this list to score it."
+                : readyProducts.length > 0 ? (
                 <Link href={`/lists/${id}/score`} className="underline">
                   Score this list
                 </Link>
@@ -160,6 +231,7 @@ export default async function ListDetailPage({
                   <th className="px-4 py-3 font-medium">Industry</th>
                   <th className="px-4 py-3 font-medium">Employees</th>
                   <th className="px-4 py-3 font-medium">Revenue</th>
+                  <th className="px-4 py-3 font-medium">Suppression</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -170,7 +242,17 @@ export default async function ListDetailPage({
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {contact.email ? (
-                        contact.email
+                        <>
+                          {contact.email}
+                          {contactMatchesSuppressionSet(
+                            contact.email,
+                            suppressedEmails,
+                          ) ? (
+                            <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800">
+                              Opted out
+                            </span>
+                          ) : null}
+                        </>
                       ) : (
                         <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">
                           Missing
@@ -193,6 +275,16 @@ export default async function ListDetailPage({
                       {contact.revenue != null
                         ? formatNumber(Number(contact.revenue))
                         : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <SuppressContactForm
+                        contactId={contact.id}
+                        email={contact.email}
+                        suppressed={contactMatchesSuppressionSet(
+                          contact.email,
+                          suppressedEmails,
+                        )}
+                      />
                     </td>
                   </tr>
                 ))}

@@ -27,6 +27,7 @@ import {
   EMAIL_SUBJECT_MAX_CHARS,
   type EmailClient,
 } from "@/lib/email-generation/email-body";
+import { SuppressContactForm } from "@/components/SuppressContactForm";
 
 type SequenceDraft = {
   id: string;
@@ -77,10 +78,13 @@ function sequenceActivity(draft: SequenceDraft): string {
 
 export function EmailSequenceWorkspace({
   campaignContactId,
+  contactId,
   contactName,
   contactDetails,
   contactEmail,
   contactStatus,
+  suppressed = false,
+  readOnly = false,
   initialDrafts,
   offerWarnings,
   emailDeeplinkMaxUrlLength,
@@ -98,10 +102,13 @@ export function EmailSequenceWorkspace({
   campaignEmailLength = "MEDIUM",
 }: {
   campaignContactId: string;
+  contactId: string;
   contactName: string;
   contactDetails: string;
   contactEmail: string | null;
   contactStatus: string;
+  suppressed?: boolean;
+  readOnly?: boolean;
   initialDrafts: SequenceDraft[];
   offerWarnings: OfferConflict[];
   emailDeeplinkMaxUrlLength: number;
@@ -146,7 +153,12 @@ export function EmailSequenceWorkspace({
   const [selectedLength, setSelectedLength] = useState<CampaignEmailLength>(
     selected?.emailLength ?? campaignEmailLength,
   );
-  const canAdd = Boolean(latest?.status === "SENT" && latest.sentAt);
+  const canAdd = Boolean(
+    !readOnly &&
+      !suppressed &&
+      latest?.status === "SENT" &&
+      latest.sentAt,
+  );
   const addDisabledReason = latest
     ? `Email ${latest.sequenceNumber} must be marked as sent first.`
     : "Generate Email 1 first.";
@@ -207,6 +219,15 @@ export function EmailSequenceWorkspace({
   }
 
   function run(action: () => Promise<GenerateEmailDraftActionResult>) {
+    if (readOnly || suppressed) {
+      setResult({
+        ok: false,
+        message: readOnly
+          ? "This campaign is archived and read-only."
+          : "This address is on the organization do-not-contact list.",
+      });
+      return;
+    }
     startTransition(async () => applyGenerated(await action()));
   }
 
@@ -364,6 +385,24 @@ export function EmailSequenceWorkspace({
         <p className="font-medium text-slate-900">{contactName}</p>
         <p className="text-slate-600">{contactDetails}</p>
         <p className="text-slate-500">{contactEmail ?? "No email address"}</p>
+        <div className="mt-3">
+          <SuppressContactForm
+            contactId={contactId}
+            email={contactEmail}
+            suppressed={suppressed}
+          />
+        </div>
+        {readOnly ? (
+          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            This campaign is archived and read-only.
+          </p>
+        ) : null}
+        {suppressed ? (
+          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            This address is opted out organization-wide. Restore it before
+            generating or sending email.
+          </p>
+        ) : null}
         <dl className="mt-3">
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Contact status

@@ -56,6 +56,7 @@ export function AddContactsWizard() {
   const [importResult, setImportResult] = useState<{
     listId: string;
     importedCount: number;
+    suppressedCount: number;
   } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -207,6 +208,7 @@ export function AddContactsWizard() {
       setImportResult({
         listId: result.listId,
         importedCount: result.importedCount ?? 0,
+        suppressedCount: result.suppressedCount ?? 0,
       });
       setStep("done");
       router.refresh();
@@ -568,6 +570,14 @@ export function AddContactsWizard() {
                   <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                     Imported {importResult.importedCount} contacts into “
                     {listName}”.
+                    {importResult.suppressedCount > 0 ? (
+                      <p className="mt-2">
+                        {importResult.suppressedCount} match the organization
+                        do-not-contact list. They remain visible so you can see
+                        why they are missing from scoring and email, but they
+                        cannot be qualified or emailed until restored.
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <PrimaryButton

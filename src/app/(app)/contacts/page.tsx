@@ -4,15 +4,21 @@ import {
   PrimaryButton,
   TenantMissing,
 } from "@/components/ui";
+import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
+import { SuppressContactForm } from "@/components/SuppressContactForm";
 import { listContactLists, listContacts } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
+import {
+  contactMatchesSuppressionSet,
+  listActiveNormalizedEmails,
+} from "@/lib/suppression/service";
 import {
   contactDisplayName,
   formatNumber,
 } from "@/lib/utils";
 
 type PageProps = {
-  searchParams: Promise<{ listId?: string; q?: string }>;
+  searchParams: Promise<{ listId?: string; q?: string; archived?: string }>;
 };
 
 export default async function ContactsPage({ searchParams }: PageProps) {
@@ -33,17 +39,37 @@ export default async function ContactsPage({ searchParams }: PageProps) {
 
   const listId = query.listId?.trim() || undefined;
   const search = query.q?.trim() || undefined;
+  const includeArchived = query.archived === "1";
 
   const [contacts, lists] = await Promise.all([
     listContacts({ listId, search }),
-    listContactLists(),
+    listContactLists({ includeArchived }),
   ]);
+  const suppressedEmails = await listActiveNormalizedEmails(
+    organization.id,
+    contacts.map((contact) => contact.email),
+  );
 
   return (
     <div>
       <PageHeader
         title="Contacts"
         description="All contacts for this organization. Filter by list or search name, email, company, or title."
+        actions={
+          <ShowArchivedToggle
+            href={
+              includeArchived
+                ? `/contacts${listId || search ? `?${new URLSearchParams({ ...(listId ? { listId } : {}), ...(search ? { q: search } : {}) }).toString()}` : ""}`
+                : `/contacts?${new URLSearchParams({
+                    ...(listId ? { listId } : {}),
+                    ...(search ? { q: search } : {}),
+                    archived: "1",
+                  }).toString()}`
+            }
+            includeArchived={includeArchived}
+            label="lists"
+          />
+        }
       />
 
       <form className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4">
@@ -72,6 +98,9 @@ export default async function ContactsPage({ searchParams }: PageProps) {
           />
         </label>
         <PrimaryButton type="submit">Apply</PrimaryButton>
+        {includeArchived ? (
+          <input type="hidden" name="archived" value="1" />
+        ) : null}
       </form>
 
       {contacts.length === 0 ? (
@@ -97,6 +126,7 @@ export default async function ContactsPage({ searchParams }: PageProps) {
                 <th className="px-4 py-3 font-medium">List</th>
                 <th className="px-4 py-3 font-medium">Score</th>
                 <th className="px-4 py-3 font-medium">Score Label</th>
+                <th className="px-4 py-3 font-medium">Suppression</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -109,7 +139,17 @@ export default async function ContactsPage({ searchParams }: PageProps) {
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {contact.email ? (
-                        contact.email
+                        <>
+                          {contact.email}
+                          {contactMatchesSuppressionSet(
+                            contact.email,
+                            suppressedEmails,
+                          ) ? (
+                            <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800">
+                              Opted out
+                            </span>
+                          ) : null}
+                        </>
                       ) : (
                         <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">
                           Missing
@@ -138,6 +178,16 @@ export default async function ContactsPage({ searchParams }: PageProps) {
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {latestScore?.scoreLabel ?? "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <SuppressContactForm
+                        contactId={contact.id}
+                        email={contact.email}
+                        suppressed={contactMatchesSuppressionSet(
+                          contact.email,
+                          suppressedEmails,
+                        )}
+                      />
                     </td>
                   </tr>
                 );

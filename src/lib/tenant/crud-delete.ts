@@ -7,7 +7,7 @@ import { TenantError } from "@/lib/tenant/errors";
 export type CrudDeleteResult = {
   ok: boolean;
   message: string;
-  mode?: "deleted" | "archived";
+  mode?: "deleted" | "archived" | "unarchived";
   productId?: string;
   personaId?: string;
 };

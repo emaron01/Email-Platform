@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageHeader, TenantMissing } from "@/components/ui";
+import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { getCurrentUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
@@ -57,11 +58,17 @@ function HomeNavLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ archived?: string }>;
+}) {
   const [organization, user] = await Promise.all([
     getCurrentOrganization(),
     getCurrentUser(),
   ]);
+  const query = await searchParams;
+  const includeArchived = query.archived === "1";
 
   if (!organization) {
     if (user?.platformRole === "SUPER_ADMIN") {
@@ -81,7 +88,7 @@ export default async function DashboardPage() {
     );
   }
 
-  const workflow = await getHomeWorkflow(organization.id);
+  const workflow = await getHomeWorkflow(organization.id, { includeArchived });
 
   return (
     <div className="mx-auto w-full max-w-6xl">
@@ -94,6 +101,11 @@ export default async function DashboardPage() {
         }
         actions={
           <>
+            <ShowArchivedToggle
+              href={includeArchived ? "/" : "/?archived=1"}
+              includeArchived={includeArchived}
+              label="campaigns"
+            />
             <HomeNavLink href="/lists" label="Lists" />
             <HomeNavLink href="/campaigns" label="Campaigns" />
           </>
@@ -199,6 +211,11 @@ export default async function DashboardPage() {
                 <div>
                   <h3 className="font-semibold text-slate-900">
                     {campaign.name}
+                    {campaign.archived ? (
+                      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                        Archived
+                      </span>
+                    ) : null}
                   </h3>
                   <p className="mt-1 text-sm text-slate-600">
                     {campaign.context || "Campaign setup"}

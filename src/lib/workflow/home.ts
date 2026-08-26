@@ -30,6 +30,7 @@ export type HomeWorkflow = {
   campaigns: Array<{
     id: string;
     name: string;
+    archived: boolean;
     context: string;
     companies: number;
     qualified: number;
@@ -45,6 +46,7 @@ function hasInterpretedCriteria(icp: { criteria: unknown[] }): boolean {
 
 export async function getHomeWorkflow(
   organizationId: string,
+  options?: { includeArchived?: boolean },
 ): Promise<HomeWorkflow> {
   const [products, campaigns] = await Promise.all([
     prisma.product.findMany({
@@ -78,7 +80,10 @@ export async function getHomeWorkflow(
       },
     }),
     prisma.campaign.findMany({
-      where: { organizationId },
+      where: {
+        organizationId,
+        ...(options?.includeArchived ? {} : { archivedAt: null }),
+      },
       orderBy: { updatedAt: "desc" },
       include: {
         icp: { select: { name: true } },
@@ -207,6 +212,7 @@ export async function getHomeWorkflow(
       return {
         id: campaign.id,
         name: campaign.name,
+        archived: campaign.archivedAt != null,
         context: [
           campaign.icp.name,
           campaignPersonasDisplayName({

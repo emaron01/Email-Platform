@@ -319,6 +319,123 @@ export async function deleteCampaignAction(
   }
 }
 
+export async function archiveCampaignAction(
+  _prev: CrudDeleteResult | null,
+  formData: FormData,
+): Promise<CrudDeleteResult> {
+  try {
+    await requireSetupDeletePermission();
+    const id = requiredString(formData, "id");
+    if (!id) throw new TenantError("Campaign id is required.");
+    if (requiredString(formData, "confirm") !== "1") {
+      return { ok: false, message: "Confirm archive before continuing." };
+    }
+    const { archiveCampaign } = await import("@/lib/tenant/campaign-archive");
+    const result = await archiveCampaign(id);
+    revalidatePath("/campaigns");
+    revalidatePath(`/campaigns/${id}`);
+    revalidatePath("/");
+    return { ok: true, message: result.message, mode: result.mode };
+  } catch (error) {
+    logActionError("Failed to archive campaign.", error);
+    return { ok: false, message: toSafeCrudDeleteError(error) };
+  }
+}
+
+export async function unarchiveCampaignAction(
+  _prev: CrudDeleteResult | null,
+  formData: FormData,
+): Promise<CrudDeleteResult> {
+  try {
+    await requireSetupDeletePermission();
+    const id = requiredString(formData, "id");
+    if (!id) throw new TenantError("Campaign id is required.");
+    const { unarchiveCampaign } = await import("@/lib/tenant/campaign-archive");
+    const result = await unarchiveCampaign(id);
+    revalidatePath("/campaigns");
+    revalidatePath(`/campaigns/${id}`);
+    revalidatePath("/");
+    return { ok: true, message: result.message, mode: result.mode };
+  } catch (error) {
+    logActionError("Failed to unarchive campaign.", error);
+    return { ok: false, message: toSafeCrudDeleteError(error) };
+  }
+}
+
+export async function archiveContactListAction(
+  _prev: CrudDeleteResult | null,
+  formData: FormData,
+): Promise<CrudDeleteResult> {
+  try {
+    await requireSetupDeletePermission();
+    const id = requiredString(formData, "id");
+    if (!id) throw new TenantError("List id is required.");
+    if (requiredString(formData, "confirm") !== "1") {
+      return { ok: false, message: "Confirm archive before continuing." };
+    }
+    const { archiveContactList } = await import("@/lib/tenant/list-delete");
+    const result = await archiveContactList(id);
+    revalidatePath("/lists");
+    revalidatePath(`/lists/${id}`);
+    revalidatePath("/contacts");
+    revalidatePath("/campaigns");
+    revalidatePath("/");
+    return { ok: true, message: result.message, mode: result.mode };
+  } catch (error) {
+    logActionError("Failed to archive list.", error);
+    return { ok: false, message: toSafeCrudDeleteError(error) };
+  }
+}
+
+export async function unarchiveContactListAction(
+  _prev: CrudDeleteResult | null,
+  formData: FormData,
+): Promise<CrudDeleteResult> {
+  try {
+    await requireSetupDeletePermission();
+    const id = requiredString(formData, "id");
+    if (!id) throw new TenantError("List id is required.");
+    const { unarchiveContactList } = await import("@/lib/tenant/list-delete");
+    const result = await unarchiveContactList(id);
+    revalidatePath("/lists");
+    revalidatePath(`/lists/${id}`);
+    revalidatePath("/contacts");
+    revalidatePath("/campaigns");
+    revalidatePath("/");
+    return { ok: true, message: result.message, mode: result.mode };
+  } catch (error) {
+    logActionError("Failed to unarchive list.", error);
+    return { ok: false, message: toSafeCrudDeleteError(error) };
+  }
+}
+
+export async function deleteContactListAction(
+  _prev: CrudDeleteResult | null,
+  formData: FormData,
+): Promise<CrudDeleteResult> {
+  try {
+    await requireSetupDeletePermission();
+    const id = requiredString(formData, "id");
+    if (!id) throw new TenantError("List id is required.");
+    if (requiredString(formData, "confirm") !== "1") {
+      return { ok: false, message: "Confirm deletion before continuing." };
+    }
+    const { deleteOrArchiveContactList } = await import(
+      "@/lib/tenant/list-delete"
+    );
+    const result = await deleteOrArchiveContactList(id);
+    revalidatePath("/lists");
+    revalidatePath(`/lists/${id}`);
+    revalidatePath("/contacts");
+    revalidatePath("/campaigns");
+    revalidatePath("/");
+    return { ok: true, message: result.message, mode: result.mode };
+  } catch (error) {
+    logActionError("Failed to delete list.", error);
+    return { ok: false, message: toSafeCrudDeleteError(error) };
+  }
+}
+
 export async function createCampaignAction(
   _prev: CampaignActionResult | null,
   formData: FormData,

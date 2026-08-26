@@ -205,6 +205,18 @@ export async function generateEmailDraft(
       "Email sequence position must be a positive integer.",
     );
   }
+  const {
+    assertCampaignNotArchived,
+    assertEmailNotSuppressed,
+  } = await import("@/lib/suppression/service");
+  await assertCampaignNotArchived(
+    context.organizationId,
+    context.campaign.id,
+  );
+  await assertEmailNotSuppressed(
+    context.organizationId,
+    context.contact.email,
+  );
   const existing = await prisma.emailDraft.findUnique({
     where: {
       organizationId_campaignContactId_sequenceNumber: {
