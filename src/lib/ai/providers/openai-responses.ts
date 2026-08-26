@@ -255,8 +255,9 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
             ? { effort: config.reasoningEffort }
             : undefined;
 
-        const body =
-          mode === "research_web_search"
+        const useWebSearch =
+          mode === "research_web_search" && request.webSearchEnabled !== false;
+        const body = useWebSearch
             ? {
                 model: config.model,
                 input,
@@ -301,7 +302,7 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
             response.status === 429 ||
             response.status >= 500;
           const unsupportedTool =
-            mode === "research_web_search" &&
+            useWebSearch &&
             response.status === 400 &&
             /web_search|tool|not support/i.test(safeBody);
           const { code, type } = parseOpenAiErrorBody(safeBody);
@@ -332,7 +333,7 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
         const parsed = parseResponsesPayload(parsedJson, config.apiKey, label);
 
         if (
-          mode === "research_web_search" &&
+          useWebSearch &&
           parsed.webSearchCalls === 0 &&
           parsed.retrievedSources.length === 0
         ) {
@@ -361,8 +362,7 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
           label,
           {
             ...parsed.usage,
-            webSearchCalls:
-              mode === "research_web_search" ? parsed.webSearchCalls : 0,
+            webSearchCalls: useWebSearch ? parsed.webSearchCalls : 0,
           },
           parsed.outputText,
         );
@@ -373,12 +373,10 @@ export function createOpenAiResponsesProvider(config: AiConfig): AiProvider {
           provider: config.provider,
           model: config.model,
           modelUrlIdentifier: config.modelUrlIdentifier,
-          retrievedSources:
-            mode === "research_web_search" ? parsed.retrievedSources : [],
+          retrievedSources: useWebSearch ? parsed.retrievedSources : [],
           usage: {
             ...parsed.usage,
-            webSearchCalls:
-              mode === "research_web_search" ? parsed.webSearchCalls : 0,
+            webSearchCalls: useWebSearch ? parsed.webSearchCalls : 0,
           },
           coercedFields:
             validated.coercedFields.length > 0

@@ -36,7 +36,9 @@ Source priority: official company pages > reputable business/tech publications >
       instruction:
         input.stage === "follow_up"
           ? "Perform a targeted follow-up search for missing company research dimensions. Avoid repeating prior broad searches."
-          : "Research this company. Answer: what they sell, who they sell to, markets, business model, relevant technologies, public buying/growth signals, public risk signals, and whether credible AOV/deal-size evidence exists.",
+          : input.webSearchEnabled
+            ? "Research this company. Answer: what they sell, who they sell to, markets, business model, relevant technologies, public buying/growth signals, public risk signals, and whether credible AOV/deal-size evidence exists."
+            : "Synthesize company research from the supplied first-party website evidence only. Do not invent facts absent from that evidence. If the evidence is thin, leave fields null/empty and set confidence LOW — the application will run web search only when needed.",
       searchFocus: input.searchFocus ?? null,
       stage: input.stage ?? "initial",
       searchesRemaining: input.searchesRemaining ?? null,

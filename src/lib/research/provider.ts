@@ -15,6 +15,7 @@ import {
   evidenceFromNormalizedSources,
   mergeEvidenceBundles,
 } from "@/lib/research/evidence";
+import { finalizeResearchSources } from "@/lib/research/finalize-sources";
 import { buildCompanyResearchMessages } from "@/lib/research/prompt";
 import { getCompanySourceRetriever } from "@/lib/research/sources";
 import {
@@ -36,6 +37,7 @@ import {
   assertResearchConfidenceAllowed,
   validateCompanyResearchResult,
 } from "@/lib/research/validate";
+import { evaluateWebsiteFirstSufficiency } from "@/lib/research/website-first-sufficiency";
 import { DEFAULT_RESEARCH_POLICY_VALUES } from "@/lib/usage/defaults";
 
 export type ResearchUsageSnapshot = {
@@ -50,7 +52,11 @@ export type AutomatedCompanyResearchResult = CompanyResearchResult & {
   usage?: ResearchUsageSnapshot;
   identityAmbiguous?: boolean;
   searchStagesUsed?: number;
-  stoppedReason?: "sufficient" | "max_queries" | "no_web_search";
+  stoppedReason?:
+    | "sufficient"
+    | "website_sufficient"
+    | "max_queries"
+    | "no_web_search";
 };
 
 function sleep(ms: number): Promise<void> {
@@ -100,7 +106,7 @@ function dedupeSources(sources: ResearchSource[]): ResearchSource[] {
 
 /**
  * Progressive evidence acquisition:
- * Known data → website → initial search → sufficiency → targeted follow-ups
+ * Known data → website-only synthesis → sufficiency gate → web_search only if needed
  * (bounded by Organization ResearchPolicy.maxSearchQueriesPerCompany).
  *
  * Application owns whether another search is permitted.
@@ -132,7 +138,10 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
       const ai = getResearchAiProvider();
       const retriever = getCompanySourceRetriever();
       const websiteEvidence = await retriever.retrieve(input);
-      const webSearchEnabled = config.provider === "openai-responses";
+      const webSearchAvailable = config.provider === "openai-responses";
+      const websiteExcerptText = websiteEvidence.excerpts
+        .map((excerpt) => excerpt.text)
+        .join("\n");
 
       let evidence = websiteEvidence;
       let lastValidated: CompanyResearchResult | null = null;
@@ -144,15 +153,17 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         stage: "initial" | "follow_up";
         searchFocus?: string | null;
         searchesRemaining: number;
+        webSearchEnabled: boolean;
       }): Promise<CompanyResearchResult> => {
         const { value: response, retries: usedRetries } = await withRetries(
           () =>
             ai.generateStructured({
               ...structuredOutputRequest("companyResearch"),
+              webSearchEnabled: opts.webSearchEnabled,
               messages: buildCompanyResearchMessages({
                 company: input,
                 evidence,
-                webSearchEnabled,
+                webSearchEnabled: opts.webSearchEnabled,
                 searchFocus: opts.searchFocus,
                 stage: opts.stage,
                 searchesRemaining: opts.searchesRemaining,
@@ -171,10 +182,12 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
           totalOutputTokens =
             (totalOutputTokens ?? 0) + response.usage.outputTokens;
         }
-        if (response.usage?.webSearchCalls != null) {
-          totalWebSearchCalls += response.usage.webSearchCalls;
-        } else if (webSearchEnabled) {
-          totalWebSearchCalls += 1;
+        if (opts.webSearchEnabled) {
+          if (response.usage?.webSearchCalls != null) {
+            totalWebSearchCalls += response.usage.webSearchCalls;
+          } else {
+            totalWebSearchCalls += 1;
+          }
         }
 
         const webEvidence = evidenceFromNormalizedSources(
@@ -189,26 +202,39 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         assertResearchConfidenceAllowed(validated);
         const next: CompanyResearchResult = {
           ...validated,
-          sources: dedupeSources(validated.sources).slice(
-            0,
-            depth.maxSourcesPerCompany,
-          ),
+          sources: dedupeSources(validated.sources),
         };
         lastValidated = next;
         identityAmbiguous = response.data.identityCertainty === "AMBIGUOUS";
         return next;
       };
 
-      if (!webSearchEnabled) {
-        await runStage({
-          stage: "initial",
-          searchesRemaining: 0,
-        });
+      // Stage 1: website-only synthesis (no web_search tools / tokens).
+      let current = await runStage({
+        stage: "initial",
+        searchesRemaining: webSearchAvailable ? maxQueries : 0,
+        webSearchEnabled: false,
+      });
+
+      const websiteGate = evaluateWebsiteFirstSufficiency({
+        websiteExcerptText,
+        sources: current.sources,
+        fields: current,
+      });
+
+      if (!webSearchAvailable) {
         stoppedReason = "no_web_search";
+      } else if (websiteGate.sufficient) {
+        stoppedReason = "website_sufficient";
       } else {
-        let current = await runStage({
-          stage: "initial",
-          searchesRemaining: maxQueries - 1,
+        // Stage 2+: web_search only when the strict website gate fails.
+        current = await runStage({
+          stage: "follow_up",
+          searchFocus:
+            websiteGate.failReasons.join("; ") ||
+            "Website evidence insufficient; find official and reputable third-party sources for primary company dimensions.",
+          searchesRemaining: Math.max(0, maxQueries - 1),
+          webSearchEnabled: true,
         });
 
         let sufficiency = evaluateEvidenceSufficiency({
@@ -220,7 +246,7 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         while (
           !sufficiency.sufficient &&
           totalWebSearchCalls < maxQueries &&
-          searchStagesUsed < maxQueries
+          searchStagesUsed < maxQueries + 1
         ) {
           if (
             sufficiency.missingPrimary.length === 0 &&
@@ -237,6 +263,7 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
             stage: "follow_up",
             searchFocus: focus,
             searchesRemaining: Math.max(0, maxQueries - totalWebSearchCalls),
+            webSearchEnabled: true,
           });
           sufficiency = evaluateEvidenceSufficiency({
             sources: current.sources,
@@ -248,11 +275,24 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         stoppedReason = sufficiency.sufficient ? "sufficient" : "max_queries";
       }
 
-      if (!lastValidated) {
+      // Prefer the latest stage result (`current`); `lastValidated` is only a
+      // defensive mirror because TS does not track assignments inside runStage.
+      const validatedResult = current ?? lastValidated;
+      if (!validatedResult) {
         throw new AiValidationError("Research produced no validated result.");
       }
 
-      const finalized: CompanyResearchResult = lastValidated;
+      const finalizedSources = finalizeResearchSources({
+        sources: validatedResult.sources,
+        companyWebsiteUrl: input.website,
+        companyDomain: input.normalizedDomain,
+        maxSources: depth.maxSourcesPerCompany,
+      });
+
+      const finalized: CompanyResearchResult = {
+        ...validatedResult,
+        sources: finalizedSources,
+      };
 
       const result: AutomatedCompanyResearchResult = {
         ...finalized,
@@ -273,7 +313,7 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         usage: {
           inputTokens: totalInputTokens,
           outputTokens: totalOutputTokens,
-          webSearchCallCount: webSearchEnabled ? totalWebSearchCalls : null,
+          webSearchCallCount: webSearchAvailable ? totalWebSearchCalls : null,
           researchDurationMs: Date.now() - started,
         },
         identityAmbiguous,

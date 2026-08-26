@@ -22,6 +22,11 @@ export type AiStructuredRequest<T> = {
    * Use when the contract tolerates ambiguous values (defensive layer).
    */
   parseOutput?: (raw: unknown) => StructuredParseResult<T>;
+  /**
+   * When false on a research-role openai-responses provider, omit web_search
+   * tools (website-first / structured-only stage). Default: enabled for research.
+   */
+  webSearchEnabled?: boolean;
 };
 
 /** Adapter-normalized web/tool sources — never OpenAI-specific objects. */

@@ -155,6 +155,44 @@ describe("openai-responses research adapter", () => {
     expect(JSON.stringify(result)).not.toContain("research-responses-secret");
   });
 
+  it("omits web_search tools when request.webSearchEnabled is false", async () => {
+    setResearchResponsesEnv("env-driven-model-xyz");
+    const config = getResearchAiConfig();
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      expect(responsesRequestEnablesWebSearch(body)).toBe(false);
+      expect(body.tools).toBeUndefined();
+      expect(body.tool_choice).toBeUndefined();
+      return new Response(
+        JSON.stringify({
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({ ok: true }),
+                },
+              ],
+            },
+          ],
+          usage: { input_tokens: 4, output_tokens: 2 },
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = createOpenAiResponsesProvider(config);
+    const result = await provider.generateStructured({
+      messages: [{ role: "user", content: "website only" }],
+      schema: z.object({ ok: z.boolean() }),
+      webSearchEnabled: false,
+    });
+    expect(result.usage?.webSearchCalls).toBe(0);
+    expect(result.retrievedSources).toEqual([]);
+  });
+
   it("fails clearly when web search is rejected by the provider", async () => {
     setResearchResponsesEnv();
     const config = getResearchAiConfig();
