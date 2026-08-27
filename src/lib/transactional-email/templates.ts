@@ -34,6 +34,15 @@ export const TEMPLATE_VARIABLE_ALLOWLIST: Record<
     "weekdayLabel",
     "dashboardUrl",
   ],
+  USAGE_LIMIT_WARNING: [
+    ...COMMON,
+    "workspaceName",
+    "resourceLabel",
+    "used",
+    "limit",
+    "percentUsed",
+    "settingsUrl",
+  ],
 };
 
 export const TEMPLATE_REQUIRED_VARIABLES: Record<
@@ -47,6 +56,13 @@ export const TEMPLATE_REQUIRED_VARIABLES: Record<
   ORGANIZATION_INVITATION: ["invitationUrl", "workspaceName", "invitedEmail"],
   INVITATION_ACCEPTED: ["workspaceName", "invitedEmail"],
   CADENCE_DAILY_DIGEST: ["dueCount", "dashboardUrl"],
+  USAGE_LIMIT_WARNING: [
+    "workspaceName",
+    "resourceLabel",
+    "used",
+    "limit",
+    "percentUsed",
+  ],
 };
 
 export const BASELINE_TEMPLATES: Record<
@@ -113,5 +129,13 @@ export const BASELINE_TEMPLATES: Record<
       "<p>Hi {{firstName}},</p><p>On this {{weekdayLabel}} morning you have <strong>{{dueCount}}</strong> contact{{dueCountPlural}} due for a follow-up in {{workspaceName}}.</p><p><a href=\"{{dashboardUrl}}\">Review on your dashboard</a></p><p>— {{appName}}</p>",
     textTemplate:
       "Hi {{firstName}},\n\nOn this {{weekdayLabel}} morning you have {{dueCount}} follow-up contact(s) due in {{workspaceName}}.\n\nReview: {{dashboardUrl}}\n\n— {{appName}}",
+  },
+  USAGE_LIMIT_WARNING: {
+    displayName: "Usage limit warning",
+    subjectTemplate: "{{workspaceName}} is at {{percentUsed}}% of its {{resourceLabel}} limit",
+    htmlTemplate:
+      "<p>Hi {{firstName}},</p><p>Your workspace <strong>{{workspaceName}}</strong> has used <strong>{{used}}</strong> of <strong>{{limit}}</strong> ({{percentUsed}}%) for {{resourceLabel}}.</p><p><a href=\"{{settingsUrl}}\">Review usage settings</a></p><p>— {{appName}}</p>",
+    textTemplate:
+      "Hi {{firstName}},\n\nYour workspace {{workspaceName}} has used {{used}} of {{limit}} ({{percentUsed}}%) for {{resourceLabel}}.\n\nReview: {{settingsUrl}}\n\n— {{appName}}",
   },
 };

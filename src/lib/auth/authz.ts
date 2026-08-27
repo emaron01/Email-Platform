@@ -43,6 +43,16 @@ export function isPlatformSuperAdmin(role: PlatformRole): boolean {
   return role === "SUPER_ADMIN";
 }
 
+/** Platform console access: SUPER_ADMIN (mutate) or SUPPORT (read-only). */
+export function isPlatformOperator(role: PlatformRole): boolean {
+  return role === "SUPER_ADMIN" || role === "SUPPORT";
+}
+
+/** Platform mutations (policy, suspend, credits): SUPER_ADMIN only. */
+export function canMutatePlatform(role: PlatformRole): boolean {
+  return role === "SUPER_ADMIN";
+}
+
 export function canEditTransactionalTemplates(role: PlatformRole): boolean {
   return role === "SUPER_ADMIN";
 }
@@ -79,9 +89,17 @@ export async function requireSetupDeletePermission(organizationId?: string) {
   return ctx;
 }
 
+export async function requirePlatformOperator(): Promise<User> {
+  const user = await requireCurrentUser();
+  if (!isPlatformOperator(user.platformRole)) {
+    throw new AuthorizationError("Platform operator access required.");
+  }
+  return user;
+}
+
 export async function requirePlatformSuperAdmin(): Promise<User> {
   const user = await requireCurrentUser();
-  if (!canEditTransactionalTemplates(user.platformRole)) {
+  if (!canMutatePlatform(user.platformRole)) {
     throw new AuthorizationError("Platform super admin required.");
   }
   return user;

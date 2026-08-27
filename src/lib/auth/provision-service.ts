@@ -59,7 +59,8 @@ async function uniqueSlug(
 
 /**
  * Transactional/idempotent signup provisioning for an authenticated identity.
- * Creates User + Organization + ADMIN membership + policies + billing profile.
+ * Creates User + Organization + OWNER membership + policies + billing profile.
+ * OWNER = billing/account owner; ADMIN = can manage policy/invites (invite-as-OWNER forbidden).
  */
 export async function provisionIndividualWorkspace(input: {
   authUserId: string;
@@ -158,7 +159,7 @@ export async function provisionIndividualWorkspace(input: {
             data: {
               organizationId: organization.id,
               userId: user.id,
-              role: "ADMIN",
+              role: "OWNER",
               isBillingContact: true,
             },
             include: { organization: true },
@@ -245,7 +246,7 @@ export async function provisionIndividualWorkspace(input: {
       data: {
         organizationId: organization.id,
         userId: user.id,
-        role: "ADMIN",
+        role: "OWNER",
         isBillingContact: true,
       },
     });
@@ -268,7 +269,6 @@ export async function provisionIndividualWorkspace(input: {
       data: {
         organizationId: organization.id,
         billingEmail: email,
-        companyLegalName: workspaceName,
       },
     });
 
@@ -280,7 +280,7 @@ export async function provisionIndividualWorkspace(input: {
     return {
       user: updatedUser,
       organization,
-      membershipRole: "ADMIN" as const,
+      membershipRole: "OWNER" as const,
     };
   });
 

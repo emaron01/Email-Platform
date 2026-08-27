@@ -49,7 +49,9 @@ function hashToken(rawToken: string): string {
 
 /**
  * Individual signup provisioning (shared by auth hooks and tests).
- * Creates User + Organization + ADMIN membership + policies + billing profile.
+ * Creates User + Organization + OWNER membership + policies + billing profile.
+ * OWNER = billing/account owner; ADMIN = can manage policy/invites.
+ * Invite-as-OWNER is forbidden (see createOrganizationInvitation).
  */
 export async function createIndividualWorkspace(input: {
   email: string;

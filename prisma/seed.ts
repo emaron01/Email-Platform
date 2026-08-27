@@ -78,7 +78,6 @@ async function main() {
     create: {
       organizationId: org.id,
       billingEmail: user.email,
-      companyLegalName: org.name,
     },
   });
 

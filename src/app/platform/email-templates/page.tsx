@@ -39,7 +39,12 @@ export default async function PlatformEmailTemplatesPage({
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <p className="text-sm text-slate-500">
+          <Link href="/platform/orgs" className="underline">
+            Organizations
+          </Link>
+        </p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
           Transactional email templates
         </h1>
         <p className="mt-1 text-sm text-slate-600">

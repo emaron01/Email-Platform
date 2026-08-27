@@ -332,6 +332,13 @@ enum AdminAuditAction {
   ICP_CRITERION_CHANGED
   PERSONA_INTERPRETED
   PERSONA_CRITERION_CHANGED
+  PLATFORM_ORG_LISTED
+  PLATFORM_ORG_VIEWED
+  ORGANIZATION_SUSPENDED
+  ORGANIZATION_UNSUSPENDED
+  PLATFORM_USAGE_POLICY_CHANGED
+  ORGANIZATION_CREDIT_GRANTED
+  USAGE_LIMIT_ALERT_SENT
 }
 
 enum TransactionalEmailTemplateKey {
@@ -342,6 +349,13 @@ enum TransactionalEmailTemplateKey {
   ORGANIZATION_INVITATION
   INVITATION_ACCEPTED
   CADENCE_DAILY_DIGEST
+  USAGE_LIMIT_WARNING
+}
+
+/// Resource kinds for usage-limit alert idempotency (not UsageResource).
+enum UsageAlertResource {
+  ACTIVE_COMPANY
+  EMAIL_GENERATION
 }
 
 enum SequenceStopReason {
@@ -413,14 +427,18 @@ enum PersonaSetupStatus {
 }
 
 model Organization {
-  id        String             @id @default(cuid())
-  name      String
-  slug      String             @unique
-  status    OrganizationStatus @default(ACTIVE)
+  id                 String             @id @default(cuid())
+  name               String
+  slug               String             @unique
+  status             OrganizationStatus @default(ACTIVE)
   /// IANA timezone for daily quota windows (e.g. America/New_York).
-  timezone  String             @default("UTC")
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  timezone           String             @default("UTC")
+  suspendedAt        DateTime?
+  suspendedReason    String?
+  /// Soft reference to the platform operator who suspended; no FK (ops users may be deleted).
+  suspendedByUserId  String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   memberships              OrganizationMembership[]
   products                 Product[]
@@ -447,6 +465,8 @@ model Organization {
   userUsageOverrides       UserUsageOverride[]
   usageEvents              UsageEvent[]
   usageQuotaLedgers        UsageQuotaLedger[]
+  usageAlertLedgers        UsageAlertLedger[]
+  creditGrants             OrganizationCreditGrant[]
   qualificationOverrides   QualificationBucketOverride[]
   invitations              OrganizationInvitation[]
   billingProfile           OrganizationBillingProfile?
@@ -471,6 +491,7 @@ model Organization {
 
   @@index([status])
   @@index([createdAt])
+  @@index([suspendedAt])
 }
 
 model User {
@@ -510,6 +531,7 @@ model User {
   contactsCreated          Contact[]                     @relation("ContactCreatedBy")
   contactMembershipsAdded  ContactListMembership[]       @relation("ContactMembershipAddedBy")
   sequenceStopsInitiated   CampaignContact[]             @relation("SequenceStoppedBy")
+  creditGrantsIssued       OrganizationCreditGrant[]     @relation("CreditGrantedBy")
   /// IANA timezone for digest windows. Falls back to organization timezone when null.
   timezone                 String?
   digestEnabled            Boolean                       @default(true)
@@ -607,22 +629,50 @@ model OrganizationMembership {
   @@index([organizationId, role])
 }
 
+/// Ops contact for platform emails only — never store card data or billing address/tax PII.
 model OrganizationBillingProfile {
-  id               String   @id @default(cuid())
-  organizationId   String   @unique
-  billingEmail     String?
-  companyLegalName String?
-  taxId            String?
-  addressLine1     String?
-  addressLine2     String?
-  city             String?
-  region           String?
-  postalCode       String?
-  countryCode      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  billingEmail   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+/// Manual credit grants by platform SUPER_ADMIN (Phase A ops; Stripe is Phase C).
+model OrganizationCreditGrant {
+  id              String   @id @default(cuid())
+  organizationId  String
+  grantedByUserId String
+  amountUsd       Decimal  @db.Decimal(12, 2)
+  reason          String
+  note            String?
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  grantedBy    User         @relation("CreditGrantedBy", fields: [grantedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([grantedByUserId])
+}
+
+/// Idempotency ledger for 80% usage-limit warning emails.
+model UsageAlertLedger {
+  id             String            @id @default(cuid())
+  organizationId String
+  resource       UsageAlertResource
+  /// Calendar day (or entitlement period) key, e.g. 2026-08-27.
+  periodKey      String
+  thresholdPercent Int
+  sentAt         DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, resource, periodKey, thresholdPercent])
+  @@index([organizationId])
+  @@index([organizationId, resource, periodKey])
 }
 
 /// Organization-level usage limits. Defaults are DB-backed configuration, not product constants.

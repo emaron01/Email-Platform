@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { getCurrentUser, resolveActiveOrganization } from "@/lib/auth/session";
+import { isPlatformOperator } from "@/lib/auth/authz";
 import {
   buildSidebarNavItems,
   buildUserMenuModel,
@@ -30,7 +31,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
 
   const sidebarItems = buildSidebarNavItems({
     hasOrganization: Boolean(organization),
-    isSuperAdmin: user?.platformRole === "SUPER_ADMIN",
+    isPlatformOperator: user
+      ? isPlatformOperator(user.platformRole)
+      : false,
   });
 
   return (

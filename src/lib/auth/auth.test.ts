@@ -47,7 +47,7 @@ describe.skipIf(!hasDatabase)(
       }
     });
 
-    it("signup provisioning creates ADMIN + policies + billing; is idempotent", async () => {
+    it("signup provisioning creates OWNER + policies + billing; is idempotent", async () => {
       if (!ready) return;
       const { provisionIndividualWorkspace } = await import(
         "@/lib/auth/provision"
@@ -62,7 +62,7 @@ describe.skipIf(!hasDatabase)(
         lastName: "Lovelace",
       });
       expect(first.created).toBe(true);
-      expect(first.membershipRole).toBe("ADMIN");
+      expect(first.membershipRole).toBe("OWNER");
       expect(first.organization).toBeTruthy();
 
       const billing = await prisma.organizationBillingProfile.findUnique({

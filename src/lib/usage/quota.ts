@@ -63,6 +63,16 @@ export async function assertUsageAllowed(input: {
         limit,
       );
     }
+
+    // About to consume a new slot — warn at 80% of post-consume usage.
+    const postConsumeUsed = used + 1;
+    void maybeFireUsageAlert({
+      organizationId: input.organizationId,
+      resource: "ACTIVE_COMPANY",
+      used: postConsumeUsed,
+      limit,
+    }).catch(() => undefined);
+
     return { allowed: true, limit, used };
   }
 
@@ -134,11 +144,43 @@ export async function assertUsageAllowed(input: {
     );
   }
 
+  void maybeFireUsageAlert({
+    organizationId: input.organizationId,
+    resource: "EMAIL_GENERATION",
+    used: result.consumed,
+    limit: result.limit,
+    periodKey,
+  }).catch(() => undefined);
+
   return {
     allowed: true,
     limit: result.limit,
     used: result.consumed,
   };
+}
+
+async function maybeFireUsageAlert(input: {
+  organizationId: string;
+  resource: "ACTIVE_COMPANY" | "EMAIL_GENERATION";
+  used: number;
+  limit: number;
+  periodKey?: string;
+}): Promise<void> {
+  const { maybeSendUsageLimitWarning, periodKeyForActiveCompany } =
+    await import("@/lib/usage/alerts");
+  const periodKey =
+    input.periodKey ??
+    (input.resource === "EMAIL_GENERATION"
+      ? undefined
+      : periodKeyForActiveCompany());
+  if (!periodKey && input.resource === "EMAIL_GENERATION") return;
+  await maybeSendUsageLimitWarning({
+    organizationId: input.organizationId,
+    resource: input.resource,
+    used: input.used,
+    limit: input.limit,
+    periodKey: periodKey!,
+  });
 }
 
 export async function getDailyEmailUsage(input: {

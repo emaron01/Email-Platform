@@ -39,7 +39,7 @@ describe.skipIf(!hasDatabase)(
         timezone: "America/New_York",
       });
 
-    expect(membershipRole).toBe("ADMIN");
+    expect(membershipRole).toBe("OWNER");
     expect(organization.name).toContain("Workspace");
     expect(organization.timezone).toBe("America/New_York");
 
@@ -84,7 +84,7 @@ describe.skipIf(!hasDatabase)(
         },
       },
     });
-    expect(membership?.role).toBe("ADMIN");
+    expect(membership?.role).toBe("OWNER");
   });
 
   it("effective policy resolves org defaults and user overrides", async () => {

@@ -1,6 +1,7 @@
 /**
  * Pure menu/nav model for authenticated users.
  * Platform-only SUPER_ADMIN (no Organization) is a first-class case.
+ * SUPPORT sees Platform (read-only org console); email-templates stay SUPER_ADMIN-only.
  */
 export type MembershipRoleForMenu = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
 
@@ -9,7 +10,7 @@ export type AuthenticatedNavInput = {
   firstName?: string | null;
   lastName?: string | null;
   name?: string | null;
-  platformRole: "NONE" | "SUPER_ADMIN" | string;
+  platformRole: "NONE" | "SUPER_ADMIN" | "SUPPORT" | string;
   organizationName?: string | null;
   membershipRole?: MembershipRoleForMenu | null;
 };
@@ -26,7 +27,7 @@ export type UserMenuModel = {
   displayName: string | null;
   email: string;
   organizationName: string | null;
-  platformRoleLabel: "SUPER_ADMIN" | null;
+  platformRoleLabel: "SUPER_ADMIN" | "SUPPORT" | null;
   showOrganizationSettings: boolean;
   showPlatformAdmin: boolean;
   /** Avatar / header initial — never invents an org name */
@@ -59,6 +60,10 @@ function canManageOrgSettings(
   return role === "OWNER" || role === "ADMIN";
 }
 
+function isPlatformOperatorRole(role: string): boolean {
+  return role === "SUPER_ADMIN" || role === "SUPPORT";
+}
+
 /**
  * Build the authenticated user-menu model.
  * Logout is always included when the menu is shown.
@@ -69,10 +74,11 @@ export function buildUserMenuModel(
   const displayName = displayNameFromUser(input);
   const organizationName = input.organizationName?.trim() || null;
   const isSuperAdmin = input.platformRole === "SUPER_ADMIN";
+  const isSupport = input.platformRole === "SUPPORT";
   const showOrganizationSettings =
     Boolean(organizationName) &&
     canManageOrgSettings(input.membershipRole ?? null);
-  const showPlatformAdmin = isSuperAdmin;
+  const showPlatformAdmin = isPlatformOperatorRole(input.platformRole);
 
   const links: UserMenuLink[] = [
     {
@@ -93,8 +99,8 @@ export function buildUserMenuModel(
   if (showPlatformAdmin) {
     links.push({
       id: "platform_admin",
-      href: "/platform/email-templates",
-      label: "Platform Administration",
+      href: "/platform",
+      label: isSupport ? "Platform Support" : "Platform Administration",
     });
   }
 
@@ -109,7 +115,11 @@ export function buildUserMenuModel(
     displayName,
     email: input.email,
     organizationName,
-    platformRoleLabel: isSuperAdmin ? "SUPER_ADMIN" : null,
+    platformRoleLabel: isSuperAdmin
+      ? "SUPER_ADMIN"
+      : isSupport
+        ? "SUPPORT"
+        : null,
     showOrganizationSettings,
     showPlatformAdmin,
     avatarInitial: avatarSource.slice(0, 1).toUpperCase(),
@@ -119,19 +129,24 @@ export function buildUserMenuModel(
 
 /**
  * Sidebar items for the current identity.
- * Platform-only SUPER_ADMIN does not get fake customer workspace links.
+ * Platform operators without an Organization do not get fake customer workspace links.
  */
 export function buildSidebarNavItems(input: {
   hasOrganization: boolean;
-  isSuperAdmin: boolean;
+  isPlatformOperator: boolean;
+  /** @deprecated use isPlatformOperator */
+  isSuperAdmin?: boolean;
 }): SidebarNavItem[] {
+  const isOperator =
+    input.isPlatformOperator || Boolean(input.isSuperAdmin);
+
   if (!input.hasOrganization) {
     const items: SidebarNavItem[] = [
       { href: "/settings/account", label: "Account" },
     ];
-    if (input.isSuperAdmin) {
+    if (isOperator) {
       items.unshift({
-        href: "/platform/email-templates",
+        href: "/platform",
         label: "Platform",
       });
     }
@@ -149,9 +164,9 @@ export function buildSidebarNavItems(input: {
     { href: "/settings", label: "Settings" },
     { href: "/settings/account", label: "Account" },
   ];
-  if (input.isSuperAdmin) {
+  if (isOperator) {
     items.push({
-      href: "/platform/email-templates",
+      href: "/platform",
       label: "Platform",
     });
   }

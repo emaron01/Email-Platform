@@ -57,6 +57,32 @@ describe("buildUserMenuModel", () => {
     );
   });
 
+  it("SUPPORT sees Platform Support link to /platform", () => {
+    const model = buildUserMenuModel({
+      email: "support@example.test",
+      platformRole: "SUPPORT",
+      organizationName: null,
+      membershipRole: null,
+    });
+    expect(model.showPlatformAdmin).toBe(true);
+    expect(model.platformRoleLabel).toBe("SUPPORT");
+    const platform = model.links.find((l) => l.id === "platform_admin");
+    expect(platform?.href).toBe("/platform");
+    expect(platform?.label).toBe("Platform Support");
+  });
+
+  it("SUPER_ADMIN platform link points to /platform", () => {
+    const model = buildUserMenuModel({
+      email: "erik@salesforecaster.io",
+      firstName: "Erik",
+      platformRole: "SUPER_ADMIN",
+      organizationName: null,
+      membershipRole: null,
+    });
+    const platform = model.links.find((l) => l.id === "platform_admin");
+    expect(platform?.href).toBe("/platform");
+  });
+
   it("customer users never see platform controls", () => {
     const model = buildUserMenuModel({
       email: "user@acme.test",
@@ -74,11 +100,9 @@ describe("buildSidebarNavItems", () => {
   it("platform-only SUPER_ADMIN does not require Organization nav", () => {
     const items = buildSidebarNavItems({
       hasOrganization: false,
-      isSuperAdmin: true,
+      isPlatformOperator: true,
     });
-    expect(items.some((i) => i.href === "/platform/email-templates")).toBe(
-      true,
-    );
+    expect(items.some((i) => i.href === "/platform")).toBe(true);
     expect(items.some((i) => i.href === "/settings/account")).toBe(true);
     expect(items.some((i) => i.href === "/lists")).toBe(false);
     expect(items.some((i) => i.href === "/contacts")).toBe(false);
@@ -88,7 +112,7 @@ describe("buildSidebarNavItems", () => {
   it("organization MEMBER gets workspace nav without inventing platform links", () => {
     const items = buildSidebarNavItems({
       hasOrganization: true,
-      isSuperAdmin: false,
+      isPlatformOperator: false,
     });
     expect(items.some((i) => i.href === "/")).toBe(true);
     expect(items.some((i) => i.href === "/lists" && i.label === "Lists")).toBe(
@@ -105,9 +129,17 @@ describe("buildSidebarNavItems", () => {
         (i) => i.href === "/settings/voice" && i.label === "Your Voice",
       ),
     ).toBe(true);
-    expect(items.some((i) => i.href === "/platform/email-templates")).toBe(
-      false,
-    );
+    expect(items.some((i) => i.href === "/platform")).toBe(false);
+  });
+
+  it("SUPPORT sees Platform nav", () => {
+    const items = buildSidebarNavItems({
+      hasOrganization: false,
+      isPlatformOperator: true,
+    });
+    expect(
+      items.some((i) => i.href === "/platform" && i.label === "Platform"),
+    ).toBe(true);
   });
 });
 

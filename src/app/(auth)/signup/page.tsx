@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useState } from "react";
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") || "";
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -55,7 +57,11 @@ export default function SignupPage() {
         setLoading(false);
         return;
       }
-      router.push("/verify-email?sent=1");
+      router.push(
+        next
+          ? `/verify-email?sent=1&next=${encodeURIComponent(next)}`
+          : "/verify-email?sent=1",
+      );
       router.refresh();
     } catch {
       setError("Unable to create account. Please try again.");
@@ -138,10 +144,25 @@ export default function SignupPage() {
       </form>
       <p className="mt-4 text-sm text-slate-600">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium underline">
+        <Link
+          href={
+            next
+              ? `/login?next=${encodeURIComponent(next)}`
+              : "/login"
+          }
+          className="font-medium underline"
+        >
           Sign in
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
   );
 }
