@@ -13,6 +13,8 @@ import {
   TenantError,
 } from "@/lib/tenant/getCurrentOrganization";
 import { productUrlResearchIsStale } from "@/lib/product-research/acquire";
+import { PRODUCT_URL_UNREADABLE_MESSAGE } from "@/lib/product-research/extraction-quality";
+import { isNearEmptyProductDraft } from "@/lib/product-research/review";
 import type {
   ProductDraft,
   ProductMessagingDraft,
@@ -79,7 +81,7 @@ export default async function ProductResearchPage({ params }: PageProps) {
         where: {
           organizationId: organization.id,
           productId: product.id,
-          status: { in: ["ACQUIRED", "EXTRACTED"] },
+          status: { in: ["ACQUIRED", "EXTRACTED", "FAILED"] },
         },
         select: {
           id: true,
@@ -87,6 +89,8 @@ export default async function ProductResearchPage({ params }: PageProps) {
           displayName: true,
           originalUrl: true,
           filename: true,
+          status: true,
+          errorSafe: true,
         },
         orderBy: { createdAt: "asc" },
       }),
@@ -97,12 +101,32 @@ export default async function ProductResearchPage({ params }: PageProps) {
     (latestRun?.messagingDraftJson as ProductMessagingDraft | null) ?? null;
   const roles = normalizeSuggestedBuyerRoles(latestRun?.suggestedPersonasJson);
 
+  const sourcesForReview = sources.map((source) => {
+    const charMatch = source.errorSafe?.match(/Extracted (\d+) characters/i);
+    return {
+      ...source,
+      extractedCharCount: charMatch ? Number(charMatch[1]) : null,
+    };
+  });
+
+  const failedRead =
+    Boolean(latestFailedRun) &&
+    (product.setupStatus === "FAILED" ||
+      isNearEmptyProductDraft(
+        (latestFailedRun?.productDraftJson as ProductDraft | null) ?? null,
+      ) ||
+      sourcesForReview.some((s) => s.status === "FAILED" && s.sourceType === "URL"));
+
   const showSynthesisFailure =
     !draft &&
     Boolean(latestBundle) &&
     (product.setupStatus === "FAILED" || Boolean(latestFailedRun));
 
   const productApproved = product.approvalStatus === "APPROVED";
+  const failedUrlErrors = sourcesForReview
+    .filter((s) => s.status === "FAILED" && s.sourceType === "URL")
+    .map((s) => s.errorSafe)
+    .filter(Boolean);
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -119,39 +143,56 @@ export default async function ProductResearchPage({ params }: PageProps) {
         }
       />
 
-      {showSynthesisFailure ? (
+      {showSynthesisFailure || failedRead ? (
         <div
           role="alert"
-          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950"
+          data-testid="product-failed-read"
         >
-          <p className="font-medium">Product synthesis could not be completed.</p>
-          <p className="mt-1">
-            Acquired evidence was preserved. Use Retry Synthesis — no URL
-            re-fetch or Product web search.
+          <p className="font-medium">
+            {failedRead
+              ? "We could not read your product website"
+              : "Product synthesis could not be completed"}
           </p>
-          {latestFailedRun?.errorSafe ? (
+          <p className="mt-2">
+            {failedUrlErrors[0] ||
+              latestFailedRun?.errorSafe ||
+              PRODUCT_URL_UNREADABLE_MESSAGE}
+          </p>
+          <p className="mt-3 font-medium">What to do next</p>
+          <p className="mt-1">
+            Paste the product description, or use{" "}
+            <strong>Upload materials</strong> below with a whitepaper, use
+            cases, datasheet, or product overview. That path works reliably for
+            JavaScript-heavy sites.
+          </p>
+          {!failedRead ? (
             <p className="mt-2 text-xs text-amber-800/80">
-              {latestFailedRun.errorSafe}
+              Acquired evidence was preserved. Use Retry Synthesis if you only
+              need to re-run the model — no URL re-fetch or web search.
             </p>
           ) : null}
         </div>
       ) : null}
 
-      {latestRun && draft ? (
+      {latestRun && draft && !isNearEmptyProductDraft(draft) ? (
         <section className="rounded-lg border border-slate-200 bg-white p-5 sm:p-8">
           <ProductDraftReview
             productId={product.id}
             setupRunId={latestRun.id}
             productName={product.name}
             websiteUrl={product.websiteUrl}
-            sources={sources}
+            sources={sourcesForReview.filter((s) => s.status !== "FAILED")}
             draft={draft}
             messaging={messaging}
           />
         </section>
       ) : null}
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5">
+      <section
+        id="product-materials"
+        className="rounded-lg border border-slate-200 bg-white p-5"
+      >
         <AssistedProductIntake
           productId={product.id}
           defaultName={product.name}

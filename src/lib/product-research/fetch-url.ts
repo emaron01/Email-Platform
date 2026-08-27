@@ -6,12 +6,18 @@ import {
   assertSafeExternalHttpUrl,
   safeFetchHttp,
 } from "@/lib/research/url-safety";
+import {
+  formatProductUrlUnreadableError,
+  isUsableProductUrlExtraction,
+} from "@/lib/product-research/extraction-quality";
 
 export type FetchedPage = {
   url: string;
   title: string | null;
   text: string;
   ok: boolean;
+  /** Characters extracted before usability rejection (for user messaging). */
+  extractedCharCount?: number;
   errorSafe?: string;
 };
 
@@ -48,6 +54,7 @@ export async function fetchProductPageUrl(
       title: null,
       text: "",
       ok: false,
+      extractedCharCount: 0,
       errorSafe: initial.reason,
     };
   }
@@ -67,7 +74,8 @@ export async function fetchProductPageUrl(
         title: null,
         text: "",
         ok: false,
-        errorSafe: `URL returned HTTP ${response.status}.`,
+        extractedCharCount: 0,
+        errorSafe: `URL returned HTTP ${response.status}. ${formatProductUrlUnreadableError({ extractedCharCount: 0, blockedOrEmpty: true })}`,
       };
     }
 
@@ -80,6 +88,7 @@ export async function fetchProductPageUrl(
         title: null,
         text: "",
         ok: false,
+        extractedCharCount: 0,
         errorSafe: finalSafe.reason,
       };
     }
@@ -96,25 +105,45 @@ export async function fetchProductPageUrl(
         title: null,
         text: "",
         ok: false,
+        extractedCharCount: 0,
         errorSafe: "URL did not return HTML/text content.",
       };
     }
     const html = await response.text();
     const text = htmlToTextSnippet(html);
+    const title = extractTitle(html);
     if (!text) {
       return {
         url: finalSafe.href,
-        title: extractTitle(html),
+        title,
         text: "",
         ok: false,
-        errorSafe: "Page contained no extractable text.",
+        extractedCharCount: 0,
+        errorSafe: formatProductUrlUnreadableError({
+          extractedCharCount: 0,
+          blockedOrEmpty: true,
+        }),
+      };
+    }
+    if (!isUsableProductUrlExtraction(text)) {
+      return {
+        url: finalSafe.href,
+        title,
+        text: "",
+        ok: false,
+        extractedCharCount: text.length,
+        errorSafe: formatProductUrlUnreadableError({
+          extractedCharCount: text.length,
+          blockedOrEmpty: false,
+        }),
       };
     }
     return {
       url: finalSafe.href,
-      title: extractTitle(html),
+      title,
       text,
       ok: true,
+      extractedCharCount: text.length,
     };
   } catch (error) {
     return {
@@ -122,8 +151,14 @@ export async function fetchProductPageUrl(
       title: null,
       text: "",
       ok: false,
+      extractedCharCount: 0,
       errorSafe:
-        error instanceof Error ? error.message.slice(0, 200) : "Could not retrieve URL.",
+        error instanceof Error
+          ? `${error.message.slice(0, 160)}. ${formatProductUrlUnreadableError({ extractedCharCount: 0, blockedOrEmpty: true })}`
+          : formatProductUrlUnreadableError({
+              extractedCharCount: 0,
+              blockedOrEmpty: true,
+            }),
     };
   }
 }

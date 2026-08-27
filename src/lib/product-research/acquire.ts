@@ -7,6 +7,7 @@ import { recordUsageEvent } from "@/lib/usage/events";
 import { getResearchPolicy } from "@/lib/usage/policy";
 import { extractDocumentText } from "@/lib/product-research/extract";
 import { fetchProductPageUrl } from "@/lib/product-research/fetch-url";
+import { isUsableProductUrlExtraction } from "@/lib/product-research/extraction-quality";
 import {
   createCorrelationId,
   normalizeProductSourceUrl,
@@ -93,6 +94,7 @@ export async function acquireProductEvidence(input: {
   let sourceIds: string[] = [];
   let excerpts: EvidenceExcerpt[] = [];
   let urlResearchPerformed = false;
+  let urlReadFailed = false;
   let webSearchQueriesUsed = 0;
 
   await prisma.product.update({
@@ -174,7 +176,10 @@ export async function acquireProductEvidence(input: {
       if (existing && fresh && !src.forceRefresh && !input.forceUrlRefresh) {
         if (!sourceIds.includes(existing.id)) {
           sourceIds.push(existing.id);
-          if (existing.extractedText) {
+          if (
+            existing.extractedText &&
+            isUsableProductUrlExtraction(existing.extractedText)
+          ) {
             excerpts.push({
               sourceId: existing.id,
               sourceType: "URL",
@@ -182,6 +187,8 @@ export async function acquireProductEvidence(input: {
               text: existing.extractedText,
               url: existing.originalUrl,
             });
+          } else {
+            urlReadFailed = true;
           }
         }
         continue;
@@ -189,7 +196,12 @@ export async function acquireProductEvidence(input: {
 
       const fetched = await fetchProductPageUrl(normalized);
       urlResearchPerformed = true;
-      const hash = await sha256Hex(`url:${normalized}:${fetched.text}`);
+      if (!fetched.ok) {
+        urlReadFailed = true;
+      }
+      const hash = await sha256Hex(
+        `url:${normalized}:${fetched.text || `failed:${fetched.extractedCharCount ?? 0}`}`,
+      );
 
       const dup = await prisma.productSource.findFirst({
         where: {
@@ -234,10 +246,12 @@ export async function acquireProductEvidence(input: {
           correlationId,
           productId: input.productId,
           sourceId: row.id,
+          extractedCharCount: fetched.extractedCharCount ?? 0,
+          urlReadable: fetched.ok,
         },
       });
 
-      if (fetched.ok && fetched.text) {
+      if (fetched.ok && fetched.text && isUsableProductUrlExtraction(fetched.text)) {
         sourceIds.push(row.id);
         excerpts.push({
           sourceId: row.id,
@@ -394,8 +408,8 @@ export async function acquireProductEvidence(input: {
     }
   }
 
-  // Progressive web search (Research AI discovery) when user evidence is thin.
-  // PRODUCT_AI remains structured-only and never browses.
+  // Progressive web search when user evidence is thin, or when a product URL
+  // was empty/blocked/unreadable (company-research parity).
   const progressive = await runProgressiveProductWebSearch({
     organizationId: input.organizationId,
     productId: input.productId,
@@ -408,6 +422,7 @@ export async function acquireProductEvidence(input: {
     maxSearchQueries: policy.maxSearchQueriesPerProduct,
     maxSources: policy.maxSourcesPerProduct,
     freshnessDays: policy.productSourceResearchFreshnessDays,
+    forceWebSearch: urlReadFailed,
   });
 
   excerpts = progressive.excerpts;

@@ -18,6 +18,7 @@ import {
   evaluateProductEvidenceSufficiency,
   type ProductEvidenceDimensions,
 } from "@/lib/product-research/sufficiency";
+import { PRODUCT_URL_UNREADABLE_SEARCH_FOCUS } from "@/lib/product-research/extraction-quality";
 import {
   normalizeProductSourceUrl,
   sha256Hex,
@@ -123,6 +124,8 @@ export async function runProgressiveProductWebSearch(input: {
   maxSearchQueries: number;
   maxSources: number;
   freshnessDays: number;
+  /** When URL fetch was empty/blocked/unreadable — always search (company-research parity). */
+  forceWebSearch?: boolean;
 }): Promise<ProgressiveSearchResult> {
   const errors: string[] = [];
   let excerpts = [...input.excerpts];
@@ -133,6 +136,7 @@ export async function runProgressiveProductWebSearch(input: {
 
   const primaryDomain = domainFromUrl(input.primaryUrl);
   const maxQueries = Math.max(0, input.maxSearchQueries);
+  const forceWebSearch = Boolean(input.forceWebSearch);
 
   if (maxQueries === 0) {
     return {
@@ -150,7 +154,7 @@ export async function runProgressiveProductWebSearch(input: {
     productName: input.productName,
   });
 
-  if (sufficiency.sufficient) {
+  if (sufficiency.sufficient && !forceWebSearch) {
     return {
       excerpts,
       sourceIds,
@@ -163,26 +167,39 @@ export async function runProgressiveProductWebSearch(input: {
 
   let stages = 0;
   while (
-    !sufficiency.sufficient &&
+    (!sufficiency.sufficient || (forceWebSearch && webSearchQueriesUsed === 0)) &&
     webSearchQueriesUsed < maxQueries &&
     stages < maxQueries &&
     sourceIds.length < input.maxSources
   ) {
-    // Pricing alone must never force another search.
+    // Pricing alone must never force another search (unless this is the
+    // mandatory first search after an unreadable product URL).
     if (
+      !forceWebSearch &&
       sufficiency.missingPrimary.length === 0 &&
       sufficiency.missingSecondary.every((k) => k === "pricing")
     ) {
       stoppedReason = "sufficient";
       break;
     }
+    if (
+      forceWebSearch &&
+      webSearchQueriesUsed > 0 &&
+      sufficiency.sufficient
+    ) {
+      stoppedReason = "sufficient";
+      break;
+    }
 
-    const focus = buildProductSearchFocus(
-      input.productName,
-      primaryDomain,
-      sufficiency.missingPrimary,
-      sufficiency.missingSecondary,
-    );
+    const focus =
+      forceWebSearch && webSearchQueriesUsed === 0 && !sufficiency.sufficient
+        ? `${PRODUCT_URL_UNREADABLE_SEARCH_FOCUS} "${input.productName}"${primaryDomain ? ` OR site:${primaryDomain}` : ""}`
+        : buildProductSearchFocus(
+            input.productName,
+            primaryDomain,
+            sufficiency.missingPrimary,
+            sufficiency.missingSecondary,
+          );
 
     let discovery;
     try {

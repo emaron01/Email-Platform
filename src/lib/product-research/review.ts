@@ -4,6 +4,7 @@
  */
 
 import type { ProductDraft } from "@/lib/product-research/contract";
+import { PRODUCT_URL_UNREADABLE_MESSAGE } from "@/lib/product-research/extraction-quality";
 
 export type ProductReviewSource = {
   id: string;
@@ -11,6 +12,9 @@ export type ProductReviewSource = {
   displayName: string;
   originalUrl?: string | null;
   filename?: string | null;
+  status?: string | null;
+  errorSafe?: string | null;
+  extractedCharCount?: number | null;
 };
 
 export type ProductDraftEvidenceRef = {
@@ -288,8 +292,13 @@ export function describeReadSources(sources: ProductReviewSource[]): {
   sentence: string;
   names: string[];
 } {
-  const names = sources.map((source) => {
-    if (source.sourceType === "URL") {
+  const usable = sources.filter(
+    (source) =>
+      source.status !== "FAILED" &&
+      source.sourceType !== "FAILED_URL",
+  );
+  const names = usable.map((source) => {
+    if (source.sourceType === "URL" || source.sourceType === "WEB_SEARCH") {
       return source.displayName || source.originalUrl || "Website";
     }
     if (source.sourceType === "UPLOADED_DOCUMENT") {
@@ -298,10 +307,12 @@ export function describeReadSources(sources: ProductReviewSource[]): {
     return source.displayName;
   });
 
-  const urls = sources.filter((s) => s.sourceType === "URL").length;
-  const uploads = sources.filter((s) => s.sourceType === "UPLOADED_DOCUMENT").length;
-  const notes = sources.filter((s) => s.sourceType === "USER_NOTE").length;
-  const pastes = sources.filter((s) => s.sourceType === "PASTED_TEXT").length;
+  const urls = usable.filter(
+    (s) => s.sourceType === "URL" || s.sourceType === "WEB_SEARCH",
+  ).length;
+  const uploads = usable.filter((s) => s.sourceType === "UPLOADED_DOCUMENT").length;
+  const notes = usable.filter((s) => s.sourceType === "USER_NOTE").length;
+  const pastes = usable.filter((s) => s.sourceType === "PASTED_TEXT").length;
 
   const parts = [
     countPhrase(urls, "your website", (n) => `${n} pages from your website`),
@@ -320,6 +331,106 @@ export function describeReadSources(sources: ProductReviewSource[]): {
       : `We read ${joinReadable(parts)}.`;
 
   return { sentence, names };
+}
+
+const CORE_LIST_FIELDS = [
+  "problemsSolved",
+  "capabilities",
+  "differentiators",
+  "primaryUseCases",
+  "businessOutcomes",
+  "proofPoints",
+] as const;
+
+/**
+ * Near-empty synthesis (title restatement + everything unknown) is a failed
+ * read, not a completed product profile.
+ */
+export function isNearEmptyProductDraft(draft: ProductDraft | null | undefined): boolean {
+  if (!draft) return true;
+  const emptyLists = CORE_LIST_FIELDS.filter((key) => {
+    const value = draft[key];
+    return !Array.isArray(value) || value.length === 0;
+  }).length;
+  const unknownCount = draft.unknownFields?.length ?? 0;
+  const description = (draft.description ?? "").trim();
+  const descriptionThin = description.length < 80;
+  return (
+    (emptyLists >= 5 && unknownCount >= 5) ||
+    (emptyLists >= 4 && unknownCount >= 6 && descriptionThin)
+  );
+}
+
+export type ProductSourceLead = {
+  kind: "read_ok" | "failed_read";
+  sentence: string;
+  detail: string | null;
+  names: string[];
+  failedUrls: Array<{ url: string; extractedCharCount: number | null; errorSafe: string | null }>;
+};
+
+/**
+ * Lead copy for the research review. Failed/empty URL reads must not claim
+ * "We read your website."
+ */
+export function describeProductSourceLead(input: {
+  sources: ProductReviewSource[];
+  draft?: ProductDraft | null;
+}): ProductSourceLead {
+  const failedUrls = input.sources
+    .filter(
+      (source) =>
+        source.sourceType === "URL" &&
+        (source.status === "FAILED" || Boolean(source.errorSafe)),
+    )
+    .map((source) => ({
+      url: source.originalUrl || source.displayName || "the product URL",
+      extractedCharCount: source.extractedCharCount ?? null,
+      errorSafe: source.errorSafe ?? null,
+    }));
+
+  const acquired = input.sources.filter(
+    (source) =>
+      source.status !== "FAILED" &&
+      !(source.sourceType === "URL" && source.errorSafe),
+  );
+  const nearEmpty = isNearEmptyProductDraft(input.draft ?? null);
+
+  if (failedUrls.length > 0 && (acquired.length === 0 || nearEmpty)) {
+    const first = failedUrls[0];
+    const extracted =
+      first.extractedCharCount != null
+        ? ` Extracted ${first.extractedCharCount} characters from ${first.url}.`
+        : ` From ${first.url}.`;
+    return {
+      kind: "failed_read",
+      sentence: PRODUCT_URL_UNREADABLE_MESSAGE,
+      detail: `${extracted} Paste the product description, or upload a whitepaper, use cases, datasheet, or product overview.`,
+      names: [],
+      failedUrls,
+    };
+  }
+
+  if (nearEmpty) {
+    return {
+      kind: "failed_read",
+      sentence:
+        "We could not build a usable product profile from the material available.",
+      detail:
+        "Almost every field was unknown. Paste the product description, or upload materials such as a whitepaper, use cases, datasheet, or product overview.",
+      names: describeReadSources(acquired).names,
+      failedUrls,
+    };
+  }
+
+  const ok = describeReadSources(acquired);
+  return {
+    kind: "read_ok",
+    sentence: ok.sentence,
+    detail: null,
+    names: ok.names,
+    failedUrls,
+  };
 }
 
 function normalizeForMatch(value: string): string {

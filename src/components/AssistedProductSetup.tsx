@@ -121,29 +121,38 @@ export function AssistedProductIntake({
             hint="Tell us anything important about the product, buyer, positioning, pricing, use case, or market."
           />
         </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Paste Product Content"
-            name="pastedContent"
-            as="textarea"
-            rows={5}
-            hint="Paste content from a brochure, whitepaper, sales deck, product sheet, website, battlecard, or case study."
-          />
-        </div>
-        <div className="md:col-span-2">
-          <label className="block text-sm">
-            <span className="font-medium text-slate-700">
-              Upload Product Materials
-            </span>
-            <span className="mt-0.5 block text-xs font-normal text-slate-500">
-              PDF, DOCX, TXT, MD. Max 15 MiB each.
+        <div className="md:col-span-2 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-slate-300 bg-white p-4">
+            <label className="block" htmlFor="pastedContent">
+              <span className="text-sm font-semibold text-slate-900">
+                Paste product content
+              </span>
+              <span className="mt-1 block text-xs text-slate-500">
+                Brochure, whitepaper, sales deck, datasheet, product sheet, or
+                case study text.
+              </span>
+            </label>
+            <textarea
+              id="pastedContent"
+              name="pastedContent"
+              rows={6}
+              placeholder="Paste product content here…"
+              className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 placeholder:text-slate-400 focus:ring-2"
+            />
+          </div>
+          <label className="flex cursor-pointer flex-col rounded-lg border border-slate-900 bg-slate-900 p-4 text-white transition hover:bg-slate-800">
+            <span className="text-sm font-semibold">Upload materials</span>
+            <span className="mt-1 text-xs text-white/80">
+              Recommended for JavaScript-heavy product sites. PDF, DOCX, TXT,
+              MD · Max 15 MiB each.
             </span>
             <input
               type="file"
               name="files"
               multiple
               accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,text/plain,text/markdown"
-              className="mt-1 block w-full text-sm text-slate-600"
+              className="mt-4 block w-full text-sm text-white file:mr-3 file:rounded-md file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-slate-900"
+              data-testid="product-upload-materials"
             />
           </label>
         </div>

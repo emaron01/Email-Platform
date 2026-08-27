@@ -8,6 +8,7 @@ import {
   PREVIOUSLY_RENDERED_DRAFT_FIELDS,
   PRODUCT_DRAFT_LIST_FIELDS,
   PRODUCT_DRAFT_STRING_FIELDS,
+  describeProductSourceLead,
   describeReadSources,
   diffProductDraftFields,
   evidenceRefsForText,
@@ -64,16 +65,37 @@ describe("product review source lead-in", () => {
         sourceType: "URL",
         displayName: "acme.example",
         originalUrl: "https://acme.example",
+        status: "ACQUIRED",
       },
       {
         id: "s2",
         sourceType: "UPLOADED_DOCUMENT",
         displayName: "Methodology",
         filename: "methodology.pdf",
+        status: "ACQUIRED",
       },
     ]);
     expect(lead.sentence).toBe("We read your website and 1 uploaded document.");
     expect(lead.names).toEqual(["acme.example", "methodology.pdf"]);
+  });
+
+  it("does not claim a failed URL was read", () => {
+    const lead = describeProductSourceLead({
+      sources: [
+        {
+          id: "s1",
+          sourceType: "URL",
+          displayName: "opentext",
+          originalUrl: "https://www.opentext.com/products/x",
+          status: "FAILED",
+          errorSafe: "Extracted 8000 characters — mostly site navigation",
+          extractedCharCount: 8000,
+        },
+      ],
+      draft: null,
+    });
+    expect(lead.kind).toBe("failed_read");
+    expect(lead.sentence).not.toMatch(/We read your website/i);
   });
 });
 
@@ -158,11 +180,13 @@ describe("product review UI contracts", () => {
       "src/app/(app)/setup/[productId]/research/page.tsx",
       "utf8",
     );
-    expect(page).toContain("sources={sources}");
+    expect(page).toContain("sources={sourcesForReview");
     const body = page.slice(page.indexOf("return ("));
     expect(body.indexOf("ProductDraftReview")).toBeLessThan(
       body.indexOf("AssistedProductIntake"),
     );
+    expect(page).toContain("product-failed-read");
+    expect(page).toContain("Upload materials");
     expect(page).toContain("max-w-3xl");
   });
 

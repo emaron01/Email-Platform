@@ -3,6 +3,8 @@
  * Pricing/AOV alone never forces more searching.
  */
 
+import { isLikelySiteChromeExtraction } from "@/lib/product-research/extraction-quality";
+
 export type ProductEvidenceDimensions = {
   whatProductDoes: boolean;
   problemsSolved: boolean;
@@ -42,12 +44,18 @@ function hasSignal(text: string, patterns: RegExp[]): boolean {
 
 /**
  * Heuristic scan of acquired evidence text (user + discovered).
+ * Site-chrome / JS-shell extractions do not count toward sufficiency.
  */
 export function evaluateProductEvidenceSufficiency(input: {
   excerpts: Array<{ text: string; sourceType?: string }>;
   productName: string;
 }): ProductSufficiencyResult {
-  const combined = input.excerpts
+  const usable = input.excerpts.filter(
+    (excerpt) =>
+      excerpt.text.trim().length > 0 &&
+      !isLikelySiteChromeExtraction(excerpt.text),
+  );
+  const combined = usable
     .map((e) => e.text)
     .join("\n")
     .toLowerCase();
@@ -96,7 +104,7 @@ export function evaluateProductEvidenceSufficiency(input: {
   const sufficient =
     missingPrimary.length === 0 &&
     len >= 600 &&
-    input.excerpts.length >= 1;
+    usable.length >= 1;
 
   return {
     sufficient,

@@ -5,8 +5,11 @@ import {
   type IngestSourceInput,
 } from "@/lib/product-research/acquire";
 import { synthesizeProductSetup } from "@/lib/product-research/synthesize";
+import { isNearEmptyProductDraft } from "@/lib/product-research/review";
+import { PRODUCT_URL_UNREADABLE_MESSAGE } from "@/lib/product-research/extraction-quality";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
+import type { ProductDraft } from "@/lib/product-research/contract";
 
 /**
  * End-to-end: acquire/reuse evidence once → single synthesis → drafts for review.
@@ -49,7 +52,8 @@ export async function researchAndBuildProduct(input: {
     });
     throw new TenantError(
       acquired.errors[0] ||
-        "No usable evidence was acquired. Add a URL, notes, paste, or document.",
+        PRODUCT_URL_UNREADABLE_MESSAGE +
+          " Add a URL we can read, paste the product description, or upload materials.",
     );
   }
 
@@ -73,6 +77,38 @@ export async function researchAndBuildProduct(input: {
       message:
         synth.errorSafe ||
         "Evidence was saved, but AI synthesis failed. You can Retry Synthesis without re-fetching URLs or running web search.",
+      sourceCount: acquired.excerpts.length,
+      suggestedPersonaCount: 0,
+    };
+  }
+
+  const draft = (synth.result?.productDraft ?? null) as ProductDraft | null;
+  if (isNearEmptyProductDraft(draft)) {
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { setupStatus: "FAILED" },
+    });
+    if (synth.setupRunId) {
+      await prisma.productSetupRun.update({
+        where: { id: synth.setupRunId },
+        data: {
+          status: "FAILED",
+          errorSafe:
+            acquired.errors[0] ||
+            PRODUCT_URL_UNREADABLE_MESSAGE +
+              " An empty profile is a failed read, not a completed product profile.",
+        },
+      });
+    }
+    return {
+      evidenceBundleId: acquired.evidenceBundleId,
+      setupRunId: synth.setupRunId,
+      correlationId: acquired.correlationId,
+      status: "FAILED",
+      message:
+        acquired.errors[0] ||
+        PRODUCT_URL_UNREADABLE_MESSAGE +
+          " Paste the product description or upload materials, then research again.",
       sourceCount: acquired.excerpts.length,
       suggestedPersonaCount: 0,
     };

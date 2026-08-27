@@ -21,7 +21,7 @@ import type {
 import {
   PRODUCT_DRAFT_FIELD_HINTS,
   PRODUCT_DRAFT_FIELD_LABELS,
-  describeReadSources,
+  describeProductSourceLead,
   emptyProductDraft,
   evidenceRefsForText,
   sourceLabelForId,
@@ -246,7 +246,10 @@ export function ProductDraftReview({
     }
   }, [state, router]);
 
-  const sourceLead = useMemo(() => describeReadSources(sources), [sources]);
+  const sourceLead = useMemo(
+    () => describeProductSourceLead({ sources, draft: profile }),
+    [sources, profile],
+  );
   const refs = profile.evidenceRefs ?? [];
   const unknownLabels = (profile.unknownFields ?? []).map(
     (key) => PRODUCT_DRAFT_FIELD_LABELS[key] ?? key,
@@ -275,9 +278,21 @@ export function ProductDraftReview({
       data-testid="product-draft-review"
     >
       <div>
-        <p className="text-base text-slate-800" data-testid="product-source-lead">
+        <p
+          className={
+            sourceLead.kind === "failed_read"
+              ? "text-base text-amber-950"
+              : "text-base text-slate-800"
+          }
+          data-testid="product-source-lead"
+        >
           {sourceLead.sentence}
         </p>
+        {sourceLead.detail ? (
+          <p className="mt-2 text-sm text-amber-900" data-testid="product-source-detail">
+            {sourceLead.detail}
+          </p>
+        ) : null}
         {sourceLead.names.length > 0 ? (
           <p className="mt-1 text-sm text-slate-500">
             {sourceLead.names.join(" · ")}
