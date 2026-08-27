@@ -4,7 +4,6 @@ export const CAMPAIGN_STAGE_KEYS = [
   "companies",
   "contacts",
   "emails",
-  "send",
   "report",
 ] as const;
 
@@ -82,17 +81,6 @@ export function buildCampaignStages(input: {
     },
     {
       number: 9,
-      key: "send",
-      label: "Send",
-      completed: input.sentEmailCount > 0,
-      available: input.generatedEmailCount > 0,
-      unavailableReason:
-        input.generatedEmailCount > 0
-          ? null
-          : "Generate at least one email first.",
-    },
-    {
-      number: 10,
       key: "report",
       label: "Report",
       completed: false,
@@ -108,8 +96,11 @@ export function resolveCampaignStage(
   requested: string | undefined,
   stages: CampaignStage[],
 ): CampaignStageKey {
+  // Legacy Send stage deep links land on the merged Emails workspace.
+  const normalized =
+    requested === "send" ? "emails" : requested;
   const requestedStage = stages.find(
-    (stage) => stage.key === requested && stage.available,
+    (stage) => stage.key === normalized && stage.available,
   );
   if (requestedStage) return requestedStage.key;
   return (

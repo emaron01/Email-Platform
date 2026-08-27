@@ -967,10 +967,10 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("Regenerate");
     expect(form).toContain("maxLength={ADDITIONAL_GUIDANCE_MAX_CHARS}");
     expect(form).toContain("email-sequence-status");
-    expect(form).toContain(
+    expect(form).not.toContain(
       "Make sure your signature is set in your Outlook or Gmail client",
     );
-    expect(form).toContain("text-xs text-slate-500");
+    expect(form).toContain("Open in");
     expect(form).toContain("selected.subject");
     expect(form).toContain("selected.body");
     expect(form).toContain("Save draft");

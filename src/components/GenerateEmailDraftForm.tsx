@@ -102,26 +102,17 @@ export function GenerateEmailDraftForm({
         </div>
       ) : null}
 
-      {result ? (
-        <div
-          role="status"
-          data-testid="email-generation-status"
-        >
-          <p
-            className={
-              result.ok ? "text-sm text-emerald-700" : "text-sm text-red-600"
-            }
-          >
-            {result.message}
-          </p>
-          {result.ok ? (
-            <p className="mt-1 text-xs text-slate-500">
-              Make sure your signature is set in your Outlook or Gmail client —
-              it will be appended automatically when you send.
+          {result ? (
+            <p
+              role="status"
+              data-testid="email-generation-status"
+              className={
+                result.ok ? "text-sm text-emerald-700" : "text-sm text-red-600"
+              }
+            >
+              {result.message}
             </p>
           ) : null}
-        </div>
-      ) : null}
 
       {draft ? (
         <article className="rounded-md border border-slate-200 bg-slate-50 p-3">

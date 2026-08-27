@@ -231,6 +231,28 @@ describe("campaign stage rail", () => {
         "At least one company must be in Good before reviewing contacts.",
     });
   });
+  it("maps legacy send stage deep links onto emails", () => {
+    const stages = buildCampaignStages({
+      setupComplete: true,
+      hasListData: true,
+      companyResultCount: 1,
+      survivingCompanyCount: 1,
+      qualifiedContactCount: 1,
+      generatedEmailCount: 1,
+      sentEmailCount: 0,
+    });
+    expect(stages.map((stage) => stage.key)).toEqual([
+      "setup",
+      "list",
+      "companies",
+      "contacts",
+      "emails",
+      "report",
+    ]);
+    expect(stages.find((stage) => stage.key === "emails")?.number).toBe(8);
+    expect(stages.find((stage) => stage.key === "report")?.number).toBe(9);
+    expect(resolveCampaignStage("send", stages)).toBe("emails");
+  });
 });
 
 describe("qualification bucket contract", () => {
@@ -282,11 +304,12 @@ describe("workflow view contracts", () => {
       "companies",
       "contacts",
       "emails",
-      "send",
       "report",
     ]) {
       expect(page).toContain(`"${stage}"`);
     }
+    expect(page).not.toContain('currentStage === "send"');
+    expect(page).toContain("Compare drafts");
     expect(page).toContain("No company qualification results yet");
     expect(page).toContain("No contact qualification results yet");
     expect(page).toContain("No contacts are attached to this campaign yet");

@@ -233,10 +233,7 @@ export default async function CampaignDetailPage({
   const bucketByContactId = new Map(
     campaignContactRows.map((row) => [row.id, row.bucket]),
   );
-  const stageContacts =
-    currentStage === "emails"
-      ? campaign.contacts
-      : campaign.contacts.filter((entry) => entry.emailDrafts.length > 0);
+  const stageContacts = campaign.contacts;
   const companyCount = new Set(
     campaign.contacts
       .map((entry) => entry.contact.company?.trim().toLowerCase())
@@ -403,27 +400,15 @@ export default async function CampaignDetailPage({
         </>
       ) : null}
 
-      {currentStage === "emails" || currentStage === "send" ? (
+      {currentStage === "emails" ? (
         <Panel
-          title={
-            currentStage === "emails"
-              ? `Email drafts (${stageContacts.length} contacts)`
-              : `Send workspace (${stageContacts.length} contacts)`
-          }
-          description={
-            currentStage === "emails"
-              ? "Generate and edit drafts for every contact in this campaign."
-              : "Send from your mailbox, mark external sends, and draft replies."
-          }
+          title={`Emails (${stageContacts.length} contacts)`}
+          description="Generate, edit, and send drafts for every contact in this campaign. Use Compare drafts to review several at once."
         >
-          {currentStage === "emails" && voiceSamples.length === 0 ? (
+          {voiceSamples.length === 0 ? (
             <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-4">
               <p className="text-sm font-medium text-amber-950">
                 Add a voice sample before generating your first email.
-              </p>
-              <p className="mt-1 text-sm text-amber-800">
-                Your mail client should also have the signature you want to
-                append to sent messages.
               </p>
               <Link
                 href="/settings/voice"
@@ -453,7 +438,6 @@ export default async function CampaignDetailPage({
                 warningLimit: dailySendUsage.warningLimit,
                 limit: dailySendUsage.limit,
               }}
-              mode={currentStage === "emails" ? "EMAILS" : "SEND"}
               readOnly={campaignArchived}
               contacts={stageContacts.map((campaignContact) => {
                 const contact = campaignContact.contact;
@@ -532,17 +516,13 @@ export default async function CampaignDetailPage({
           ) : (
             <div className="rounded-md border border-dashed border-slate-300 p-6 text-center">
               <p className="text-sm text-slate-600">
-                {currentStage === "emails"
-                  ? "No contacts are attached to this campaign yet."
-                  : "No drafts are ready to send."}
+                No contacts are attached to this campaign yet.
               </p>
               <Link
-                href={`/campaigns/${campaign.id}?stage=${currentStage === "emails" ? "list" : "emails"}`}
+                href={`/campaigns/${campaign.id}?stage=list`}
                 className="mt-3 inline-flex text-sm font-medium text-slate-900 underline"
               >
-                {currentStage === "emails"
-                  ? "Add contacts"
-                  : "Open email drafts"}
+                Add contacts
               </Link>
             </div>
           )}
@@ -626,7 +606,7 @@ export default async function CampaignDetailPage({
 
       {currentStage === "report" ? (
         <Panel
-          title="10 Report"
+          title="9 Report"
           description="Activity recorded directly by this application."
         >
           <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

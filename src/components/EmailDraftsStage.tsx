@@ -59,7 +59,6 @@ export function EmailDraftsStage({
   emailDeeplinkMaxUrlLength,
   mailboxConnection,
   dailySendUsage,
-  mode,
   readOnly = false,
 }: {
   contacts: EmailDraftsStageContact[];
@@ -75,7 +74,6 @@ export function EmailDraftsStage({
     warningLimit: number;
     limit: number;
   };
-  mode: "EMAILS" | "SEND";
   readOnly?: boolean;
 }) {
   const [view, setView] = useState<"write" | "compare">("write");
@@ -183,7 +181,6 @@ export function EmailDraftsStage({
                 emailDeeplinkMaxUrlLength={emailDeeplinkMaxUrlLength}
                 mailboxConnection={mailboxConnection}
                 dailySendUsage={dailySendUsage}
-                mode={mode}
                 campaignEmailLength={campaignEmailLength}
                 personaOptions={selected.personaOptions}
                 resolvedPersonaId={selected.resolvedPersonaId}

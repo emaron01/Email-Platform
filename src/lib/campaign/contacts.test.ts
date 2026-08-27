@@ -23,10 +23,11 @@ describe("campaign contact management seams", () => {
     expect(listPage).not.toContain("GenerateEmailDraftForm");
     expect(detailPage).toContain("EmailDraftsStage");
     expect(detailPage).toContain("CampaignContactsManager");
-    expect(detailPage).toContain(
+    expect(detailPage).toContain("Compare drafts");
+    expect(detailPage).not.toContain(
       'mode={currentStage === "emails" ? "EMAILS" : "SEND"}',
     );
-    expect(detailPage).toContain("mark external sends");
+    expect(detailPage).toContain("Generate, edit, and send drafts");
     expect(manager).toContain("Search existing contacts");
     expect(manager).toContain("Bulk add from a scored run");
     expect(manager).toContain("campaign-contacts-status");
