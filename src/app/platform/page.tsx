@@ -8,6 +8,7 @@ import {
   computeCostReport,
   getLatestSpendDrift,
 } from "@/lib/platform/cost";
+import { PLATFORM_ROUTE_AUDIT } from "@/components/PlatformConsoleNav";
 
 function formatUsd(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -31,12 +32,38 @@ export default async function PlatformHomePage() {
   const canEditTemplates = canEditTransactionalTemplates(user.platformRole);
   const proj300 = report.projections.find((p) => p.emails === 300);
 
+  const areas = [
+    {
+      href: "/platform/orgs",
+      title: "Organizations",
+      body: "List tenants, create free Individual or Enterprise accounts, manage policy and members.",
+    },
+    {
+      href: "/platform/orgs/new",
+      title: "Create account",
+      body: "Invite a first OWNER by email. Every account starts free until Stripe.",
+      superAdminOnly: true,
+    },
+    {
+      href: "/platform/costs",
+      title: "Costs & margin",
+      body: "Cost per company, contacts ratio, projections, model rates, spend reconciliation.",
+    },
+    {
+      href: "/platform/email-templates",
+      title: "Email templates",
+      body: "Edit and test transactional email templates.",
+      superAdminOnly: true,
+    },
+  ].filter((a) => !a.superAdminOnly || canEditTemplates);
+
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
+    <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Platform</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Ops home — cost/margin signals and org administration.
+          Ops home — cost/margin signals and org administration. Use the nav
+          above on every platform page.
         </p>
       </div>
 
@@ -64,28 +91,29 @@ export default async function PlatformHomePage() {
         </div>
       ) : null}
 
-      <nav className="flex flex-wrap gap-4 text-sm">
-        <Link
-          href="/platform/orgs"
-          className="font-medium text-slate-800 underline"
-        >
-          Organizations
-        </Link>
-        <Link
-          href="/platform/costs"
-          className="font-medium text-slate-800 underline"
-        >
-          Costs &amp; margin
-        </Link>
-        {canEditTemplates ? (
-          <Link
-            href="/platform/email-templates"
-            className="font-medium text-slate-800 underline"
-          >
-            Email templates
-          </Link>
-        ) : null}
-      </nav>
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Admin areas</h2>
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {areas.map((area) => (
+            <li
+              key={area.href}
+              className="rounded-lg border border-slate-200 bg-white p-4"
+            >
+              <Link
+                href={area.href}
+                className="text-base font-semibold text-slate-900 underline"
+              >
+                {area.title}
+              </Link>
+              <p className="mt-1 text-sm text-slate-600">{area.body}</p>
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-slate-500" data-testid="platform-route-audit">
+          Linked routes: {PLATFORM_ROUTE_AUDIT.join(", ")}. Org detail and
+          scoped view open from Organizations.
+        </p>
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Last 30 days (platform-wide)</h2>
@@ -115,14 +143,6 @@ export default async function PlatformHomePage() {
             </p>
           </div>
         </div>
-        <p className="text-xs text-slate-500">
-          Projections use observed contact-per-company ratio and DB-backed model
-          rates. See{" "}
-          <Link href="/platform/costs" className="underline">
-            Costs &amp; margin
-          </Link>{" "}
-          for detail.
-        </p>
       </section>
     </div>
   );

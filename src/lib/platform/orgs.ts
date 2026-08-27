@@ -1,6 +1,7 @@
 import "server-only";
 
 import type {
+  OrganizationAccountType,
   OrganizationStatus,
   UsageCategory,
 } from "@prisma/client";
@@ -8,12 +9,20 @@ import { prisma } from "@/lib/prisma";
 import { recordAdminAuditEvent } from "@/lib/auth/audit";
 import { aggregateUsage } from "@/lib/usage/events";
 import { countActiveResearchedCompanies } from "@/lib/usage/active-companies";
+import {
+  DEFAULT_ORGANIZATION_TIMEZONE,
+  DEFAULT_RESEARCH_POLICY_VALUES,
+  DEFAULT_USAGE_POLICY_VALUES,
+} from "@/lib/usage/defaults";
+import { FREE_BILLING_DEFAULTS } from "@/lib/billing/billing-state";
+import { createOrganizationInvitationAsPlatform } from "@/lib/org/signup";
 
 export type PlatformOrgListItem = {
   id: string;
   name: string;
   slug: string;
   status: OrganizationStatus;
+  accountType: "INDIVIDUAL" | "ENTERPRISE";
   createdAt: Date;
   memberCount: number;
   productCount: number;
@@ -22,6 +31,8 @@ export type PlatformOrgListItem = {
   researchedCompaniesUsed: number;
   researchedCompaniesLimit: number | null;
   suspendedAt: Date | null;
+  planCode: string;
+  billingStatus: string;
 };
 
 export type OrgHealthWindow = {
@@ -119,10 +130,14 @@ export async function listOrganizationsForPlatform(input?: {
       name: true,
       slug: true,
       status: true,
+      accountType: true,
       createdAt: true,
       suspendedAt: true,
       usagePolicy: {
         select: { activeResearchedCompanyLimit: true },
+      },
+      billingProfile: {
+        select: { planCode: true, billingStatus: true },
       },
       _count: {
         select: {
@@ -173,6 +188,7 @@ export async function listOrganizationsForPlatform(input?: {
       name: org.name,
       slug: org.slug,
       status: org.status,
+      accountType: org.accountType,
       createdAt: org.createdAt,
       memberCount: org._count.memberships,
       productCount: org._count.products,
@@ -182,6 +198,8 @@ export async function listOrganizationsForPlatform(input?: {
       researchedCompaniesLimit:
         org.usagePolicy?.activeResearchedCompanyLimit ?? null,
       suspendedAt: org.suspendedAt,
+      planCode: org.billingProfile?.planCode ?? "FREE",
+      billingStatus: org.billingProfile?.billingStatus ?? "FREE",
     });
   }
 
@@ -192,8 +210,28 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
   const org = await prisma.organization.findUnique({
     where: { id: organizationId },
     include: {
-      billingProfile: { select: { billingEmail: true } },
+      billingProfile: {
+        select: {
+          billingEmail: true,
+          planCode: true,
+          billingStatus: true,
+          stripeCustomerId: true,
+          stripeSubscriptionId: true,
+          currentPeriodEnd: true,
+        },
+      },
       usagePolicy: true,
+      invitations: {
+        where: { status: "PENDING" },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          expiresAt: true,
+          createdAt: true,
+        },
+      },
       memberships: {
         include: {
           user: {
@@ -287,11 +325,20 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
       name: org.name,
       slug: org.slug,
       status: org.status,
+      accountType: org.accountType,
       timezone: org.timezone,
       createdAt: org.createdAt,
       suspendedAt: org.suspendedAt,
       suspendedReason: org.suspendedReason,
       suspendedByUserId: org.suspendedByUserId,
+    },
+    billing: {
+      billingEmail: org.billingProfile?.billingEmail ?? null,
+      planCode: org.billingProfile?.planCode ?? "FREE",
+      billingStatus: org.billingProfile?.billingStatus ?? "FREE",
+      stripeCustomerId: org.billingProfile?.stripeCustomerId ?? null,
+      stripeSubscriptionId: org.billingProfile?.stripeSubscriptionId ?? null,
+      currentPeriodEnd: org.billingProfile?.currentPeriodEnd ?? null,
     },
     billingEmail: org.billingProfile?.billingEmail ?? null,
     usagePolicy: org.usagePolicy,
@@ -301,6 +348,7 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
       isBillingContact: m.isBillingContact,
       user: m.user,
     })),
+    pendingInvitations: org.invitations,
     products: org.products,
     icps: org.icps,
     personas: org.personas,
@@ -533,4 +581,111 @@ export async function grantOrganizationCredit(input: {
       reason,
     },
   });
+}
+
+function slugifyOrgName(input: string): string {
+  const base = input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48);
+  return base || "workspace";
+}
+
+async function uniqueOrganizationSlug(base: string): Promise<string> {
+  let candidate = base;
+  let n = 0;
+  while (await prisma.organization.findUnique({ where: { slug: candidate } })) {
+    n += 1;
+    candidate = `${base}-${n}`;
+  }
+  const stamp = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
+  return `${candidate}-${stamp}`.slice(0, 60);
+}
+
+/**
+ * SUPER_ADMIN creates an org (INDIVIDUAL or ENTERPRISE) and invites the first
+ * user as OWNER via the existing invitation email/accept flow.
+ */
+export async function createPlatformOrganization(input: {
+  actorUserId: string;
+  name: string;
+  accountType: OrganizationAccountType;
+  ownerEmail: string;
+  timezone?: string;
+}): Promise<{
+  organizationId: string;
+  invitationId: string;
+  accountType: OrganizationAccountType;
+}> {
+  const name = input.name.trim();
+  if (!name) throw new Error("Organization name is required.");
+  const ownerEmail = input.ownerEmail.trim().toLowerCase();
+  if (!ownerEmail.includes("@")) {
+    throw new Error("Owner email is required.");
+  }
+  if (
+    input.accountType !== "INDIVIDUAL" &&
+    input.accountType !== "ENTERPRISE"
+  ) {
+    throw new Error("Account type must be INDIVIDUAL or ENTERPRISE.");
+  }
+
+  const slug = await uniqueOrganizationSlug(slugifyOrgName(name));
+  const organization = await prisma.$transaction(async (tx) => {
+    const org = await tx.organization.create({
+      data: {
+        name,
+        slug,
+        status: "ACTIVE",
+        accountType: input.accountType,
+        timezone: input.timezone?.trim() || DEFAULT_ORGANIZATION_TIMEZONE,
+      },
+    });
+    await tx.organizationUsagePolicy.create({
+      data: {
+        organizationId: org.id,
+        ...DEFAULT_USAGE_POLICY_VALUES,
+      },
+    });
+    await tx.researchPolicy.create({
+      data: {
+        organizationId: org.id,
+        ...DEFAULT_RESEARCH_POLICY_VALUES,
+      },
+    });
+    await tx.organizationBillingProfile.create({
+      data: {
+        organizationId: org.id,
+        billingEmail: ownerEmail,
+        ...FREE_BILLING_DEFAULTS,
+      },
+    });
+    return org;
+  });
+
+  await recordAdminAuditEvent({
+    action: "PLATFORM_ORGANIZATION_CREATED",
+    actorUserId: input.actorUserId,
+    organizationId: organization.id,
+    metadata: {
+      accountType: input.accountType,
+      ownerEmail,
+      planCode: FREE_BILLING_DEFAULTS.planCode,
+      billingStatus: FREE_BILLING_DEFAULTS.billingStatus,
+    },
+  });
+
+  const invitation = await createOrganizationInvitationAsPlatform({
+    organizationId: organization.id,
+    invitedByUserId: input.actorUserId,
+    email: ownerEmail,
+    role: "OWNER",
+  });
+
+  return {
+    organizationId: organization.id,
+    invitationId: invitation.invitationId,
+    accountType: input.accountType,
+  };
 }

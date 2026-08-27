@@ -1,14 +1,24 @@
 import { AppShell } from "@/components/AppShell";
+import { PlatformConsoleNav } from "@/components/PlatformConsoleNav";
+import { requirePlatformOperator } from "@/lib/auth/authz";
 
 /**
- * Platform admin routes share the authenticated shell so platform operators
- * (SUPER_ADMIN / SUPPORT, including platform-only with no Organization)
- * always have Logout / Account. Email templates remain SUPER_ADMIN-only.
+ * Platform admin routes share the authenticated shell and persistent console nav.
+ * Email templates remain SUPER_ADMIN-only at the page gate.
  */
-export default function PlatformLayout({
+export default async function PlatformLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <AppShell>{children}</AppShell>;
+  const user = await requirePlatformOperator();
+
+  return (
+    <AppShell>
+      <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
+        <PlatformConsoleNav platformRole={user.platformRole} />
+        {children}
+      </div>
+    </AppShell>
+  );
 }

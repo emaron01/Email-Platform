@@ -6,6 +6,9 @@ import {
   upsertUserUsageOverrideAction,
   renameWorkspaceAction,
   inviteUserAction,
+  revokeInvitationAction,
+  changeMemberRoleAction,
+  removeMemberAction,
 } from "@/app/actions/settings";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import { requireOrgAdmin } from "@/lib/org/authz";
@@ -214,6 +217,63 @@ export default async function OrganizationSettingsPage() {
       </section>
 
       <section className="space-y-3">
+        <h2 className="text-lg font-medium text-slate-900">Members</h2>
+        <p className="text-sm text-slate-600">
+          OWNER and ADMIN can invite, change roles, and remove users. Product,
+          ICP, and Personas are shared across the org; voice and signature stay
+          per user.
+        </p>
+        <ul className="space-y-3">
+          {members.map((m) => (
+            <li
+              key={m.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+            >
+              <span>
+                {m.user.name ?? m.user.email}{" "}
+                <span className="text-slate-500">
+                  ({m.user.email}) · {m.role}
+                </span>
+              </span>
+              {m.role !== "OWNER" && m.userId !== user.id ? (
+                <div className="flex flex-wrap gap-2">
+                  <ActionFeedbackForm
+                    action={changeMemberRoleAction}
+                    className="flex items-center gap-1"
+                  >
+                    <input type="hidden" name="targetUserId" value={m.userId} />
+                    <select
+                      name="role"
+                      defaultValue={m.role}
+                      className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                    >
+                      <option value="ADMIN">ADMIN</option>
+                      <option value="MEMBER">MEMBER</option>
+                    </select>
+                    <button
+                      type="submit"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                    >
+                      Save role
+                    </button>
+                  </ActionFeedbackForm>
+                  <ActionFeedbackForm action={removeMemberAction}>
+                    <input type="hidden" name="targetUserId" value={m.userId} />
+                    <button
+                      type="submit"
+                      className="rounded-md border border-red-200 px-2 py-1 text-xs text-red-800"
+                    >
+                      Remove
+                    </button>
+                  </ActionFeedbackForm>
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-900">User overrides</h2>
         <p className="text-sm text-slate-600">
           Leave blank to inherit organization defaults. Members cannot raise their
@@ -315,18 +375,31 @@ export default async function OrganizationSettingsPage() {
           </button>
         </ActionFeedbackForm>
         {invitations.length > 0 ? (
-          <ul className="text-sm text-slate-600">
+          <ul className="space-y-2 text-sm text-slate-600">
             {invitations.map((inv) => (
-              <li key={inv.id}>
-                Pending: {inv.email} as {inv.role} (expires{" "}
-                {inv.expiresAt.toISOString().slice(0, 10)})
+              <li
+                key={inv.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2"
+              >
+                <span>
+                  Pending: {inv.email} as {inv.role} (expires{" "}
+                  {inv.expiresAt.toISOString().slice(0, 10)})
+                </span>
+                <ActionFeedbackForm action={revokeInvitationAction}>
+                  <input type="hidden" name="invitationId" value={inv.id} />
+                  <button
+                    type="submit"
+                    className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                  >
+                    Revoke
+                  </button>
+                </ActionFeedbackForm>
               </li>
             ))}
           </ul>
         ) : null}
         <p className="text-xs text-slate-500">
-          Production authentication is required before public signup/invite
-          acceptance flows are exposed. Invitation tokens are hashed at rest.
+          Invitation tokens are hashed at rest. Accept via the emailed link.
         </p>
       </section>
     </div>

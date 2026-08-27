@@ -56,8 +56,16 @@ describe("platform-orgs actions gate mutations to SUPER_ADMIN", () => {
       unsuspendOrganization: vi.fn(),
       updateOrganizationUsagePolicyAsPlatform: vi.fn(),
       grantOrganizationCredit: vi.fn(),
+      createPlatformOrganization: vi.fn(),
+    }));
+    vi.doMock("@/lib/org/signup", () => ({
+      changeOrganizationMemberRole: vi.fn(),
+      createOrganizationInvitationAsPlatform: vi.fn(),
+      removeOrganizationMember: vi.fn(),
+      revokeOrganizationInvitationAsPlatform: vi.fn(),
     }));
     vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
+    vi.doMock("next/navigation", () => ({ redirect: vi.fn() }));
 
     const { suspendOrganizationAction } = await import(
       "@/app/actions/platform-orgs"
@@ -89,8 +97,16 @@ describe("platform-orgs actions gate mutations to SUPER_ADMIN", () => {
       unsuspendOrganization: vi.fn(),
       updateOrganizationUsagePolicyAsPlatform: vi.fn(),
       grantOrganizationCredit: vi.fn(),
+      createPlatformOrganization: vi.fn(),
+    }));
+    vi.doMock("@/lib/org/signup", () => ({
+      changeOrganizationMemberRole: vi.fn(),
+      createOrganizationInvitationAsPlatform: vi.fn(),
+      removeOrganizationMember: vi.fn(),
+      revokeOrganizationInvitationAsPlatform: vi.fn(),
     }));
     vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
+    vi.doMock("next/navigation", () => ({ redirect: vi.fn() }));
 
     const { suspendOrganizationAction: suspendOk } = await import(
       "@/app/actions/platform-orgs"
@@ -123,17 +139,77 @@ describe("invite accept page", () => {
 });
 
 describe("billing profile schema strip", () => {
-  it("OrganizationBillingProfile keeps billingEmail only (no tax/address fields)", () => {
+  it("OrganizationBillingProfile keeps ops email + billing state, no tax/address PII", () => {
     const schema = readFileSync(resolve("prisma/schema.prisma"), "utf8");
     const start = schema.indexOf("model OrganizationBillingProfile");
     expect(start).toBeGreaterThan(-1);
     const end = schema.indexOf("\nmodel ", start + 1);
     const block = schema.slice(start, end > 0 ? end : undefined);
     expect(block).toContain("billingEmail");
+    expect(block).toContain("planCode");
+    expect(block).toContain("billingStatus");
+    expect(block).toContain("stripeCustomerId");
     expect(block).not.toContain("taxId");
     expect(block).not.toContain("addressLine1");
     expect(block).not.toContain("companyLegalName");
     expect(block).not.toContain("countryCode");
+  });
+});
+
+describe("platform console navigation and account creation", () => {
+  it("layout mounts persistent platform nav", () => {
+    const layout = readFileSync(resolve("src/app/platform/layout.tsx"), "utf8");
+    expect(layout).toContain("PlatformConsoleNav");
+    expect(layout).toContain("requirePlatformOperator");
+  });
+
+  it("home links every admin area and audits routes", () => {
+    const home = readFileSync(resolve("src/app/platform/page.tsx"), "utf8");
+    expect(home).toContain("/platform/orgs");
+    expect(home).toContain("/platform/orgs/new");
+    expect(home).toContain("/platform/costs");
+    expect(home).toContain("/platform/email-templates");
+    expect(home).toContain("PLATFORM_ROUTE_AUDIT");
+  });
+
+  it("create account page invites first OWNER", () => {
+    const page = readFileSync(
+      resolve("src/app/platform/orgs/new/page.tsx"),
+      "utf8",
+    );
+    expect(page).toContain("createPlatformOrganizationAction");
+    expect(page).toContain("INDIVIDUAL");
+    expect(page).toContain("ENTERPRISE");
+    expect(page).toContain("ownerEmail");
+  });
+
+  it("schema has account type and billing status enums", () => {
+    const schema = readFileSync(resolve("prisma/schema.prisma"), "utf8");
+    expect(schema).toContain("enum OrganizationAccountType");
+    expect(schema).toContain("enum BillingStatus");
+    expect(schema).toContain("PLATFORM_ORGANIZATION_CREATED");
+    expect(schema).toContain("ORGANIZATION_MEMBER_REMOVED");
+  });
+
+  it("org settings billing page is OWNER/ADMIN gated", () => {
+    const page = readFileSync(
+      resolve("src/app/(app)/settings/billing/page.tsx"),
+      "utf8",
+    );
+    expect(page).toContain("requireOrgAdmin");
+    expect(page).toContain("billing-stripe-hook");
+    expect(page).toMatch(/account is free/i);
+  });
+
+  it("org detail includes member invite/remove and cost", () => {
+    const detailPage = readFileSync(
+      resolve("src/app/platform/orgs/[id]/page.tsx"),
+      "utf8",
+    );
+    expect(detailPage).toContain("platformInviteUserAction");
+    expect(detailPage).toContain("platformRemoveMemberAction");
+    expect(detailPage).toContain("computeCostReport");
+    expect(detailPage).toContain("Scoped customer view");
   });
 });
 

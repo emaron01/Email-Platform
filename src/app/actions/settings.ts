@@ -8,9 +8,12 @@ import {
   getMembershipForCurrentUser,
 } from "@/lib/org/authz";
 import {
+  changeOrganizationMemberRole,
   createOrganizationInvitation,
   InvitationError,
+  removeOrganizationMember,
   renameOrganizationWorkspace,
+  revokeOrganizationInvitation,
   SignupError,
 } from "@/lib/org/signup";
 import { TenantError } from "@/lib/tenant/errors";
@@ -296,6 +299,66 @@ export async function inviteUserAction(
 
     revalidatePath("/settings/organization");
     return { ok: true, message: "Invitation created." };
+  } catch (error) {
+    return { ok: false, message: toSafeSettingsActionError(error) };
+  }
+}
+
+export async function revokeInvitationAction(
+  _prev: SettingsActionResult | null,
+  formData: FormData,
+): Promise<SettingsActionResult> {
+  try {
+    const { organization, user } = await requireOrgAdmin();
+    const invitationId = String(formData.get("invitationId") ?? "").trim();
+    await revokeOrganizationInvitation({
+      organizationId: organization.id,
+      invitationId,
+      actorUserId: user.id,
+    });
+    revalidatePath("/settings/organization");
+    return { ok: true, message: "Invitation revoked." };
+  } catch (error) {
+    return { ok: false, message: toSafeSettingsActionError(error) };
+  }
+}
+
+export async function changeMemberRoleAction(
+  _prev: SettingsActionResult | null,
+  formData: FormData,
+): Promise<SettingsActionResult> {
+  try {
+    const { organization, user } = await requireOrgAdmin();
+    const targetUserId = String(formData.get("targetUserId") ?? "").trim();
+    const roleRaw = String(formData.get("role") ?? "MEMBER").trim();
+    const role = roleRaw === "ADMIN" ? "ADMIN" : "MEMBER";
+    await changeOrganizationMemberRole({
+      organizationId: organization.id,
+      actorUserId: user.id,
+      targetUserId,
+      role,
+    });
+    revalidatePath("/settings/organization");
+    return { ok: true, message: "Member role updated." };
+  } catch (error) {
+    return { ok: false, message: toSafeSettingsActionError(error) };
+  }
+}
+
+export async function removeMemberAction(
+  _prev: SettingsActionResult | null,
+  formData: FormData,
+): Promise<SettingsActionResult> {
+  try {
+    const { organization, user } = await requireOrgAdmin();
+    const targetUserId = String(formData.get("targetUserId") ?? "").trim();
+    await removeOrganizationMember({
+      organizationId: organization.id,
+      actorUserId: user.id,
+      targetUserId,
+    });
+    revalidatePath("/settings/organization");
+    return { ok: true, message: "Member removed." };
   } catch (error) {
     return { ok: false, message: toSafeSettingsActionError(error) };
   }

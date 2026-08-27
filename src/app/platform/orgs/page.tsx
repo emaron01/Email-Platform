@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { requirePlatformOperator, canMutatePlatform } from "@/lib/auth/authz";
 import { listOrganizationsForPlatform } from "@/lib/platform/orgs";
+import {
+  billingPlanLabel,
+  billingStatusLabel,
+} from "@/lib/billing/billing-state";
 
 function formatDate(d: Date | null): string {
   if (!d) return "—";
@@ -13,40 +17,26 @@ export default async function PlatformOrgsPage() {
   const canMutate = canMutatePlatform(user.platformRole);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Platform organizations
+            Organizations
           </h1>
           <p className="mt-1 text-sm text-slate-600">
             {canMutate
-              ? "SUPER_ADMIN — full platform ops (policy, suspend, credits)."
+              ? "SUPER_ADMIN — create accounts, policy, suspend, credits, members."
               : "SUPPORT — scoped read-only view. Mutations require SUPER_ADMIN."}
           </p>
         </div>
-        <div className="flex flex-wrap gap-3 text-sm">
+        {canMutate ? (
           <Link
-            href="/platform"
-            className="font-medium text-slate-700 underline"
+            href="/platform/orgs/new"
+            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
           >
-            Platform home
+            Create account
           </Link>
-          <Link
-            href="/platform/costs"
-            className="font-medium text-slate-700 underline"
-          >
-            Costs &amp; margin
-          </Link>
-          {canMutate ? (
-            <Link
-              href="/platform/email-templates"
-              className="font-medium text-slate-700 underline"
-            >
-              Email templates
-            </Link>
-          ) : null}
-        </div>
+        ) : null}
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -54,7 +44,9 @@ export default async function PlatformOrgsPage() {
           <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-3 py-2 font-medium">Name</th>
+              <th className="px-3 py-2 font-medium">Type</th>
               <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">Plan</th>
               <th className="px-3 py-2 font-medium">Members</th>
               <th className="px-3 py-2 font-medium">Products</th>
               <th className="px-3 py-2 font-medium">Campaigns</th>
@@ -78,11 +70,18 @@ export default async function PlatformOrgsPage() {
                   </Link>
                   <div className="text-xs text-slate-500">{org.slug}</div>
                 </td>
+                <td className="px-3 py-2">{org.accountType}</td>
                 <td className="px-3 py-2">{org.status}</td>
-                <td className="px-3 py-2">{org.memberCount}</td>
-                <td className="px-3 py-2">{org.productCount}</td>
-                <td className="px-3 py-2">{org.campaignCount}</td>
                 <td className="px-3 py-2">
+                  {billingPlanLabel(org.planCode)}
+                  <div className="text-xs text-slate-500">
+                    {billingStatusLabel(org.billingStatus)}
+                  </div>
+                </td>
+                <td className="px-3 py-2 tabular-nums">{org.memberCount}</td>
+                <td className="px-3 py-2 tabular-nums">{org.productCount}</td>
+                <td className="px-3 py-2 tabular-nums">{org.campaignCount}</td>
+                <td className="px-3 py-2 tabular-nums">
                   {org.researchedCompaniesUsed}
                   {org.researchedCompaniesLimit != null
                     ? ` / ${org.researchedCompaniesLimit}`
@@ -95,8 +94,8 @@ export default async function PlatformOrgsPage() {
             {orgs.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
-                  className="px-3 py-8 text-center text-slate-500"
+                  colSpan={10}
+                  className="px-3 py-6 text-center text-slate-500"
                 >
                   No organizations yet.
                 </td>

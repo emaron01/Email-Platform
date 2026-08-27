@@ -94,17 +94,41 @@ export default async function SettingsIndexPage() {
           </p>
         </li>
         {isAdmin ? (
-          <li>
-            <Link
-              href="/settings/organization"
-              className="font-medium text-slate-900 underline-offset-2 hover:underline"
-            >
-              Organization
-            </Link>
-            <p className="text-slate-600">
-              Rename workspace, timezone, policies, invitations.
-            </p>
-          </li>
+          <>
+            <li>
+              <Link
+                href="/settings/organization"
+                className="font-medium text-slate-900 underline-offset-2 hover:underline"
+              >
+                Organization
+              </Link>
+              <p className="text-slate-600">
+                Name, timezone, policies, members, and invitations.
+              </p>
+            </li>
+            <li>
+              <Link
+                href="/settings/billing"
+                className="font-medium text-slate-900 underline-offset-2 hover:underline"
+              >
+                Billing
+              </Link>
+              <p className="text-slate-600">
+                Plan and status (free until Stripe). Payment management later.
+              </p>
+            </li>
+            <li>
+              <Link
+                href="/settings/cadence"
+                className="font-medium text-slate-900 underline-offset-2 hover:underline"
+              >
+                Email cadence
+              </Link>
+              <p className="text-slate-600">
+                Follow-up intervals and max sequence length.
+              </p>
+            </li>
+          </>
         ) : null}
       </ul>
     </div>

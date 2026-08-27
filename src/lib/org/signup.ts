@@ -134,6 +134,7 @@ export async function renameOrganizationWorkspace(input: {
 
 /**
  * Create an invitation. Stores token hash only; returns raw token once.
+ * Org admins cannot invite as OWNER (transfer ownership separately).
  */
 export async function createOrganizationInvitation(input: {
   organizationId: string;
@@ -156,12 +157,67 @@ export async function createOrganizationInvitation(input: {
     );
   }
 
-  const email = input.email.trim().toLowerCase();
   const role = input.role ?? "MEMBER";
   if (role === "OWNER") {
     throw new InvitationError(
       "Cannot invite as OWNER. Transfer ownership explicitly.",
     );
+  }
+
+  return issueOrganizationInvitation({
+    organizationId: input.organizationId,
+    invitedByUserId: input.invitedByUserId,
+    email: input.email,
+    role,
+    expiresInDays: input.expiresInDays,
+    via: "org_admin",
+  });
+}
+
+/**
+ * Platform SUPER_ADMIN invite into any org (no membership required).
+ * Allows OWNER only when the org currently has zero OWNER members (bootstrap).
+ */
+export async function createOrganizationInvitationAsPlatform(input: {
+  organizationId: string;
+  invitedByUserId: string;
+  email: string;
+  role?: MembershipRole;
+  expiresInDays?: number;
+}): Promise<{ invitationId: string; rawToken: string; expiresAt: Date }> {
+  const role = input.role ?? "MEMBER";
+  if (role === "OWNER") {
+    const owners = await prisma.organizationMembership.count({
+      where: { organizationId: input.organizationId, role: "OWNER" },
+    });
+    if (owners > 0) {
+      throw new InvitationError(
+        "Cannot invite as OWNER while the organization already has an OWNER.",
+      );
+    }
+  }
+
+  return issueOrganizationInvitation({
+    organizationId: input.organizationId,
+    invitedByUserId: input.invitedByUserId,
+    email: input.email,
+    role,
+    expiresInDays: input.expiresInDays,
+    via: "platform",
+  });
+}
+
+async function issueOrganizationInvitation(input: {
+  organizationId: string;
+  invitedByUserId: string;
+  email: string;
+  role: MembershipRole;
+  expiresInDays?: number;
+  via: "org_admin" | "platform";
+}): Promise<{ invitationId: string; rawToken: string; expiresAt: Date }> {
+  const email = input.email.trim().toLowerCase();
+  if (!email.includes("@")) {
+    throw new InvitationError("A valid email address is required.");
   }
 
   const existingMember = await prisma.user.findUnique({ where: { email } });
@@ -179,6 +235,20 @@ export async function createOrganizationInvitation(input: {
     }
   }
 
+  const pending = await prisma.organizationInvitation.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      email,
+      status: "PENDING",
+      expiresAt: { gt: new Date() },
+    },
+  });
+  if (pending) {
+    throw new InvitationError(
+      "A pending invitation already exists for this email.",
+    );
+  }
+
   const rawToken = randomBytes(32).toString("hex");
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date();
@@ -190,7 +260,7 @@ export async function createOrganizationInvitation(input: {
     data: {
       organizationId: input.organizationId,
       email,
-      role,
+      role: input.role,
       tokenHash,
       status: "PENDING",
       expiresAt,
@@ -203,10 +273,14 @@ export async function createOrganizationInvitation(input: {
     action: "ORGANIZATION_INVITATION_CREATED",
     actorUserId: input.invitedByUserId,
     organizationId: input.organizationId,
-    metadata: { invitationId: invitation.id, role, email },
+    metadata: {
+      invitationId: invitation.id,
+      role: input.role,
+      email,
+      via: input.via,
+    },
   });
 
-  // Send invitation email via DB template (never hard-code copy).
   try {
     const { sendTransactionalEmail } = await import(
       "@/lib/transactional-email/send"
@@ -234,7 +308,6 @@ export async function createOrganizationInvitation(input: {
       },
     });
   } catch (error) {
-    // Invitation remains valid; caller can resend. Do not leak provider secrets.
     console.error("[invitation-email] failed to send", {
       invitationId: invitation.id,
       error: error instanceof Error ? error.message : "unknown",
@@ -371,6 +444,7 @@ export async function acceptOrganizationInvitation(input: {
         organizationId: invitation.organizationId,
         userId: user.id,
         role: invitation.role,
+        isBillingContact: invitation.role === "OWNER",
       },
     });
 
@@ -442,6 +516,14 @@ export async function revokeOrganizationInvitation(input: {
     where: { id: invitation.id },
     data: { status: "REVOKED" },
   });
+
+  const { recordAdminAuditEvent } = await import("@/lib/auth/audit");
+  await recordAdminAuditEvent({
+    action: "ORGANIZATION_INVITATION_REVOKED",
+    actorUserId: input.actorUserId,
+    organizationId: input.organizationId,
+    metadata: { invitationId: invitation.id, email: invitation.email },
+  });
 }
 
 /**
@@ -458,4 +540,195 @@ export async function assertOrganizationHasOwner(
       "Organization must retain at least one OWNER.",
     );
   }
+}
+
+async function assertActorCanManageMembers(input: {
+  organizationId: string;
+  actorUserId: string;
+  /** When true, skip org membership and require platform SUPER_ADMIN. */
+  asPlatform?: boolean;
+}): Promise<void> {
+  if (input.asPlatform) {
+    const actor = await prisma.user.findUnique({
+      where: { id: input.actorUserId },
+      select: { platformRole: true },
+    });
+    if (actor?.platformRole !== "SUPER_ADMIN") {
+      throw new AuthorizationError(
+        "Only platform SUPER_ADMIN can manage members for another organization.",
+      );
+    }
+    return;
+  }
+  const membership = await prisma.organizationMembership.findUnique({
+    where: {
+      organizationId_userId: {
+        organizationId: input.organizationId,
+        userId: input.actorUserId,
+      },
+    },
+  });
+  if (!membership || !canManageInvitations(membership.role)) {
+    throw new AuthorizationError(
+      "Only OWNER or ADMIN can manage organization members.",
+    );
+  }
+}
+
+export async function changeOrganizationMemberRole(input: {
+  organizationId: string;
+  actorUserId: string;
+  targetUserId: string;
+  role: MembershipRole;
+  asPlatform?: boolean;
+}): Promise<void> {
+  await assertActorCanManageMembers(input);
+
+  if (input.role === "OWNER") {
+    throw new InvitationError(
+      "Cannot assign OWNER via role change. Transfer ownership explicitly.",
+    );
+  }
+
+  const target = await prisma.organizationMembership.findUnique({
+    where: {
+      organizationId_userId: {
+        organizationId: input.organizationId,
+        userId: input.targetUserId,
+      },
+    },
+  });
+  if (!target) {
+    throw new InvitationError("Member not found.");
+  }
+  if (target.role === "OWNER") {
+    throw new InvitationError(
+      "Cannot change the OWNER role here. Transfer ownership explicitly.",
+    );
+  }
+  if (target.userId === input.actorUserId && !input.asPlatform) {
+    throw new InvitationError("You cannot change your own role.");
+  }
+
+  await prisma.organizationMembership.update({
+    where: { id: target.id },
+    data: { role: input.role },
+  });
+
+  const { recordAdminAuditEvent } = await import("@/lib/auth/audit");
+  await recordAdminAuditEvent({
+    action: "ORGANIZATION_MEMBER_ROLE_CHANGED",
+    actorUserId: input.actorUserId,
+    organizationId: input.organizationId,
+    metadata: {
+      targetUserId: input.targetUserId,
+      fromRole: target.role,
+      toRole: input.role,
+      via: input.asPlatform ? "platform" : "org_admin",
+    },
+  });
+}
+
+export async function removeOrganizationMember(input: {
+  organizationId: string;
+  actorUserId: string;
+  targetUserId: string;
+  asPlatform?: boolean;
+}): Promise<void> {
+  await assertActorCanManageMembers(input);
+
+  const target = await prisma.organizationMembership.findUnique({
+    where: {
+      organizationId_userId: {
+        organizationId: input.organizationId,
+        userId: input.targetUserId,
+      },
+    },
+  });
+  if (!target) {
+    throw new InvitationError("Member not found.");
+  }
+  if (target.role === "OWNER") {
+    throw new InvitationError(
+      "Cannot remove the OWNER. Transfer ownership first.",
+    );
+  }
+  if (target.userId === input.actorUserId && !input.asPlatform) {
+    throw new InvitationError("You cannot remove yourself.");
+  }
+
+  await prisma.organizationMembership.delete({ where: { id: target.id } });
+
+  const user = await prisma.user.findUnique({
+    where: { id: input.targetUserId },
+    select: { activeOrganizationId: true },
+  });
+  if (user?.activeOrganizationId === input.organizationId) {
+    const other = await prisma.organizationMembership.findFirst({
+      where: { userId: input.targetUserId },
+      orderBy: { createdAt: "asc" },
+    });
+    await prisma.user.update({
+      where: { id: input.targetUserId },
+      data: { activeOrganizationId: other?.organizationId ?? null },
+    });
+  }
+
+  const { recordAdminAuditEvent } = await import("@/lib/auth/audit");
+  await recordAdminAuditEvent({
+    action: "ORGANIZATION_MEMBER_REMOVED",
+    actorUserId: input.actorUserId,
+    organizationId: input.organizationId,
+    metadata: {
+      targetUserId: input.targetUserId,
+      role: target.role,
+      via: input.asPlatform ? "platform" : "org_admin",
+    },
+  });
+}
+
+export async function revokeOrganizationInvitationAsPlatform(input: {
+  organizationId: string;
+  invitationId: string;
+  actorUserId: string;
+}): Promise<void> {
+  const actor = await prisma.user.findUnique({
+    where: { id: input.actorUserId },
+    select: { platformRole: true },
+  });
+  if (actor?.platformRole !== "SUPER_ADMIN") {
+    throw new AuthorizationError(
+      "Only platform SUPER_ADMIN can revoke invitations for another organization.",
+    );
+  }
+
+  const invitation = await prisma.organizationInvitation.findFirst({
+    where: {
+      id: input.invitationId,
+      organizationId: input.organizationId,
+    },
+  });
+  if (!invitation) {
+    throw new InvitationError("Invitation not found.");
+  }
+  if (invitation.status !== "PENDING") {
+    throw new InvitationError("Only pending invitations can be revoked.");
+  }
+
+  await prisma.organizationInvitation.update({
+    where: { id: invitation.id },
+    data: { status: "REVOKED" },
+  });
+
+  const { recordAdminAuditEvent } = await import("@/lib/auth/audit");
+  await recordAdminAuditEvent({
+    action: "ORGANIZATION_INVITATION_REVOKED",
+    actorUserId: input.actorUserId,
+    organizationId: input.organizationId,
+    metadata: {
+      invitationId: invitation.id,
+      email: invitation.email,
+      via: "platform",
+    },
+  });
 }

@@ -10,6 +10,7 @@ import {
   DEFAULT_RESEARCH_POLICY_VALUES,
   DEFAULT_USAGE_POLICY_VALUES,
 } from "@/lib/usage/defaults";
+import { FREE_BILLING_DEFAULTS } from "@/lib/billing/billing-state";
 import { isPlatformSuperAdminProvisioningActive } from "@/lib/auth/platform-provision-flag";
 
 export class ProvisionError extends Error {
@@ -151,6 +152,7 @@ export async function provisionIndividualWorkspace(input: {
               name: workspaceName,
               slug,
               status: "ACTIVE",
+              accountType: "INDIVIDUAL",
               timezone:
                 input.timezone?.trim() || DEFAULT_ORGANIZATION_TIMEZONE,
             },
@@ -180,6 +182,7 @@ export async function provisionIndividualWorkspace(input: {
             data: {
               organizationId: organization.id,
               billingEmail: email,
+              ...FREE_BILLING_DEFAULTS,
             },
           });
           await tx.user.update({
@@ -238,6 +241,7 @@ export async function provisionIndividualWorkspace(input: {
         name: workspaceName,
         slug,
         status: "ACTIVE",
+        accountType: "INDIVIDUAL",
         timezone: input.timezone?.trim() || DEFAULT_ORGANIZATION_TIMEZONE,
       },
     });
@@ -269,6 +273,7 @@ export async function provisionIndividualWorkspace(input: {
       data: {
         organizationId: organization.id,
         billingEmail: email,
+        ...FREE_BILLING_DEFAULTS,
       },
     });
 

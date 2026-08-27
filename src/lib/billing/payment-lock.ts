@@ -12,6 +12,9 @@
  *
  * Never collect or display card numbers, CVC, expiry, billing addresses, tax IDs,
  * or invoice PDFs in-app. Stripe hosts payment UI; we store identifiers + status only.
+ *
+ * Billing state lives on OrganizationBillingProfile (planCode, billingStatus,
+ * stripeCustomerId, stripeSubscriptionId, currentPeriodEnd). See billing-state.ts.
  */
 export const PAYMENT_LOCK_EXEMPT_PATH_PREFIXES = [
   "/settings/billing",

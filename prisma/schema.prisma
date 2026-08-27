@@ -14,6 +14,23 @@ enum OrganizationStatus {
   CANCELLED
 }
 
+/// Workspace shape: INDIVIDUAL starts as one OWNER (seat 1); ENTERPRISE is multi-user.
+/// Both may invite additional users (individual can grow into a team).
+enum OrganizationAccountType {
+  INDIVIDUAL
+  ENTERPRISE
+}
+
+/// Billing lifecycle. FREE until Stripe (Phase C) attaches a customer/subscription.
+enum BillingStatus {
+  FREE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
 enum MembershipRole {
   OWNER
   ADMIN
@@ -341,6 +358,9 @@ enum AdminAuditAction {
   USAGE_LIMIT_ALERT_SENT
   AI_MODEL_RATE_CHANGED
   PROVIDER_SPEND_RECONCILED
+  PLATFORM_ORGANIZATION_CREATED
+  ORGANIZATION_MEMBER_REMOVED
+  ORGANIZATION_INVITATION_REVOKED
 }
 
 enum TransactionalEmailTemplateKey {
@@ -429,18 +449,19 @@ enum PersonaSetupStatus {
 }
 
 model Organization {
-  id                 String             @id @default(cuid())
+  id                 String                  @id @default(cuid())
   name               String
-  slug               String             @unique
-  status             OrganizationStatus @default(ACTIVE)
+  slug               String                  @unique
+  status             OrganizationStatus      @default(ACTIVE)
+  accountType        OrganizationAccountType @default(INDIVIDUAL)
   /// IANA timezone for daily quota windows (e.g. America/New_York).
-  timezone           String             @default("UTC")
+  timezone           String                  @default("UTC")
   suspendedAt        DateTime?
   suspendedReason    String?
   /// Soft reference to the platform operator who suspended; no FK (ops users may be deleted).
   suspendedByUserId  String?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
 
   memberships              OrganizationMembership[]
   products                 Product[]
@@ -492,6 +513,7 @@ model Organization {
   dailyDigestSends         DailyDigestSend[]
 
   @@index([status])
+  @@index([accountType])
   @@index([createdAt])
   @@index([suspendedAt])
 }
@@ -673,15 +695,28 @@ model OrganizationMembership {
   @@index([organizationId, role])
 }
 
-/// Ops contact for platform emails only — never store card data or billing address/tax PII.
+/// Billing state + ops contact. Never store card data, address, or tax PII.
+/// Phase C attaches Stripe by filling stripe* fields and flipping planCode/status — no reshape.
 model OrganizationBillingProfile {
-  id             String   @id @default(cuid())
-  organizationId String   @unique
-  billingEmail   String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                   String        @id @default(cuid())
+  organizationId       String        @unique
+  billingEmail         String?
+  /// Product plan code. "FREE" until Stripe; Phase C adds paid codes (e.g. PRO) without enum migration.
+  planCode             String        @default("FREE")
+  billingStatus        BillingStatus @default(FREE)
+  /// Stripe Customer id (cus_…) — null while free / pre-Stripe.
+  stripeCustomerId     String?
+  /// Stripe Subscription id (sub_…) — null while free / pre-Stripe.
+  stripeSubscriptionId String?
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([billingStatus])
+  @@index([planCode])
+  @@index([stripeCustomerId])
 }
 
 /// Manual credit grants by platform SUPER_ADMIN (Phase A ops; Stripe is Phase C).

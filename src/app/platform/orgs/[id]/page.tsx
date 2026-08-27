@@ -8,9 +8,18 @@ import {
   getOrganizationPlatformDetail,
   recordPlatformOrgView,
 } from "@/lib/platform/orgs";
+import { computeCostReport } from "@/lib/platform/cost";
+import {
+  billingPlanLabel,
+  billingStatusLabel,
+} from "@/lib/billing/billing-state";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import {
   grantOrganizationCreditAction,
+  platformChangeMemberRoleAction,
+  platformInviteUserAction,
+  platformRemoveMemberAction,
+  platformRevokeInvitationAction,
   suspendOrganizationAction,
   unsuspendOrganizationAction,
   updatePlatformUsagePolicyAction,
@@ -18,6 +27,11 @@ import {
 
 function pct(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
+}
+
+function formatUsd(n: number | null): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `$${n.toFixed(2)}`;
 }
 
 export default async function PlatformOrgDetailPage({
@@ -36,11 +50,12 @@ export default async function PlatformOrgDetailPage({
     surface: "detail",
   });
 
+  const cost = await computeCostReport({ organizationId: id, window: "30d" });
   const canMutate = canMutatePlatform(user.platformRole);
-  const { organization: org, usage, health, usagePolicy } = detail;
+  const { organization: org, usage, health, usagePolicy, billing } = detail;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
+    <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-slate-500">
@@ -52,7 +67,7 @@ export default async function PlatformOrgDetailPage({
             {org.name}
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            {org.status}
+            {org.accountType} · {org.status}
             {org.suspendedAt
               ? ` · suspended ${org.suspendedAt.toISOString().slice(0, 10)}`
               : ""}
@@ -68,10 +83,40 @@ export default async function PlatformOrgDetailPage({
       </div>
 
       <section className="space-y-2">
-        <h2 className="text-lg font-medium">Billing contact</h2>
-        <p className="text-sm text-slate-700">
-          {detail.billingEmail ?? "— (ops email only; no address/tax stored)"}
-        </p>
+        <h2 className="text-lg font-medium">Billing</h2>
+        <ul className="grid gap-2 text-sm sm:grid-cols-2">
+          <li className="rounded-md border border-slate-200 bg-white p-3">
+            Plan: {billingPlanLabel(billing.planCode)}
+          </li>
+          <li className="rounded-md border border-slate-200 bg-white p-3">
+            Status: {billingStatusLabel(billing.billingStatus)}
+          </li>
+          <li className="rounded-md border border-slate-200 bg-white p-3 sm:col-span-2">
+            Ops contact:{" "}
+            {billing.billingEmail ?? "— (no address/tax stored)"}
+          </li>
+          <li className="rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-500 sm:col-span-2">
+            Stripe customer: {billing.stripeCustomerId ?? "—"} · subscription:{" "}
+            {billing.stripeSubscriptionId ?? "—"} (Phase C)
+          </li>
+        </ul>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-lg font-medium">Cost (30d)</h2>
+        <ul className="grid gap-2 text-sm sm:grid-cols-3">
+          <li className="rounded-md border border-slate-200 bg-white p-3">
+            Estimated spend: {formatUsd(cost.estimatedSpendUsd)}
+          </li>
+          <li className="rounded-md border border-slate-200 bg-white p-3">
+            Cost / company: {formatUsd(cost.costPerCompanyUsd)}
+          </li>
+          <li className="rounded-md border border-slate-200 bg-white p-3">
+            <Link href="/platform/costs" className="font-medium underline">
+              Full costs report
+            </Link>
+          </li>
+        </ul>
       </section>
 
       <section className="space-y-2">
@@ -148,21 +193,135 @@ export default async function PlatformOrgDetailPage({
         </ul>
       </section>
 
-      <section className="space-y-2">
+      <section className="space-y-3">
         <h2 className="text-lg font-medium">Members</h2>
         <ul className="divide-y divide-slate-100 rounded-md border border-slate-200 bg-white text-sm">
           {detail.members.map((m) => (
-            <li key={m.membershipId} className="px-3 py-2">
-              {m.user.email} · {m.role}
-              {m.isBillingContact ? " · billing contact" : ""}
+            <li
+              key={m.membershipId}
+              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+            >
+              <span>
+                {m.user.email} · {m.role}
+                {m.isBillingContact ? " · billing contact" : ""}
+              </span>
+              {canMutate && m.role !== "OWNER" ? (
+                <div className="flex flex-wrap gap-2">
+                  <ActionFeedbackForm
+                    action={platformChangeMemberRoleAction}
+                    className="flex items-center gap-1"
+                  >
+                    <input type="hidden" name="organizationId" value={id} />
+                    <input
+                      type="hidden"
+                      name="targetUserId"
+                      value={m.user.id}
+                    />
+                    <select
+                      name="role"
+                      defaultValue={m.role}
+                      className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                    >
+                      <option value="ADMIN">ADMIN</option>
+                      <option value="MEMBER">MEMBER</option>
+                    </select>
+                    <button
+                      type="submit"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                    >
+                      Save role
+                    </button>
+                  </ActionFeedbackForm>
+                  <ActionFeedbackForm action={platformRemoveMemberAction}>
+                    <input type="hidden" name="organizationId" value={id} />
+                    <input
+                      type="hidden"
+                      name="targetUserId"
+                      value={m.user.id}
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-md border border-red-200 px-2 py-1 text-xs text-red-800"
+                    >
+                      Remove
+                    </button>
+                  </ActionFeedbackForm>
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>
+
+        {canMutate ? (
+          <ActionFeedbackForm
+            action={platformInviteUserAction}
+            className="grid gap-2 sm:grid-cols-3"
+            testId="platform-invite-user-form"
+          >
+            <input type="hidden" name="organizationId" value={id} />
+            <input
+              name="email"
+              type="email"
+              required
+              placeholder="user@company.com"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+            <select
+              name="role"
+              defaultValue="MEMBER"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="MEMBER">MEMBER</option>
+              <option value="ADMIN">ADMIN</option>
+            </select>
+            <button
+              type="submit"
+              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+            >
+              Invite user
+            </button>
+          </ActionFeedbackForm>
+        ) : null}
+
+        {detail.pendingInvitations.length > 0 ? (
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-slate-800">
+              Pending invitations
+            </h3>
+            <ul className="divide-y divide-slate-100 rounded-md border border-slate-200 bg-white text-sm">
+              {detail.pendingInvitations.map((inv) => (
+                <li
+                  key={inv.id}
+                  className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+                >
+                  <span>
+                    {inv.email} · {inv.role} · expires{" "}
+                    {inv.expiresAt.toISOString().slice(0, 10)}
+                  </span>
+                  {canMutate ? (
+                    <ActionFeedbackForm action={platformRevokeInvitationAction}>
+                      <input type="hidden" name="organizationId" value={id} />
+                      <input type="hidden" name="invitationId" value={inv.id} />
+                      <button
+                        type="submit"
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                      >
+                        Revoke
+                      </button>
+                    </ActionFeedbackForm>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2">
         <div>
-          <h2 className="text-lg font-medium">Products ({detail.products.length})</h2>
+          <h2 className="text-lg font-medium">
+            Products ({detail.products.length})
+          </h2>
           <ul className="mt-2 space-y-1 text-sm text-slate-700">
             {detail.products.map((p) => (
               <li key={p.id}>{p.name}</li>
@@ -173,7 +332,9 @@ export default async function PlatformOrgDetailPage({
           </ul>
         </div>
         <div>
-          <h2 className="text-lg font-medium">Campaigns ({detail.campaigns.length})</h2>
+          <h2 className="text-lg font-medium">
+            Campaigns ({detail.campaigns.length})
+          </h2>
           <ul className="mt-2 space-y-1 text-sm text-slate-700">
             {detail.campaigns.map((c) => (
               <li key={c.id}>
@@ -375,8 +536,7 @@ export default async function PlatformOrgDetailPage({
         </section>
       ) : (
         <p className="text-sm text-slate-500">
-          Read-only SUPPORT view — policy, suspend, and credit actions require
-          SUPER_ADMIN.
+          Read-only SUPPORT view — mutations require SUPER_ADMIN.
         </p>
       )}
     </div>
