@@ -248,6 +248,64 @@ export async function createOrganizationInvitation(input: {
   };
 }
 
+/**
+ * After joining an invited org, delete empty personal workspaces the user
+ * still solely owns (signup auto-provision leftovers). Never deletes keepOrganizationId.
+ */
+export async function retireEmptyPersonalWorkspace(
+  userId: string,
+  keepOrganizationId: string,
+  now: Date = new Date(),
+): Promise<{ retiredOrganizationIds: string[] }> {
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const memberships = await prisma.organizationMembership.findMany({
+    where: {
+      userId,
+      organizationId: { not: keepOrganizationId },
+    },
+    include: {
+      organization: {
+        select: {
+          id: true,
+          createdAt: true,
+          _count: {
+            select: {
+              memberships: true,
+              products: true,
+              campaigns: true,
+              contactLists: true,
+              contacts: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const retiredOrganizationIds: string[] = [];
+  for (const membership of memberships) {
+    const org = membership.organization;
+    if (org.id === keepOrganizationId) continue;
+    if (org.createdAt.getTime() < sevenDaysAgo.getTime()) continue;
+    if (org._count.memberships !== 1) continue;
+    if (org._count.products !== 0) continue;
+    if (org._count.campaigns !== 0) continue;
+    if (org._count.contacts !== 0) continue;
+
+    if (org._count.contactLists > 0) {
+      const listsWithContacts = await prisma.contactList.count({
+        where: { organizationId: org.id, totalContacts: { gt: 0 } },
+      });
+      if (listsWithContacts > 0) continue;
+    }
+
+    await prisma.organization.delete({ where: { id: org.id } });
+    retiredOrganizationIds.push(org.id);
+  }
+
+  return { retiredOrganizationIds };
+}
+
 export async function acceptOrganizationInvitation(input: {
   rawToken: string;
   acceptingUserId: string;
@@ -316,6 +374,11 @@ export async function acceptOrganizationInvitation(input: {
       },
     });
 
+    await tx.user.update({
+      where: { id: user.id },
+      data: { activeOrganizationId: invitation.organizationId },
+    });
+
     await tx.organizationInvitation.update({
       where: { id: invitation.id },
       data: {
@@ -326,6 +389,8 @@ export async function acceptOrganizationInvitation(input: {
   });
 
   await ensureOrganizationPolicies(invitation.organizationId);
+
+  await retireEmptyPersonalWorkspace(user.id, invitation.organizationId);
 
   const { recordAdminAuditEvent } = await import("@/lib/auth/audit");
   await recordAdminAuditEvent({

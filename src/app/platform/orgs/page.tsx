@@ -25,14 +25,28 @@ export default async function PlatformOrgsPage() {
               : "SUPPORT — scoped read-only view. Mutations require SUPER_ADMIN."}
           </p>
         </div>
-        {canMutate ? (
+        <div className="flex flex-wrap gap-3 text-sm">
           <Link
-            href="/platform/email-templates"
-            className="text-sm font-medium text-slate-700 underline"
+            href="/platform"
+            className="font-medium text-slate-700 underline"
           >
-            Email templates
+            Platform home
           </Link>
-        ) : null}
+          <Link
+            href="/platform/costs"
+            className="font-medium text-slate-700 underline"
+          >
+            Costs &amp; margin
+          </Link>
+          {canMutate ? (
+            <Link
+              href="/platform/email-templates"
+              className="font-medium text-slate-700 underline"
+            >
+              Email templates
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">

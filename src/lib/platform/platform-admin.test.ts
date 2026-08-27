@@ -193,3 +193,53 @@ describe("platform org detail and scoped view", () => {
     expect(viewPage).not.toContain("grantOrganizationCreditAction");
   });
 });
+
+describe("phase B cost reporting seams", () => {
+  it("platform home is costs-aware (not a bare redirect)", () => {
+    const home = readFileSync(resolve("src/app/platform/page.tsx"), "utf8");
+    expect(home).not.toMatch(/redirect\(["']\/platform\/orgs["']\)/);
+    expect(home).toContain("Costs");
+    expect(home).toContain("getLatestSpendDrift");
+    expect(home).toContain("computeCostReport");
+  });
+
+  it("costs page covers company cost, ratio, projections, rates, reconciliation", () => {
+    const page = readFileSync(resolve("src/app/platform/costs/page.tsx"), "utf8");
+    expect(page).toContain("Cost per company researched");
+    expect(page).toContain("Contacts per company");
+    expect(page).toContain("Projected monthly cost");
+    expect(page).toContain("ensureAiModelRatesSeeded");
+    expect(page).toContain("upsertAiModelRateAction");
+    expect(page).toContain("recordSpendReconciliationAction");
+  });
+
+  it("schema has AiModelRate and ProviderSpendReconciliation", () => {
+    const schema = readFileSync(resolve("prisma/schema.prisma"), "utf8");
+    expect(schema).toContain("model AiModelRate");
+    expect(schema).toContain("model ProviderSpendReconciliation");
+    expect(schema).toContain("AI_MODEL_RATE_CHANGED");
+    expect(schema).toContain("PROVIDER_SPEND_RECONCILED");
+  });
+});
+
+describe("invite accept sets active org and retires empty personal workspace", () => {
+  it("acceptOrganizationInvitation updates activeOrganizationId and calls retire helper", () => {
+    const src = readFileSync(resolve("src/lib/org/signup.ts"), "utf8");
+    expect(src).toContain("export async function retireEmptyPersonalWorkspace");
+    expect(src).toContain("activeOrganizationId: invitation.organizationId");
+    expect(src).toContain(
+      "retireEmptyPersonalWorkspace(user.id, invitation.organizationId)",
+    );
+    expect(src).toContain("keepOrganizationId");
+  });
+
+  it("logged-out invite accept page sets pending invite cookie", () => {
+    const page = readFileSync(
+      resolve("src/app/(auth)/invite/accept/page.tsx"),
+      "utf8",
+    );
+    expect(page).toContain("PENDING_INVITE_COOKIE");
+    expect(page).toContain("pending_invite_token");
+    expect(page).toContain("cookies()");
+  });
+});

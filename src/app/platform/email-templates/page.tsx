@@ -40,8 +40,12 @@ export default async function PlatformEmailTemplatesPage({
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <p className="text-sm text-slate-500">
-          <Link href="/platform/orgs" className="underline">
-            Organizations
+          <Link href="/platform" className="underline">
+            Platform
+          </Link>
+          {" · "}
+          <Link href="/platform/costs" className="underline">
+            Costs
           </Link>
         </p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">

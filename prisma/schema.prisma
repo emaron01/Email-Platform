@@ -339,6 +339,8 @@ enum AdminAuditAction {
   PLATFORM_USAGE_POLICY_CHANGED
   ORGANIZATION_CREDIT_GRANTED
   USAGE_LIMIT_ALERT_SENT
+  AI_MODEL_RATE_CHANGED
+  PROVIDER_SPEND_RECONCILED
 }
 
 enum TransactionalEmailTemplateKey {
@@ -494,6 +496,47 @@ model Organization {
   @@index([suspendedAt])
 }
 
+/// Versioned AI model rates for estimated COGS (Phase B). Lookup: latest effectiveFrom <= event time.
+model AiModelRate {
+  id                  String   @id @default(cuid())
+  provider            String
+  model               String
+  /// USD per 1M input tokens.
+  inputPer1MUsd       Decimal  @db.Decimal(12, 6)
+  /// USD per 1M output tokens.
+  outputPer1MUsd      Decimal  @db.Decimal(12, 6)
+  /// USD per web_search tool call (search content tokens still billed via input).
+  webSearchPerCallUsd Decimal  @db.Decimal(12, 6)
+  effectiveFrom       DateTime
+  note                String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([provider, model, effectiveFrom])
+  @@index([provider, model, effectiveFrom])
+  @@index([effectiveFrom])
+}
+
+/// Manual provider-dashboard spend vs our estimated spend (drift flag when |Δ|/actual > 15%).
+model ProviderSpendReconciliation {
+  id                   String   @id @default(cuid())
+  /// e.g. openai, anthropic, or ALL for blended.
+  provider             String
+  periodStart          DateTime
+  periodEnd            DateTime
+  providerReportedUsd  Decimal  @db.Decimal(14, 4)
+  estimatedUsd         Decimal  @db.Decimal(14, 4)
+  notes                String?
+  createdByUserId      String
+  createdAt            DateTime @default(now())
+
+  createdBy User @relation("SpendReconciliationCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([provider, periodEnd])
+  @@index([createdAt])
+  @@index([createdByUserId])
+}
+
 model User {
   id                   String       @id @default(cuid())
   authUserId           String?      @unique
@@ -532,6 +575,7 @@ model User {
   contactMembershipsAdded  ContactListMembership[]       @relation("ContactMembershipAddedBy")
   sequenceStopsInitiated   CampaignContact[]             @relation("SequenceStoppedBy")
   creditGrantsIssued       OrganizationCreditGrant[]     @relation("CreditGrantedBy")
+  spendReconciliationsCreated ProviderSpendReconciliation[] @relation("SpendReconciliationCreatedBy")
   /// IANA timezone for digest windows. Falls back to organization timezone when null.
   timezone                 String?
   digestEnabled            Boolean                       @default(true)

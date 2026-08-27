@@ -9,6 +9,7 @@ import {
   DEFAULT_USAGE_POLICY_VALUES,
 } from "../src/lib/usage/defaults";
 import { ensureTransactionalTemplatesSeeded } from "../src/lib/transactional-email/seed";
+import { ensureAiModelRatesSeeded } from "../src/lib/platform/model-rates";
 
 const prisma = new PrismaClient();
 
@@ -82,6 +83,7 @@ async function main() {
   });
 
   await ensureTransactionalTemplatesSeeded();
+  await ensureAiModelRatesSeeded();
 
   await prisma.organizationUsagePolicy.upsert({
     where: { organizationId: org.id },

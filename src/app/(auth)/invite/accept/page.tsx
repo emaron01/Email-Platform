@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -7,6 +8,8 @@ import {
   InvitationError,
 } from "@/lib/org/signup";
 import { AcceptInviteClient } from "./AcceptInviteClient";
+
+export const PENDING_INVITE_COOKIE = "pending_invite_token";
 
 /**
  * Invitation accept landing for `/invite/accept?token=...`.
@@ -35,6 +38,13 @@ async function AcceptInviteBody({ token }: { token: string | null }) {
 
   const user = await getCurrentUser();
   if (!user) {
+    const jar = await cookies();
+    jar.set(PENDING_INVITE_COOKIE, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
     const next = `/invite/accept?token=${encodeURIComponent(token)}`;
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
