@@ -256,10 +256,14 @@ describe("campaign stage rail", () => {
 });
 
 describe("qualification bucket contract", () => {
-  it("uses identical Good / Needs review / Excluded ordering", () => {
+  it("uses identical Ready / Check / Left out ordering for reps", () => {
     expect(
       QUALIFICATION_BUCKETS.map((key) => QUALIFICATION_BUCKET_LABELS[key]),
-    ).toEqual(["Good", "Needs review", "Excluded"]);
+    ).toEqual([
+      "Ready to include",
+      "Check before including",
+      "Left out",
+    ]);
   });
 
   it("sends unmatched titles to Needs review and all-excluded contacts to Excluded", () => {

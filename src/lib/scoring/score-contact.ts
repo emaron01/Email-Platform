@@ -91,11 +91,11 @@ function recommendedActionForBucket(
 ): string {
   switch (bucket) {
     case "GOOD":
-      return "Qualified — ready for outreach.";
+      return "Ready to include in outreach.";
     case "EXCLUDED":
       return reason;
     case "NEEDS_REVIEW":
-      return `Needs review — ${reason.replace(/[.]+$/, "")}.`;
+      return `Check before including — ${reason.replace(/[.]+$/, "")}.`;
     default:
       return reason;
   }

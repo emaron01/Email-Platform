@@ -130,7 +130,7 @@ export default async function ScoringReportPage({
     <div>
       <PageHeader
         title="Score Report"
-        description="Deterministic qualification by ICP criteria and persona title fit. Numeric scores are deferred; contacts are marked Good, Needs review, or Excluded with a reason."
+        description="Qualification by ICP criteria and persona title fit. Contacts are Ready to include, Check before including, or Left out — with a reason you can act on."
         actions={
           <Link
             href={`/lists/${run.contactListId}`}

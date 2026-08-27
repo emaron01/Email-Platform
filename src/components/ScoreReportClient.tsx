@@ -34,6 +34,7 @@ import {
 } from "@/lib/scoring/icp-qualification";
 import { readCriterionProvenanceLabels } from "@/lib/criteria/research-cascade";
 import {
+  EXCLUSION_REVIEW_COPY,
   QUALIFICATION_BUCKET_LABELS,
   readPersonaMatch,
   readQualificationBucket,
@@ -257,6 +258,9 @@ export function ScoreReportClient({
   const [restoredBuckets, setRestoredBuckets] = useState<
     Record<string, QualificationBucket>
   >({});
+  const [keptExcludedIds, setKeptExcludedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [campaignState, campaignAction, campaignPending] = useActionState(
     createCampaignAction,
     null as CampaignActionResult | null,
@@ -293,6 +297,7 @@ export function ScoreReportClient({
               restoredBuckets[row.contactId] ??
               resolveQualification(row).bucket;
             if (bucket !== "EXCLUDED") return null;
+            if (keptExcludedIds.has(row.contactId)) return null;
             const details = readExclusionDetails(row.assessmentData);
             if (details.length === 0) return null;
             return { contactId: row.contactId, details };
@@ -302,8 +307,28 @@ export function ScoreReportClient({
               row != null,
           ),
       ),
-    [rows, restoredBuckets],
+    [rows, restoredBuckets, keptExcludedIds],
   );
+
+  const exclusionContactCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const group of exclusionGroups) {
+      for (const id of group.contactIds) ids.add(id);
+    }
+    return ids.size;
+  }, [exclusionGroups]);
+
+  function keepExcluded(contactId: string) {
+    setKeptExcludedIds((current) => new Set(current).add(contactId));
+  }
+
+  function keepExcludedMany(contactIds: string[]) {
+    setKeptExcludedIds((current) => {
+      const next = new Set(current);
+      for (const id of contactIds) next.add(id);
+      return next;
+    });
+  }
 
   async function restoreContact(contactId: string, bucket: QualificationBucket = "GOOD") {
     setOverridePending(true);
@@ -405,7 +430,15 @@ export function ScoreReportClient({
         </div>
       ) : null}
       {exclusionGroups.length > 0 ? (
-        <div className="space-y-3" data-testid="bulk-exclusion-restore">
+        <div className="space-y-4" data-testid="bulk-exclusion-restore">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">
+              {EXCLUSION_REVIEW_COPY.panelHeading(exclusionContactCount)}
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              {EXCLUSION_REVIEW_COPY.panelSubheading}
+            </p>
+          </div>
           {exclusionGroups.map((group) => {
             const contacts = group.contactIds
               .map((contactId) => rows.find((row) => row.contactId === contactId))
@@ -415,27 +448,24 @@ export function ScoreReportClient({
                 key={group.key}
                 className="space-y-3 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
               >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p>
-                    {group.contactIds.length} contacts excluded on{" "}
-                    <strong>{group.criterionName}</strong>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <p className="font-medium text-slate-900">
+                    {EXCLUSION_REVIEW_COPY.groupReason(group.criterionName)}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <SecondaryButton
                       type="button"
                       disabled={overridePending}
-                      onClick={() => restoreGroup(group.contactIds, "GOOD")}
+                      onClick={() => keepExcludedMany(group.contactIds)}
                     >
-                      Restore all to Good
+                      {EXCLUSION_REVIEW_COPY.keepExcluded}
                     </SecondaryButton>
                     <SecondaryButton
                       type="button"
                       disabled={overridePending}
-                      onClick={() =>
-                        restoreGroup(group.contactIds, "NEEDS_REVIEW")
-                      }
+                      onClick={() => restoreGroup(group.contactIds, "GOOD")}
                     >
-                      Restore all to Needs review
+                      {EXCLUSION_REVIEW_COPY.addAllBack}
                     </SecondaryButton>
                   </div>
                 </div>
@@ -465,18 +495,18 @@ export function ScoreReportClient({
                           <SecondaryButton
                             type="button"
                             disabled={overridePending}
-                            onClick={() => restoreContact(row.contactId, "GOOD")}
+                            onClick={() => keepExcluded(row.contactId)}
                           >
-                            Restore to Good
+                            {EXCLUSION_REVIEW_COPY.keepExcluded}
                           </SecondaryButton>
                           <SecondaryButton
                             type="button"
                             disabled={overridePending}
                             onClick={() =>
-                              restoreContact(row.contactId, "NEEDS_REVIEW")
+                              restoreContact(row.contactId, "GOOD")
                             }
                           >
-                            Needs review
+                            {EXCLUSION_REVIEW_COPY.addBack}
                           </SecondaryButton>
                         </div>
                       </li>
@@ -635,17 +665,7 @@ export function ScoreReportClient({
                             className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
                             data-testid={`restore-contact-${row.contactId}`}
                           >
-                            Restore
-                          </button>
-                          <button
-                            type="button"
-                            disabled={overridePending}
-                            onClick={() =>
-                              restoreContact(row.contactId, "NEEDS_REVIEW")
-                            }
-                            className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900"
-                          >
-                            Needs review
+                            {EXCLUSION_REVIEW_COPY.addBack}
                           </button>
                         </div>
                       ) : null}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import type {
   QualificationBucket,
   QualificationOverrideTarget,
@@ -13,6 +13,7 @@ import {
 import { ExclusionDetailList } from "@/components/ExclusionDetailList";
 import type { ExclusionDetail } from "@/lib/scoring/exclusion-detail";
 import {
+  EXCLUSION_REVIEW_COPY,
   QUALIFICATION_BUCKET_LABELS,
   QUALIFICATION_BUCKETS,
 } from "@/lib/workflow/qualification";
@@ -57,6 +58,9 @@ export function QualificationBuckets({
 }) {
   const [rows, setRows] = useState(initialRows);
   const [message, setMessage] = useState<string | null>(null);
+  const [keptExcludedIds, setKeptExcludedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [pending, startTransition] = useTransition();
 
   function restore(row: QualificationBucketRow, bucket: QualificationBucket) {
@@ -109,25 +113,50 @@ export function QualificationBuckets({
     });
   }
 
-  const excludedGroups = rows
-    .filter((row) => row.bucket === "EXCLUDED" && row.exclusionDetails?.length)
-    .reduce((groups, row) => {
-      const detail = row.exclusionDetails![0]!;
-      const key =
-        detail.kind === "ICP"
-          ? `ICP:${detail.criterionId ?? detail.criterionName}`
-          : `PERSONA:${detail.criterionId ?? detail.criterionName}`;
-      const entry = groups.get(key) ?? {
-        criterionName: detail.criterionName,
-        rows: [] as QualificationBucketRow[],
-      };
-      entry.rows.push(row);
-      groups.set(key, entry);
-      return groups;
-    }, new Map<string, { criterionName: string; rows: QualificationBucketRow[] }>());
-  const bulkExcludedGroups = [...excludedGroups.values()].filter(
-    (group) => group.rows.length > 1,
-  );
+  function keepExcluded(rowKey: string) {
+    setKeptExcludedIds((current) => new Set(current).add(rowKey));
+  }
+
+  function keepExcludedMany(rowKeys: string[]) {
+    setKeptExcludedIds((current) => {
+      const next = new Set(current);
+      for (const key of rowKeys) next.add(key);
+      return next;
+    });
+  }
+
+  const excludedGroups = useMemo(() => {
+    const groups = rows
+      .filter(
+        (row) =>
+          row.bucket === "EXCLUDED" &&
+          row.exclusionDetails?.length &&
+          !keptExcludedIds.has(`${row.targetType}:${row.id}`),
+      )
+      .reduce((map, row) => {
+        const detail = row.exclusionDetails![0]!;
+        const key =
+          detail.kind === "ICP"
+            ? `ICP:${detail.criterionId ?? detail.criterionName}`
+            : `PERSONA:${detail.criterionId ?? detail.criterionName}`;
+        const entry = map.get(key) ?? {
+          criterionName: detail.criterionName,
+          rows: [] as QualificationBucketRow[],
+        };
+        entry.rows.push(row);
+        map.set(key, entry);
+        return map;
+      }, new Map<string, { criterionName: string; rows: QualificationBucketRow[] }>());
+    return [...groups.values()].filter((group) => group.rows.length > 1);
+  }, [rows, keptExcludedIds]);
+
+  const exclusionContactCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const group of excludedGroups) {
+      for (const row of group.rows) ids.add(`${row.targetType}:${row.id}`);
+    }
+    return ids.size;
+  }, [excludedGroups]);
 
   return (
     <div className="space-y-5">
@@ -153,34 +182,45 @@ export function QualificationBuckets({
         </p>
       ) : null}
 
-      {bulkExcludedGroups.length > 0 ? (
-        <div className="space-y-3" data-testid="bulk-exclusion-restore">
-          {bulkExcludedGroups.map((group) => (
+      {excludedGroups.length > 0 ? (
+        <div className="space-y-4" data-testid="bulk-exclusion-restore">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">
+              {EXCLUSION_REVIEW_COPY.panelHeading(exclusionContactCount)}
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              {EXCLUSION_REVIEW_COPY.panelSubheading}
+            </p>
+          </div>
+          {excludedGroups.map((group) => (
             <div
               key={group.criterionName}
               className="space-y-3 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
             >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p>
-                  {group.rows.length} rows excluded on{" "}
-                  <strong>{group.criterionName}</strong>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p className="font-medium text-slate-900">
+                  {EXCLUSION_REVIEW_COPY.groupReason(group.criterionName)}
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={pending || !scoringRunId}
+                    onClick={() =>
+                      keepExcludedMany(
+                        group.rows.map((row) => `${row.targetType}:${row.id}`),
+                      )
+                    }
+                    className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800"
+                  >
+                    {EXCLUSION_REVIEW_COPY.keepExcluded}
+                  </button>
                   <button
                     type="button"
                     disabled={pending || !scoringRunId}
                     onClick={() => restoreMany(group.rows, "GOOD")}
                     className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
                   >
-                    Restore all to Good
-                  </button>
-                  <button
-                    type="button"
-                    disabled={pending || !scoringRunId}
-                    onClick={() => restoreMany(group.rows, "NEEDS_REVIEW")}
-                    className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900"
-                  >
-                    Restore all to Needs review
+                    {EXCLUSION_REVIEW_COPY.addAllBack}
                   </button>
                 </div>
               </div>
@@ -202,18 +242,20 @@ export function QualificationBuckets({
                         <button
                           type="button"
                           disabled={pending || !scoringRunId}
-                          onClick={() => restore(row, "GOOD")}
-                          className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
+                          onClick={() =>
+                            keepExcluded(`${row.targetType}:${row.id}`)
+                          }
+                          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800"
                         >
-                          Restore to Good
+                          {EXCLUSION_REVIEW_COPY.keepExcluded}
                         </button>
                         <button
                           type="button"
                           disabled={pending || !scoringRunId}
-                          onClick={() => restore(row, "NEEDS_REVIEW")}
-                          className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900"
+                          onClick={() => restore(row, "GOOD")}
+                          className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
                         >
-                          Needs review
+                          {EXCLUSION_REVIEW_COPY.addBack}
                         </button>
                       </div>
                     ) : null}
@@ -259,41 +301,31 @@ export function QualificationBuckets({
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {row.bucket === "EXCLUDED" && row.canOverride ? (
-                    <>
-                      <button
-                        type="button"
-                        disabled={pending || !scoringRunId}
-                        onClick={() => restore(row, "GOOD")}
-                        className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
-                        data-testid={`restore-${row.targetType}-${row.id}`}
-                      >
-                        Restore
-                      </button>
-                      <button
-                        type="button"
-                        disabled={pending || !scoringRunId}
-                        onClick={() => restore(row, "NEEDS_REVIEW")}
-                        className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900"
-                      >
-                        Needs review
-                      </button>
-                    </>
-                  ) : null}
-                  {QUALIFICATION_BUCKETS.map((bucket) => (
                     <button
-                      key={bucket}
                       type="button"
-                      disabled={pending || !scoringRunId || !row.canOverride}
-                      onClick={() => restore(row, bucket)}
-                      className={`rounded-md border px-2 py-1 text-xs font-medium ${
-                        row.bucket === bucket
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-300 text-slate-600"
-                      }`}
+                      disabled={pending || !scoringRunId}
+                      onClick={() => restore(row, "GOOD")}
+                      className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
+                      data-testid={`restore-${row.targetType}-${row.id}`}
                     >
-                      {QUALIFICATION_BUCKET_LABELS[bucket]}
+                      {EXCLUSION_REVIEW_COPY.addBack}
                     </button>
-                  ))}
+                  ) : null}
+                  {row.bucket !== "EXCLUDED" && row.canOverride
+                    ? QUALIFICATION_BUCKETS.filter(
+                        (bucket) => bucket !== row.bucket,
+                      ).map((bucket) => (
+                        <button
+                          key={bucket}
+                          type="button"
+                          disabled={pending || !scoringRunId}
+                          onClick={() => restore(row, bucket)}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-800"
+                        >
+                          {QUALIFICATION_BUCKET_LABELS[bucket]}
+                        </button>
+                      ))
+                    : null}
                 </div>
               </div>
               {row.bucket === "EXCLUDED" && row.exclusionDetails?.length ? (
@@ -302,21 +334,17 @@ export function QualificationBuckets({
                 </div>
               ) : null}
               {row.bucket === "NEEDS_REVIEW" && row.unresolvedCriterion ? (
-                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-sm text-amber-950">
-                    {row.unresolvedCriterion}
-                  </p>
+                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                  <p>{row.unresolvedCriterion}</p>
                   {row.researchGuidance ? (
-                    <p className="mt-1 text-xs text-amber-800">
-                      {row.researchGuidance}
-                    </p>
+                    <p className="mt-1 text-xs">{row.researchGuidance}</p>
                   ) : null}
                   {row.researchHref ? (
                     <Link
                       href={row.researchHref}
-                      className="mt-2 inline-flex text-sm font-medium text-amber-950 underline"
+                      className="mt-2 inline-block text-xs font-medium underline"
                     >
-                      Research this {row.targetType.toLowerCase()}
+                      Open score detail
                     </Link>
                   ) : null}
                 </div>

@@ -19,13 +19,33 @@ export const QUALIFICATION_BUCKETS = [
   "EXCLUDED",
 ] as const satisfies readonly QualificationBucket[];
 
+/**
+ * Rep-facing labels: what to do, not internal bucket names.
+ * Schema values stay GOOD / NEEDS_REVIEW / EXCLUDED.
+ */
 export const QUALIFICATION_BUCKET_LABELS: Record<QualificationBucket, string> =
   {
-    GOOD: "Good",
-    NEEDS_REVIEW: "Needs review",
-    POOR_FIT: "Poor fit",
-    EXCLUDED: "Excluded",
+    GOOD: "Ready to include",
+    NEEDS_REVIEW: "Check before including",
+    POOR_FIT: "Check before including",
+    EXCLUDED: "Left out",
   };
+
+/** Exclusion review panel — app removed contacts; rep decides whether to put them back. */
+export const EXCLUSION_REVIEW_COPY = {
+  addBack: "Add back",
+  addAllBack: "Add all back",
+  keepExcluded: "Keep excluded",
+  panelHeading: (contactCount: number) =>
+    contactCount === 1
+      ? "We left 1 contact out of this campaign"
+      : `We left ${contactCount} contacts out of this campaign`,
+  panelSubheading:
+    "Review each group below. Add anyone back if you disagree — otherwise leave them out.",
+  groupReason: (criterionName: string) =>
+    `Why we left them out: ${criterionName}`,
+} as const;
+
 
 export type PersonaMatchStatus = "MATCHED" | "EXCLUDED" | "UNKNOWN";
 
