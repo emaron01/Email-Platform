@@ -2,9 +2,11 @@
  * Safe document text extraction for Product materials.
  * Never executes macros/scripts. Unsupported types fail closed.
  *
- * PDF path: pdf-parse v2 → pdfjs-dist needs DOMMatrix. On hosts without a working
- * @napi-rs/canvas native binding (e.g. Windows ARM64), we install minimal polyfills
- * before importing pdf-parse so text extraction still works.
+ * PDF path: pdf-parse v2 → pdfjs-dist needs DOMMatrix. Prefer real
+ * @napi-rs/canvas bindings when they load; only install minimal stubs when
+ * those globals are still missing (e.g. Windows ARM64 without a native binary).
+ * Stubs must never shadow a successful canvas load — pdfjs itself only fills
+ * globals when `!globalThis.DOMMatrix` (same for ImageData / Path2D).
  */
 
 export type ExtractResult =
@@ -93,66 +95,126 @@ function truncate(text: string): string {
   return `${cleaned.slice(0, MAX_EXTRACT_CHARS)}\n\n[truncated]`;
 }
 
-/**
- * Minimal browser globals so pdfjs-dist can load when @napi-rs/canvas native
- * bindings are unavailable. Sufficient for text extraction (not rendering).
- */
-export function installPdfjsNodePolyfills(): void {
-  const g = globalThis as Record<string, unknown>;
+export type PdfjsCanvasGlobals = {
+  DOMMatrix?: unknown;
+  ImageData?: unknown;
+  Path2D?: unknown;
+};
 
-  if (typeof g.DOMMatrix === "undefined") {
-    class DOMMatrixPolyfill {
-      a = 1;
-      b = 0;
-      c = 0;
-      d = 1;
-      e = 0;
-      f = 0;
-      multiplySelf() {
-        return this;
-      }
-      translateSelf() {
-        return this;
-      }
-      scaleSelf() {
-        return this;
-      }
-      multiply() {
-        return new DOMMatrixPolyfill();
-      }
-      translate() {
-        return new DOMMatrixPolyfill();
-      }
-      scale() {
-        return new DOMMatrixPolyfill();
-      }
-      inverse() {
-        return new DOMMatrixPolyfill();
-      }
-    }
-    g.DOMMatrix = DOMMatrixPolyfill;
+export type PdfjsPolyfillSource = "existing" | "napi-canvas" | "stub" | "missing";
+
+export type PdfjsPolyfillReport = {
+  canvasLoaded: boolean;
+  DOMMatrix: PdfjsPolyfillSource;
+  ImageData: PdfjsPolyfillSource;
+  Path2D: PdfjsPolyfillSource;
+};
+
+class StubDOMMatrix {
+  a = 1;
+  b = 0;
+  c = 0;
+  d = 1;
+  e = 0;
+  f = 0;
+  multiplySelf() {
+    return this;
   }
-
-  if (typeof g.ImageData === "undefined") {
-    g.ImageData = class ImageData {
-      width: number;
-      height: number;
-      data: Uint8ClampedArray;
-      constructor(width = 1, height = 1) {
-        this.width = width;
-        this.height = height;
-        this.data = new Uint8ClampedArray(width * height * 4);
-      }
-    };
+  translateSelf() {
+    return this;
   }
-
-  if (typeof g.Path2D === "undefined") {
-    g.Path2D = class Path2D {};
+  scaleSelf() {
+    return this;
+  }
+  multiply() {
+    return new StubDOMMatrix();
+  }
+  translate() {
+    return new StubDOMMatrix();
+  }
+  scale() {
+    return new StubDOMMatrix();
+  }
+  inverse() {
+    return new StubDOMMatrix();
   }
 }
 
+class StubImageData {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+  constructor(width = 1, height = 1) {
+    this.width = width;
+    this.height = height;
+    this.data = new Uint8ClampedArray(width * height * 4);
+  }
+}
+
+class StubPath2D {}
+
+/** Marker used in tests to recognize stub installs (not for production checks). */
+export const PDFJS_STUB_MARKERS = {
+  DOMMatrix: StubDOMMatrix,
+  ImageData: StubImageData,
+  Path2D: StubPath2D,
+} as const;
+
+async function loadNapiCanvas(): Promise<PdfjsCanvasGlobals | null> {
+  try {
+    const mod = (await import("@napi-rs/canvas")) as PdfjsCanvasGlobals & {
+      default?: PdfjsCanvasGlobals;
+    };
+    return mod.default ?? mod;
+  } catch {
+    return null;
+  }
+}
+
+function assignMissingGlobal(
+  g: Record<string, unknown>,
+  key: keyof PdfjsCanvasGlobals,
+  canvas: PdfjsCanvasGlobals | null,
+  stub: unknown,
+): PdfjsPolyfillSource {
+  if (typeof g[key] !== "undefined") {
+    return "existing";
+  }
+  if (canvas?.[key]) {
+    g[key] = canvas[key];
+    return "napi-canvas";
+  }
+  if (stub) {
+    g[key] = stub;
+    return "stub";
+  }
+  return "missing";
+}
+
+/**
+ * Install Node globals pdfjs needs for text extraction.
+ * Prefer a successful @napi-rs/canvas load; only stub what is still missing.
+ * Never overwrites globals that are already defined.
+ */
+export async function installPdfjsNodePolyfills(options?: {
+  /** Test seam — override canvas load (return null to force stub path). */
+  loadCanvas?: () => Promise<PdfjsCanvasGlobals | null> | PdfjsCanvasGlobals | null;
+}): Promise<PdfjsPolyfillReport> {
+  const g = globalThis as Record<string, unknown>;
+  const canvas = options?.loadCanvas
+    ? await options.loadCanvas()
+    : await loadNapiCanvas();
+
+  return {
+    canvasLoaded: Boolean(canvas),
+    DOMMatrix: assignMissingGlobal(g, "DOMMatrix", canvas, StubDOMMatrix),
+    ImageData: assignMissingGlobal(g, "ImageData", canvas, StubImageData),
+    Path2D: assignMissingGlobal(g, "Path2D", canvas, StubPath2D),
+  };
+}
+
 async function extractPdfText(bytes: Uint8Array): Promise<ExtractResult> {
-  installPdfjsNodePolyfills();
+  await installPdfjsNodePolyfills();
   // pdf-parse v2+: class API (PDFParse), not a default function.
   const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: Buffer.from(bytes) });

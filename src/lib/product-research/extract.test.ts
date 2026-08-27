@@ -1,11 +1,42 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   extractDocumentText,
+  installPdfjsNodePolyfills,
   PASTE_MATERIALS_NEXT_STEP,
+  PDFJS_STUB_MARKERS,
 } from "@/lib/product-research/extract";
+
+const GLOBAL_KEYS = ["DOMMatrix", "ImageData", "Path2D"] as const;
+
+function snapshotGlobals() {
+  const g = globalThis as Record<string, unknown>;
+  return Object.fromEntries(
+    GLOBAL_KEYS.map((key) => [key, g[key]]),
+  ) as Record<(typeof GLOBAL_KEYS)[number], unknown>;
+}
+
+function restoreGlobals(
+  snapshot: Record<(typeof GLOBAL_KEYS)[number], unknown>,
+) {
+  const g = globalThis as Record<string, unknown>;
+  for (const key of GLOBAL_KEYS) {
+    if (typeof snapshot[key] === "undefined") {
+      delete g[key];
+    } else {
+      g[key] = snapshot[key];
+    }
+  }
+}
+
+function clearPdfjsGlobals() {
+  const g = globalThis as Record<string, unknown>;
+  for (const key of GLOBAL_KEYS) {
+    delete g[key];
+  }
+}
 
 const FIXTURE_DIR = join(process.cwd(), "tmp", "upload-fixtures");
 
@@ -146,6 +177,127 @@ describe("extractDocumentText uploads", () => {
     if (!result.ok) {
       expect(result.errorSafe).toContain(PASTE_MATERIALS_NEXT_STEP);
       expect(result.errorSafe).not.toMatch(/Could not safely extract/i);
+    }
+  });
+});
+
+describe("installPdfjsNodePolyfills canvas vs stub", () => {
+  let prior: ReturnType<typeof snapshotGlobals>;
+
+  afterEach(() => {
+    restoreGlobals(prior);
+  });
+
+  it("uses @napi-rs/canvas exports when the native binding loads (simulated)", async () => {
+    prior = snapshotGlobals();
+    clearPdfjsGlobals();
+
+    class CanvasDOMMatrix {
+      static source = "napi-canvas";
+    }
+    class CanvasImageData {
+      static source = "napi-canvas";
+    }
+    class CanvasPath2D {
+      static source = "napi-canvas";
+    }
+
+    const report = await installPdfjsNodePolyfills({
+      loadCanvas: () => ({
+        DOMMatrix: CanvasDOMMatrix,
+        ImageData: CanvasImageData,
+        Path2D: CanvasPath2D,
+      }),
+    });
+
+    expect(report).toEqual({
+      canvasLoaded: true,
+      DOMMatrix: "napi-canvas",
+      ImageData: "napi-canvas",
+      Path2D: "napi-canvas",
+    });
+    expect(globalThis.DOMMatrix).toBe(CanvasDOMMatrix);
+    expect(globalThis.ImageData).toBe(CanvasImageData);
+    expect(globalThis.Path2D).toBe(CanvasPath2D);
+    expect(globalThis.DOMMatrix).not.toBe(PDFJS_STUB_MARKERS.DOMMatrix);
+  });
+
+  it("installs stubs only when canvas is unavailable", async () => {
+    prior = snapshotGlobals();
+    clearPdfjsGlobals();
+
+    const report = await installPdfjsNodePolyfills({
+      loadCanvas: () => null,
+    });
+
+    expect(report).toEqual({
+      canvasLoaded: false,
+      DOMMatrix: "stub",
+      ImageData: "stub",
+      Path2D: "stub",
+    });
+    expect(globalThis.DOMMatrix).toBe(PDFJS_STUB_MARKERS.DOMMatrix);
+    expect(globalThis.ImageData).toBe(PDFJS_STUB_MARKERS.ImageData);
+    expect(globalThis.Path2D).toBe(PDFJS_STUB_MARKERS.Path2D);
+  });
+
+  it("never overwrites globals that are already defined", async () => {
+    prior = snapshotGlobals();
+    clearPdfjsGlobals();
+
+    class ExistingDOMMatrix {
+      static source = "existing";
+    }
+    (globalThis as Record<string, unknown>).DOMMatrix = ExistingDOMMatrix;
+
+    class CanvasDOMMatrix {
+      static source = "napi-canvas";
+    }
+    const report = await installPdfjsNodePolyfills({
+      loadCanvas: () => ({
+        DOMMatrix: CanvasDOMMatrix,
+        ImageData: class {},
+        Path2D: class {},
+      }),
+    });
+
+    expect(report.DOMMatrix).toBe("existing");
+    expect(globalThis.DOMMatrix).toBe(ExistingDOMMatrix);
+    expect(report.ImageData).toBe("napi-canvas");
+    expect(report.Path2D).toBe("napi-canvas");
+  });
+
+  it("default load uses real canvas when available, otherwise stubs", async () => {
+    prior = snapshotGlobals();
+    clearPdfjsGlobals();
+
+    let canvasModule: {
+      DOMMatrix?: unknown;
+      ImageData?: unknown;
+      Path2D?: unknown;
+      default?: {
+        DOMMatrix?: unknown;
+        ImageData?: unknown;
+        Path2D?: unknown;
+      };
+    } | null = null;
+    try {
+      canvasModule = await import("@napi-rs/canvas");
+    } catch {
+      canvasModule = null;
+    }
+
+    const report = await installPdfjsNodePolyfills();
+    if (canvasModule) {
+      const canvas = canvasModule.default ?? canvasModule;
+      expect(report.canvasLoaded).toBe(true);
+      expect(report.DOMMatrix).toBe("napi-canvas");
+      expect(globalThis.DOMMatrix).toBe(canvas.DOMMatrix);
+      expect(globalThis.DOMMatrix).not.toBe(PDFJS_STUB_MARKERS.DOMMatrix);
+    } else {
+      expect(report.canvasLoaded).toBe(false);
+      expect(report.DOMMatrix).toBe("stub");
+      expect(globalThis.DOMMatrix).toBe(PDFJS_STUB_MARKERS.DOMMatrix);
     }
   });
 });
