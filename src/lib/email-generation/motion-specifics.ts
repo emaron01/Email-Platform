@@ -92,6 +92,234 @@ function candidateFrom(
 }
 
 /**
+ * Collect candidates from fields that describe what the company DOES or WHO
+ * it serves. Firmographic fields (size, location, directory listings) are
+ * excluded — they qualify a company; they are not email personalization.
+ */
+export const EMAIL_MOTION_SPECIFIC_SOURCE_FIELDS = [
+  "customerTypes",
+  "primaryMarkets",
+  "whatTheySell",
+  "businessModel",
+] as const;
+
+export type EmailMotionSpecificSourceField =
+  (typeof EMAIL_MOTION_SPECIFIC_SOURCE_FIELDS)[number];
+
+/** Geographic scaffolding — not market/customer substance. */
+const GEO_SCAFFOLD_TOKENS = new Set([
+  "area",
+  "areas",
+  "atlantic",
+  "bay",
+  "central",
+  "cities",
+  "city",
+  "coast",
+  "counties",
+  "county",
+  "domestic",
+  "east",
+  "global",
+  "greater",
+  "gulf",
+  "international",
+  "local",
+  "metro",
+  "metropolitan",
+  "midwest",
+  "midwestern",
+  "nationwide",
+  "north",
+  "northeast",
+  "northwest",
+  "pacific",
+  "region",
+  "regional",
+  "regions",
+  "south",
+  "southeast",
+  "southwest",
+  "state",
+  "states",
+  "united",
+  "west",
+]);
+
+/** Full US state / DC names as normalized phrases. */
+const US_STATE_PHRASES = new Set([
+  "alabama",
+  "alaska",
+  "arizona",
+  "arkansas",
+  "california",
+  "colorado",
+  "connecticut",
+  "delaware",
+  "district of columbia",
+  "florida",
+  "georgia",
+  "hawaii",
+  "idaho",
+  "illinois",
+  "indiana",
+  "iowa",
+  "kansas",
+  "kentucky",
+  "louisiana",
+  "maine",
+  "maryland",
+  "massachusetts",
+  "michigan",
+  "minnesota",
+  "mississippi",
+  "missouri",
+  "montana",
+  "nebraska",
+  "nevada",
+  "new hampshire",
+  "new jersey",
+  "new mexico",
+  "new york",
+  "north carolina",
+  "north dakota",
+  "ohio",
+  "oklahoma",
+  "oregon",
+  "pennsylvania",
+  "rhode island",
+  "south carolina",
+  "south dakota",
+  "tennessee",
+  "texas",
+  "utah",
+  "vermont",
+  "virginia",
+  "washington",
+  "west virginia",
+  "wisconsin",
+  "wyoming",
+]);
+
+const COUNTRY_GEO_PHRASES = new Set([
+  "america",
+  "australia",
+  "britain",
+  "canada",
+  "china",
+  "england",
+  "europe",
+  "france",
+  "germany",
+  "india",
+  "japan",
+  "mexico",
+  "uk",
+  "united kingdom",
+  "united states",
+  "united states of america",
+  "us",
+  "usa",
+]);
+
+const COUNTRY_GEO_TOKENS = new Set([
+  "america",
+  "american",
+  "australia",
+  "britain",
+  "british",
+  "canada",
+  "canadian",
+  "china",
+  "england",
+  "europe",
+  "european",
+  "france",
+  "germany",
+  "india",
+  "japan",
+  "mexico",
+  "uk",
+  "us",
+  "usa",
+]);
+
+const US_STATE_TOKENS = new Set(
+  [...US_STATE_PHRASES].flatMap((phrase) => phrase.split(" ")),
+);
+
+function normalizePlacePhrase(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * True when a phrase describes the company as an object of research
+ * (headcount, HQ, directory listing) rather than what it does or who it serves.
+ */
+export function isFirmographicResearchObjectPhrase(text: string): boolean {
+  return (
+    /\b(?:employees?|headcount|associates?|fte)\b/i.test(text) ||
+    /\b(?:\d[\d,]*)\s+(?:staff|workforce)\b/i.test(text) ||
+    /\b(?:staff|workforce)\s+of\b/i.test(text) ||
+    /\b(?:linkedin|crunchbase|owler|leadiq|zoominfo|directory)\b/i.test(text) ||
+    /\b(?:headquarters|hq|based in|located in|offices? in)\b/i.test(text) ||
+    /\b\d{2,4}\s*[-–—]\s*\d{2,4}\s+employees?\b/i.test(text)
+  );
+}
+
+/**
+ * True when a phrase is only a place label (state, country, metro area) with
+ * no offering / customer / market-segment substance. "United States long-term
+ * care pharmacy market" keeps industry tokens after geo strip; "Greater
+ * Houston metropolitan area" and "Texas" do not.
+ */
+export function isLocationOnlyFragment(text: string): boolean {
+  const normalized = normalizePlacePhrase(text);
+  if (US_STATE_PHRASES.has(normalized) || COUNTRY_GEO_PHRASES.has(normalized)) {
+    return true;
+  }
+
+  if (
+    /\b(?:metropolitan|metro)\s+area\b/i.test(text) ||
+    /\b(?:headquarters|hq|based in|located in|offices? in)\b/i.test(text)
+  ) {
+    const tokens = contentTokens(text);
+    const remaining = tokens.filter(
+      (token) =>
+        !GEO_SCAFFOLD_TOKENS.has(token) &&
+        !US_STATE_TOKENS.has(token) &&
+        !COUNTRY_GEO_TOKENS.has(token),
+    );
+    // Metro/HQ phrasing with only a place leftover is location, not market.
+    if (remaining.length <= 2) return true;
+  }
+
+  const tokens = contentTokens(text);
+  if (tokens.length === 0) return true;
+  const remaining = tokens.filter(
+    (token) =>
+      !GEO_SCAFFOLD_TOKENS.has(token) &&
+      !US_STATE_TOKENS.has(token) &&
+      !COUNTRY_GEO_TOKENS.has(token),
+  );
+  return remaining.length === 0;
+}
+
+/**
+ * Usable in outreach when it describes what the company does or who it
+ * serves — not when it describes the company as a researched object.
+ */
+export function isUnusableEmailFirmographicPhrase(text: string): boolean {
+  return (
+    isFirmographicResearchObjectPhrase(text) || isLocationOnlyFragment(text)
+  );
+}
+
+/**
  * Collect candidate specifics from research field structure only.
  */
 export function collectMotionSpecificCandidates(
@@ -99,6 +327,7 @@ export function collectMotionSpecificCandidates(
 ): MotionSpecificCandidate[] {
   const out: MotionSpecificCandidate[] = [];
   const push = (text: string, sourceField: string) => {
+    if (isUnusableEmailFirmographicPhrase(text)) return;
     const candidate = candidateFrom(text, sourceField);
     if (candidate) out.push(candidate);
   };
@@ -125,28 +354,8 @@ export function collectMotionSpecificCandidates(
       }
     }
   }
-  // Narrative fields: sentence-level candidates only (digits / concrete clauses).
-  for (const [field, value] of [
-    ["companySizeContext", research.companySizeContext],
-    ["companySummary", research.companySummary],
-  ] as const) {
-    if (!value?.trim()) continue;
-    for (const sentence of value.split(/(?<=[.!?])\s+/)) {
-      const trimmed = sentence.replace(/\s+/g, " ").trim();
-      if (!trimmed) continue;
-      if (/\d/.test(trimmed) || /[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/.test(trimmed)) {
-        // Prefer a short clause around the first digit/name when the sentence is long.
-        if (trimmed.length <= 110) {
-          push(trimmed, field);
-        } else {
-          const digitMatch = trimmed.match(
-            /[^.]{0,40}\d[^.]{0,40}(?:employees?|associates?|staff|people|locations?|offices?)[^.]{0,20}/i,
-          );
-          if (digitMatch?.[0]) push(digitMatch[0].trim(), field);
-        }
-      }
-    }
-  }
+  // Intentionally omit companySizeContext and companySummary: those describe
+  // the company as a researched object (headcount, HQ, directories), not motion.
 
   const seen = new Set<string>();
   const deduped: MotionSpecificCandidate[] = [];
@@ -161,8 +370,9 @@ export function collectMotionSpecificCandidates(
 
 /**
  * Usability without a build-time fact-type list:
+ * - Only motion fields (offerings, markets, customers, business model).
+ * - Reject firmographic "research object" phrases (headcount, HQ, directories).
  * - Reject phrases that are only generic business nouns ("Cloud Platform").
- * - Prefer phrases with digits, multi-token concreteness, or mixed specificity.
  * - Prefer overlap with problemsSolved / painPoints (relevance), not invention.
  * - Drop title-dominated phrases (same rule as B1 motion checks).
  */
@@ -173,6 +383,17 @@ export function scoreMotionSpecificUsability(
     contactTitle?: string | null;
   },
 ): number {
+  if (
+    !EMAIL_MOTION_SPECIFIC_SOURCE_FIELDS.includes(
+      candidate.sourceField as EmailMotionSpecificSourceField,
+    )
+  ) {
+    return -Infinity;
+  }
+  if (isUnusableEmailFirmographicPhrase(candidate.text)) {
+    return -Infinity;
+  }
+
   const titleTokens = new Set(contentTokens(input.contactTitle ?? ""));
   if (titleTokens.size > 0 && candidate.tokens.length >= 2) {
     const overlap = candidate.tokens.filter((token) =>
@@ -187,16 +408,14 @@ export function scoreMotionSpecificUsability(
   if (nonGeneric.length === 0) return -Infinity;
 
   // Single-token generics already rejected; single non-generic tokens need
-  // a digit or length signal to count as a usable specific.
-  const hasDigit = /\d/.test(candidate.text);
-  if (candidate.tokens.length === 1 && !hasDigit && candidate.text.length < 8) {
+  // length signal to count as a usable specific (digits alone are often size).
+  if (candidate.tokens.length === 1 && candidate.text.length < 8) {
     return -Infinity;
   }
 
   let score = 0;
   score += nonGeneric.length * 3;
   score += Math.min(candidate.tokens.length, 6);
-  if (hasDigit) score += 8;
   // Capitalized multi-word or camel/product-like tokens tend to be named entities.
   if (/[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/.test(candidate.text)) score += 6;
   if (/[A-Z]{2,}|[A-Z][a-z]+[A-Z]/.test(candidate.text)) score += 4;
@@ -213,16 +432,10 @@ export function scoreMotionSpecificUsability(
   const relevance = nonGeneric.filter((token) => problemTokens.has(token));
   score += relevance.length * 2;
 
-  // Prefer named offerings / markets over long size/summary restatements.
   if (candidate.sourceField === "whatTheySell") score += 5;
   if (candidate.sourceField === "customerTypes") score += 4;
   if (candidate.sourceField === "primaryMarkets") score += 4;
   if (candidate.sourceField === "businessModel") score += 2;
-  if (candidate.sourceField === "companySizeContext") {
-    score += hasDigit ? 2 : -2;
-    if (!/\bemployees?\b/i.test(candidate.text)) score -= 3;
-  }
-  if (candidate.sourceField === "companySummary") score -= 2;
 
   return score;
 }
@@ -331,7 +544,8 @@ export function bodyReferencesRequiredSpecific(
 }
 
 export const REQUIRED_MOTION_SPECIFICS_INSTRUCTIONS = `Required company specifics (when requiredMotionSpecifics is non-empty):
-- You MUST reference at least one requiredMotionSpecifics[].text by name in the email body (exact phrase or unmistakable named reference).
-- Prefer using it while framing the executive problem in paragraph 1, without restating the company's full description.
-- Do not invent other company facts. Do not replace a required specific with a vague category synonym.
+- Reason FROM at least one requiredMotionSpecifics[].text to the executive problem. The specific must do causal work in the sentence (market, offering, or customer type that makes the problem acute for them).
+- Do NOT decorate a generic problem with a bolted-on product name, and do NOT quote research back to the recipient (no headcount, LinkedIn, directories, or "your company has N employees").
+- Prefer a framing like "In [market / for teams selling X / when serving Y], [problem]…" — not "With [product name], [generic problem]…".
+- Reference the chosen specific by name (exact phrase or unmistakable named reference). Do not invent other company facts or replace it with a vague category synonym.
 - If unsure which specific to use, pick the first item in the list.`;

@@ -3,6 +3,9 @@ import type { EmailCompanyResearch } from "@/lib/email-generation/company-resear
 import {
   bodyReferencesRequiredSpecific,
   collectMotionSpecificCandidates,
+  isFirmographicResearchObjectPhrase,
+  isLocationOnlyFragment,
+  isUnusableEmailFirmographicPhrase,
   scoreMotionSpecificUsability,
   selectRequiredMotionSpecifics,
   splitResearchPhrases,
@@ -89,11 +92,60 @@ describe("motion specifics selection", () => {
     expect(selected.length).toBeLessThanOrEqual(3);
     const joined = selected.map((item) => item.text.toLowerCase()).join(" ");
     // Title-dominated carrier/wholesale/enterprise alone should not be the only evidence.
-    expect(joined).toMatch(/fiber|houston|dark|110|municipal/i);
+    expect(joined).toMatch(
+      /fiber|dark|municipal|dedicated internet|telecommunications/i,
+    );
+    expect(joined).not.toMatch(/110|employee|linkedin|houston|texas/i);
     for (const item of selected) {
       expect(item.whyItMatters.length).toBeGreaterThan(10);
-      expect(item.sourceField).toBeTruthy();
+      expect(["whatTheySell", "customerTypes", "primaryMarkets", "businessModel"]).toContain(
+        item.sourceField,
+      );
     }
+  });
+
+  it("excludes firmographic size and directory phrases from email specifics", () => {
+    expect(
+      isFirmographicResearchObjectPhrase(
+        "LinkedIn lists StoneEagle at 201–500 employees",
+      ),
+    ).toBe(true);
+    expect(
+      isFirmographicResearchObjectPhrase(
+        "United States long-term care pharmacy market",
+      ),
+    ).toBe(false);
+    expect(isLocationOnlyFragment("Greater Houston metropolitan area")).toBe(
+      true,
+    );
+    expect(isLocationOnlyFragment("Texas")).toBe(true);
+    expect(
+      isLocationOnlyFragment("United States long-term care pharmacy market"),
+    ).toBe(false);
+    expect(isLocationOnlyFragment("Gulf Coast refineries")).toBe(false);
+    expect(
+      isUnusableEmailFirmographicPhrase("Greater Houston metropolitan area"),
+    ).toBe(true);
+    const selected = selectRequiredMotionSpecifics({
+      research: telecomResearch,
+      problemSpace: problemSpaceForecast,
+      contactTitle: "VP Sales",
+    });
+    expect(
+      selected.every((item) => !isUnusableEmailFirmographicPhrase(item.text)),
+    ).toBe(true);
+    expect(
+      collectMotionSpecificCandidates(telecomResearch).every(
+        (item) =>
+          item.sourceField !== "companySizeContext" &&
+          !isUnusableEmailFirmographicPhrase(item.text),
+      ),
+    ).toBe(true);
+    expect(
+      collectMotionSpecificCandidates(telecomResearch).some((item) =>
+        /houston|texas/i.test(item.text),
+      ),
+    ).toBe(false);
   });
 
   it("selects concrete specifics for an unrelated staffing domain without shared vocabulary", () => {
@@ -104,8 +156,8 @@ describe("motion specifics selection", () => {
     });
     expect(selected.length).toBeGreaterThanOrEqual(2);
     const joined = selected.map((item) => item.text.toLowerCase()).join(" ");
-    expect(joined).toMatch(/weldright|refiner|louisiana|2,?400|shutdown/i);
-    expect(joined).not.toMatch(/fiber|houston|telecom/i);
+    expect(joined).toMatch(/weldright|refiner|shutdown/i);
+    expect(joined).not.toMatch(/fiber|houston|telecom|2,?400|employee|^louisiana$| louisiana /i);
   });
 
   it("splits research phrases without knowing fact types", () => {
@@ -122,9 +174,10 @@ describe("motion specifics selection", () => {
     expect(candidates.some((row) => row.sourceField === "whatTheySell")).toBe(
       true,
     );
-    expect(candidates.some((row) => row.sourceField === "primaryMarkets")).toBe(
-      true,
-    );
+    // Pure location primaryMarkets are dropped; offerings/customers remain.
+    expect(
+      candidates.some((row) => /houston|texas/i.test(row.text)),
+    ).toBe(false);
   });
 
   it("checks that the body references a required specific by name", () => {
@@ -135,9 +188,9 @@ describe("motion specifics selection", () => {
         whyItMatters: "Named offering",
       },
       {
-        text: "Greater Houston metropolitan area",
-        sourceField: "primaryMarkets",
-        whyItMatters: "Named market",
+        text: "Carriers and wholesale providers",
+        sourceField: "customerTypes",
+        whyItMatters: "Named customer type",
       },
     ];
     expect(
@@ -257,10 +310,18 @@ describe("requiredMotionSpecifics in prompt", () => {
       .content;
     expect(telecomPrompt).toContain('"requiredMotionSpecifics"');
     expect(staffingPrompt).toContain('"requiredMotionSpecifics"');
-    expect(telecomPrompt).toMatch(/fiber|Houston|dark fiber|110/i);
-    expect(staffingPrompt).toMatch(/WeldRight|refiner|2,?400|Louisiana/i);
+    expect(telecomPrompt).toMatch(/fiber|dark fiber|municipal|Dedicated Internet/i);
+    expect(staffingPrompt).toMatch(/WeldRight|refiner/i);
     expect(telecomPrompt).not.toMatch(/WeldRight|Louisiana refiner/i);
     expect(staffingPrompt).not.toMatch(/Greater Houston|dark fiber/i);
-    expect(telecomPrompt).toContain("Reference at least one");
+    expect(telecomPrompt).toContain("Reason FROM");
+    const requiredBlock =
+      telecomPrompt.match(
+        /"requiredMotionSpecifics": \[[\s\S]*?\],\s*"requiredMotionSpecificsInstruction"/,
+      )?.[0] ?? "";
+    expect(requiredBlock.length).toBeGreaterThan(20);
+    expect(requiredBlock).not.toMatch(
+      /110 employees|LinkedIn|Greater Houston|Texas/i,
+    );
   });
 });

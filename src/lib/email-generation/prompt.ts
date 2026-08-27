@@ -15,7 +15,7 @@ import {
   resolvePersonalization,
 } from "@/lib/email-generation/personalization";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "12";
+export const EMAIL_GENERATION_PROMPT_VERSION = "14";
 export const ADDITIONAL_GUIDANCE_MAX_CHARS = 200;
 
 const SYSTEM_PROMPT = `You write concise, credible one-to-one outbound emails.
@@ -25,7 +25,7 @@ Use the supplied context in this strict priority order:
 2. Additional campaign instructions, when supplied. They override writing defaults.
 3. The campaign offer and call to action.
 4. Paragraph 1 problem framing (hard): lead with the executive or business problem from paragraph1ProblemFraming (messagingNotes first, then painPoints). Do this before naming the product or any product capability.
-5. Required company specifics, when requiredMotionSpecifics is non-empty: reference at least one listed text by name. This is mandatory and checkable.
+5. Required company specifics, when requiredMotionSpecifics is non-empty: Reason FROM at least one listed specific to the executive problem (mandatory and checkable). The specific must do causal work in the sentence — not decorate a generic clause or quote firmographics.
 6. Company research, when personalization.companyResearchUsable is true: infer selling motion and connect it to this product's problem in that motion. Do not restate what the company does.
 7. Persona as angle only: which value prop leads, what this role cares about, what objections to preempt, what vocabulary to use. Persona is not personalization.
 8. Contact role research, when personalization.contactResearchUsable is true: roleSummary, responsibilities, ownershipAreas only.
@@ -127,11 +127,11 @@ export function buildEmailPrompt(
     requiredMotionSpecifics,
     requiredMotionSpecificsInstruction:
       requiredMotionSpecifics.length > 0
-        ? "Reference at least one requiredMotionSpecifics[].text by name in the body. Prefer paragraph 1."
+        ? "Reason FROM at least one requiredMotionSpecifics[].text to the executive problem in paragraph 1. The specific must do causal work (why the problem is acute for them) — not decorate a generic sentence or quote headcount/location/LinkedIn."
         : null,
     paragraph1ProblemFraming: {
       instruction:
-        "Open with the executive or business problem. Prefer messagingNotes; if empty, use painPoints. Do not open with product name, mechanism, or capability. When requiredMotionSpecifics is present, ground that problem in at least one listed company-specific fact by name.",
+        "Open with the executive or business problem. Prefer messagingNotes; if empty, use painPoints. Do not open with product name, mechanism, or capability. When requiredMotionSpecifics is present, Reason FROM one listed offering/market/customer-type fact to that problem — never quote headcount, location, or directory research.",
       messagingNotes: context.persona.messagingNotes,
       painPoints: context.persona.painPoints,
     },
