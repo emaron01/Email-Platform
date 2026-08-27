@@ -7,7 +7,7 @@ export function TopBar({
   menuModel: UserMenuModel | null;
 }) {
   return (
-    <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-6">
+    <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-6 print:hidden">
       <div className="text-sm text-slate-500">
         {menuModel?.organizationName
           ? "Workspace"

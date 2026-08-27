@@ -9,7 +9,7 @@ export function Sidebar({ items }: { items: SidebarNavItem[] }) {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-slate-50">
+    <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-slate-50 print:hidden">
       <div className="border-b border-slate-200 px-5 py-5">
         <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
           Outbound

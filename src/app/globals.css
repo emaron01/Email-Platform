@@ -17,3 +17,27 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
+
+@media print {
+  body {
+    background: white;
+    color: #0f172a;
+  }
+
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  [data-print-document] {
+    max-width: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  .research-read-section {
+    break-inside: avoid;
+  }
+}

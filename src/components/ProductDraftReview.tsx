@@ -13,6 +13,7 @@ import {
   type ProductSetupActionResult,
 } from "@/app/actions/product-setup";
 import { AutosizeTextarea } from "@/components/AutosizeTextarea";
+import { ExportPdfButton } from "@/components/ExportPdfButton";
 import { SecondaryButton, SubmitButton } from "@/components/ui";
 import type {
   ProductDraft,
@@ -276,6 +277,7 @@ export function ProductDraftReview({
     <div
       className="mx-auto max-w-3xl space-y-6"
       data-testid="product-draft-review"
+      data-print-document
     >
       <div>
         <p
@@ -370,12 +372,15 @@ export function ProductDraftReview({
               <p className="mt-1 text-sm text-slate-500">{url}</p>
             ) : null}
           </div>
-          <SecondaryButton
-            type="button"
-            onClick={() => setEditing((value) => !value)}
-          >
-            {editing ? "Done editing" : "Edit"}
-          </SecondaryButton>
+          <div className="flex flex-wrap gap-2" data-print-hide>
+            <ExportPdfButton />
+            <SecondaryButton
+              type="button"
+              onClick={() => setEditing((value) => !value)}
+            >
+              {editing ? "Done editing" : "Edit"}
+            </SecondaryButton>
+          </div>
         </div>
 
         {editing ? (
@@ -824,7 +829,33 @@ export function ProductDraftReview({
           </p>
         ) : null}
 
-        <div className="border-t border-slate-200 pt-5">
+        {sources.length > 0 ? (
+          <section className="research-sources-appendix mt-8 border-t border-slate-200 pt-6 print:break-before-page">
+            <h3 className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
+              Sources
+            </h3>
+            <ul className="mt-3 space-y-3 text-sm text-slate-700">
+              {sources.map((source) => (
+                <li key={source.id}>
+                  <p className="font-medium text-slate-900">
+                    {source.displayName}
+                  </p>
+                  <p className="text-xs text-slate-500">{source.sourceType}</p>
+                  {source.originalUrl ? (
+                    <p className="break-all text-xs text-slate-600">
+                      {source.originalUrl}
+                    </p>
+                  ) : null}
+                  {source.filename ? (
+                    <p className="text-xs text-slate-600">{source.filename}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        <div className="border-t border-slate-200 pt-5" data-print-hide>
           <SubmitButton disabled={pending}>
             {pending ? "Saving…" : "Approve this profile"}
           </SubmitButton>

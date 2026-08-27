@@ -130,24 +130,27 @@ export default async function ProductResearchPage({ params }: PageProps) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
-      <PageHeader
-        title={`Research: ${product.name}`}
-        description="Research the Product once. Approve it. Then build Personas one at a time."
-        actions={
-          <Link
-            href={`/setup/${product.id}`}
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
-          >
-            Product setup
-          </Link>
-        }
-      />
+      <div data-print-hide>
+        <PageHeader
+          title={`Research: ${product.name}`}
+          description="Research the Product once. Approve it. Then build Personas one at a time."
+          actions={
+            <Link
+              href={`/setup/${product.id}`}
+              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+            >
+              Product setup
+            </Link>
+          }
+        />
+      </div>
 
       {showSynthesisFailure || failedRead ? (
         <div
           role="alert"
           className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950"
           data-testid="product-failed-read"
+          data-print-hide
         >
           <p className="font-medium">
             {failedRead
@@ -192,6 +195,7 @@ export default async function ProductResearchPage({ params }: PageProps) {
       <section
         id="product-materials"
         className="rounded-lg border border-slate-200 bg-white p-5"
+        data-print-hide
       >
         <AssistedProductIntake
           productId={product.id}
@@ -203,7 +207,10 @@ export default async function ProductResearchPage({ params }: PageProps) {
       </section>
 
       {latestRun || productApproved ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-5">
+        <section
+          className="rounded-lg border border-slate-200 bg-white p-5"
+          data-print-hide
+        >
           <SuggestedBuyerRolesPanel
             productId={product.id}
             productApproved={productApproved}
