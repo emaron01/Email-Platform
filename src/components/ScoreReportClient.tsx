@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { createCampaignAction } from "@/app/actions";
 import { makePrimaryCriterionMandatoryAndRescoreAction } from "@/app/actions/scoring";
 import {
+  bulkRestoreQualificationAction,
+  overrideQualificationBucketAction,
+} from "@/app/actions/qualification";
+import {
   DEFAULT_EMAIL_LENGTH,
   EMAIL_GUIDANCE_MAX_CHARS,
   EMAIL_LENGTH_OPTIONS,
@@ -19,6 +23,11 @@ import {
 } from "@/components/ui";
 import { contactDisplayName, cn } from "@/lib/utils";
 import { SuppressContactForm } from "@/components/SuppressContactForm";
+import { ExclusionDetailList } from "@/components/ExclusionDetailList";
+import {
+  groupExclusionDetailsByCriterion,
+  readExclusionDetails,
+} from "@/lib/scoring/exclusion-detail";
 import {
   icpQualificationWhyLines,
   readIcpQualification,
@@ -243,6 +252,11 @@ export function ScoreReportClient({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showCampaign, setShowCampaign] = useState(false);
+  const [overrideMessage, setOverrideMessage] = useState<string | null>(null);
+  const [overridePending, setOverridePending] = useState(false);
+  const [restoredBuckets, setRestoredBuckets] = useState<
+    Record<string, QualificationBucket>
+  >({});
   const [campaignState, campaignAction, campaignPending] = useActionState(
     createCampaignAction,
     null as CampaignActionResult | null,
@@ -269,6 +283,70 @@ export function ScoreReportClient({
   }, [campaignState, router]);
 
   const visibleIds = useMemo(() => rows.map((row) => row.contactId), [rows]);
+
+  const exclusionGroups = useMemo(
+    () =>
+      groupExclusionDetailsByCriterion(
+        rows
+          .map((row) => {
+            const bucket =
+              restoredBuckets[row.contactId] ??
+              resolveQualification(row).bucket;
+            if (bucket !== "EXCLUDED") return null;
+            const details = readExclusionDetails(row.assessmentData);
+            if (details.length === 0) return null;
+            return { contactId: row.contactId, details };
+          })
+          .filter(
+            (row): row is { contactId: string; details: ReturnType<typeof readExclusionDetails> } =>
+              row != null,
+          ),
+      ),
+    [rows, restoredBuckets],
+  );
+
+  async function restoreContact(contactId: string, bucket: QualificationBucket = "GOOD") {
+    setOverridePending(true);
+    setOverrideMessage(null);
+    const result = await overrideQualificationBucketAction({
+      scoringRunId: runId,
+      targetType: "CONTACT",
+      targetId: contactId,
+      bucket,
+    });
+    setOverridePending(false);
+    setOverrideMessage(result.message);
+    if (result.ok && result.bucket) {
+      setRestoredBuckets((current) => ({
+        ...current,
+        [contactId]: result.bucket!,
+      }));
+      router.refresh();
+    }
+  }
+
+  async function restoreGroup(contactIds: string[], bucket: QualificationBucket = "GOOD") {
+    setOverridePending(true);
+    setOverrideMessage(null);
+    const result = await bulkRestoreQualificationAction({
+      scoringRunId: runId,
+      targetType: "CONTACT",
+      targetIds: contactIds,
+      bucket,
+    });
+    setOverridePending(false);
+    setOverrideMessage(result.message);
+    if (result.ok && result.bucket) {
+      setRestoredBuckets((current) => {
+        const next = { ...current };
+        for (const contactId of contactIds) {
+          next[contactId] = result.bucket!;
+        }
+        return next;
+      });
+      router.refresh();
+    }
+  }
 
   function toggleOne(contactId: string) {
     setSelected((current) => {
@@ -326,6 +404,42 @@ export function ScoreReportClient({
           ) : null}
         </div>
       ) : null}
+      {exclusionGroups.length > 0 ? (
+        <div className="space-y-2" data-testid="bulk-exclusion-restore">
+          {exclusionGroups.map((group) => (
+            <div
+              key={group.key}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+            >
+              <p>
+                {group.contactIds.length} contacts excluded on{" "}
+                <strong>{group.criterionName}</strong>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <SecondaryButton
+                  type="button"
+                  disabled={overridePending}
+                  onClick={() => restoreGroup(group.contactIds, "GOOD")}
+                >
+                  Restore all to Good
+                </SecondaryButton>
+                <SecondaryButton
+                  type="button"
+                  disabled={overridePending}
+                  onClick={() => restoreGroup(group.contactIds, "NEEDS_REVIEW")}
+                >
+                  Restore all to Needs review
+                </SecondaryButton>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {overrideMessage ? (
+        <p role="status" className="text-sm text-slate-700">
+          {overrideMessage}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
         <p className="text-sm text-slate-600">
           Selected: <strong className="text-slate-900">{selected.size}</strong>
@@ -377,6 +491,14 @@ export function ScoreReportClient({
               const qualification = readIcpQualification(row.assessmentData);
               const personaMatch = readPersonaMatch(row.assessmentData);
               const resolvedQualification = resolveQualification(row);
+              const effectiveBucket =
+                restoredBuckets[row.contactId] ?? resolvedQualification.bucket;
+              const exclusionDetails = readExclusionDetails(row.assessmentData);
+              const isExcluded = effectiveBucket === "EXCLUDED";
+              const canRestore =
+                isExcluded &&
+                !row.suppressed &&
+                row.scoringStatus !== "SUPPRESSED";
               const why = qualification
                 ? icpQualificationWhyLines(qualification)
                 : null;
@@ -446,22 +568,49 @@ export function ScoreReportClient({
                       <span
                         className={cn(
                           "inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset",
-                          qualificationBadgeClass(resolvedQualification.bucket),
+                          qualificationBadgeClass(effectiveBucket),
                         )}
                       >
-                        {displayQualificationBucket(resolvedQualification.bucket)}
+                        {displayQualificationBucket(effectiveBucket)}
                       </span>
+                      {canRestore ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            disabled={overridePending}
+                            onClick={() => restoreContact(row.contactId, "GOOD")}
+                            className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
+                            data-testid={`restore-contact-${row.contactId}`}
+                          >
+                            Restore
+                          </button>
+                          <button
+                            type="button"
+                            disabled={overridePending}
+                            onClick={() =>
+                              restoreContact(row.contactId, "NEEDS_REVIEW")
+                            }
+                            className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900"
+                          >
+                            Needs review
+                          </button>
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 text-slate-600">
-                      <button
-                        type="button"
-                        className="line-clamp-2 max-h-10 w-full text-left leading-5 hover:text-slate-900 hover:underline"
-                        title={resolvedQualification.reason ?? "Pending"}
-                        aria-expanded={open}
-                        onClick={() => setExpandedId(open ? null : row.id)}
-                      >
-                        {resolvedQualification.reason ?? "Pending"}
-                      </button>
+                      {isExcluded && exclusionDetails.length > 0 ? (
+                        <ExclusionDetailList details={exclusionDetails} compact />
+                      ) : (
+                        <button
+                          type="button"
+                          className="line-clamp-2 max-h-10 w-full text-left leading-5 hover:text-slate-900 hover:underline"
+                          title={resolvedQualification.reason ?? "Pending"}
+                          aria-expanded={open}
+                          onClick={() => setExpandedId(open ? null : row.id)}
+                        >
+                          {resolvedQualification.reason ?? "Pending"}
+                        </button>
+                      )}
                       {personaMatch?.matchedPersonaId ? (
                         <p className="mt-1 text-xs text-slate-500">
                           Persona matched
@@ -490,6 +639,16 @@ export function ScoreReportClient({
                                 row.scoringStatus === "SUPPRESSED",
                             )}
                           />
+                          {exclusionDetails.length > 0 ? (
+                            <section data-testid="exclusion-detail-panel">
+                              <h4 className="text-xs font-semibold uppercase tracking-wide text-rose-800">
+                                Exclusion details
+                              </h4>
+                              <div className="mt-2">
+                                <ExclusionDetailList details={exclusionDetails} />
+                              </div>
+                            </section>
+                          ) : null}
                           {why?.failedLines && why.failedLines !== "None" ? (
                             <section data-testid="icp-confirmed-failures">
                               <h4 className="text-xs font-semibold uppercase tracking-wide text-rose-800">

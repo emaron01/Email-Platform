@@ -36,7 +36,10 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { overrideQualificationBucketAction } from "@/app/actions/qualification";
+import {
+  bulkRestoreQualificationAction,
+  overrideQualificationBucketAction,
+} from "@/app/actions/qualification";
 
 describe("manual qualification bucket override", () => {
   beforeEach(() => {
@@ -61,6 +64,17 @@ describe("manual qualification bucket override", () => {
       }),
     ).toMatchObject({ ok: true, bucket: "EXCLUDED" });
     expect(state.savedBucket).toBe("EXCLUDED");
+    expect(state.upsert).toHaveBeenCalledTimes(2);
+  });
+
+  it("bulk restores multiple qualification rows", async () => {
+    const result = await bulkRestoreQualificationAction({
+      scoringRunId: "run_1",
+      targetType: "CONTACT",
+      targetIds: ["contact_1", "contact_2"],
+      bucket: "GOOD",
+    });
+    expect(result).toMatchObject({ ok: true, bucket: "GOOD", restoredCount: 2 });
     expect(state.upsert).toHaveBeenCalledTimes(2);
   });
 });

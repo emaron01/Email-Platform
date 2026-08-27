@@ -24,9 +24,19 @@ describe("ScoreReportClient table layout", () => {
     expect(source).toContain("makePrimaryCriterionMandatoryAndRescoreAction");
     expect(source).toContain('data-testid="icp-qualification-why"');
     expect(source).toContain('data-testid="icp-criterion-provenance"');
+    expect(source).toContain('data-testid="exclusion-detail-panel"');
   });
 
-  it("caps reasons at two lines and keeps the full text available", () => {
+  it("shows inline exclusion details and restore actions for excluded rows", () => {
+    expect(source).toContain("readExclusionDetails");
+    expect(source).toContain("ExclusionDetailList");
+    expect(source).toContain("overrideQualificationBucketAction");
+    expect(source).toContain("bulkRestoreQualificationAction");
+    expect(source).toContain('data-testid="bulk-exclusion-restore"');
+    expect(source).toContain("`restore-contact-${row.contactId}`");
+  });
+
+  it("caps non-excluded reasons at two lines and keeps the full text available", () => {
     expect(source).toContain("line-clamp-2 max-h-10");
     expect(source).toContain("resolvedQualification.reason");
   });

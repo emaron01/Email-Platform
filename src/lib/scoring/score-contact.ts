@@ -1,6 +1,10 @@
 import { resolveIcpQualification } from "@/lib/scoring/icp-qualification";
 import { SCORING_LOGIC_VERSION } from "@/lib/scoring/config";
-import { evaluatePersonaExclusions } from "@/lib/scoring/persona-exclusions";
+import { buildExclusionDetails } from "@/lib/scoring/exclusion-detail";
+import {
+  evaluatePersonaExclusions,
+  type PersonaExclusionAssessment,
+} from "@/lib/scoring/persona-exclusions";
 import {
   evaluatePersonaTitleGate,
   type TitleGateStatus,
@@ -233,22 +237,41 @@ export async function scoreSingleContact(input: {
     );
 
     const excludedPersonaIds: string[] = [];
-    const stillCandidates: PersonaSnapshot[] = [];
-    for (const persona of candidatePersonas) {
-      const titleConfirmed = evaluatePersonaExclusions({
+    const personaExclusionAssessments: PersonaExclusionAssessment[] = [];
+    const addConfirmedPersonaExclusions = (persona: PersonaSnapshot) => {
+      for (const row of evaluatePersonaExclusions({
         criteria: persona.criteria ?? [],
         title: contact.title,
         contactResearch: null,
-      }).some(
-        (row) =>
-          row.testability === "TITLE_TESTABLE" && row.outcome === "CONFIRMED",
-      );
-      if (titleConfirmed) {
+      })) {
+        if (row.outcome !== "CONFIRMED") continue;
+        const key = row.criterionId ?? row.criterion;
+        if (
+          personaExclusionAssessments.some(
+            (existing) => (existing.criterionId ?? existing.criterion) === key,
+          )
+        ) {
+          continue;
+        }
+        personaExclusionAssessments.push(row);
+      }
+    };
+    const stillCandidates: PersonaSnapshot[] = [];
+    for (const persona of candidatePersonas) {
+      const confirmed = evaluatePersonaExclusions({
+        criteria: persona.criteria ?? [],
+        title: contact.title,
+        contactResearch: null,
+      }).filter((row) => row.outcome === "CONFIRMED");
+      if (confirmed.length > 0) {
         excludedPersonaIds.push(persona.id);
+        addConfirmedPersonaExclusions(persona);
         const row = assessmentById.get(persona.id);
         if (row) {
           row.gate = "EXCLUDED";
-          row.reason = "Contact title confirms a persona exclusion.";
+          row.reason =
+            confirmed[0]?.reasoning ??
+            "Contact title confirms a persona exclusion.";
           row.scoreLabel = "DISQUALIFIED";
         }
       } else {
@@ -262,6 +285,10 @@ export async function scoreSingleContact(input: {
     const titleExcludedPersonaIds = gates
       .filter((gate) => gate.status === "EXCLUDED")
       .map((gate) => gate.personaId);
+    for (const personaId of titleExcludedPersonaIds) {
+      const persona = personas.find((row) => row.id === personaId);
+      if (persona) addConfirmedPersonaExclusions(persona);
+    }
 
     const qualification = deterministicContactQualification({
       icpQualification,
@@ -307,6 +334,11 @@ export async function scoreSingleContact(input: {
     const allExcluded =
       qualification.bucket === "EXCLUDED" &&
       qualification.personaMatchStatus === "EXCLUDED";
+    const exclusionDetails = buildExclusionDetails({
+      criterionAssessments,
+      icpCriteria: input.icp.criteria ?? [],
+      personaExclusionAssessments,
+    });
 
     await prisma.contactScore.update({
       where: { id: scoreRow.id },
@@ -322,12 +354,12 @@ export async function scoreSingleContact(input: {
         fitRisks:
           qualification.bucket === "NEEDS_REVIEW" ? [qualification.reason] : [],
         disqualifiers: allExcluded
-          ? assessments
-              .filter((row) => row.gate === "EXCLUDED")
+          ? personaExclusionAssessments
+              .filter((row) => row.outcome === "CONFIRMED")
               .map((row) => ({
-                criterion: row.personaName,
-                evidence: [],
-                confidence: "HIGH",
+                criterion: row.criterion,
+                evidence: row.evidence,
+                confidence: row.confidence,
                 scope: "PERSONA",
               }))
           : [],
@@ -360,6 +392,8 @@ export async function scoreSingleContact(input: {
               evidenceOutcome: row.evidenceOutcome,
               reasoning: row.reasoning,
             })),
+          personaExclusionAssessments,
+          exclusionDetails,
         }),
         matchedPersonaId: qualification.matchedPersonaId,
         matchedPersonaSnapshot: matchedPersona

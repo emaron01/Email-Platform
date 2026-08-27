@@ -11,6 +11,7 @@ import {
   scoreLabelToBucket,
 } from "@/lib/workflow/qualification";
 import type { QualificationBucketRow } from "@/components/QualificationBuckets";
+import { readExclusionDetails } from "@/lib/scoring/exclusion-detail";
 import { scoringRunPersonaWhere } from "@/lib/campaign/personas";
 
 const campaignDetailInclude = {
@@ -265,6 +266,10 @@ export async function getCampaignQualificationView(
         readIcpQualification(score.assessmentData)?.secondaryFlags.map(
           (flag) => flag.text,
         ) ?? [],
+      exclusionDetails:
+        bucket === "EXCLUDED"
+          ? readExclusionDetails(score.assessmentData)
+          : undefined,
     };
   });
 
@@ -618,6 +623,20 @@ async function insertCampaignContacts(input: {
     })),
     skipDuplicates: true,
   });
+  if (inserted.count > 0) {
+    const { recomputeCampaignContactCadenceBatch } = await import(
+      "@/lib/cadence/recompute"
+    );
+    const created = await prisma.campaignContact.findMany({
+      where: {
+        organizationId: input.organizationId,
+        campaignId: input.campaignId,
+        contactId: { in: contactIds },
+      },
+      select: { id: true },
+    });
+    await recomputeCampaignContactCadenceBatch(created.map((row) => row.id));
+  }
   return inserted.count;
 }
 

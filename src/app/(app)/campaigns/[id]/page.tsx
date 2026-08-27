@@ -608,12 +608,12 @@ export default async function CampaignDetailPage({
       {currentStage === "contacts" ? (
         <Panel
           title="7 Contacts"
-          description="Review contacts at surviving companies. Needs-review rows identify what remains unresolved."
+          description="Review all campaign contacts, including excluded rows with inline reasoning. Restore contacts individually or in bulk when the exclusion should not apply."
         >
           <QualificationBuckets
             campaignId={campaign.id}
             scoringRunId={qualification.scoringRunId}
-            rows={survivingContactRows}
+            rows={campaignContactRows}
             emptyTitle="No contact qualification results yet"
             emptyActionHref={`/campaigns/${campaign.id}?stage=companies`}
             emptyActionLabel="Review companies"

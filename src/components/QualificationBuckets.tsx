@@ -6,7 +6,12 @@ import type {
   QualificationBucket,
   QualificationOverrideTarget,
 } from "@prisma/client";
-import { overrideQualificationBucketAction } from "@/app/actions/qualification";
+import {
+  bulkRestoreQualificationAction,
+  overrideQualificationBucketAction,
+} from "@/app/actions/qualification";
+import { ExclusionDetailList } from "@/components/ExclusionDetailList";
+import type { ExclusionDetail } from "@/lib/scoring/exclusion-detail";
 import {
   QUALIFICATION_BUCKET_LABELS,
   QUALIFICATION_BUCKETS,
@@ -23,6 +28,7 @@ export type QualificationBucketRow = {
   researchHref: string | null;
   canOverride: boolean;
   secondaryFlags?: string[];
+  exclusionDetails?: ExclusionDetail[];
 };
 
 const CARD_STYLES: Record<QualificationBucket, string> = {
@@ -51,7 +57,7 @@ export function QualificationBuckets({
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function override(row: QualificationBucketRow, bucket: QualificationBucket) {
+  function restore(row: QualificationBucketRow, bucket: QualificationBucket) {
     if (!scoringRunId) return;
     startTransition(async () => {
       const result = await overrideQualificationBucketAction({
@@ -73,6 +79,53 @@ export function QualificationBuckets({
       }
     });
   }
+
+  function restoreMany(
+    targetRows: QualificationBucketRow[],
+    bucket: QualificationBucket,
+  ) {
+    if (!scoringRunId || targetRows.length === 0) return;
+    startTransition(async () => {
+      const result = await bulkRestoreQualificationAction({
+        campaignId,
+        scoringRunId,
+        targetType: targetRows[0]!.targetType,
+        targetIds: targetRows.map((row) => row.id),
+        bucket,
+      });
+      setMessage(result.message);
+      if (result.ok && result.bucket) {
+        const ids = new Set(targetRows.map((row) => `${row.targetType}:${row.id}`));
+        setRows((current) =>
+          current.map((entry) =>
+            ids.has(`${entry.targetType}:${entry.id}`)
+              ? { ...entry, bucket: result.bucket! }
+              : entry,
+          ),
+        );
+      }
+    });
+  }
+
+  const excludedGroups = rows
+    .filter((row) => row.bucket === "EXCLUDED" && row.exclusionDetails?.length)
+    .reduce((groups, row) => {
+      const detail = row.exclusionDetails![0]!;
+      const key =
+        detail.kind === "ICP"
+          ? `ICP:${detail.criterionId ?? detail.criterionName}`
+          : `PERSONA:${detail.criterionId ?? detail.criterionName}`;
+      const entry = groups.get(key) ?? {
+        criterionName: detail.criterionName,
+        rows: [] as QualificationBucketRow[],
+      };
+      entry.rows.push(row);
+      groups.set(key, entry);
+      return groups;
+    }, new Map<string, { criterionName: string; rows: QualificationBucketRow[] }>());
+  const bulkExcludedGroups = [...excludedGroups.values()].filter(
+    (group) => group.rows.length > 1,
+  );
 
   return (
     <div className="space-y-5">
@@ -96,6 +149,40 @@ export function QualificationBuckets({
         <p role="status" className="text-sm text-slate-700">
           {message}
         </p>
+      ) : null}
+
+      {bulkExcludedGroups.length > 0 ? (
+        <div className="space-y-2" data-testid="bulk-exclusion-restore">
+          {bulkExcludedGroups.map((group) => (
+            <div
+              key={group.criterionName}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+            >
+              <p>
+                {group.rows.length} rows excluded on{" "}
+                <strong>{group.criterionName}</strong>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={pending || !scoringRunId}
+                  onClick={() => restoreMany(group.rows, "GOOD")}
+                  className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
+                >
+                  Restore all to Good
+                </button>
+                <button
+                  type="button"
+                  disabled={pending || !scoringRunId}
+                  onClick={() => restoreMany(group.rows, "NEEDS_REVIEW")}
+                  className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900"
+                >
+                  Restore all to Needs review
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : null}
 
       {rows.length === 0 ? (
@@ -131,12 +218,33 @@ export function QualificationBuckets({
                   ) : null}
                 </div>
                 <div className="flex flex-wrap gap-1">
+                  {row.bucket === "EXCLUDED" && row.canOverride ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={pending || !scoringRunId}
+                        onClick={() => restore(row, "GOOD")}
+                        className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
+                        data-testid={`restore-${row.targetType}-${row.id}`}
+                      >
+                        Restore
+                      </button>
+                      <button
+                        type="button"
+                        disabled={pending || !scoringRunId}
+                        onClick={() => restore(row, "NEEDS_REVIEW")}
+                        className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900"
+                      >
+                        Needs review
+                      </button>
+                    </>
+                  ) : null}
                   {QUALIFICATION_BUCKETS.map((bucket) => (
                     <button
                       key={bucket}
                       type="button"
                       disabled={pending || !scoringRunId || !row.canOverride}
-                      onClick={() => override(row, bucket)}
+                      onClick={() => restore(row, bucket)}
                       className={`rounded-md border px-2 py-1 text-xs font-medium ${
                         row.bucket === bucket
                           ? "border-slate-900 bg-slate-900 text-white"
@@ -148,6 +256,11 @@ export function QualificationBuckets({
                   ))}
                 </div>
               </div>
+              {row.bucket === "EXCLUDED" && row.exclusionDetails?.length ? (
+                <div className="mt-3">
+                  <ExclusionDetailList details={row.exclusionDetails} />
+                </div>
+              ) : null}
               {row.bucket === "NEEDS_REVIEW" && row.unresolvedCriterion ? (
                 <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3">
                   <p className="text-sm text-amber-950">
