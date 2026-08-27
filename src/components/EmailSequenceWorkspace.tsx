@@ -855,7 +855,9 @@ export function EmailSequenceWorkspace({
                     href="/settings/email"
                     className="text-xs font-medium text-slate-700 underline"
                   >
-                    Connect Microsoft 365 to send directly
+                    {mailboxConnection?.status === "RECONNECT_REQUIRED"
+                      ? "Reconnect Microsoft 365 to send directly"
+                      : "Connect Microsoft 365 to send directly"}
                   </a>
                 ) : null}
                 {dailySendUsage.used >= dailySendUsage.warningLimit ? (

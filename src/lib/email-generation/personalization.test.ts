@@ -568,6 +568,8 @@ describe("generation constraints", () => {
     expect(stage).toContain("Compare drafts");
     expect(stage).toContain("data-testid=\"campaign-draft-compare\"");
     expect(stage).toContain("Campaign contacts");
+    expect(stage).toContain('data-testid="email-contacts-filter"');
+    expect(stage).toContain("Ready to send");
     const page = readFileSync("src/app/(app)/campaigns/[id]/page.tsx", "utf8");
     expect(page).toContain("campaign.contacts");
     expect(page).not.toContain("qualifiedCampaignContacts");

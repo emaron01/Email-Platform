@@ -52,6 +52,8 @@ export type EmailDraftsStageContact = {
   }>;
 };
 
+type ContactListFilter = "all" | "ready_to_send";
+
 export function EmailDraftsStage({
   contacts,
   campaignEmailLength,
@@ -77,12 +79,22 @@ export function EmailDraftsStage({
   readOnly?: boolean;
 }) {
   const [view, setView] = useState<"write" | "compare">("write");
+  const [contactFilter, setContactFilter] =
+    useState<ContactListFilter>("all");
   const [selectedId, setSelectedId] = useState(
     contacts[0]?.campaignContactId ?? "",
   );
+
+  const visibleContacts = useMemo(() => {
+    if (contactFilter === "ready_to_send") {
+      return contacts.filter((row) => row.drafts.length > 0);
+    }
+    return contacts;
+  }, [contactFilter, contacts]);
+
   const selected =
-    contacts.find((row) => row.campaignContactId === selectedId) ??
-    contacts[0] ??
+    visibleContacts.find((row) => row.campaignContactId === selectedId) ??
+    visibleContacts[0] ??
     null;
 
   if (contacts.length === 0) {
@@ -91,7 +103,7 @@ export function EmailDraftsStage({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setView("write")}
@@ -115,10 +127,30 @@ export function EmailDraftsStage({
         >
           Compare drafts
         </button>
+        <label className="ml-auto flex items-center gap-2 text-sm text-slate-700">
+          <span className="font-medium">Show</span>
+          <select
+            data-testid="email-contacts-filter"
+            value={contactFilter}
+            onChange={(event) =>
+              setContactFilter(event.target.value as ContactListFilter)
+            }
+            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
+          >
+            <option value="all">All contacts</option>
+            <option value="ready_to_send">Ready to send</option>
+          </select>
+        </label>
       </div>
 
       {view === "compare" ? (
-        <CampaignDraftCompare contacts={contacts} />
+        visibleContacts.length === 0 ? (
+          <p className="rounded-md border border-dashed border-slate-300 p-6 text-center text-sm text-slate-600">
+            No drafts are ready to send.
+          </p>
+        ) : (
+          <CampaignDraftCompare contacts={visibleContacts} />
+        )
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)]">
           <nav
@@ -127,40 +159,52 @@ export function EmailDraftsStage({
           >
             <p className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-slate-500">
               Contacts
+              {contactFilter === "ready_to_send"
+                ? ` (${visibleContacts.length})`
+                : ""}
             </p>
-            <ul className="mt-1 space-y-1">
-              {contacts.map((row) => {
-                const active = row.campaignContactId === selected?.campaignContactId;
-                const draftCount = row.drafts.length;
-                return (
-                  <li key={row.campaignContactId}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedId(row.campaignContactId)}
-                      className={`w-full rounded-md px-2 py-2 text-left text-sm ${
-                        active
-                          ? "bg-white font-medium text-slate-900 shadow-sm ring-1 ring-slate-300"
-                          : "text-slate-700 hover:bg-white"
-                      }`}
-                    >
-                      <span className="block truncate">{row.contactName}</span>
-                      <span className="mt-0.5 block truncate text-xs text-slate-500">
-                        {row.contactDetails}
-                      </span>
-                      <span className="mt-1 block text-xs text-slate-500">
-                        {row.qualificationBucket
-                          ? QUALIFICATION_BUCKET_LABELS[row.qualificationBucket]
-                          : "Not scored"}
-                        {" · "}
-                        {draftCount === 0
-                          ? "No draft"
-                          : `${draftCount} draft${draftCount === 1 ? "" : "s"}`}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+            {visibleContacts.length === 0 ? (
+              <p className="px-2 py-3 text-sm text-slate-600">
+                No drafts are ready to send.
+              </p>
+            ) : (
+              <ul className="mt-1 space-y-1">
+                {visibleContacts.map((row) => {
+                  const active =
+                    row.campaignContactId === selected?.campaignContactId;
+                  const draftCount = row.drafts.length;
+                  return (
+                    <li key={row.campaignContactId}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(row.campaignContactId)}
+                        className={`w-full rounded-md px-2 py-2 text-left text-sm ${
+                          active
+                            ? "bg-white font-medium text-slate-900 shadow-sm ring-1 ring-slate-300"
+                            : "text-slate-700 hover:bg-white"
+                        }`}
+                      >
+                        <span className="block truncate">{row.contactName}</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">
+                          {row.contactDetails}
+                        </span>
+                        <span className="mt-1 block text-xs text-slate-500">
+                          {row.qualificationBucket
+                            ? QUALIFICATION_BUCKET_LABELS[
+                                row.qualificationBucket
+                              ]
+                            : "Not scored"}
+                          {" · "}
+                          {draftCount === 0
+                            ? "No draft"
+                            : `${draftCount} draft${draftCount === 1 ? "" : "s"}`}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </nav>
           {selected ? (
             <section

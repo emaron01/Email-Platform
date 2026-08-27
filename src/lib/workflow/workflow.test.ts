@@ -324,6 +324,28 @@ describe("workflow view contracts", () => {
     expect(redirectPage).toContain(
       "redirect(`/campaigns/${id}?stage=${stage}`)",
     );
+    expect(redirectPage).toContain('send: "emails"');
+    expect(redirectPage).toContain(
+      "redirect(`/campaigns/${id}?stage=${redirected}`)",
+    );
+  });
+
+  it("unlocks Report from sentEmailCount without a Send stage", () => {
+    const stages = buildCampaignStages({
+      setupComplete: true,
+      hasListData: true,
+      companyResultCount: 1,
+      survivingCompanyCount: 1,
+      qualifiedContactCount: 1,
+      generatedEmailCount: 1,
+      sentEmailCount: 1,
+    });
+    expect(stages.find((stage) => stage.key === "report")).toMatchObject({
+      number: 9,
+      available: true,
+      unavailableReason: null,
+    });
+    expect(stages.map((stage) => stage.key)).not.toContain("send");
   });
 
   it("lists campaigns on home even when setup is incomplete, and links Lists", () => {

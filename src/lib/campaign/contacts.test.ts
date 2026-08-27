@@ -21,6 +21,7 @@ describe("campaign contact management seams", () => {
 
     expect(listPage).toContain("href={`/campaigns/${campaign.id}`}");
     expect(listPage).not.toContain("GenerateEmailDraftForm");
+    expect(detailPage).not.toContain("GenerateEmailDraftForm");
     expect(detailPage).toContain("EmailDraftsStage");
     expect(detailPage).toContain("CampaignContactsManager");
     expect(detailPage).toContain("Compare drafts");
@@ -28,6 +29,13 @@ describe("campaign contact management seams", () => {
       'mode={currentStage === "emails" ? "EMAILS" : "SEND"}',
     );
     expect(detailPage).toContain("Generate, edit, and send drafts");
+    const draftsStage = readFileSync(
+      "src/components/EmailDraftsStage.tsx",
+      "utf8",
+    );
+    expect(draftsStage).toContain('data-testid="email-contacts-filter"');
+    expect(draftsStage).toContain("Ready to send");
+    expect(draftsStage).toContain('value="all"');
     expect(manager).toContain("Search existing contacts");
     expect(manager).toContain("Bulk add from a scored run");
     expect(manager).toContain("campaign-contacts-status");
