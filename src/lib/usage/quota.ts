@@ -176,6 +176,10 @@ export type DailyEmailSendUsage = {
   warning: boolean;
 };
 
+/**
+ * Counts a confirmed send toward the daily advisory ledger.
+ * Never blocks — volume is the rep's domain-reputation risk, not our cost.
+ */
 export async function reserveDailyEmailSend(input: {
   organizationId: string;
   userId: string;
@@ -187,17 +191,9 @@ export async function reserveDailyEmailSend(input: {
   });
   const periodKey = getOrganizationDayKey(org.timezone);
   const resource: UsageResource = "EMAIL_SEND";
-  const limit = policy.dailyEmailSendLimit;
-  if (limit <= 0) {
-    throw new UsageQuotaError(
-      `Daily send limit reached: 0 of ${limit}. Try again tomorrow or ask an administrator to adjust your limit.`,
-      "EMAIL_SEND",
-      0,
-      limit,
-    );
-  }
+  const warningLimit = policy.dailyEmailSendWarningLimit;
   const lockKey = `${input.organizationId}:${input.userId}:${resource}:${periodKey}`;
-  const result = await prisma.$transaction(async (tx) => {
+  const used = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
     const existing = await tx.usageQuotaLedger.findUnique({
       where: {
@@ -209,44 +205,31 @@ export async function reserveDailyEmailSend(input: {
         },
       },
     });
-    const consumed = existing?.consumed ?? 0;
-    if (consumed >= limit) {
-      return { allowed: false as const, consumed };
+    if (existing) {
+      const updated = await tx.usageQuotaLedger.update({
+        where: { id: existing.id },
+        data: { consumed: { increment: 1 } },
+      });
+      return updated.consumed;
     }
-    const used = existing
-      ? (
-          await tx.usageQuotaLedger.update({
-            where: { id: existing.id },
-            data: { consumed: { increment: 1 } },
-          })
-        ).consumed
-      : (
-          await tx.usageQuotaLedger.create({
-            data: {
-              organizationId: input.organizationId,
-              userId: input.userId,
-              resource,
-              periodKey,
-              consumed: 1,
-            },
-          })
-        ).consumed;
-    return { allowed: true as const, consumed: used };
+    const created = await tx.usageQuotaLedger.create({
+      data: {
+        organizationId: input.organizationId,
+        userId: input.userId,
+        resource,
+        periodKey,
+        consumed: 1,
+      },
+    });
+    return created.consumed;
   });
-  if (!result.allowed) {
-    throw new UsageQuotaError(
-      `Daily send limit reached: ${result.consumed} of ${limit}. No email was sent. Try again tomorrow or ask an administrator to adjust your limit.`,
-      "EMAIL_SEND",
-      result.consumed,
-      limit,
-    );
-  }
   return {
-    used: result.consumed,
-    warningLimit: policy.dailyEmailSendWarningLimit,
-    limit,
+    used,
+    warningLimit,
+    // Retained for callers; advisory uses warningLimit only (no hard block).
+    limit: warningLimit,
     periodKey,
-    warning: result.consumed >= policy.dailyEmailSendWarningLimit,
+    warning: used >= warningLimit,
   };
 }
 
@@ -297,11 +280,12 @@ export async function getDailyEmailSendUsage(input: {
     },
   });
   const used = row?.consumed ?? 0;
+  const warningLimit = policy.dailyEmailSendWarningLimit;
   return {
     used,
-    warningLimit: policy.dailyEmailSendWarningLimit,
-    limit: policy.dailyEmailSendLimit,
+    warningLimit,
+    limit: warningLimit,
     periodKey,
-    warning: used >= policy.dailyEmailSendWarningLimit,
+    warning: used >= warningLimit,
   };
 }

@@ -7,8 +7,14 @@
  */
 export const DEFAULT_USAGE_POLICY_VALUES = {
   activeResearchedCompanyLimit: 100,
-  dailyEmailGenerationLimit: 35,
+  /** Platform AI cost ceiling — far above normal sending volume; not a send cap. */
+  dailyEmailGenerationLimit: 500,
+  /** Soft domain-reputation advisory for confirmed sends (never a hard block). */
   dailyEmailSendWarningLimit: 150,
+  /**
+   * Legacy hard-block field retained in the DB for existing orgs. Enforcement no
+   * longer blocks sends; advisory uses dailyEmailSendWarningLimit only.
+   */
   dailyEmailSendLimit: 250,
   emailDeeplinkMaxUrlLength: 1800,
 } as const;

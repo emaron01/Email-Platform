@@ -72,7 +72,9 @@ describe.skipIf(!hasDatabase)(
 
     // Defaults are stored in DB — enforcement reads these rows, not scattered constants.
     expect(usage.activeResearchedCompanyLimit).toBe(100);
-    expect(usage.dailyEmailGenerationLimit).toBe(35);
+    expect(usage.dailyEmailGenerationLimit).toBe(
+      DEFAULT_USAGE_POLICY_VALUES.dailyEmailGenerationLimit,
+    );
 
     const membership = await prisma.organizationMembership.findUnique({
       where: {
@@ -88,6 +90,7 @@ describe.skipIf(!hasDatabase)(
   it("effective policy resolves org defaults and user overrides", async () => {
     if (!ready) return;
     const { getEffectiveUsagePolicy } = await import("@/lib/usage/policy");
+    const { DEFAULT_USAGE_POLICY_VALUES } = await import("@/lib/usage/defaults");
     const { createIndividualWorkspace } = await import("@/lib/org/signup");
 
     const { organization, user } = await createIndividualWorkspace({
@@ -119,7 +122,9 @@ describe.skipIf(!hasDatabase)(
     expect(overridden.sources.activeResearchedCompanyLimit).toBe(
       "USER_OVERRIDE",
     );
-    expect(overridden.dailyEmailGenerationLimit).toBe(35);
+    expect(overridden.dailyEmailGenerationLimit).toBe(
+      DEFAULT_USAGE_POLICY_VALUES.dailyEmailGenerationLimit,
+    );
     expect(overridden.sources.dailyEmailGenerationLimit).toBe("ORGANIZATION");
   });
 

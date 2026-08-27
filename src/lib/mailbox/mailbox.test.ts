@@ -445,7 +445,7 @@ describe.skipIf(!hasDatabase)(
       expect(sent.sendUsage).toMatchObject({
         used: 1,
         warningLimit: 1,
-        limit: 2,
+        limit: 1,
         warning: true,
       });
       expect(
@@ -484,8 +484,9 @@ describe.skipIf(!hasDatabase)(
       });
     });
 
-    it("blocks at the DB-backed send limit without a partial send", async () => {
+    it("warns at the advisory threshold but never hard-blocks a send", async () => {
       const emailDraft = await draft();
+      await connect(userAId, new Date(Date.now() + 60 * 60 * 1000));
       await prisma.userUsageOverride.upsert({
         where: {
           organizationId_userId: { organizationId, userId: userAId },
@@ -501,38 +502,57 @@ describe.skipIf(!hasDatabase)(
           dailyEmailSendLimit: 1,
         },
       });
+      const { getOrganizationDayKey } = await import("@/lib/usage/timezone");
+      const org = await prisma.organization.findUniqueOrThrow({
+        where: { id: organizationId },
+        select: { timezone: true },
+      });
+      await prisma.usageQuotaLedger.upsert({
+        where: {
+          organizationId_userId_resource_periodKey: {
+            organizationId,
+            userId: userAId,
+            resource: "EMAIL_SEND",
+            periodKey: getOrganizationDayKey(org.timezone),
+          },
+        },
+        create: {
+          organizationId,
+          userId: userAId,
+          resource: "EMAIL_SEND",
+          periodKey: getOrganizationDayKey(org.timezone),
+          consumed: 5,
+        },
+        update: { consumed: 5 },
+      });
       const provider = {
         id: "MICROSOFT_365" as const,
-        send: vi.fn(),
+        send: vi.fn().mockResolvedValue({
+          provider: "MICROSOFT_365" as const,
+          acceptedAt: new Date("2026-08-24T20:45:00.000Z"),
+          providerMessageId: "provider-message-limit",
+          providerRequestId: "graph-request-limit",
+        }),
       };
       const { sendEmailDraftWithConnectedMailbox } = await import(
         "@/lib/mailbox/send"
       );
-      await expect(
-        sendEmailDraftWithConnectedMailbox({
-          draftId: emailDraft.id,
-          userId: userAId,
-          subject: "Limit subject",
-          body: "Limit body",
-          provider,
-        }),
-      ).rejects.toMatchObject({
-        resource: "EMAIL_SEND",
-        used: 1,
-        limit: 1,
+      const sent = await sendEmailDraftWithConnectedMailbox({
+        draftId: emailDraft.id,
+        userId: userAId,
+        subject: "Advisory subject",
+        body: "Advisory body",
+        provider,
       });
-      expect(provider.send).not.toHaveBeenCalled();
+      expect(sent.sendUsage.warning).toBe(true);
+      expect(sent.sendUsage.used).toBe(6);
+      expect(provider.send).toHaveBeenCalledTimes(1);
       expect(
         await prisma.emailDraft.findUniqueOrThrow({
           where: { id: emailDraft.id },
-          select: { status: true, sentAt: true },
+          select: { status: true },
         }),
-      ).toEqual({ status: "DRAFT", sentAt: null });
-      expect(
-        await prisma.emailSendRecord.count({
-          where: { emailDraftId: emailDraft.id },
-        }),
-      ).toBe(0);
+      ).toEqual({ status: "SENT" });
     });
   },
 );

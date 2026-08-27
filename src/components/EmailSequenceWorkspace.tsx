@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   addFollowUpEmailAction,
@@ -30,6 +30,10 @@ import {
   type EmailClient,
 } from "@/lib/email-generation/email-body";
 import { SuppressContactForm } from "@/components/SuppressContactForm";
+import {
+  deeplinkSendDeclinedStorageKey,
+  formatDailySendAdvisory,
+} from "@/lib/usage/send-advisory";
 
 type SequenceDraft = {
   id: string;
@@ -149,6 +153,7 @@ export function EmailSequenceWorkspace({
   const [replyText, setReplyText] = useState("");
   const [showReplyBox, setShowReplyBox] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [sendConfirmDismissed, setSendConfirmDismissed] = useState(false);
   const [selectedPersonaId, setSelectedPersonaId] = useState(
     resolvedPersonaId ?? personaOptions[0]?.id ?? "",
   );
@@ -170,6 +175,32 @@ export function EmailSequenceWorkspace({
   const displayWarnings = useMemo(
     () => result?.offerWarnings ?? offerWarnings,
     [result, offerWarnings],
+  );
+
+  useEffect(() => {
+    setSendConfirmDismissed(false);
+  }, [selected?.id, selected?.handoffAt]);
+
+  const [deeplinkSendDeclined, setDeeplinkSendDeclined] = useState(false);
+  useEffect(() => {
+    if (!selected?.id || !selected.handoffAt) {
+      setDeeplinkSendDeclined(false);
+      return;
+    }
+    setDeeplinkSendDeclined(
+      sessionStorage.getItem(
+        deeplinkSendDeclinedStorageKey(selected.id, selected.handoffAt),
+      ) === "1",
+    );
+  }, [selected?.id, selected?.handoffAt]);
+
+  const showSendConfirm = Boolean(
+    !readOnly &&
+      selected &&
+      selected.status !== "SENT" &&
+      selected.handoffAt &&
+      !sendConfirmDismissed &&
+      !deeplinkSendDeclined,
   );
 
   function applyGenerated(next: GenerateEmailDraftActionResult) {
@@ -343,9 +374,36 @@ export function EmailSequenceWorkspace({
       if (!recorded.ok) return;
       if (recorded.handoffAt) {
         updateSelectedDraft({ handoffAt: recorded.handoffAt });
+        setSendConfirmDismissed(false);
       }
-      window.location.assign(href);
+      const opened = window.open(href, "_blank", "noopener,noreferrer");
+      if (!opened) {
+        window.location.assign(href);
+      }
     });
+  }
+
+  function answerSendConfirm(answer: "yes" | "no" | "not_yet") {
+    if (!selected?.handoffAt) return;
+    if (answer === "not_yet") {
+      setSendConfirmDismissed(true);
+      return;
+    }
+    if (answer === "no") {
+      sessionStorage.setItem(
+        deeplinkSendDeclinedStorageKey(selected.id, selected.handoffAt),
+        "1",
+      );
+      setDeeplinkSendDeclined(true);
+      setSendConfirmDismissed(true);
+      setResult({
+        ok: true,
+        message:
+          "Left as unsent. Open the draft again after you send, or mark it sent manually.",
+      });
+      return;
+    }
+    markSent();
   }
 
   function markSent() {
@@ -850,6 +908,46 @@ export function EmailSequenceWorkspace({
                     I sent this — mark as sent
                   </button>
                 </div>
+                {showSendConfirm ? (
+                  <div
+                    data-testid="deeplink-send-confirm"
+                    className="space-y-2 rounded-md border border-slate-300 bg-slate-50 p-3"
+                  >
+                    <p className="text-sm font-medium text-slate-900">
+                      Did you send this email?
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      We ask so follow-ups are timed correctly and so you
+                      don&apos;t email the same person twice.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => answerSendConfirm("yes")}
+                        className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => answerSendConfirm("no")}
+                        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800"
+                      >
+                        No
+                      </button>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => answerSendConfirm("not_yet")}
+                        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800"
+                      >
+                        Not yet
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {mailboxConnection?.status !== "CONNECTED" ? (
                   <a
                     href="/settings/email"
@@ -862,13 +960,13 @@ export function EmailSequenceWorkspace({
                 ) : null}
                 {dailySendUsage.used >= dailySendUsage.warningLimit ? (
                   <p className="text-xs font-medium text-amber-700">
-                    Daily send warning: {dailySendUsage.used} of{" "}
-                    {dailySendUsage.limit} sends used.
+                    {formatDailySendAdvisory(dailySendUsage.used)}
                   </p>
                 ) : null}
                 <p className="text-xs text-slate-500">
                   Mark as sent records your assertion that you sent the email.
-                  It is not a delivery confirmation.
+                  It is not a delivery confirmation. Connected Microsoft 365
+                  send is confirmed automatically.
                 </p>
               </div>
             ) : (

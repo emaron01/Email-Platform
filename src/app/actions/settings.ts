@@ -60,19 +60,15 @@ export async function updateOrganizationUsagePolicyAction(
     );
     const dailyEmailGenerationLimit = asPositiveInt(
       formData.get("dailyEmailGenerationLimit"),
-      "Daily email generation limit",
+      "Daily AI email generation limit",
     );
     const dailyEmailSendWarningLimit = asPositiveInt(
       formData.get("dailyEmailSendWarningLimit"),
-      "Daily email send warning limit",
+      "Daily send advisory threshold",
     );
-    const dailyEmailSendLimit = asPositiveInt(
-      formData.get("dailyEmailSendLimit"),
-      "Daily email send limit",
-    );
-    if (dailyEmailSendWarningLimit > dailyEmailSendLimit) {
-      throw new Error("Daily send warning limit cannot exceed the send limit.");
-    }
+    // Send volume is advisory-only; keep the legacy block column in sync with the
+    // advisory threshold so old rows stay coherent without enforcing a hard cap.
+    const dailyEmailSendLimit = dailyEmailSendWarningLimit;
 
     await prisma.organizationUsagePolicy.upsert({
       where: { organizationId: organization.id },
@@ -206,41 +202,24 @@ export async function upsertUserUsageOverrideAction(
     const sendWarningRaw = String(
       formData.get("dailyEmailSendWarningLimit") ?? "",
     ).trim();
-    const sendLimitRaw = String(
-      formData.get("dailyEmailSendLimit") ?? "",
-    ).trim();
 
     const activeResearchedCompanyLimit =
       activeRaw === "" ? null : asPositiveInt(activeRaw, "Active company limit");
     const dailyEmailGenerationLimit =
-      emailRaw === "" ? null : asPositiveInt(emailRaw, "Daily email limit");
+      emailRaw === ""
+        ? null
+        : asPositiveInt(emailRaw, "Daily AI email generation limit");
     const dailyEmailSendWarningLimit =
       sendWarningRaw === ""
         ? null
-        : asPositiveInt(sendWarningRaw, "Daily send warning limit");
-    const dailyEmailSendLimit =
-      sendLimitRaw === ""
-        ? null
-        : asPositiveInt(sendLimitRaw, "Daily send limit");
-    const organizationPolicy =
-      await prisma.organizationUsagePolicy.findUniqueOrThrow({
-        where: { organizationId: organization.id },
-      });
-    if (
-      (dailyEmailSendWarningLimit ??
-        organizationPolicy.dailyEmailSendWarningLimit) >
-      (dailyEmailSendLimit ?? organizationPolicy.dailyEmailSendLimit)
-    ) {
-      throw new Error(
-        "Effective daily send warning limit cannot exceed the send limit.",
-      );
-    }
+        : asPositiveInt(sendWarningRaw, "Daily send advisory threshold");
+    // Keep legacy block column aligned with the advisory threshold when set.
+    const dailyEmailSendLimit = dailyEmailSendWarningLimit;
 
     if (
       activeResearchedCompanyLimit == null &&
-      dailyEmailGenerationLimit == null
-      && dailyEmailSendWarningLimit == null
-      && dailyEmailSendLimit == null
+      dailyEmailGenerationLimit == null &&
+      dailyEmailSendWarningLimit == null
     ) {
       await prisma.userUsageOverride.deleteMany({
         where: { organizationId: organization.id, userId },

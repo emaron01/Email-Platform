@@ -118,7 +118,7 @@ export default async function UsageSettingsPage({
         </div>
         <div className="rounded-md border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-medium text-slate-900">
-            Emails generated today
+            AI emails generated today
           </h2>
           <p className="mt-2 text-2xl font-semibold tabular-nums">
             {emailUsage.used}{" "}
@@ -127,22 +127,25 @@ export default async function UsageSettingsPage({
             </span>
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Day {emailUsage.periodKey} · Source:{" "}
+            Platform generation ceiling · Day {emailUsage.periodKey} · Source:{" "}
             {policy.sources.dailyEmailGenerationLimit}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Does not count toward the send advisory.
           </p>
         </div>
         <div className="rounded-md border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-medium text-slate-900">
-            Emails sent today
+            Confirmed sends today
           </h2>
           <p className="mt-2 text-2xl font-semibold tabular-nums">
-            {sendUsage.used}{" "}
-            <span className="text-base font-normal text-slate-500">
-              / {sendUsage.limit}
-            </span>
+            {sendUsage.used}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Warning at {sendUsage.warningLimit} · Day {sendUsage.periodKey}
+            Advisory at {sendUsage.warningLimit} · Day {sendUsage.periodKey}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Warns for domain reputation; never blocks sending.
           </p>
         </div>
       </section>

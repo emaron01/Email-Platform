@@ -961,6 +961,11 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("Generate Email");
     expect(form).toContain("+ Add to sequence");
     expect(form).toContain("I sent this — mark as sent");
+    expect(form).toContain("Did you send this email?");
+    expect(form).toContain("deeplink-send-confirm");
+    expect(form).toContain("Not yet");
+    expect(form).toContain("formatDailySendAdvisory");
+    expect(form).not.toContain("Daily send warning:");
     expect(form).toContain("not a delivery confirmation");
     expect(form).toContain("Draft reply");
     expect(form).toContain("What should change?");

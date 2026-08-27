@@ -83,7 +83,8 @@ export default async function OrganizationSettingsPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-900">Timezone</h2>
         <p className="text-sm text-slate-600">
-          Daily email quotas use this IANA timezone (not server UTC alone).
+          Daily email quotas and the send advisory use this IANA timezone (not
+          server UTC alone).
         </p>
         <ActionFeedbackForm
           action={updateOrganizationTimezoneAction}
@@ -113,6 +114,12 @@ export default async function OrganizationSettingsPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-900">Usage limits</h2>
+        <p className="text-sm text-slate-600">
+          Confirmed sends are advisory only — they leave from the rep&apos;s
+          mailbox and protect domain reputation, not platform cost. AI email
+          generation is a separate platform ceiling and does not count toward
+          the send advisory.
+        </p>
         <ActionFeedbackForm
           action={updateOrganizationUsagePolicyAction}
           className="grid gap-3 sm:grid-cols-2"
@@ -129,7 +136,7 @@ export default async function OrganizationSettingsPage() {
             />
           </label>
           <label className="text-sm">
-            Daily email generations
+            Daily AI email generations
             <input
               name="dailyEmailGenerationLimit"
               type="number"
@@ -138,8 +145,8 @@ export default async function OrganizationSettingsPage() {
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
             />
           </label>
-          <label className="text-sm">
-            Daily send warning
+          <label className="text-sm sm:col-span-2">
+            Daily send advisory threshold
             <input
               name="dailyEmailSendWarningLimit"
               type="number"
@@ -147,16 +154,9 @@ export default async function OrganizationSettingsPage() {
               defaultValue={usagePolicy.dailyEmailSendWarningLimit}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
             />
-          </label>
-          <label className="text-sm">
-            Daily send block
-            <input
-              name="dailyEmailSendLimit"
-              type="number"
-              min={0}
-              defaultValue={usagePolicy.dailyEmailSendLimit}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            />
+            <span className="mt-1 block text-xs text-slate-500">
+              Warn after this many confirmed sends today. Never blocks sending.
+            </span>
           </label>
           <button
             type="submit"
@@ -235,7 +235,7 @@ export default async function OrganizationSettingsPage() {
                 </p>
                 <ActionFeedbackForm
                   action={upsertUserUsageOverrideAction}
-                  className="mt-3 grid gap-2 sm:grid-cols-5"
+                  className="mt-3 grid gap-2 sm:grid-cols-4"
                   testId={`user-override-form-${m.userId}`}
                 >
                   <input type="hidden" name="userId" value={m.userId} />
@@ -251,7 +251,7 @@ export default async function OrganizationSettingsPage() {
                     />
                   </label>
                   <label className="text-xs text-slate-600">
-                    Daily generations
+                    Daily AI generations
                     <input
                       name="dailyEmailGenerationLimit"
                       type="number"
@@ -262,23 +262,12 @@ export default async function OrganizationSettingsPage() {
                     />
                   </label>
                   <label className="text-xs text-slate-600">
-                    Send warning
+                    Send advisory
                     <input
                       name="dailyEmailSendWarningLimit"
                       type="number"
                       min={0}
                       defaultValue={ov?.dailyEmailSendWarningLimit ?? ""}
-                      placeholder="inherit"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="text-xs text-slate-600">
-                    Send block
-                    <input
-                      name="dailyEmailSendLimit"
-                      type="number"
-                      min={0}
-                      defaultValue={ov?.dailyEmailSendLimit ?? ""}
                       placeholder="inherit"
                       className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
                     />

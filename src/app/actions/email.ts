@@ -45,6 +45,7 @@ import { sendEmailDraftWithConnectedMailbox } from "@/lib/mailbox/send";
 import { MailboxConnectionError } from "@/lib/mailbox/microsoft-oauth";
 import { parseEmailLength } from "@/lib/campaign/save";
 import type { EmailLength } from "@prisma/client";
+import { formatDailySendAdvisory } from "@/lib/usage/send-advisory";
 
 export type GenerateEmailDraftActionResult = {
   ok: boolean;
@@ -301,7 +302,7 @@ export async function markEmailDraftSentAction(
     return {
       ok: true,
       message: marked.sendUsage?.warning
-        ? `Marked as sent. Daily send warning: ${marked.sendUsage.used} of ${marked.sendUsage.limit} sends used. This is not a delivery confirmation.`
+        ? `Marked as sent. ${formatDailySendAdvisory(marked.sendUsage.used)}`
         : "Marked as sent based on your confirmation. This is not a delivery confirmation.",
       draftId: emailDraftId,
       sequenceNumber: marked.sequenceNumber,
@@ -373,8 +374,8 @@ export async function recordEmailClientIntentAction(input: {
       ok: true,
       message:
         input.bodyHandling === "COPIED"
-          ? "Email client opened with the full body copied for you to paste. This did not mark the email as sent."
-          : "Email client opened. This did not mark the email as sent.",
+          ? "Email client opened with the full body copied for you to paste. Confirm below whether you sent it."
+          : "Email client opened. Confirm below whether you sent it.",
       draftId: input.emailDraftId,
       sequenceNumber: recorded.sequenceNumber,
       handoffAt: recorded.occurredAt.toISOString(),
@@ -402,7 +403,7 @@ export async function sendEmailDraftConnectedAction(input: {
     return {
       ok: true,
       message: sent.sendUsage.warning
-        ? `Microsoft accepted the message. Daily send warning: ${sent.sendUsage.used} of ${sent.sendUsage.limit} sends used.`
+        ? `Microsoft accepted the message. ${formatDailySendAdvisory(sent.sendUsage.used)}`
         : "Microsoft accepted the message from your mailbox and will save it to Sent items.",
       draftId: sent.draftId,
       sequenceNumber: sent.sequenceNumber,
