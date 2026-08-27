@@ -5,6 +5,11 @@ import {
   billingPlanLabel,
   billingStatusLabel,
 } from "@/lib/billing/billing-state";
+import { countActiveResearchedCompanies } from "@/lib/usage/active-companies";
+import {
+  ensureOrganizationPolicies,
+  getEffectiveUsagePolicy,
+} from "@/lib/usage/policy";
 
 /**
  * Org billing settings — plan/status visible now; Stripe portal/checkout in Phase C.
@@ -12,13 +17,25 @@ import {
  */
 export default async function OrganizationBillingSettingsPage() {
   const { organization, user } = await requireOrgAdmin();
+  await ensureOrganizationPolicies(organization.id);
 
-  const billing = await prisma.organizationBillingProfile.findUnique({
-    where: { organizationId: organization.id },
-  });
+  const [billing, policy, activeCompanies] = await Promise.all([
+    prisma.organizationBillingProfile.findUnique({
+      where: { organizationId: organization.id },
+    }),
+    getEffectiveUsagePolicy({
+      organizationId: organization.id,
+      userId: user.id,
+    }),
+    countActiveResearchedCompanies(organization.id),
+  ]);
 
   const planCode = billing?.planCode ?? "FREE";
   const billingStatus = billing?.billingStatus ?? "FREE";
+  const remaining = Math.max(
+    0,
+    policy.activeResearchedCompanyLimit - activeCompanies,
+  );
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -85,6 +102,34 @@ export default async function OrganizationBillingSettingsPage() {
           Stripe portal and checkout hooks reserved for Phase C (
           <code className="text-[11px]">/api/billing/portal</code>,{" "}
           <code className="text-[11px]">/api/billing/checkout</code>).
+        </div>
+      </section>
+
+      <section
+        className="space-y-3 rounded-lg border border-slate-200 bg-white p-5"
+        data-testid="billing-research-capacity"
+      >
+        <h2 className="text-lg font-medium text-slate-900">
+          Company research capacity
+        </h2>
+        <p className="text-sm text-slate-600">
+          {activeCompanies} of {policy.activeResearchedCompanyLimit} active
+          researched companies used
+          {remaining > 0
+            ? ` — ${remaining} remaining.`
+            : " — allowance used."}
+        </p>
+        <p className="text-sm text-slate-600">
+          One slot per distinct company with fresh research. Refreshing a
+          company you already researched does not use another slot.
+        </p>
+        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+          <p className="font-medium text-slate-800">Add capacity</p>
+          <p className="mt-1">
+            Purchasing additional company research slots will appear here when
+            Stripe is connected. Until then, ask a platform admin to raise the
+            organization limit in the platform console.
+          </p>
         </div>
       </section>
     </div>

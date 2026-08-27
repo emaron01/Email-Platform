@@ -36,6 +36,8 @@ import {
   getCurrentOrganization,
   TenantError,
 } from "@/lib/tenant/getCurrentOrganization";
+import { getMembershipForCurrentUser } from "@/lib/org/authz";
+import { getActiveResearchedCompanyUsage } from "@/lib/usage/quota";
 import { formatDate, formatNumber } from "@/lib/utils";
 
 type PageProps = {
@@ -93,24 +95,35 @@ export default async function ScoringReportPage({
     ? Number.parseInt(query.minOverallScore, 10)
     : null;
 
-  const [rows, researchPlan, scoringReadiness, personas, titleSuggestions] =
-    await Promise.all([
-      getScoreReportRows(runId, {
-        scoreLabel: (query.scoreLabel as ScoreLabel | undefined) || "",
-        researchStatus:
-          (query.researchStatus as ResearchStatus | undefined) || "",
-        company: query.company || "",
-        minOverallScore: Number.isFinite(minOverallScore)
-          ? minOverallScore
-          : null,
-        sort,
-        sortDir,
-      }),
-      getCompaniesNeedingResearchForScoringRun(runId),
-      getScoringReadiness(runId),
-      listPersonas(run.productId),
-      listTitleSuggestionsForRun(runId),
-    ]);
+  const membership = await getMembershipForCurrentUser(organization.id);
+  const [
+    rows,
+    researchPlan,
+    scoringReadiness,
+    personas,
+    titleSuggestions,
+    researchAllowance,
+  ] = await Promise.all([
+    getScoreReportRows(runId, {
+      scoreLabel: (query.scoreLabel as ScoreLabel | undefined) || "",
+      researchStatus:
+        (query.researchStatus as ResearchStatus | undefined) || "",
+      company: query.company || "",
+      minOverallScore: Number.isFinite(minOverallScore)
+        ? minOverallScore
+        : null,
+      sort,
+      sortDir,
+    }),
+    getCompaniesNeedingResearchForScoringRun(runId),
+    getScoringReadiness(runId),
+    listPersonas(run.productId),
+    listTitleSuggestionsForRun(runId),
+    getActiveResearchedCompanyUsage({
+      organizationId: organization.id,
+      userId: membership.user.id,
+    }),
+  ]);
 
   const suppressedEmails = await listActiveNormalizedEmails(
     organization.id,
@@ -180,6 +193,7 @@ export default async function ScoringReportPage({
           <ResearchRunPanel
             runId={run.id}
             researchAiConfigured={isResearchAiConfigured()}
+            allowance={researchAllowance}
             plan={{
               totalContacts: researchPlan.totalContacts,
               uniqueCompanies: researchPlan.uniqueCompanies,

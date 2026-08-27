@@ -293,7 +293,11 @@ describe.skipIf(!hasDatabase)(
         resource: "ACTIVE_RESEARCHED_COMPANY",
         wouldConsumeNewActiveCompanySlot: true,
       }),
-    ).rejects.toBeInstanceOf(UsageQuotaError);
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof UsageQuotaError &&
+        /allowance|Billing/i.test(error.message),
+    );
   });
 
   it("daily email quota is concurrency-safe and timezone-keyed", async () => {

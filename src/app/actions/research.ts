@@ -9,6 +9,10 @@ import {
 } from "@/lib/tenant/companies";
 import { TenantError } from "@/lib/tenant/getCurrentOrganization";
 import type { ResearchConfidence } from "@prisma/client";
+import {
+  formatResearchAllowanceExhausted,
+  RESEARCH_BILLING_HREF,
+} from "@/lib/usage/research-allowance";
 
 function requiredString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -21,6 +25,33 @@ function parseLineList(value: string): string[] {
     .filter(Boolean);
 }
 
+function formatQuotaBlockedSummary(input: {
+  quotaBlocked: number;
+  quotaBlockedCompanyNames: string[];
+  completed: number;
+  limit: number;
+}): string {
+  const names = input.quotaBlockedCompanyNames;
+  const preview = names.slice(0, 5).join(", ");
+  const more =
+    names.length > 5 ? ` and ${names.length - 5} more` : names.length > 0 ? "" : "";
+  const listed =
+    names.length > 0
+      ? ` Not researched: ${preview}${more}.`
+      : "";
+
+  if (input.completed > 0) {
+    return (
+      `Researched ${input.completed} compan${input.completed === 1 ? "y" : "ies"} ` +
+      `with your remaining allowance. ${input.quotaBlocked} left unresearched because ` +
+      `the allowance is used (${input.limit} companies). Add capacity in Billing.` +
+      listed
+    );
+  }
+
+  return formatResearchAllowanceExhausted(input.limit) + listed;
+}
+
 export async function researchCompaniesForScoringRunAction(
   formData: FormData,
 ): Promise<{
@@ -30,6 +61,11 @@ export async function researchCompaniesForScoringRunAction(
   skippedFresh?: number;
   failed?: number;
   completed?: number;
+  quotaBlocked?: number;
+  exhausted?: boolean;
+  warning?: boolean;
+  remaining?: number;
+  billingHref?: string;
 }> {
   const scoringRunId = requiredString(formData, "scoringRunId");
   const forceRefresh = requiredString(formData, "forceRefresh") === "1";
@@ -49,6 +85,8 @@ export async function researchCompaniesForScoringRunAction(
         skippedFresh: plan.alreadyResearched,
         failed: 0,
         completed: 0,
+        quotaBlocked: 0,
+        billingHref: RESEARCH_BILLING_HREF,
       };
     }
 
@@ -57,6 +95,22 @@ export async function researchCompaniesForScoringRunAction(
     });
 
     revalidatePath(`/scoring/${scoringRunId}`);
+
+    if (result.quotaBlocked > 0) {
+      return {
+        ok: result.completed > 0,
+        message: formatQuotaBlockedSummary({
+          quotaBlocked: result.quotaBlocked,
+          quotaBlockedCompanyNames: result.quotaBlockedCompanyNames,
+          completed: result.completed,
+          limit: result.allowance.limit,
+        }),
+        ...result,
+        exhausted: result.allowance.exhausted,
+        remaining: result.allowance.remaining,
+        billingHref: RESEARCH_BILLING_HREF,
+      };
+    }
 
     if (
       result.attempted > 0 &&
@@ -69,6 +123,7 @@ export async function researchCompaniesForScoringRunAction(
         message:
           "Automated company research is not configured. Set RESEARCH_AI_* in .env.local (or Render). Manual research on company pages still works.",
         ...result,
+        billingHref: RESEARCH_BILLING_HREF,
       };
     }
 
@@ -77,6 +132,7 @@ export async function researchCompaniesForScoringRunAction(
         ok: false,
         message: `Research failed for ${result.failed} compan${result.failed === 1 ? "y" : "ies"}. Prior successful research was preserved where available.`,
         ...result,
+        billingHref: RESEARCH_BILLING_HREF,
       };
     }
 
@@ -84,6 +140,9 @@ export async function researchCompaniesForScoringRunAction(
       ok: true,
       message: `Research pass finished: ${result.completed} completed, ${result.failed} failed, ${result.skippedFresh} skipped (fresh/unconfigured).`,
       ...result,
+      remaining: result.allowance.remaining,
+      exhausted: result.allowance.exhausted,
+      billingHref: RESEARCH_BILLING_HREF,
     };
   } catch (error) {
     const message =
@@ -109,8 +168,17 @@ export async function refreshCompanyResearchAction(
       return { ok: false, message: "Company is required." };
     }
 
-    await researchCompany(companyId, { force: true });
+    const result = await researchCompany(companyId, { force: true });
     revalidatePath(`/companies/${companyId}`);
+    if (result.quotaBlocked) {
+      return {
+        ok: false,
+        message:
+          result.reason ??
+          formatResearchAllowanceExhausted(0) +
+            ` Add capacity at ${RESEARCH_BILLING_HREF}.`,
+      };
+    }
     return { ok: true, message: "Research refreshed." };
   } catch (error) {
     return {

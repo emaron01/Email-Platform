@@ -814,24 +814,79 @@ export async function runResearchForScoringRun(
   skippedFresh: number;
   failed: number;
   completed: number;
+  quotaBlocked: number;
+  quotaBlockedCompanyNames: string[];
+  allowance: {
+    used: number;
+    limit: number;
+    remaining: number;
+    exhausted: boolean;
+  };
 }> {
+  const organizationId = await orgId();
   const plan = await getCompaniesNeedingResearchForScoringRun(scoringRunId);
+  const user = await getCurrentUser();
 
   const targets = options?.forceRefresh
     ? plan.items
     : plan.items.filter((item) => item.reason !== "fresh");
 
-  const results = await mapPool(targets, RESEARCH_CONCURRENCY, (item) =>
-    researchCompany(item.companyId, {
-      force: options?.forceRefresh,
-    }),
+  const refreshTargets: typeof targets = [];
+  const newSlotTargets: typeof targets = [];
+  for (const item of targets) {
+    const hasSlot = await companyHasActiveResearchSlot(
+      organizationId,
+      item.companyId,
+    );
+    if (hasSlot) refreshTargets.push(item);
+    else newSlotTargets.push(item);
+  }
+
+  let remainingSlots = Number.POSITIVE_INFINITY;
+  let allowanceView = {
+    used: 0,
+    limit: 0,
+    remaining: 0,
+    exhausted: false,
+  };
+  if (user) {
+    const { getActiveResearchedCompanyUsage } = await import("@/lib/usage/quota");
+    const usage = await getActiveResearchedCompanyUsage({
+      organizationId,
+      userId: user.id,
+    });
+    remainingSlots = usage.remaining;
+    allowanceView = {
+      used: usage.used,
+      limit: usage.limit,
+      remaining: usage.remaining,
+      exhausted: usage.exhausted,
+    };
+  }
+
+  const allowedNew = newSlotTargets.slice(0, Math.max(0, remainingSlots));
+  const blockedNew = newSlotTargets.slice(Math.max(0, remainingSlots));
+
+  const results = await mapPool(
+    [...refreshTargets, ...allowedNew],
+    RESEARCH_CONCURRENCY,
+    (item) =>
+      researchCompany(item.companyId, {
+        force: options?.forceRefresh,
+      }),
   );
 
   let skippedFresh = 0;
   let failed = 0;
   let completed = 0;
+  let quotaBlocked = blockedNew.length;
+  const quotaBlockedCompanyNames = blockedNew.map((item) => item.companyName);
 
   for (const result of results) {
+    if (result.quotaBlocked) {
+      quotaBlocked += 1;
+      continue;
+    }
     if (result.skipped) {
       skippedFresh += 1;
       continue;
@@ -850,11 +905,28 @@ export async function runResearchForScoringRun(
     }
   }
 
+  if (user) {
+    const { getActiveResearchedCompanyUsage } = await import("@/lib/usage/quota");
+    const usage = await getActiveResearchedCompanyUsage({
+      organizationId,
+      userId: user.id,
+    });
+    allowanceView = {
+      used: usage.used,
+      limit: usage.limit,
+      remaining: usage.remaining,
+      exhausted: usage.exhausted,
+    };
+  }
+
   return {
-    attempted: results.length,
+    attempted: results.length + blockedNew.length,
     skippedFresh,
     failed,
     completed,
+    quotaBlocked,
+    quotaBlockedCompanyNames,
+    allowance: allowanceView,
   };
 }
 
@@ -882,6 +954,28 @@ export async function updateManualCompanyResearch(input: {
   const latest = await getLatestCompanyResearch(company.id);
   const now = new Date();
   const researchPolicy = await getResearchPolicy(organizationId);
+  const user = await getCurrentUser();
+  const alreadyHasActiveSlot = await companyHasActiveResearchSlot(
+    organizationId,
+    company.id,
+  );
+
+  if (user && !alreadyHasActiveSlot) {
+    try {
+      await assertUsageAllowed({
+        organizationId,
+        userId: user.id,
+        resource: "ACTIVE_RESEARCHED_COMPANY",
+        wouldConsumeNewActiveCompanySlot: true,
+        companyId: company.id,
+      });
+    } catch (error) {
+      if (error instanceof UsageQuotaError) {
+        throw new TenantError(error.message);
+      }
+      throw error;
+    }
+  }
 
   const data = {
     organizationId,

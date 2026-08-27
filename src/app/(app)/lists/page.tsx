@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { AddContactsWizard } from "@/components/AddContactsWizard";
+import { CompanyResearchAllowanceBanner } from "@/components/CompanyResearchAllowanceBanner";
 import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import {
   EmptyState,
   PageHeader,
   TenantMissing,
 } from "@/components/ui";
+import { getMembershipForCurrentUser } from "@/lib/org/authz";
 import { listContactLists } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
+import { getActiveResearchedCompanyUsage } from "@/lib/usage/quota";
 import { formatDate, formatNumber } from "@/lib/utils";
 
 export default async function ListsPage({
@@ -31,7 +34,14 @@ export default async function ListsPage({
     );
   }
 
-  const lists = await listContactLists({ includeArchived });
+  const membership = await getMembershipForCurrentUser(organization.id);
+  const [lists, researchAllowance] = await Promise.all([
+    listContactLists({ includeArchived }),
+    getActiveResearchedCompanyUsage({
+      organizationId: organization.id,
+      userId: membership.user.id,
+    }),
+  ]);
 
   return (
     <div>
@@ -50,6 +60,9 @@ export default async function ListsPage({
         }
       />
 
+      <div className="mb-6">
+        <CompanyResearchAllowanceBanner usage={researchAllowance} />
+      </div>
       {lists.length === 0 ? (
         <EmptyState
           title="No lists yet"

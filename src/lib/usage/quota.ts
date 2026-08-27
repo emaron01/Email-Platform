@@ -3,6 +3,11 @@ import "server-only";
 import type { UsageResource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveUsagePolicy } from "@/lib/usage/policy";
+import {
+  formatResearchQuotaBlockedMessage,
+  toActiveResearchedCompanyUsageView,
+  type ActiveResearchedCompanyUsageView,
+} from "@/lib/usage/research-allowance";
 import { getOrganizationDayKey } from "@/lib/usage/timezone";
 
 export class UsageQuotaError extends Error {
@@ -28,7 +33,8 @@ export type UsageResourceKind = "EMAIL_GENERATION" | "ACTIVE_RESEARCHED_COMPANY"
  * Uses a single INSERT ... ON CONFLICT DO UPDATE ... WHERE consumed < limit
  * so two simultaneous requests cannot both succeed past the limit.
  *
- * Active researched companies use a separate slot-count check (not this ledger).
+ * Active researched companies use a distinct-company slot count (not this ledger).
+ * Refresh / reuse of an existing active company does not consume a new slot.
  */
 export async function assertUsageAllowed(input: {
   organizationId: string;
@@ -47,8 +53,14 @@ export async function assertUsageAllowed(input: {
     const { countActiveResearchedCompanies } = await import(
       "@/lib/usage/active-companies"
     );
-    const used = await countActiveResearchedCompanies(input.organizationId);
     const limit = policy.activeResearchedCompanyLimit;
+    const lockKey = `active-research-slot:${input.organizationId}`;
+
+    // Serialize new-slot checks so concurrent batch research cannot overshoot.
+    const used = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+      return countActiveResearchedCompanies(input.organizationId);
+    });
 
     // Reusing an existing active company does not consume a new slot.
     if (input.wouldConsumeNewActiveCompanySlot === false) {
@@ -57,7 +69,7 @@ export async function assertUsageAllowed(input: {
 
     if (used >= limit) {
       throw new UsageQuotaError(
-        `Active researched company limit reached: ${used} of ${limit}.`,
+        formatResearchQuotaBlockedMessage({ used, limit }),
         "ACTIVE_RESEARCHED_COMPANY",
         used,
         limit,
@@ -330,4 +342,26 @@ export async function getDailyEmailSendUsage(input: {
     periodKey,
     warning: used >= warningLimit,
   };
+}
+
+/**
+ * Distinct companies with fresh usable research vs org entitlement.
+ * Refresh of an already-active company does not reduce remaining.
+ */
+export async function getActiveResearchedCompanyUsage(input: {
+  organizationId: string;
+  userId: string;
+}): Promise<ActiveResearchedCompanyUsageView> {
+  const { countActiveResearchedCompanies } = await import(
+    "@/lib/usage/active-companies"
+  );
+  const policy = await getEffectiveUsagePolicy({
+    organizationId: input.organizationId,
+    userId: input.userId,
+  });
+  const used = await countActiveResearchedCompanies(input.organizationId);
+  return toActiveResearchedCompanyUsageView({
+    used,
+    limit: policy.activeResearchedCompanyLimit,
+  });
 }
