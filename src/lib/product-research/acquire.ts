@@ -14,7 +14,6 @@ import {
   sha256Hex,
 } from "@/lib/product-research/url";
 import type { EvidenceExcerpt } from "@/lib/product-research/prompt";
-import { runProgressiveProductWebSearch } from "@/lib/product-research/progressive-search";
 
 function daysFromNow(days: number): Date {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
@@ -94,8 +93,6 @@ export async function acquireProductEvidence(input: {
   let sourceIds: string[] = [];
   let excerpts: EvidenceExcerpt[] = [];
   let urlResearchPerformed = false;
-  let urlReadFailed = false;
-  let webSearchQueriesUsed = 0;
 
   await prisma.product.update({
     where: { id: product.id },
@@ -117,7 +114,10 @@ export async function acquireProductEvidence(input: {
       const fresh = isUrlSourceFresh(prior.freshnessExpiresAt);
       if (!fresh && !input.forceUrlRefresh) {
         // Keep prior text in bundle but mark that refresh may be offered later.
-        if (prior.extractedText) {
+        if (
+          prior.extractedText &&
+          isUsableProductUrlExtraction(prior.extractedText)
+        ) {
           sourceIds.push(prior.id);
           excerpts.push({
             sourceId: prior.id,
@@ -130,8 +130,11 @@ export async function acquireProductEvidence(input: {
         continue;
       }
       if (fresh && !input.forceUrlRefresh) {
-        sourceIds.push(prior.id);
-        if (prior.extractedText) {
+        if (
+          prior.extractedText &&
+          isUsableProductUrlExtraction(prior.extractedText)
+        ) {
+          sourceIds.push(prior.id);
           excerpts.push({
             sourceId: prior.id,
             sourceType: prior.sourceType,
@@ -175,11 +178,11 @@ export async function acquireProductEvidence(input: {
       const fresh = existing ? isUrlSourceFresh(existing.freshnessExpiresAt) : false;
       if (existing && fresh && !src.forceRefresh && !input.forceUrlRefresh) {
         if (!sourceIds.includes(existing.id)) {
-          sourceIds.push(existing.id);
           if (
             existing.extractedText &&
             isUsableProductUrlExtraction(existing.extractedText)
           ) {
+            sourceIds.push(existing.id);
             excerpts.push({
               sourceId: existing.id,
               sourceType: "URL",
@@ -187,8 +190,6 @@ export async function acquireProductEvidence(input: {
               text: existing.extractedText,
               url: existing.originalUrl,
             });
-          } else {
-            urlReadFailed = true;
           }
         }
         continue;
@@ -196,9 +197,6 @@ export async function acquireProductEvidence(input: {
 
       const fetched = await fetchProductPageUrl(normalized);
       urlResearchPerformed = true;
-      if (!fetched.ok) {
-        urlReadFailed = true;
-      }
       const hash = await sha256Hex(
         `url:${normalized}:${fetched.text || `failed:${fetched.extractedCharCount ?? 0}`}`,
       );
@@ -408,29 +406,8 @@ export async function acquireProductEvidence(input: {
     }
   }
 
-  // Progressive web search when user evidence is thin, or when a product URL
-  // was empty/blocked/unreadable (company-research parity).
-  const progressive = await runProgressiveProductWebSearch({
-    organizationId: input.organizationId,
-    productId: input.productId,
-    userId: input.userId,
-    correlationId,
-    productName: product.name,
-    primaryUrl: product.websiteUrl,
-    excerpts,
-    sourceIds,
-    maxSearchQueries: policy.maxSearchQueriesPerProduct,
-    maxSources: policy.maxSourcesPerProduct,
-    freshnessDays: policy.productSourceResearchFreshnessDays,
-    forceWebSearch: urlReadFailed,
-  });
-
-  excerpts = progressive.excerpts;
-  sourceIds = progressive.sourceIds;
-  webSearchQueriesUsed = progressive.webSearchQueriesUsed;
-  if (progressive.errors.length) {
-    errors.push(...progressive.errors);
-  }
+  // Product path does not web-search for the customer's own product.
+  // Unreadable URLs ask the user for materials; uploads/paste are the primary evidence.
 
   const capped = excerpts.slice(0, policy.maxSourcesPerProduct);
   const cappedIds = [...new Set(capped.map((e) => e.sourceId))];
@@ -455,12 +432,10 @@ export async function acquireProductEvidence(input: {
       createdByUserId: input.userId,
       normalizedEvidenceJson: {
         excerpts: capped,
-        progressiveStoppedReason: progressive.stoppedReason,
-        discoveredSourceCount: progressive.discoveredSourceCount,
       } as unknown as Prisma.InputJsonValue,
       sourceIdsJson: cappedIds as unknown as Prisma.InputJsonValue,
       urlResearchPerformed,
-      webSearchQueriesUsed,
+      webSearchQueriesUsed: 0,
     },
   });
 
@@ -471,7 +446,7 @@ export async function acquireProductEvidence(input: {
     sourceIds: cappedIds,
     excerpts: capped,
     urlResearchPerformed,
-    webSearchQueriesUsed,
+    webSearchQueriesUsed: 0,
     partial: errors.length > 0 && capped.length > 0,
     errors,
   };

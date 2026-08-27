@@ -31,7 +31,6 @@ export type ResearchPolicyResolved = {
   maxSourcesPerContact: number;
   contactResearchFreshnessDays: number;
   productSourceResearchFreshnessDays: number;
-  maxSearchQueriesPerProduct: number;
   maxSourcesPerProduct: number;
   maxSearchQueriesPerPersona: number;
   maxSourcesPerPersona: number;
@@ -82,8 +81,6 @@ export async function ensureOrganizationPolicies(
         DEFAULT_RESEARCH_POLICY_VALUES.contactResearchFreshnessDays,
       productSourceResearchFreshnessDays:
         DEFAULT_RESEARCH_POLICY_VALUES.productSourceResearchFreshnessDays,
-      maxSearchQueriesPerProduct:
-        DEFAULT_RESEARCH_POLICY_VALUES.maxSearchQueriesPerProduct,
       maxSourcesPerProduct:
         DEFAULT_RESEARCH_POLICY_VALUES.maxSourcesPerProduct,
       maxSearchQueriesPerPersona:
@@ -185,7 +182,6 @@ export async function getResearchPolicy(
     contactResearchFreshnessDays: policy.contactResearchFreshnessDays,
     productSourceResearchFreshnessDays:
       policy.productSourceResearchFreshnessDays,
-    maxSearchQueriesPerProduct: policy.maxSearchQueriesPerProduct,
     maxSourcesPerProduct: policy.maxSourcesPerProduct,
     maxSearchQueriesPerPersona: policy.maxSearchQueriesPerPersona,
     maxSourcesPerPersona: policy.maxSourcesPerPersona,

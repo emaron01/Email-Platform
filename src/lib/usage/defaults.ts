@@ -21,7 +21,6 @@ export const DEFAULT_RESEARCH_POLICY_VALUES = {
   maxSourcesPerContact: 6,
   contactResearchFreshnessDays: 90,
   productSourceResearchFreshnessDays: 120,
-  maxSearchQueriesPerProduct: 3,
   maxSourcesPerProduct: 12,
   maxSearchQueriesPerPersona: 2,
   maxSourcesPerPersona: 8,

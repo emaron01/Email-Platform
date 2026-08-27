@@ -4,7 +4,6 @@ import {
   isLikelySiteChromeExtraction,
   isUsableProductUrlExtraction,
 } from "@/lib/product-research/extraction-quality";
-import { evaluateProductEvidenceSufficiency } from "@/lib/product-research/sufficiency";
 import {
   describeProductSourceLead,
   isNearEmptyProductDraft,
@@ -36,15 +35,6 @@ describe("product URL extraction quality", () => {
     `.repeat(3);
     expect(isLikelySiteChromeExtraction(prose)).toBe(false);
     expect(isUsableProductUrlExtraction(prose)).toBe(true);
-  });
-
-  it("does not treat chrome-only excerpts as sufficient evidence", () => {
-    const result = evaluateProductEvidenceSufficiency({
-      productName: "Network Operations Management",
-      excerpts: [{ text: OPENTEXT_SHELL, sourceType: "URL" }],
-    });
-    expect(result.sufficient).toBe(false);
-    expect(isLikelySiteChromeExtraction(OPENTEXT_SHELL)).toBe(true);
   });
 
   it("reports extracted character counts in the unreadable error", () => {
