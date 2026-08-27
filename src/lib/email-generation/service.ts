@@ -20,6 +20,10 @@ import {
   personalizationSourceSummary,
   resolvePersonalization,
 } from "@/lib/email-generation/personalization";
+import {
+  bodyReferencesRequiredSpecific,
+  selectRequiredMotionSpecifics,
+} from "@/lib/email-generation/motion-specifics";
 import { ensureContactResearchForEmailGeneration } from "@/lib/email-generation/context";
 import {
   emailGenerationFailureUsageMetadata,
@@ -263,7 +267,7 @@ export async function generateEmailDraft(
     model = config.model;
 
     const ai = getEmailAiProvider();
-    const response = await withRetries(
+    let response = await withRetries(
       () =>
         ai.generateStructured({
           ...structuredOutputRequest("emailDraftGeneration"),
@@ -274,8 +278,64 @@ export async function generateEmailDraft(
         retryCount += 1;
       },
     );
-    const subject = removeEmDashes(response.data.subject);
-    const body = sanitizeGeneratedEmailBody(response.data.body);
+    let subject = removeEmDashes(response.data.subject);
+    let body = sanitizeGeneratedEmailBody(response.data.body);
+
+    const personalizationForSpecifics = resolvePersonalization({
+      companyResearch: context.companyResearch,
+      contactResearch: contactResearchForPrompt(context.contactResearch),
+    });
+    const requiredMotionSpecifics =
+      personalizationForSpecifics.companyResearchUsable
+        ? selectRequiredMotionSpecifics({
+            research: personalizationForSpecifics.companyResearch,
+            problemSpace: {
+              problemsSolved: context.product.problemsSolved,
+              painPoints: context.persona.painPoints,
+            },
+            contactTitle: context.contact.title,
+          })
+        : [];
+    let requiredMotionSpecificRetry = false;
+    let requiredMotionSpecificReferenced = bodyReferencesRequiredSpecific(
+      body,
+      requiredMotionSpecifics,
+    );
+    if (
+      requiredMotionSpecifics.length > 0 &&
+      !requiredMotionSpecificReferenced
+    ) {
+      requiredMotionSpecificRetry = true;
+      retryCount += 1;
+      const requiredNames = requiredMotionSpecifics
+        .map((item) => item.text)
+        .join(" | ");
+      const retryMessages: AiMessage[] = [
+        ...messages,
+        {
+          role: "user",
+          content: `The previous draft did not reference a required company specific by name. Rewrite the full email as JSON only. You MUST include at least one of these phrases by name in the body: ${requiredNames}. Keep paragraph 1 focused on the executive problem; do not open with product capabilities.`,
+        },
+      ];
+      response = await withRetries(
+        () =>
+          ai.generateStructured({
+            ...structuredOutputRequest("emailDraftGeneration"),
+            messages: retryMessages,
+          }),
+        config.maxRetries,
+        () => {
+          retryCount += 1;
+        },
+      );
+      subject = removeEmDashes(response.data.subject);
+      body = sanitizeGeneratedEmailBody(response.data.body);
+      requiredMotionSpecificReferenced = bodyReferencesRequiredSpecific(
+        body,
+        requiredMotionSpecifics,
+      );
+    }
+
     const priorSentEmails = context.sequence.filter(
       (draft) =>
         draft.sequenceNumber < sequenceNumber &&
@@ -416,6 +476,14 @@ export async function generateEmailDraft(
           personalizationTier: personalization.tier,
           companyResearchUsed: personalization.companyResearchUsable,
           usedContactResearch: personalization.contactResearchUsable,
+          requiredMotionSpecifics: requiredMotionSpecifics.map(
+            (item) => item.text,
+          ),
+          requiredMotionSpecificReferenced,
+          requiredMotionSpecificRetry,
+          requiredMotionSpecificMissing:
+            requiredMotionSpecifics.length > 0 &&
+            !requiredMotionSpecificReferenced,
           regenerated,
           kind,
           claimValidationCompleted: true,
@@ -472,6 +540,14 @@ export async function generateEmailDraft(
         companyResearchUsed: personalization.companyResearchUsable,
         usedContactResearch: personalization.contactResearchUsable,
         usedVoiceSample: context.voiceSamples.length > 0,
+        requiredMotionSpecifics: requiredMotionSpecifics.map(
+          (item) => item.text,
+        ),
+        requiredMotionSpecificReferenced,
+        requiredMotionSpecificRetry,
+        requiredMotionSpecificMissing:
+          requiredMotionSpecifics.length > 0 &&
+          !requiredMotionSpecificReferenced,
         regenerated,
         kind,
         claimValidationCompleted: true,

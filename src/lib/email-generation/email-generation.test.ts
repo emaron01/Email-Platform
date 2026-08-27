@@ -909,11 +909,16 @@ describe("sequence and claim guards", () => {
       "src/lib/email-generation/company-research-use.ts",
       "utf8",
     );
+    const motionSpecifics = readFileSync(
+      "src/lib/email-generation/motion-specifics.ts",
+      "utf8",
+    );
     for (const source of [
       offerValidator,
       draftValidator,
       prompt,
       companyResearchUse,
+      motionSpecifics,
     ]) {
       expect(source).not.toMatch(
         /forecast|accuracy|trial|roi|durationTerms|pricingTerms|audienceCountTerms|offerSensitiveTerms|dealership|F&I|SalesForecaster|StoneEagle|\bCRM\b|\bpipeline\b/i,
@@ -1535,9 +1540,12 @@ describe.skipIf(!hasDatabase)(
             );
           }
           generationCount += 1;
-          if (generationCount === 2) {
-            expect(JSON.stringify(request)).toContain("Make it shorter");
+          if (JSON.stringify(request).includes("Make it shorter")) {
+            expect(generationCount).toBeGreaterThanOrEqual(2);
           }
+          const isShorterRegen = JSON.stringify(request).includes(
+            "Make it shorter",
+          );
           return new Response(
             JSON.stringify({
               output: [
@@ -1547,14 +1555,12 @@ describe.skipIf(!hasDatabase)(
                     {
                       type: "output_text",
                       text: JSON.stringify({
-                        subject:
-                          generationCount === 1
-                            ? "A forecast—without the guesswork"
-                            : "A shorter forecast note",
-                        body:
-                          generationCount === 1
-                            ? "Hi Alex—quick question.\n\nWould a forecast audit be useful?\n\nBest,\n[Your Name]"
-                            : "Hi Alex, would a forecast audit help?",
+                        subject: isShorterRegen
+                          ? "A shorter forecast note"
+                          : "A forecast—without the guesswork",
+                        body: isShorterRegen
+                          ? "Hi Alex, would a forecast audit help for US manufacturing teams?"
+                          : "Hi Alex—quick question.\n\nAcross US manufacturing plants, forecast stages can hide missing buyer evidence.\n\nWould a forecast audit be useful?\n\nBest,\n[Your Name]",
                         reasoning: "Connects the offer to forecast ownership.",
                       }),
                     },
@@ -1578,7 +1584,7 @@ describe.skipIf(!hasDatabase)(
       );
       expect(created.subject).toBe("A forecast, without the guesswork");
       expect(created.body).toBe(
-        "Hi Alex, quick question.\n\nWould a forecast audit be useful?",
+        "Hi Alex, quick question.\n\nAcross US manufacturing plants, forecast stages can hide missing buyer evidence.\n\nWould a forecast audit be useful?",
       );
       expect(created.subject).not.toContain("—");
       expect(created.body).not.toContain("—");
@@ -1597,7 +1603,7 @@ describe.skipIf(!hasDatabase)(
       });
       expect(deeplink).toContain("%0D%0A%0D%0A");
       expect(new URL(deeplink).searchParams.get("body")).toBe(
-        "Hi Alex, quick question.\r\n\r\nWould a forecast audit be useful?",
+        "Hi Alex, quick question.\r\n\r\nAcross US manufacturing plants, forecast stages can hide missing buyer evidence.\r\n\r\nWould a forecast audit be useful?",
       );
       const { recordEmailClientIntent } = await import(
         "@/lib/email-generation/sequence"
@@ -1643,9 +1649,9 @@ describe.skipIf(!hasDatabase)(
         recipient: `alex-${suffix}@example.test`,
         subject: "A forecast, without the guesswork",
         generatedBody:
-          "Hi Alex, quick question.\n\nWould a forecast audit be useful?",
+          "Hi Alex, quick question.\n\nAcross US manufacturing plants, forecast stages can hide missing buyer evidence.\n\nWould a forecast audit be useful?",
         finalBody:
-          "Hi Alex, quick question.\n\nWould a forecast audit be useful?",
+          "Hi Alex, quick question.\n\nAcross US manufacturing plants, forecast stages can hide missing buyer evidence.\n\nWould a forecast audit be useful?",
         sentByUserId: userAId,
         providerMessageId: null,
       });

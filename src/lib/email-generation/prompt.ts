@@ -6,12 +6,16 @@ import {
   COMPANY_RESEARCH_USE_INSTRUCTIONS,
 } from "@/lib/email-generation/company-research-use";
 import {
+  REQUIRED_MOTION_SPECIFICS_INSTRUCTIONS,
+  selectRequiredMotionSpecifics,
+} from "@/lib/email-generation/motion-specifics";
+import {
   PERSONALIZATION_TIER_INSTRUCTIONS,
   contactResearchForPrompt,
   resolvePersonalization,
 } from "@/lib/email-generation/personalization";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "11";
+export const EMAIL_GENERATION_PROMPT_VERSION = "12";
 export const ADDITIONAL_GUIDANCE_MAX_CHARS = 200;
 
 const SYSTEM_PROMPT = `You write concise, credible one-to-one outbound emails.
@@ -21,11 +25,12 @@ Use the supplied context in this strict priority order:
 2. Additional campaign instructions, when supplied. They override writing defaults.
 3. The campaign offer and call to action.
 4. Paragraph 1 problem framing (hard): lead with the executive or business problem from paragraph1ProblemFraming (messagingNotes first, then painPoints). Do this before naming the product or any product capability.
-5. Company research, when personalization.companyResearchUsable is true: infer selling motion and connect it to this product's problem in that motion. Do not restate what the company does.
-6. Persona as angle only: which value prop leads, what this role cares about, what objections to preempt, what vocabulary to use. Persona is not personalization.
-7. Contact role research, when personalization.contactResearchUsable is true: roleSummary, responsibilities, ownershipAreas only.
-8. Supported product claims and terminology constraints.
-9. The first writing sample, when supplied, as the authoritative style reference.
+5. Required company specifics, when requiredMotionSpecifics is non-empty: reference at least one listed text by name. This is mandatory and checkable.
+6. Company research, when personalization.companyResearchUsable is true: infer selling motion and connect it to this product's problem in that motion. Do not restate what the company does.
+7. Persona as angle only: which value prop leads, what this role cares about, what objections to preempt, what vocabulary to use. Persona is not personalization.
+8. Contact role research, when personalization.contactResearchUsable is true: roleSummary, responsibilities, ownershipAreas only.
+9. Supported product claims and terminology constraints.
+10. The first writing sample, when supplied, as the authoritative style reference.
 
 Never invent customer names, metrics, case studies, product capabilities, offer terms, or facts about the recipient. Product claimsNotToMake, terminologyToAvoid, and persona messaging notes are hard constraints regardless of the priority list. Campaign offer terms are authoritative only when they appear in the supplied offer. If optional context is empty, continue without it.
 Per-contact regeneration instructions override additional campaign instructions and writing defaults, but they cannot override factual constraints, the selected emailStructure, JSON-only output, the sign-off prohibition, or the em dash prohibition.
@@ -47,6 +52,8 @@ Writing and structure rules:
 ${PERSONALIZATION_TIER_INSTRUCTIONS}
 
 ${COMPANY_RESEARCH_USE_INSTRUCTIONS}
+
+${REQUIRED_MOTION_SPECIFICS_INSTRUCTIONS}
 
 Return exactly one JSON object matching:
 {"subject":"string","body":"string","reasoning":"string"}
@@ -81,6 +88,17 @@ export function buildEmailPrompt(
     companyResearch: context.companyResearch,
     contactResearch: contactResearchForPrompt(context.contactResearch),
   });
+  const problemSpace = {
+    problemsSolved: context.product.problemsSolved,
+    painPoints: context.persona.painPoints,
+  };
+  const requiredMotionSpecifics = personalization.companyResearchUsable
+    ? selectRequiredMotionSpecifics({
+        research: personalization.companyResearch,
+        problemSpace,
+        contactTitle: context.contact.title,
+      })
+    : [];
   const userPayload = {
     regenerationInstructions: regenerationGuidance
       ? `Per-contact regeneration instruction that overrides campaign guidance: ${regenerationGuidance}`
@@ -104,14 +122,16 @@ export function buildEmailPrompt(
     companyResearch: personalization.companyResearch,
     companyResearchReasoningSketch: buildRuntimeReasoningSketch({
       research: personalization.companyResearch,
-      problemSpace: {
-        problemsSolved: context.product.problemsSolved,
-        painPoints: context.persona.painPoints,
-      },
+      problemSpace,
     }),
+    requiredMotionSpecifics,
+    requiredMotionSpecificsInstruction:
+      requiredMotionSpecifics.length > 0
+        ? "Reference at least one requiredMotionSpecifics[].text by name in the body. Prefer paragraph 1."
+        : null,
     paragraph1ProblemFraming: {
       instruction:
-        "Open with the executive or business problem. Prefer messagingNotes; if empty, use painPoints. Do not open with product name, mechanism, or capability.",
+        "Open with the executive or business problem. Prefer messagingNotes; if empty, use painPoints. Do not open with product name, mechanism, or capability. When requiredMotionSpecifics is present, ground that problem in at least one listed company-specific fact by name.",
       messagingNotes: context.persona.messagingNotes,
       painPoints: context.persona.painPoints,
     },
