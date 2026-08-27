@@ -22,6 +22,8 @@ export type QualificationBucketRow = {
   companyId?: string | null;
   targetType: QualificationOverrideTarget;
   name: string;
+  title?: string | null;
+  company?: string | null;
   bucket: QualificationBucket;
   unresolvedCriterion: string | null;
   researchGuidance: string | null;
@@ -152,34 +154,72 @@ export function QualificationBuckets({
       ) : null}
 
       {bulkExcludedGroups.length > 0 ? (
-        <div className="space-y-2" data-testid="bulk-exclusion-restore">
+        <div className="space-y-3" data-testid="bulk-exclusion-restore">
           {bulkExcludedGroups.map((group) => (
             <div
               key={group.criterionName}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+              className="space-y-3 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
             >
-              <p>
-                {group.rows.length} rows excluded on{" "}
-                <strong>{group.criterionName}</strong>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={pending || !scoringRunId}
-                  onClick={() => restoreMany(group.rows, "GOOD")}
-                  className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
-                >
-                  Restore all to Good
-                </button>
-                <button
-                  type="button"
-                  disabled={pending || !scoringRunId}
-                  onClick={() => restoreMany(group.rows, "NEEDS_REVIEW")}
-                  className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900"
-                >
-                  Restore all to Needs review
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p>
+                  {group.rows.length} rows excluded on{" "}
+                  <strong>{group.criterionName}</strong>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={pending || !scoringRunId}
+                    onClick={() => restoreMany(group.rows, "GOOD")}
+                    className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
+                  >
+                    Restore all to Good
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending || !scoringRunId}
+                    onClick={() => restoreMany(group.rows, "NEEDS_REVIEW")}
+                    className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900"
+                  >
+                    Restore all to Needs review
+                  </button>
+                </div>
               </div>
+              <ul className="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white">
+                {group.rows.map((row) => (
+                  <li
+                    key={`${row.targetType}:${row.id}`}
+                    className="flex flex-wrap items-start justify-between gap-2 px-3 py-2"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-900">{row.name}</p>
+                      <p className="text-xs text-slate-600">
+                        {[row.title, row.company].filter(Boolean).join(" · ") ||
+                          "—"}
+                      </p>
+                    </div>
+                    {row.canOverride ? (
+                      <div className="flex flex-wrap gap-1">
+                        <button
+                          type="button"
+                          disabled={pending || !scoringRunId}
+                          onClick={() => restore(row, "GOOD")}
+                          className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
+                        >
+                          Restore to Good
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pending || !scoringRunId}
+                          onClick={() => restore(row, "NEEDS_REVIEW")}
+                          className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900"
+                        >
+                          Needs review
+                        </button>
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
             </div>
           ))}
         </div>

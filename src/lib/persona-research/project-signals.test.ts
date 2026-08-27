@@ -1050,3 +1050,16 @@ describe("criteria editor boxes (four textareas)", () => {
     expect(edit).toContain("deletePersonaCriterionAction");
   });
 });
+
+describe("normalizeCriterionSemanticKey", () => {
+  it("collapses near-duplicate individual-seller exclusion wordings", () => {
+    const keys = [
+      "Individual contributor seller",
+      "Individual quota-only seller",
+      "Individual quota-carrying scope only",
+      "Individual sales representative, account executive, or business development representative",
+    ].map(normalizeCriterionSemanticKey);
+    expect(new Set(keys).size).toBe(1);
+    expect(keys[0]).toBe("individual contributor seller");
+  });
+});

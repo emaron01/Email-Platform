@@ -93,6 +93,21 @@ export function normalizeCriterionSemanticKey(name: string): string {
   let normalized = name.trim().toLowerCase();
   normalized = normalized.replace(LEADING_OWNERSHIP_VERB_PATTERN, "");
   normalized = normalized.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  // Collapse near-duplicate IC / individual-seller exclusion wordings into one key.
+  // Exact-key dedupe alone cannot merge "Individual contributor seller" with
+  // "Individual quota-only seller" / AE-BDR variants.
+  if (
+    /\bindividual\b/.test(normalized) &&
+    (/\bcontributor\b/.test(normalized) ||
+      /\bquota\b/.test(normalized) ||
+      /\bseller\b/.test(normalized) ||
+      /\bsales\s+representative\b/.test(normalized) ||
+      /\baccount\s+executive\b/.test(normalized) ||
+      /\bbusiness\s+development\b/.test(normalized) ||
+      /\bbdr\b/.test(normalized))
+  ) {
+    return "individual contributor seller";
+  }
   return normalized;
 }
 

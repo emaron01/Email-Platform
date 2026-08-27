@@ -18,10 +18,34 @@ export type CriterionEvalResult = {
 
 function toNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "bigint") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
   if (typeof value === "string" && value.trim()) {
     const cleaned = value.replace(/[$,%\s]/g, "");
     const n = Number(cleaned);
     return Number.isFinite(n) ? n : null;
+  }
+  // Prisma Decimal (and Decimal.js): not a string/number, but toString()/toNumber() work.
+  if (value != null && typeof value === "object") {
+    const withToNumber = value as { toNumber?: unknown };
+    if (typeof withToNumber.toNumber === "function") {
+      try {
+        const n = (withToNumber.toNumber as () => unknown)();
+        if (typeof n === "number" && Number.isFinite(n)) return n;
+      } catch {
+        // fall through to toString
+      }
+    }
+    if (typeof (value as { toString?: unknown }).toString === "function") {
+      const asString = String((value as { toString: () => string }).toString()).trim();
+      if (asString && asString !== "[object Object]") {
+        const cleaned = asString.replace(/[$,%\s]/g, "");
+        const n = Number(cleaned);
+        return Number.isFinite(n) ? n : null;
+      }
+    }
   }
   return null;
 }

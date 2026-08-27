@@ -405,34 +405,87 @@ export function ScoreReportClient({
         </div>
       ) : null}
       {exclusionGroups.length > 0 ? (
-        <div className="space-y-2" data-testid="bulk-exclusion-restore">
-          {exclusionGroups.map((group) => (
-            <div
-              key={group.key}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
-            >
-              <p>
-                {group.contactIds.length} contacts excluded on{" "}
-                <strong>{group.criterionName}</strong>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <SecondaryButton
-                  type="button"
-                  disabled={overridePending}
-                  onClick={() => restoreGroup(group.contactIds, "GOOD")}
-                >
-                  Restore all to Good
-                </SecondaryButton>
-                <SecondaryButton
-                  type="button"
-                  disabled={overridePending}
-                  onClick={() => restoreGroup(group.contactIds, "NEEDS_REVIEW")}
-                >
-                  Restore all to Needs review
-                </SecondaryButton>
+        <div className="space-y-3" data-testid="bulk-exclusion-restore">
+          {exclusionGroups.map((group) => {
+            const contacts = group.contactIds
+              .map((contactId) => rows.find((row) => row.contactId === contactId))
+              .filter((row): row is ScoreReportClientRow => row != null);
+            return (
+              <div
+                key={group.key}
+                className="space-y-3 rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p>
+                    {group.contactIds.length} contacts excluded on{" "}
+                    <strong>{group.criterionName}</strong>
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <SecondaryButton
+                      type="button"
+                      disabled={overridePending}
+                      onClick={() => restoreGroup(group.contactIds, "GOOD")}
+                    >
+                      Restore all to Good
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      disabled={overridePending}
+                      onClick={() =>
+                        restoreGroup(group.contactIds, "NEEDS_REVIEW")
+                      }
+                    >
+                      Restore all to Needs review
+                    </SecondaryButton>
+                  </div>
+                </div>
+                <ul className="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white">
+                  {contacts.map((row) => {
+                    const name = contactDisplayName(
+                      row.contact.firstName,
+                      row.contact.lastName,
+                    );
+                    const title = row.contact.title?.trim() || null;
+                    const company =
+                      row.contact.companyRecord?.name?.trim() ||
+                      row.contact.company?.trim() ||
+                      null;
+                    return (
+                      <li
+                        key={row.contactId}
+                        className="flex flex-wrap items-start justify-between gap-2 px-3 py-2"
+                      >
+                        <div>
+                          <p className="font-medium text-slate-900">{name}</p>
+                          <p className="text-xs text-slate-600">
+                            {[title, company].filter(Boolean).join(" · ") || "—"}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <SecondaryButton
+                            type="button"
+                            disabled={overridePending}
+                            onClick={() => restoreContact(row.contactId, "GOOD")}
+                          >
+                            Restore to Good
+                          </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            disabled={overridePending}
+                            onClick={() =>
+                              restoreContact(row.contactId, "NEEDS_REVIEW")
+                            }
+                          >
+                            Needs review
+                          </SecondaryButton>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : null}
       {overrideMessage ? (

@@ -249,6 +249,9 @@ export async function getCampaignQualificationView(
       companyId: score.contact.companyId,
       targetType: "CONTACT",
       name,
+      title: score.contact.title,
+      company:
+        score.contact.companyRecord?.name ?? score.contact.company ?? null,
       bucket,
       unresolvedCriterion: suppressed
         ? "Opted out — organization-wide suppression. Cannot be scored or emailed."

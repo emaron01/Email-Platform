@@ -47,6 +47,60 @@ describe("criteria evaluate + merge (unit)", () => {
     expect(aov.method).toBe("DETERMINISTIC");
   });
 
+  it("parses Prisma Decimal-like revenue objects for CURRENCY BETWEEN", async () => {
+    const { evaluateCriterionDeterministic } = await import(
+      "@/lib/criteria/evaluate"
+    );
+    const { evaluateIcpCriterionWithEvidenceClass } = await import(
+      "@/lib/criteria/targeted-search-eval"
+    );
+
+    // Mimic Prisma Decimal: object with toString/toNumber, not a JS number.
+    const prismaDecimal = {
+      toString: () => "50000000",
+      toNumber: () => 50_000_000,
+    };
+
+    const criterion = {
+      name: "Company Revenue",
+      criterionType: "company_revenue",
+      dataType: "CURRENCY" as const,
+      operator: "BETWEEN" as const,
+      targetValue: null,
+      minValue: "10000000",
+      maxValue: "1000000000",
+      importance: "HIGH" as const,
+      isRequired: true,
+      isDisqualifier: false,
+      isMandatory: true,
+      evidenceClass: "LIST_DATA" as const,
+      tier: "PRIMARY" as const,
+      sortOrder: 0,
+    };
+
+    const deterministic = evaluateCriterionDeterministic({
+      criterion,
+      actualValue: prismaDecimal,
+    });
+    expect(deterministic.method).toBe("DETERMINISTIC");
+    expect(deterministic.assessment).toBe("STRONG");
+
+    const withClass = evaluateIcpCriterionWithEvidenceClass({
+      criterion,
+      actualValue: prismaDecimal,
+      provenance: {
+        source: "LIST",
+        field: "revenue",
+        excerpt: null,
+        displayValue: "50000000",
+        label: "Company Revenue: 50000000 (from your list)",
+        hedged: false,
+      },
+    });
+    expect(withClass.evidenceOutcome).toBe("CONFIRMED");
+    expect(withClass.assessment).not.toBe("NEUTRAL");
+  });
+
   it("keeps UNKNOWN when evidence missing — does not fabricate NO_FIT", async () => {
     const { evaluateCriterionDeterministic } = await import(
       "@/lib/criteria/evaluate"
