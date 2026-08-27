@@ -81,8 +81,9 @@ export function AssistedProductIntake({
           Tell us what you sell
         </h3>
         <p className="mt-1 text-sm text-slate-600">
-          Product name is required. Everything else is optional. We acquire
-          evidence once and draft your Product and Personas for your review.
+          Start with the materials you already use — datasheets, whitepapers,
+          decks, or use cases. Product name is required; everything else is
+          optional. We draft your Product and Personas once for your review.
         </p>
       </div>
 
@@ -90,61 +91,21 @@ export function AssistedProductIntake({
         {productId ? (
           <input type="hidden" name="productId" value={productId} />
         ) : null}
-        <Field
-          label="Product Name"
-          name="name"
-          required
-          defaultValue={defaultName}
-        />
-        <Field
-          label="Primary Product URL"
-          name="primaryUrl"
-          defaultValue={defaultUrl}
-          placeholder="https://"
-          hint="Product page, solution page, or company page that best explains what you sell."
-        />
         <div className="md:col-span-2">
           <Field
-            label="Additional Source URLs"
-            name="additionalUrls"
-            as="textarea"
-            rows={2}
-            placeholder="One URL per line (pricing, features, case studies…)"
-            hint="Optional. Separate URLs with new lines."
+            label="Product Name"
+            name="name"
+            required
+            defaultValue={defaultName}
           />
         </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Product Notes"
-            name="notes"
-            as="textarea"
-            hint="Tell us anything important about the product, buyer, positioning, pricing, use case, or market."
-          />
-        </div>
-        <div className="md:col-span-2 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-slate-300 bg-white p-4">
-            <label className="block" htmlFor="pastedContent">
-              <span className="text-sm font-semibold text-slate-900">
-                Paste product content
-              </span>
-              <span className="mt-1 block text-xs text-slate-500">
-                Brochure, whitepaper, sales deck, datasheet, product sheet, or
-                case study text.
-              </span>
-            </label>
-            <textarea
-              id="pastedContent"
-              name="pastedContent"
-              rows={6}
-              placeholder="Paste product content here…"
-              className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 placeholder:text-slate-400 focus:ring-2"
-            />
-          </div>
-          <label className="flex cursor-pointer flex-col rounded-lg border border-slate-900 bg-slate-900 p-4 text-white transition hover:bg-slate-800">
-            <span className="text-sm font-semibold">Upload materials</span>
-            <span className="mt-1 text-xs text-white/80">
-              Recommended for JavaScript-heavy product sites. PDF, DOCX, TXT,
-              MD · Max 15 MiB each.
+
+        <div className="md:col-span-2 space-y-3">
+          <label className="flex cursor-pointer flex-col rounded-lg border border-slate-900 bg-slate-900 p-5 text-white transition hover:bg-slate-800">
+            <span className="text-base font-semibold">Upload materials</span>
+            <span className="mt-1 text-sm text-white/80">
+              Datasheets, whitepapers, decks, use cases, or product overviews.
+              PDF, DOCX, TXT, MD · Max 15 MiB each.
             </span>
             <input
               type="file"
@@ -155,17 +116,70 @@ export function AssistedProductIntake({
               data-testid="product-upload-materials"
             />
           </label>
-        </div>
-        {urlResearchStale ? (
-          <div className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Website research is past the freshness window. Check “Refresh
-            website research” to reacquire URLs (explicit action).
-            <label className="mt-2 flex items-center gap-2">
-              <input type="checkbox" name="forceUrlRefresh" value="1" />
-              Refresh website research
+
+          <div className="rounded-lg border border-slate-300 bg-white p-5">
+            <label className="block" htmlFor="pastedContent">
+              <span className="text-base font-semibold text-slate-900">
+                Paste product content
+              </span>
+              <span className="mt-1 block text-sm text-slate-500">
+                Paste from a brochure, whitepaper, sales deck, datasheet,
+                product sheet, or case study.
+              </span>
             </label>
+            <textarea
+              id="pastedContent"
+              name="pastedContent"
+              rows={8}
+              placeholder="Paste product content here…"
+              className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 placeholder:text-slate-400 focus:ring-2"
+            />
           </div>
-        ) : null}
+        </div>
+
+        <div className="md:col-span-2">
+          <Field
+            label="Product Notes"
+            name="notes"
+            as="textarea"
+            hint="Anything important about the buyer, positioning, pricing, use case, or market that is not in the materials above."
+          />
+        </div>
+
+        <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+          <p className="text-sm text-slate-600">
+            Many product pages cannot be read automatically — they load content
+            with JavaScript or block automated access. Uploading or pasting the
+            materials you already have usually produces a better profile than a
+            website link alone.
+          </p>
+          <Field
+            label="Product URL (optional)"
+            name="primaryUrl"
+            defaultValue={defaultUrl}
+            placeholder="https://"
+            hint="A product or solution page can help, but it is not required."
+          />
+          <Field
+            label="Additional URLs (optional)"
+            name="additionalUrls"
+            as="textarea"
+            rows={2}
+            placeholder="One URL per line"
+            hint="Pricing, features, or case-study pages if you have them."
+          />
+          {urlResearchStale ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Website research is past the freshness window. Check “Refresh
+              website research” to reacquire URLs (explicit action).
+              <label className="mt-2 flex items-center gap-2">
+                <input type="checkbox" name="forceUrlRefresh" value="1" />
+                Refresh website research
+              </label>
+            </div>
+          ) : null}
+        </div>
+
         <div className="md:col-span-2 flex flex-wrap gap-2">
           <SubmitButton disabled={pending || savePending || retryPending}>
             {pending ? "Researching…" : "Research & Build Product"}
