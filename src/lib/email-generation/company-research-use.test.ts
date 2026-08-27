@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import {
+  openingLeansOnTitleVocabulary,
   openingRestatesCompanyDescription,
   referencesInferredSellingMotion,
+  titleResearchOverlapTokens,
   type EmailCompanyResearch,
 } from "@/lib/email-generation/company-research-use";
 import { buildEmailPrompt } from "@/lib/email-generation/prompt";
@@ -178,13 +180,18 @@ function assertInferenceBehavior(input: {
   body: string;
   research: EmailCompanyResearch;
   motionCue: RegExp;
+  contactTitle?: string | null;
 }): void {
   expect(openingRestatesCompanyDescription(input.body, input.research)).toBe(
     false,
   );
-  expect(referencesInferredSellingMotion(input.body, input.research)).toBe(
-    true,
-  );
+  expect(
+    referencesInferredSellingMotion(
+      input.body,
+      input.research,
+      input.contactTitle,
+    ),
+  ).toBe(true);
   expect(input.body).toMatch(input.motionCue);
 }
 
@@ -238,6 +245,9 @@ describe("company research use in email prompts", () => {
     expect(system).toContain("Do NOT restate what the company does.");
     expect(system).toContain(
       "company research → infer selling motion → identify the problem this product addresses in that motion → connect",
+    );
+    expect(system).toContain(
+      "Do not open by leaning on vocabulary drawn from the contact's title",
     );
     expect(system).not.toMatch(/dealership|F&I|\bCRM\b|\bforecast\b/i);
     expect(user).toContain("auto dealer groups");
@@ -352,6 +362,131 @@ describe("generated email uses research as inference", () => {
     );
     expect(securityPrompt[0]?.content).not.toMatch(
       /forecast|commit|pipeline|CRM|dealership|F&I/i,
+    );
+  });
+});
+
+describe("anti-title overlap (B1)", () => {
+  it("tokenizes title against research at runtime with no hard-coded domain terms", () => {
+    const telecomTitle = "VP of Carrier Network Operations";
+    const telecomResearch: EmailCompanyResearch = {
+      companySummary: "Provides backhaul monitoring for regional carriers.",
+      whatTheySell: "Network operations tooling for regional carriers.",
+      customerTypes: ["carrier network operations teams", "tower owners"],
+      primaryMarkets: ["US regional wireless"],
+      businessModel: "SaaS sold into carrier ops and tower portfolios",
+      companySizeContext: null,
+      confidence: "HIGH",
+    };
+    const staffingTitle = "Director of Clinical Staffing";
+    const overlapTelecom = titleResearchOverlapTokens(
+      telecomTitle,
+      telecomResearch,
+    );
+    const overlapStaffing = titleResearchOverlapTokens(
+      staffingTitle,
+      staffingResearch,
+    );
+
+    expect([...overlapTelecom].sort()).toEqual([
+      "carrier",
+      "network",
+      "operations",
+    ]);
+    expect([...overlapStaffing].sort()).toEqual(["staffing"]);
+    expect([...overlapTelecom]).not.toEqual(
+      expect.arrayContaining(["staffing", "clinical", "nurse"]),
+    );
+    expect([...overlapStaffing]).not.toEqual(
+      expect.arrayContaining(["carrier", "network", "tower"]),
+    );
+  });
+
+  it("title∩customerTypes alone does not pass referencesInferredSellingMotion (telecom-like)", () => {
+    const research: EmailCompanyResearch = {
+      companySummary: "Provides backhaul monitoring for regional carriers.",
+      whatTheySell: "Network operations tooling for regional carriers.",
+      customerTypes: ["carrier network operations teams", "tower owners"],
+      primaryMarkets: ["US regional wireless"],
+      businessModel: "SaaS sold into carrier ops and tower portfolios",
+      companySizeContext: null,
+      confidence: "HIGH",
+    };
+    const title = "VP of Carrier Network Operations";
+    const titleOnlyOpener =
+      "Hi Jordan, as a carrier network operations leader your teams juggle a lot.\n\nOpen to a look?";
+    const motionOpener =
+      "Hi Jordan, regional wireless deals often run through tower portfolios and multi-site ops reviews, which is where overnight backhaul exceptions get lost between NOC shifts.\n\nWould a walkthrough of one overnight exception trail help?";
+
+    expect(openingLeansOnTitleVocabulary(titleOnlyOpener, title, research)).toBe(
+      true,
+    );
+    expect(
+      referencesInferredSellingMotion(titleOnlyOpener, research, title),
+    ).toBe(false);
+    expect(
+      referencesInferredSellingMotion(motionOpener, research, title),
+    ).toBe(true);
+  });
+
+  it("title∩customerTypes alone does not pass referencesInferredSellingMotion (staffing/security)", () => {
+    const title = "Hospital Facilities Director";
+    const titleOnlyOpener =
+      "Hi Dana, as a hospital facilities director you own a complex campus.\n\nOpen to a walkthrough?";
+    const motionOpener = securityGoodEmail;
+
+    expect(
+      titleResearchOverlapTokens(title, securityResearch).has("hospital"),
+    ).toBe(true);
+    expect(
+      titleResearchOverlapTokens(title, securityResearch).has("facilities"),
+    ).toBe(true);
+    expect(openingLeansOnTitleVocabulary(titleOnlyOpener, title, securityResearch)).toBe(
+      true,
+    );
+    expect(
+      referencesInferredSellingMotion(titleOnlyOpener, securityResearch, title),
+    ).toBe(false);
+    expect(
+      referencesInferredSellingMotion(motionOpener, securityResearch, title),
+    ).toBe(true);
+  });
+});
+
+describe("messagingNotes elevation (B2)", () => {
+  it("elevates messagingNotes into paragraph1ProblemFraming ahead of product capabilities", () => {
+    const messages = buildEmailPrompt(
+      baseContext({
+        persona: {
+          name: "Operator",
+          painPoints: ["Decisions rest on incomplete status updates"],
+          messagingNotes: [
+            "Lead with the cost of delayed handoffs between night and day shifts.",
+          ],
+        },
+        product: {
+          name: "ShiftBridge",
+          description: "Automates shift handoff checklists",
+          valueProposition: "Fewer missed overnight exceptions",
+        },
+      }),
+    );
+    const system = messages[0]?.content ?? "";
+    const user = messages[1]?.content ?? "";
+
+    expect(system).toContain("paragraph1ProblemFraming");
+    expect(system).toContain(
+      "before naming the product or any product capability",
+    );
+    expect(user).toContain('"paragraph1ProblemFraming"');
+    expect(user).toContain(
+      "Lead with the cost of delayed handoffs between night and day shifts.",
+    );
+    expect(user).toMatch(
+      /paragraph1ProblemFraming[\s\S]*messagingNotes[\s\S]*productMessaging/,
+    );
+    expect(user).toContain(
+      "Do not open with product name, mechanism, or capability",
     );
   });
 });

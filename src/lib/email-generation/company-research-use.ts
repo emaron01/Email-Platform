@@ -53,7 +53,8 @@ export const COMPANY_RESEARCH_USE_INSTRUCTIONS = `How to use company research (w
 - Where the inference is uncertain, phrase it as an observation the recipient can correct, not as an assertion about their internals.
 - Never state a company fact the research does not support.
 - The reasoning chain is: company research → infer selling motion → identify the problem this product addresses in that motion → connect. Do not print the chain; use it to write the email.
-- Name-dropping company facts reads as scraped. The email should feel written for this company, not for anyone with the same title.`;
+- Name-dropping company facts reads as scraped. The email should feel written for this company, not for anyone with the same title.
+- Do not open by leaning on vocabulary drawn from the contact's title. Title identifies the recipient; it is not selling-motion evidence. Prefer research-derived motion details that are not shared with the title.`;
 
 export function contentTokens(value: string): string[] {
   return value
@@ -113,24 +114,133 @@ export function openingRestatesCompanyDescription(
 }
 
 /**
+ * Tokens that appear in both the contact title and company research fields.
+ * Shared title/research vocabulary is not selling-motion evidence — an opener
+ * that only leans on the title can otherwise falsely pass motion checks.
+ */
+export function titleResearchOverlapTokens(
+  title: string | null | undefined,
+  research: Pick<
+    EmailCompanyResearch,
+    | "customerTypes"
+    | "businessModel"
+    | "primaryMarkets"
+    | "whatTheySell"
+    | "companySummary"
+  >,
+): Set<string> {
+  const titleTokenSet = new Set(contentTokens(title ?? ""));
+  if (titleTokenSet.size === 0) return new Set();
+  const researchTokenSet = new Set(
+    [
+      ...research.customerTypes,
+      research.businessModel ?? "",
+      ...research.primaryMarkets,
+      research.whatTheySell ?? "",
+      research.companySummary ?? "",
+    ].flatMap((value) => contentTokens(value)),
+  );
+  const overlap = new Set<string>();
+  for (const token of titleTokenSet) {
+    if (researchTokenSet.has(token)) overlap.add(token);
+  }
+  return overlap;
+}
+
+/**
+ * Selling-motion tokens from research, excluding title vocabulary.
+ * When a research phrase is mostly title tokens (e.g. title "VP of Carrier
+ * Network Operations" vs customerType "carrier network operations teams"),
+ * the whole phrase is dropped so residual words like "teams" cannot pass a
+ * title-only opener.
+ */
+export function distinctiveMotionTokens(
+  research: Pick<
+    EmailCompanyResearch,
+    "customerTypes" | "businessModel" | "primaryMarkets"
+  >,
+  contactTitle?: string | null,
+): string[] {
+  const titleTokenSet = new Set(contentTokens(contactTitle ?? ""));
+  const fieldValues = [
+    ...research.customerTypes,
+    research.businessModel ?? "",
+    ...research.primaryMarkets,
+  ];
+  const evidence: string[] = [];
+  for (const value of fieldValues) {
+    const tokens = contentTokens(value);
+    if (tokens.length === 0) continue;
+    if (titleTokenSet.size > 0) {
+      const overlapCount = tokens.filter((token) =>
+        titleTokenSet.has(token),
+      ).length;
+      if (tokens.length >= 2 && overlapCount / tokens.length >= 0.5) {
+        continue;
+      }
+    }
+    for (const token of tokens) {
+      if (!titleTokenSet.has(token)) evidence.push(token);
+    }
+  }
+  return evidence;
+}
+
+/**
+ * True when the opening leans on title vocabulary that also appears in
+ * research, without distinctive non-title motion evidence in the opener.
+ */
+export function openingLeansOnTitleVocabulary(
+  body: string,
+  title: string | null | undefined,
+  research: Pick<
+    EmailCompanyResearch,
+    | "customerTypes"
+    | "businessModel"
+    | "primaryMarkets"
+    | "whatTheySell"
+    | "companySummary"
+  >,
+): boolean {
+  const opening = firstContentSentence(body);
+  if (!opening) return false;
+  const overlap = titleResearchOverlapTokens(title, research);
+  if (overlap.size === 0) return false;
+  const openingTokenSet = new Set(contentTokens(opening));
+  const titleOverlapInOpening = [...overlap].filter((token) =>
+    openingTokenSet.has(token),
+  );
+  if (titleOverlapInOpening.length === 0) return false;
+  const distinctiveInOpening = distinctiveMotionTokens(research, title).filter(
+    (token) => openingTokenSet.has(token),
+  );
+  return distinctiveInOpening.length === 0;
+}
+
+/**
  * True when the body uses customerTypes, businessModel, or primaryMarkets
  * as selling-motion evidence rather than only restating whatTheySell.
+ * Tokens shared with the contact title (and research phrases dominated by
+ * title vocabulary) do not count as motion evidence.
  */
 export function referencesInferredSellingMotion(
   body: string,
   research: Pick<
     EmailCompanyResearch,
-    "customerTypes" | "businessModel" | "primaryMarkets" | "whatTheySell"
+    | "customerTypes"
+    | "businessModel"
+    | "primaryMarkets"
+    | "whatTheySell"
+    | "companySummary"
   >,
+  contactTitle?: string | null,
 ): boolean {
   if (openingRestatesCompanyDescription(body, research)) return false;
+  if (openingLeansOnTitleVocabulary(body, contactTitle, research)) return false;
   const bodyTokens = new Set(contentTokens(body));
-  const motionTokens = [
-    ...research.customerTypes,
-    research.businessModel ?? "",
-    ...research.primaryMarkets,
-  ].flatMap((value) => contentTokens(value));
-  return motionTokens.some((token) => bodyTokens.has(token));
+  return distinctiveMotionTokens(research, contactTitle).some((token) =>
+    bodyTokens.has(token),
+  );
 }
 
 export function buildRuntimeReasoningSketch(input: {

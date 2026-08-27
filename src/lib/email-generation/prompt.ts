@@ -11,7 +11,7 @@ import {
   resolvePersonalization,
 } from "@/lib/email-generation/personalization";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "10";
+export const EMAIL_GENERATION_PROMPT_VERSION = "11";
 export const ADDITIONAL_GUIDANCE_MAX_CHARS = 200;
 
 const SYSTEM_PROMPT = `You write concise, credible one-to-one outbound emails.
@@ -20,11 +20,12 @@ Use the supplied context in this strict priority order:
 1. Per-contact regeneration instructions, when supplied. They override campaign guidance and writing defaults.
 2. Additional campaign instructions, when supplied. They override writing defaults.
 3. The campaign offer and call to action.
-4. Company research, when personalization.companyResearchUsable is true: infer selling motion and connect it to this product's problem in that motion. Do not restate what the company does.
-5. Persona as angle only: which value prop leads, what this role cares about, what objections to preempt, what vocabulary to use. Persona is not personalization.
-6. Contact role research, when personalization.contactResearchUsable is true: roleSummary, responsibilities, ownershipAreas only.
-7. Supported product claims and terminology constraints.
-8. The first writing sample, when supplied, as the authoritative style reference.
+4. Paragraph 1 problem framing (hard): lead with the executive or business problem from paragraph1ProblemFraming (messagingNotes first, then painPoints). Do this before naming the product or any product capability.
+5. Company research, when personalization.companyResearchUsable is true: infer selling motion and connect it to this product's problem in that motion. Do not restate what the company does.
+6. Persona as angle only: which value prop leads, what this role cares about, what objections to preempt, what vocabulary to use. Persona is not personalization.
+7. Contact role research, when personalization.contactResearchUsable is true: roleSummary, responsibilities, ownershipAreas only.
+8. Supported product claims and terminology constraints.
+9. The first writing sample, when supplied, as the authoritative style reference.
 
 Never invent customer names, metrics, case studies, product capabilities, offer terms, or facts about the recipient. Product claimsNotToMake, terminologyToAvoid, and persona messaging notes are hard constraints regardless of the priority list. Campaign offer terms are authoritative only when they appear in the supplied offer. If optional context is empty, continue without it.
 Per-contact regeneration instructions override additional campaign instructions and writing defaults, but they cannot override factual constraints, the selected emailStructure, JSON-only output, the sign-off prohibition, or the em dash prohibition.
@@ -32,6 +33,7 @@ Additional campaign instructions may override writing and template defaults, inc
 
 Writing and structure rules:
 - Follow the emailStructure instruction exactly. It defines sentence count, paragraph count, word target, and purpose per paragraph. These constraints override your defaults.
+- Content paragraph 1 must frame the executive or business problem using paragraph1ProblemFraming before any product name, mechanism, or capability appears. Product messaging belongs in later sentences or paragraphs, never as the opener's subject.
 - When a writing sample is supplied, match its sentence length, approximate total length, conversational cadence, paragraph pacing, and closing style. Do not merely borrow its terminology.
 - The writing sample's structure overrides any default outbound email or marketing template structure, except that emailStructure overrides the sample's paragraph count.
 - Use the sample only as a style reference. Do not copy its recipient, claims, offer, or other facts.
@@ -62,18 +64,18 @@ export function buildEmailPrompt(
       ? {
           emailLength: "SHORT" as const,
           instruction:
-            "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. One hook, one soft close question. Target 40-60 words excluding the greeting.",
+            "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. Sentence 1 frames the executive or business problem from paragraph1ProblemFraming (no product name or capability yet). Then one soft close question. Target 40-60 words excluding the greeting.",
         }
       : (context.emailLength ?? context.campaign.emailLength) === "LONG"
         ? {
             emailLength: "LONG" as const,
             instruction:
-              "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: problem, 2 sentences max. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and close question, 2 sentences max. Target 120-150 words excluding the greeting.",
+              "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from paragraph1ProblemFraming only, 2 sentences max. Do not name the product or any capability here. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and close question, 2 sentences max. Target 120-150 words excluding the greeting.",
           }
         : {
             emailLength: "MEDIUM" as const,
             instruction:
-              "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: problem or context, 2 sentences max. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
+              "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from paragraph1ProblemFraming, 2 sentences max. Do not lead with product name or capability. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
           };
   const personalization = resolvePersonalization({
     companyResearch: context.companyResearch,
@@ -107,6 +109,12 @@ export function buildEmailPrompt(
         painPoints: context.persona.painPoints,
       },
     }),
+    paragraph1ProblemFraming: {
+      instruction:
+        "Open with the executive or business problem. Prefer messagingNotes; if empty, use painPoints. Do not open with product name, mechanism, or capability.",
+      messagingNotes: context.persona.messagingNotes,
+      painPoints: context.persona.painPoints,
+    },
     personaNeeds: {
       persona: context.persona.name,
       painPoints: context.persona.painPoints,
