@@ -341,6 +341,16 @@ enum TransactionalEmailTemplateKey {
   PASSWORD_CHANGED
   ORGANIZATION_INVITATION
   INVITATION_ACCEPTED
+  CADENCE_DAILY_DIGEST
+}
+
+enum SequenceStopReason {
+  SUPPRESSED
+  CAMPAIGN_ARCHIVED
+  THEY_REPLIED
+  MAX_SEQUENCE
+  MANUAL_STOP
+  EXCLUDED
 }
 
 enum TransactionalEmailStatus {
@@ -456,6 +466,8 @@ model Organization {
   emailSuppressions        EmailSuppression[]
   contactListMemberships   ContactListMembership[]
   contactMergeAudits       ContactMergeAudit[]
+  cadencePolicy            OrganizationCadencePolicy?
+  dailyDigestSends         DailyDigestSend[]
 
   @@index([status])
   @@index([createdAt])
@@ -497,6 +509,13 @@ model User {
   contactListsCreated      ContactList[]                 @relation("ContactListCreatedBy")
   contactsCreated          Contact[]                     @relation("ContactCreatedBy")
   contactMembershipsAdded  ContactListMembership[]       @relation("ContactMembershipAddedBy")
+  sequenceStopsInitiated   CampaignContact[]             @relation("SequenceStoppedBy")
+  /// IANA timezone for digest windows. Falls back to organization timezone when null.
+  timezone                 String?
+  digestEnabled            Boolean                       @default(true)
+  /// Local send time HH:mm (24h) in the user's timezone.
+  digestSendTimeLocal      String                        @default("08:00")
+  dailyDigestSends         DailyDigestSend[]
 
   @@index([platformRole])
   @@index([activeOrganizationId])
@@ -607,6 +626,45 @@ model OrganizationBillingProfile {
 }
 
 /// Organization-level usage limits. Defaults are DB-backed configuration, not product constants.
+/// Organization-level email cadence intervals (gaps stored; UI shows cumulative days).
+model OrganizationCadencePolicy {
+  id                 String   @id @default(cuid())
+  organizationId     String   @unique
+  /// Gap in days after email 1 before email 2 (cumulative day 9 by default).
+  day2IntervalDays   Int      @default(9)
+  /// Gap after email 2 before email 3 (cumulative day 15 = 9+6 by default).
+  day3IntervalDays   Int      @default(6)
+  /// Gap after email 3 before email 4 (cumulative day 30 = 9+6+15 by default).
+  day4IntervalDays   Int      @default(15)
+  /// Gap after email 4+ for repeat sends (every 30 days by default).
+  repeatIntervalDays Int      @default(30)
+  /// Max emails in sequence including initial. Null = unlimited (explicit opt-in).
+  maxSequenceEmails  Int?     @default(4)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+/// Idempotency ledger for per-user daily cadence digest sends.
+model DailyDigestSend {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  /// Calendar day key in the user's timezone, e.g. 2026-08-26.
+  periodKey      String
+  dueCount       Int
+  sentAt         DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, periodKey])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([periodKey])
+}
+
 model OrganizationUsagePolicy {
   id                           String   @id @default(cuid())
   organizationId               String   @unique
@@ -1680,26 +1738,35 @@ model CampaignPersona {
 }
 
 model CampaignContact {
-  id             String                @id @default(cuid())
-  organizationId String
-  campaignId     String
-  contactId      String
-  selected       Boolean               @default(true)
-  status         CampaignContactStatus @default(PENDING)
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  id                      String                @id @default(cuid())
+  organizationId          String
+  campaignId              String
+  contactId               String
+  selected                Boolean               @default(true)
+  status                  CampaignContactStatus @default(PENDING)
+  /// When non-null, automated follow-up cadence is stopped for this contact.
+  sequenceStoppedAt       DateTime?
+  sequenceStoppedReason   SequenceStopReason?
+  sequenceStoppedByUserId String?
+  /// Materialized next follow-up due date. Null when cadence inactive or no prior send.
+  nextDueAt               DateTime?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  campaign     Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contact      Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  emailDrafts  EmailDraft[]
-  sendRecords  EmailSendRecord[]
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign            Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact             Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  sequenceStoppedBy   User?             @relation("SequenceStoppedBy", fields: [sequenceStoppedByUserId], references: [id], onDelete: SetNull)
+  emailDrafts         EmailDraft[]
+  sendRecords         EmailSendRecord[]
 
   @@unique([organizationId, campaignId, contactId])
   @@index([organizationId])
   @@index([organizationId, campaignId])
   @@index([campaignId])
   @@index([contactId])
+  @@index([organizationId, nextDueAt])
+  @@index([nextDueAt])
 }
 
 model EmailDraft {
@@ -1729,6 +1796,8 @@ model EmailDraft {
   sentByUserId         String?
   sendAttemptId        String?
   sendAttemptStartedAt DateTime?
+  /// Rep-provided context when handling a prospect reply (They Replied flow).
+  repReplyContext      String?
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 

@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { requireCurrentUser } from "@/lib/auth/authz";
 import { isEmailVerified } from "@/lib/auth/account-policy";
 import { logoutAction } from "@/app/actions/account";
+import { updateUserDigestPreferencesAction } from "@/app/actions/cadence";
+import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
-import Link from "next/link";
 
 export default async function AccountSettingsPage() {
   const user = await requireCurrentUser();
@@ -62,6 +64,54 @@ export default async function AccountSettingsPage() {
           )}
         </p>
       </section>
+
+      {organization ? (
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium">Daily digest</h2>
+          <p className="text-sm text-slate-600">
+            Weekday-morning email when follow-ups are due. Uses your timezone, or
+            the organization default ({organization.timezone}).
+          </p>
+          <ActionFeedbackForm
+            action={updateUserDigestPreferencesAction}
+            className="grid gap-3 sm:grid-cols-2"
+            testId="digest-preferences-form"
+          >
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              <input
+                type="checkbox"
+                name="digestEnabled"
+                defaultChecked={user.digestEnabled}
+              />
+              Send daily digest when follow-ups are due
+            </label>
+            <label className="text-sm">
+              Send time (local)
+              <input
+                name="digestSendTimeLocal"
+                defaultValue={user.digestSendTimeLocal}
+                placeholder="08:00"
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+              />
+            </label>
+            <label className="text-sm">
+              Your timezone (optional)
+              <input
+                name="timezone"
+                defaultValue={user.timezone ?? ""}
+                placeholder={organization.timezone}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+              />
+            </label>
+            <button
+              type="submit"
+              className="sm:col-span-2 w-fit rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+            >
+              Save digest preferences
+            </button>
+          </ActionFeedbackForm>
+        </section>
+      ) : null}
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Change password</h2>

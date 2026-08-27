@@ -5,6 +5,7 @@ import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { getCurrentUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { getHomeWorkflow, type SetupCardState } from "@/lib/workflow/home";
+import { DueContactsPanel } from "@/components/DueContactsPanel";
 
 function SetupCard({
   number,
@@ -88,7 +89,10 @@ export default async function DashboardPage({
     );
   }
 
-  const workflow = await getHomeWorkflow(organization.id, { includeArchived });
+  const workflow = await getHomeWorkflow(organization.id, {
+    includeArchived,
+    userId: user?.id,
+  });
 
   return (
     <div className="mx-auto w-full max-w-6xl">
@@ -119,7 +123,11 @@ export default async function DashboardPage({
           <SetupCard number={3} title="Personas" state={workflow.personas} />
         </div>
       ) : (
-        <section className="mb-7 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-3">
+        <>
+          {workflow.dueByCampaign.length > 0 ? (
+            <DueContactsPanel dueByCampaign={workflow.dueByCampaign} />
+          ) : null}
+          <section className="mb-7 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-3">
           <div>
             <p className="text-xs font-semibold uppercase text-slate-500">
               1 Product
@@ -149,6 +157,7 @@ export default async function DashboardPage({
             </p>
           </div>
         </section>
+        </>
       )}
 
       <div className="mt-8 mb-4 flex items-center justify-between gap-4">

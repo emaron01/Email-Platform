@@ -35,6 +35,10 @@ export async function archiveCampaign(id: string): Promise<{
     where: { id: existing.id },
     data: { archivedAt: new Date() },
   });
+  const { recomputeCampaignCadenceForCampaign } = await import(
+    "@/lib/cadence/recompute"
+  );
+  await recomputeCampaignCadenceForCampaign(existing.id, organizationId);
   return {
     mode: "archived",
     message: "Campaign archived. It is hidden from Home and the campaign list until you unarchive it.",
@@ -60,6 +64,10 @@ export async function unarchiveCampaign(id: string): Promise<{
     where: { id: existing.id },
     data: { archivedAt: null },
   });
+  const { recomputeCampaignCadenceForCampaign } = await import(
+    "@/lib/cadence/recompute"
+  );
+  await recomputeCampaignCadenceForCampaign(existing.id, organizationId);
   return {
     mode: "unarchived",
     message: "Campaign unarchived. It appears in Home and the campaign list again.",

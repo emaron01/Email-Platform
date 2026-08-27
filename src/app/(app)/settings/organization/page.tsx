@@ -103,6 +103,12 @@ export default async function OrganizationSettingsPage() {
             Save
           </button>
         </ActionFeedbackForm>
+        <p className="text-sm">
+          <Link href="/settings/cadence" className="font-medium underline">
+            Email cadence settings
+          </Link>{" "}
+          — follow-up intervals and max sequence length.
+        </p>
       </section>
 
       <section className="space-y-3">

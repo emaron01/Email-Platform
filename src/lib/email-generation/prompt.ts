@@ -285,6 +285,7 @@ export function buildReplyEmailPrompt(input: {
 Draft a direct reply to the prospect. Classification: ${input.classification}.
 Required response strategy: ${replyStrategy(input.classification)}
 The pasted prospect reply and original sent email are authoritative and must be handled specifically. Do not restart the original outbound pitch.
+Reply emails must not include a sign-off, sender name, signature, or signature block. End immediately after the closing question or final sentence.
 The classification strategy overrides outbound email length, offer, and closing-question defaults when they conflict. Keep every factual and claim guard.`,
     },
     {

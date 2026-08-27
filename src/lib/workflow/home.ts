@@ -6,6 +6,7 @@ import {
   countsTowardTargetedSearchCap,
   normalizeEvidenceClass,
 } from "@/lib/criteria/evidence-class";
+import { getDueContactsForUser, type CampaignDueSummary } from "@/lib/cadence/dashboard";
 import { normalizeSuggestedBuyerRoles } from "@/lib/setup/product-overview";
 
 export type SetupCardState = {
@@ -37,6 +38,7 @@ export type HomeWorkflow = {
     contacts: number;
     emailsToWrite: number;
   }>;
+  dueByCampaign: CampaignDueSummary[];
 };
 
 /** Criteria rows are the interpreted ICP. lastInterpretedAt is not required — legacy/manual backfill never sets it. */
@@ -46,9 +48,9 @@ function hasInterpretedCriteria(icp: { criteria: unknown[] }): boolean {
 
 export async function getHomeWorkflow(
   organizationId: string,
-  options?: { includeArchived?: boolean },
+  options?: { includeArchived?: boolean; userId?: string },
 ): Promise<HomeWorkflow> {
-  const [products, campaigns] = await Promise.all([
+  const [products, campaigns, dueByCampaign] = await Promise.all([
     prisma.product.findMany({
       where: { organizationId, archivedAt: null },
       orderBy: { createdAt: "asc" },
@@ -103,6 +105,13 @@ export async function getHomeWorkflow(
         },
       },
     }),
+    options?.userId
+      ? getDueContactsForUser({
+          organizationId,
+          userId: options.userId,
+          includeArchived: options.includeArchived,
+        })
+      : Promise.resolve([] as CampaignDueSummary[]),
   ]);
 
   const firstProduct = products[0] ?? null;
@@ -230,5 +239,6 @@ export async function getHomeWorkflow(
         emailsToWrite,
       };
     }),
+    dueByCampaign,
   };
 }

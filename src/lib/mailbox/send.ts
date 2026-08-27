@@ -215,6 +215,10 @@ export async function sendEmailDraftWithConnectedMailbox(input: {
     } catch (usageError) {
       console.error("Failed to record connected-send usage.", usageError);
     }
+    const { recomputeCampaignContactCadence } = await import(
+      "@/lib/cadence/recompute"
+    );
+    await recomputeCampaignContactCadence(draft.campaignContactId);
     return {
       draftId: draft.id,
       campaignId: draft.campaignContact.campaignId,

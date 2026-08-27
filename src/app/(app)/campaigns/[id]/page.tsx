@@ -475,6 +475,9 @@ export default async function CampaignDetailPage({
                     contact.email,
                     suppressedEmails,
                   ),
+                  sequenceStopped: campaignContact.sequenceStoppedAt != null,
+                  sequenceStoppedReason:
+                    campaignContact.sequenceStoppedReason,
                   qualificationBucket:
                     bucketByContactId.get(contact.id) ?? null,
                   personaOptions: draftScreen?.personaOptions ?? [],

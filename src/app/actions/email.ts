@@ -1,5 +1,6 @@
 "use server";
 
+import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import {
   requireCurrentUser,
@@ -30,6 +31,8 @@ import {
   classifyProspectReply,
   PROSPECT_REPLY_MAX_CHARS,
 } from "@/lib/email-generation/reply";
+import { isMeetingSchedulingReply } from "@/lib/cadence/engine";
+import { stopSequenceForContact } from "@/lib/cadence/stop-sequence";
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
 import { unacknowledgedOfferWarnings } from "@/lib/email-generation/offer-warnings";
 import type { AiMessage } from "@/lib/ai/types";
@@ -76,6 +79,7 @@ export type GenerateEmailDraftActionResult = {
     | "RETRY"
     | "WAIT_RETRY"
     | "CONTACT_SUPPORT";
+  noDraftNeeded?: boolean;
 };
 
 function revalidateCampaign(campaignId: string): void {
@@ -445,6 +449,34 @@ export async function draftReplyAction(
       sourceDraft,
       prospectReply: normalizedReply,
     });
+
+    await stopSequenceForContact({
+      campaignContactId: context.campaignContact.id,
+      organizationId: context.organizationId,
+      reason: "THEY_REPLIED",
+      actorUserId: user.id,
+    });
+
+    if (
+      isMeetingSchedulingReply(
+        classification.classification,
+        normalizedReply,
+      )
+    ) {
+      await prisma.emailDraft.update({
+        where: { id: sourceDraft.id },
+        data: { prospectReplyText: normalizedReply },
+      });
+      revalidateCampaign(context.campaign.id);
+      return {
+        ok: true,
+        message:
+          "No draft needed — reply in your inbox. Cadence stopped because they replied.",
+        noDraftNeeded: true,
+        replyClassification: classification.classification,
+      };
+    }
+
     const draft = await generateEmailDraft(
       context,
       buildReplyEmailPrompt({
@@ -460,17 +492,19 @@ export async function draftReplyAction(
         prospectReplyText: normalizedReply,
         referralSuggested: classification.referralSuggested,
         inReplyToDraftId: sourceDraft.id,
+        repReplyContext: normalizedReply,
       },
     );
     revalidateCampaign(context.campaign.id);
+    revalidatePath("/");
     const hasClaimConflicts = draft.claimConflicts.length > 0;
     return {
       ok: true,
       message: hasClaimConflicts
-        ? `Reply drafted as Email ${sequenceNumber} with claim conflicts. Review the flagged copy before sending.`
+        ? `Reply drafted as Email ${sequenceNumber} with claim conflicts. Copy and send from your inbox — this app does not send replies. Cadence stopped.`
         : classification.classification === "REFERRAL"
-          ? `Reply drafted as Email ${sequenceNumber}. A new contact may need to be added.`
-          : `Reply drafted as Email ${sequenceNumber}.`,
+          ? `Reply drafted as Email ${sequenceNumber}. Copy and send from your inbox — this app does not send replies. A new contact may need to be added. Cadence stopped.`
+          : `Reply drafted as Email ${sequenceNumber}. Copy and send from your inbox — this app does not send replies. Cadence stopped.`,
       draftId: draft.draftId,
       subject: draft.subject,
       body: draft.body,

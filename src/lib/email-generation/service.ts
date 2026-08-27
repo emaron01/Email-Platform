@@ -169,6 +169,7 @@ export async function generateEmailDraft(
     referralSuggested?: boolean;
     inReplyToDraftId?: string | null;
     regenerationGuidance?: string | null;
+    repReplyContext?: string | null;
   } = {},
 ): Promise<{
   draftId: string;
@@ -323,6 +324,7 @@ export async function generateEmailDraft(
         prospectReplyText: options.prospectReplyText?.trim() || null,
         referralSuggested: options.referralSuggested ?? false,
         inReplyToDraftId: options.inReplyToDraftId ?? null,
+        repReplyContext: options.repReplyContext?.trim() || null,
         emailLength,
         personaId: context.persona.id,
         personalizationTier: personalization.tier,
@@ -341,6 +343,7 @@ export async function generateEmailDraft(
         prospectReplyText: options.prospectReplyText?.trim() || null,
         referralSuggested: options.referralSuggested ?? false,
         inReplyToDraftId: options.inReplyToDraftId ?? null,
+        repReplyContext: options.repReplyContext?.trim() || null,
         emailLength,
         personaId: context.persona.id,
         personalizationTier: personalization.tier,

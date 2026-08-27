@@ -139,7 +139,7 @@ export async function suppressEmail(input: {
   const reason = input.reason ?? "OPTED_OUT";
   const now = new Date();
 
-  return prisma.emailSuppression.upsert({
+  const row = await prisma.emailSuppression.upsert({
     where: {
       organizationId_normalizedEmail: {
         organizationId: input.organizationId,
@@ -167,6 +167,11 @@ export async function suppressEmail(input: {
       releasedAt: null,
     },
   });
+  const { recomputeCadenceForSuppressedEmail } = await import(
+    "@/lib/cadence/recompute"
+  );
+  await recomputeCadenceForSuppressedEmail(input.organizationId, normalized);
+  return row;
 }
 
 export async function releaseSuppression(input: {
@@ -187,7 +192,7 @@ export async function releaseSuppression(input: {
   if (!existing || existing.status !== "ACTIVE") {
     throw new TenantError("This address is not currently suppressed.");
   }
-  return prisma.emailSuppression.update({
+  const updated = await prisma.emailSuppression.update({
     where: { id: existing.id },
     data: {
       status: "RELEASED",
@@ -195,6 +200,11 @@ export async function releaseSuppression(input: {
       releasedAt: new Date(),
     },
   });
+  const { recomputeCadenceForSuppressedEmail } = await import(
+    "@/lib/cadence/recompute"
+  );
+  await recomputeCadenceForSuppressedEmail(input.organizationId, normalized);
+  return updated;
 }
 
 export async function suppressContactById(input: {

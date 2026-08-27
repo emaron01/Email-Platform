@@ -138,6 +138,10 @@ export async function markEmailDraftSent(input: {
   } catch (usageError) {
     console.error("Failed to record manual-send usage.", usageError);
   }
+  const { recomputeCampaignContactCadence } = await import(
+    "@/lib/cadence/recompute"
+  );
+  await recomputeCampaignContactCadence(draft.campaignContactId);
   return {
     campaignId: draft.campaignContact.campaignId,
     campaignContactId: draft.campaignContactId,

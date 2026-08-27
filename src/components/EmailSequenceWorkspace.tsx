@@ -13,6 +13,7 @@ import {
   sendEmailDraftConnectedAction,
   type GenerateEmailDraftActionResult,
 } from "@/app/actions/email";
+import { stopSequenceAction, restoreSequenceAction } from "@/app/actions/cadence";
 import { ADDITIONAL_GUIDANCE_MAX_CHARS } from "@/lib/email-generation/prompt";
 import { PROSPECT_REPLY_MAX_CHARS } from "@/lib/email-generation/reply-contract";
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
@@ -102,6 +103,8 @@ export function EmailSequenceWorkspace({
   personalizationDetail = "No usable company or contact research.",
   personalizationSources = "No company research available. No contact research available.",
   campaignEmailLength = "MEDIUM",
+  sequenceStopped = false,
+  sequenceStoppedReason = null,
 }: {
   campaignContactId: string;
   contactId: string;
@@ -133,6 +136,8 @@ export function EmailSequenceWorkspace({
   personalizationDetail?: string;
   personalizationSources?: string;
   campaignEmailLength?: CampaignEmailLength;
+  sequenceStopped?: boolean;
+  sequenceStoppedReason?: string | null;
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState(initialDrafts);
@@ -171,6 +176,12 @@ export function EmailSequenceWorkspace({
 
   function applyGenerated(next: GenerateEmailDraftActionResult) {
     setResult(next);
+    if (next.noDraftNeeded) {
+      setReplyText("");
+      setShowReplyBox(false);
+      router.refresh();
+      return;
+    }
     if (
       !next.ok ||
       !next.draftId ||
@@ -907,6 +918,38 @@ export function EmailSequenceWorkspace({
                     >
                       Draft reply
                     </button>
+                    {!sequenceStopped ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() =>
+                          startTransition(async () => {
+                            const res = await stopSequenceAction(campaignContactId);
+                            setResult(res);
+                            router.refresh();
+                          })
+                        }
+                        className="rounded-md border border-rose-200 px-3 py-2 text-sm font-medium text-rose-800"
+                      >
+                        Stop sequence
+                      </button>
+                    ) : sequenceStoppedReason === "MANUAL_STOP" ||
+                      sequenceStoppedReason === "MAX_SEQUENCE" ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() =>
+                          startTransition(async () => {
+                            const res = await restoreSequenceAction(campaignContactId);
+                            setResult(res);
+                            router.refresh();
+                          })
+                        }
+                        className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium"
+                      >
+                        Restore sequence
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -914,6 +957,10 @@ export function EmailSequenceWorkspace({
 
             {mode === "SEND" && showReplyBox && selected.status === "SENT" ? (
               <div className="space-y-2 rounded-md border border-slate-200 p-3">
+                <p className="text-xs text-slate-600">
+                  They replied — cadence stops when you submit. Reply drafts are
+                  copy-only; this app does not send replies from your mailbox.
+                </p>
                 <label className="block text-sm">
                   <span className="font-medium text-slate-700">
                     Paste what the prospect wrote
@@ -935,16 +982,25 @@ export function EmailSequenceWorkspace({
                   className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
                 >
                   {pending
-                    ? "Classifying and drafting…"
-                    : "Classify and draft reply"}
+                    ? "Classifying…"
+                    : "They replied"}
                 </button>
               </div>
             ) : null}
 
+            {selected.kind === "REPLY" && selected.status !== "SENT" ? (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                Copy this reply into your inbox and send it yourself. This app
+                does not send reply emails and does not append a signature.
+              </p>
+            ) : null}
+
+            {selected.kind !== "REPLY" ? (
             <p className="text-xs text-slate-500">
               Make sure your signature is set in your Outlook or Gmail client.
               It will be appended automatically when you send.
             </p>
+            ) : null}
           </>
         )}
       </div>

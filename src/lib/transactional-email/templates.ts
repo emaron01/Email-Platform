@@ -26,6 +26,14 @@ export const TEMPLATE_VARIABLE_ALLOWLIST: Record<
     "inviterName",
     "invitedEmail",
   ],
+  CADENCE_DAILY_DIGEST: [
+    ...COMMON,
+    "workspaceName",
+    "dueCount",
+    "dueCountPlural",
+    "weekdayLabel",
+    "dashboardUrl",
+  ],
 };
 
 export const TEMPLATE_REQUIRED_VARIABLES: Record<
@@ -38,6 +46,7 @@ export const TEMPLATE_REQUIRED_VARIABLES: Record<
   PASSWORD_CHANGED: ["firstName"],
   ORGANIZATION_INVITATION: ["invitationUrl", "workspaceName", "invitedEmail"],
   INVITATION_ACCEPTED: ["workspaceName", "invitedEmail"],
+  CADENCE_DAILY_DIGEST: ["dueCount", "dashboardUrl"],
 };
 
 export const BASELINE_TEMPLATES: Record<
@@ -96,5 +105,13 @@ export const BASELINE_TEMPLATES: Record<
       "<p>Hi {{firstName}},</p><p>{{invitedEmail}} accepted your invitation to {{workspaceName}}.</p>",
     textTemplate:
       "Hi {{firstName}},\n\n{{invitedEmail}} accepted your invitation to {{workspaceName}}.",
+  },
+  CADENCE_DAILY_DIGEST: {
+    displayName: "Cadence daily digest",
+    subjectTemplate: "{{dueCount}} follow-up{{dueCountPlural}} due in {{workspaceName}}",
+    htmlTemplate:
+      "<p>Hi {{firstName}},</p><p>On this {{weekdayLabel}} morning you have <strong>{{dueCount}}</strong> contact{{dueCountPlural}} due for a follow-up in {{workspaceName}}.</p><p><a href=\"{{dashboardUrl}}\">Review on your dashboard</a></p><p>— {{appName}}</p>",
+    textTemplate:
+      "Hi {{firstName}},\n\nOn this {{weekdayLabel}} morning you have {{dueCount}} follow-up contact(s) due in {{workspaceName}}.\n\nReview: {{dashboardUrl}}\n\n— {{appName}}",
   },
 };

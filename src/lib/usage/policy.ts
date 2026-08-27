@@ -98,6 +98,11 @@ export async function ensureOrganizationPolicies(
         DEFAULT_RESEARCH_POLICY_VALUES.maxTargetedSearchCriteriaPerIcp,
     },
   });
+
+  const { ensureOrganizationCadencePolicy } = await import(
+    "@/lib/cadence/defaults"
+  );
+  await ensureOrganizationCadencePolicy(organizationId);
 }
 
 /**

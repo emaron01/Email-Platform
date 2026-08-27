@@ -16,6 +16,8 @@ export type EmailDraftsStageContact = {
   contactEmail: string | null;
   contactStatus: string;
   suppressed: boolean;
+  sequenceStopped: boolean;
+  sequenceStoppedReason: string | null;
   qualificationBucket: QualificationBucket | null;
   personaOptions: Array<{ id: string; name: string }>;
   resolvedPersonaId: string | null;
@@ -175,6 +177,8 @@ export function EmailDraftsStage({
                 contactEmail={selected.contactEmail}
                 contactStatus={selected.contactStatus}
                 suppressed={selected.suppressed}
+                sequenceStopped={selected.sequenceStopped}
+                sequenceStoppedReason={selected.sequenceStoppedReason}
                 readOnly={readOnly}
                 emailDeeplinkMaxUrlLength={emailDeeplinkMaxUrlLength}
                 mailboxConnection={mailboxConnection}
