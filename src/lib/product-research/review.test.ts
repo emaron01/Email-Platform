@@ -190,6 +190,18 @@ describe("product review UI contracts", () => {
     expect(page).toContain("max-w-3xl");
   });
 
+  it("product intake prioritizes upload and paste over URL", () => {
+    const src = readFileSync("src/components/AssistedProductSetup.tsx", "utf8");
+    const upload = src.indexOf("Upload materials");
+    const paste = src.indexOf("Paste product content");
+    const url = src.indexOf("Product URL (optional)");
+    expect(upload).toBeGreaterThan(-1);
+    expect(paste).toBeGreaterThan(upload);
+    expect(url).toBeGreaterThan(paste);
+    expect(src).toMatch(/cannot be read automatically/i);
+    expect(src).toContain("product-upload-materials");
+  });
+
   it("save action reads the full draft from the form, not only the old four fields", () => {
     const action = readFileSync("src/app/actions/product-setup.ts", "utf8");
     expect(action).toContain("productDraftFromFormData");
