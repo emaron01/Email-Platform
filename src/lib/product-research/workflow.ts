@@ -52,8 +52,7 @@ export async function researchAndBuildProduct(input: {
     });
     throw new TenantError(
       acquired.errors[0] ||
-        PRODUCT_URL_UNREADABLE_MESSAGE +
-          " Add a URL we can read, paste the product description, or upload materials.",
+        PRODUCT_URL_UNREADABLE_MESSAGE,
     );
   }
 
@@ -94,9 +93,7 @@ export async function researchAndBuildProduct(input: {
         data: {
           status: "FAILED",
           errorSafe:
-            acquired.errors[0] ||
-            PRODUCT_URL_UNREADABLE_MESSAGE +
-              " An empty profile is a failed read, not a completed product profile.",
+            acquired.errors[0] || PRODUCT_URL_UNREADABLE_MESSAGE,
         },
       });
     }
@@ -106,9 +103,7 @@ export async function researchAndBuildProduct(input: {
       correlationId: acquired.correlationId,
       status: "FAILED",
       message:
-        acquired.errors[0] ||
-        PRODUCT_URL_UNREADABLE_MESSAGE +
-          " Paste the product description or upload materials, then research again.",
+        acquired.errors[0] || PRODUCT_URL_UNREADABLE_MESSAGE,
       sourceCount: acquired.excerpts.length,
       suggestedPersonaCount: 0,
     };

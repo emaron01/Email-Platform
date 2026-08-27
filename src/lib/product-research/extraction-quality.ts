@@ -7,7 +7,7 @@
 export const PRODUCT_URL_MIN_USABLE_CHARS = 200;
 
 export const PRODUCT_URL_UNREADABLE_MESSAGE =
-  "We could not read usable product content from this page. The site likely renders its content with JavaScript, or blocked automated access. Paste the product description, or upload materials such as a whitepaper, use cases, datasheet, or product overview.";
+  "We could not read usable product content from this page — it likely renders with JavaScript or blocked automated access. Paste the product description into the paste field and try again.";
 
 /**
  * True when extracted text is empty/near-empty or dominated by site navigation
@@ -59,7 +59,7 @@ export function formatProductUrlUnreadableError(input: {
   blockedOrEmpty: boolean;
 }): string {
   if (input.blockedOrEmpty && input.extractedCharCount === 0) {
-    return `${PRODUCT_URL_UNREADABLE_MESSAGE} (No extractable text was returned.)`;
+    return PRODUCT_URL_UNREADABLE_MESSAGE;
   }
-  return `${PRODUCT_URL_UNREADABLE_MESSAGE} (Extracted ${input.extractedCharCount} characters — mostly site navigation or an empty shell, not product detail.)`;
+  return `We could not read usable product content from this page (extracted ${input.extractedCharCount} characters of navigation chrome, not product detail). Paste the product description into the paste field and try again.`;
 }

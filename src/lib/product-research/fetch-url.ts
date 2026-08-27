@@ -106,7 +106,8 @@ export async function fetchProductPageUrl(
         text: "",
         ok: false,
         extractedCharCount: 0,
-        errorSafe: "URL did not return HTML/text content.",
+        errorSafe:
+          "This URL did not return readable page text. Paste the product description into the paste field and try again.",
       };
     }
     const html = await response.text();

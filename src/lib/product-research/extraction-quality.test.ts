@@ -95,6 +95,7 @@ describe("near-empty product draft", () => {
     });
     expect(lead.kind).toBe("failed_read");
     expect(lead.sentence).not.toMatch(/We read your website/i);
-    expect(lead.detail).toMatch(/8000 characters|Paste|upload/i);
+    expect(lead.detail).toMatch(/8000 characters/i);
+    expect(lead.detail).toMatch(/Paste the product description into the paste field/i);
   });
 });

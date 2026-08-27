@@ -405,7 +405,7 @@ export function describeProductSourceLead(input: {
     return {
       kind: "failed_read",
       sentence: PRODUCT_URL_UNREADABLE_MESSAGE,
-      detail: `${extracted} Paste the product description, or upload a whitepaper, use cases, datasheet, or product overview.`,
+      detail: `${extracted} Paste the product description into the paste field and try again.`,
       names: [],
       failedUrls,
     };
@@ -417,7 +417,7 @@ export function describeProductSourceLead(input: {
       sentence:
         "We could not build a usable product profile from the material available.",
       detail:
-        "Almost every field was unknown. Paste the product description, or upload materials such as a whitepaper, use cases, datasheet, or product overview.",
+        "Almost every field was unknown. Paste the product description into the paste field and try again.",
       names: describeReadSources(acquired).names,
       failedUrls,
     };
