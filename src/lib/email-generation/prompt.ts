@@ -15,7 +15,7 @@ import {
   resolvePersonalization,
 } from "@/lib/email-generation/personalization";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "14";
+export const EMAIL_GENERATION_PROMPT_VERSION = "15";
 export const ADDITIONAL_GUIDANCE_MAX_CHARS = 200;
 
 const SYSTEM_PROMPT = `You write concise, credible one-to-one outbound emails.

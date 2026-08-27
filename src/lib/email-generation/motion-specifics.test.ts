@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { EmailCompanyResearch } from "@/lib/email-generation/company-research-use";
 import {
   bodyReferencesRequiredSpecific,
+  buildPortfolioOfferingSpecific,
   collectMotionSpecificCandidates,
+  countNamedOfferings,
+  extractNamedOfferingLabels,
   isFirmographicResearchObjectPhrase,
   isLocationOnlyFragment,
   isUnusableEmailFirmographicPhrase,
@@ -58,7 +61,57 @@ const problemSpaceStaffingOps = {
   painPoints: ["Incomplete status on who is actually on site"],
 };
 
+const multiProductWhatTheySell =
+  "A B2B automotive-retail software suite: StoneEagleMENU for F&I presentations; StoneEagleMETRICS and METRICS SERVICE for dealership performance reporting; PENCILWRENCH for repair-documentation workflows; and StoneEagleDATA for transaction-level automotive market intelligence.";
+
 describe("motion specifics selection", () => {
+  it("counts distinct named offerings by orthography, not a product-name list", () => {
+    expect(countNamedOfferings(multiProductWhatTheySell)).toBeGreaterThanOrEqual(
+      3,
+    );
+    expect(
+      extractNamedOfferingLabels(multiProductWhatTheySell).length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(
+      countNamedOfferings(
+        "AI-powered order-entry capabilities marketed as FrameworkLTC+.",
+      ),
+    ).toBeLessThan(2);
+  });
+
+  it("prefers the portfolio over a single SKU when whatTheySell has multiple named offerings", () => {
+    const research: EmailCompanyResearch = {
+      companySummary: "Dealer software vendor.",
+      whatTheySell: multiProductWhatTheySell,
+      customerTypes: ["auto dealer groups"],
+      primaryMarkets: ["United States automotive retail"],
+      businessModel: "B2B software licensed to dealer groups",
+      companySizeContext: "201–500 employees",
+      confidence: "HIGH",
+    };
+    const portfolio = buildPortfolioOfferingSpecific(multiProductWhatTheySell);
+    expect(portfolio).toMatch(/suite|spanning|StoneEagleMENU/i);
+    expect(portfolio.toLowerCase()).not.toMatch(
+      /^metrics service for dealership/,
+    );
+    const selected = selectRequiredMotionSpecifics({
+      research,
+      problemSpace: problemSpaceForecast,
+      contactTitle: "Founder",
+    });
+    const whatTheySell = selected.filter(
+      (item) => item.sourceField === "whatTheySell",
+    );
+    expect(whatTheySell.length).toBe(1);
+    expect(whatTheySell[0].text).toMatch(/suite|spanning/i);
+    expect(whatTheySell[0].whyItMatters).toMatch(/portfolio/i);
+    expect(
+      selected.some((item) =>
+        /^METRICS SERVICE for dealership/i.test(item.text),
+      ),
+    ).toBe(false);
+  });
+
   it("rejects generic catalog phrases without a build-time domain list", () => {
     const generic = {
       text: "Cloud Platform",

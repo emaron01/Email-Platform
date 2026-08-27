@@ -72,6 +72,110 @@ export function splitResearchPhrases(value: string): string[] {
     .filter((part) => part.length >= 3);
 }
 
+/**
+ * Orthography signals for a named offering — no product-name vocabulary.
+ * CamelCase/Pascal products, multi-token ALL CAPS, long single ALL-CAPS codes.
+ */
+export function extractNamedOfferingLabels(text: string): string[] {
+  const found: string[] = [];
+  for (const match of text.matchAll(
+    /\b[A-Z][a-z]+[A-Z][A-Za-z0-9]*\b/g,
+  )) {
+    found.push(match[0]);
+  }
+  for (const match of text.matchAll(
+    /\b[A-Z]{2,}(?:[\s_-]+[A-Z0-9]{2,})+\b/g,
+  )) {
+    found.push(match[0]);
+  }
+  for (const match of text.matchAll(/\b[A-Z][A-Z0-9]{5,}\b/g)) {
+    found.push(match[0]);
+  }
+  // Prefer longer labels when one contains another (METRICS vs METRICS SERVICE).
+  const sorted = [...found].sort((a, b) => b.length - a.length);
+  const out: string[] = [];
+  for (const label of sorted) {
+    const key = label.toLowerCase();
+    if (
+      out.some(
+        (existing) =>
+          existing.toLowerCase().includes(key) ||
+          key.includes(existing.toLowerCase()),
+      )
+    ) {
+      continue;
+    }
+    out.push(label);
+  }
+  return out;
+}
+
+/**
+ * True when a split phrase looks like a distinct named offering (product
+ * orthography or a concrete capitalized catalog clause) — not generic nouns.
+ */
+export function isNamedOfferingPhrase(phrase: string): boolean {
+  const cleaned = phrase.replace(/\s+/g, " ").trim();
+  if (cleaned.length < 3 || cleaned.length > 100) return false;
+  if (isUnusableEmailFirmographicPhrase(cleaned)) return false;
+  if (extractNamedOfferingLabels(cleaned).length > 0) return true;
+  const tokens = contentTokens(cleaned);
+  const nonGeneric = tokens.filter(
+    (token) => !GENERIC_BUSINESS_NOUNS.has(token),
+  );
+  if (nonGeneric.length < 2) return false;
+  return /^[A-Z]/.test(cleaned);
+}
+
+/**
+ * Count distinct named offerings in whatTheySell by structure/orthography —
+ * not by matching a list of known product names.
+ */
+export function countNamedOfferings(whatTheySell: string): number {
+  const fromLabels = extractNamedOfferingLabels(whatTheySell).length;
+  const fromPhrases = splitResearchPhrases(whatTheySell).filter((phrase) =>
+    isNamedOfferingPhrase(phrase),
+  ).length;
+  return Math.max(fromLabels, fromPhrases);
+}
+
+function formatOfferingList(labels: string[]): string {
+  if (labels.length === 0) return "";
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+}
+
+/**
+ * When multiple named offerings exist, the portfolio (not one SKU) is the
+ * usable email specific.
+ */
+export function buildPortfolioOfferingSpecific(whatTheySell: string): string {
+  const raw = whatTheySell.replace(/\s+/g, " ").trim();
+  const labels = extractNamedOfferingLabels(raw);
+  const suiteLead = raw.match(
+    /^([^.;:\n]{10,80}?\b(?:suite|portfolio|product family)\b[^.;:\n]{0,40})/i,
+  );
+  if (suiteLead) {
+    const lead = suiteLead[1].trim().replace(/:\s*$/, "");
+    if (labels.length >= 2) {
+      for (let n = Math.min(labels.length, 4); n >= 2; n -= 1) {
+        const combined = `${lead} spanning ${formatOfferingList(labels.slice(0, n))}`;
+        if (combined.length <= 120) return combined;
+      }
+    }
+    if (lead.length <= 120) return lead;
+  }
+  if (labels.length >= 2) {
+    for (let n = Math.min(labels.length, 5); n >= 2; n -= 1) {
+      const list = formatOfferingList(labels.slice(0, n));
+      if (list.length <= 120) return list;
+    }
+  }
+  if (raw.length <= 120) return raw;
+  return raw.slice(0, 117).replace(/\s+\S*$/, "").trim();
+}
+
 function candidateFrom(
   text: string,
   sourceField: string,
@@ -339,8 +443,14 @@ export function collectMotionSpecificCandidates(
     push(value, "primaryMarkets");
   }
   if (research.whatTheySell?.trim()) {
-    for (const phrase of splitResearchPhrases(research.whatTheySell)) {
-      push(phrase, "whatTheySell");
+    const raw = research.whatTheySell.trim();
+    // Multiple named offerings → portfolio is the specific, not one SKU.
+    if (countNamedOfferings(raw) >= 2) {
+      push(buildPortfolioOfferingSpecific(raw), "whatTheySell");
+    } else {
+      for (const phrase of splitResearchPhrases(raw)) {
+        push(phrase, "whatTheySell");
+      }
     }
   }
   if (research.businessModel?.trim()) {
@@ -432,7 +542,12 @@ export function scoreMotionSpecificUsability(
   const relevance = nonGeneric.filter((token) => problemTokens.has(token));
   score += relevance.length * 2;
 
-  if (candidate.sourceField === "whatTheySell") score += 5;
+  if (candidate.sourceField === "whatTheySell") {
+    score += 5;
+    // Prefer portfolio framing when the candidate itself names multiple offerings.
+    if (extractNamedOfferingLabels(candidate.text).length >= 2) score += 8;
+    if (/\b(?:suite|portfolio|spanning)\b/i.test(candidate.text)) score += 4;
+  }
   if (candidate.sourceField === "customerTypes") score += 4;
   if (candidate.sourceField === "primaryMarkets") score += 4;
   if (candidate.sourceField === "businessModel") score += 2;
@@ -444,6 +559,13 @@ function whyItMatters(
   candidate: MotionSpecificCandidate,
   problemSpace: ProductProblemSpace,
 ): string {
+  if (
+    candidate.sourceField === "whatTheySell" &&
+    (extractNamedOfferingLabels(candidate.text).length >= 2 ||
+      /\b(?:suite|portfolio|spanning)\b/i.test(candidate.text))
+  ) {
+    return "Multi-offering portfolio — reason from the portfolio motion (several lines into overlapping accounts), not a single SKU.";
+  }
   const problemTokens = [
     ...problemSpace.problemsSolved,
     ...problemSpace.painPoints,
@@ -544,8 +666,9 @@ export function bodyReferencesRequiredSpecific(
 }
 
 export const REQUIRED_MOTION_SPECIFICS_INSTRUCTIONS = `Required company specifics (when requiredMotionSpecifics is non-empty):
-- Reason FROM at least one requiredMotionSpecifics[].text to the executive problem. The specific must do causal work in the sentence (market, offering, or customer type that makes the problem acute for them).
+- Reason FROM at least one requiredMotionSpecifics[].text to the executive problem. The specific must do causal work in the sentence (market, offering, portfolio, or customer type that makes the problem acute for them).
+- When the specific is a multi-offering suite or portfolio, reason from that portfolio motion (several products into overlapping accounts) — do not narrow the email to a single SKU.
 - Do NOT decorate a generic problem with a bolted-on product name, and do NOT quote research back to the recipient (no headcount, LinkedIn, directories, or "your company has N employees").
-- Prefer a framing like "In [market / for teams selling X / when serving Y], [problem]…" — not "With [product name], [generic problem]…".
+- Prefer a framing like "In [market / for teams selling X / when serving Y / across a portfolio of …], [problem]…" — not "With [product name], [generic problem]…" or "When selling [one SKU], …".
 - Reference the chosen specific by name (exact phrase or unmistakable named reference). Do not invent other company facts or replace it with a vague category synonym.
 - If unsure which specific to use, pick the first item in the list.`;
