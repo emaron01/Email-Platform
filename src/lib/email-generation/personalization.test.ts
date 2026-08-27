@@ -571,7 +571,7 @@ describe("generation constraints", () => {
     const page = readFileSync("src/app/(app)/campaigns/[id]/page.tsx", "utf8");
     expect(page).toContain("campaign.contacts");
     expect(page).not.toContain("qualifiedCampaignContacts");
-    expect(page).toContain("Generate and edit drafts for every contact");
+    expect(page).toContain("Generate, edit, and send drafts for every contact");
     const context = readFileSync("src/lib/email-generation/context.ts", "utf8");
     expect(context).toContain("storedPersonaId: row.personaId");
     expect(context).toContain("inPlayPersonaIds");
