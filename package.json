@@ -12,6 +12,7 @@
     "db:deploy": "dotenv -e .env.local -e .env -- prisma migrate deploy",
     "render:pre-deploy": "node scripts/render-pre-deploy.mjs",
     "research:worker": "dotenv -e .env.local -e .env -- tsx scripts/research-worker.ts",
+    "research:worker:render": "tsx scripts/research-worker.ts",
     "db:studio": "dotenv -e .env.local -e .env -- prisma studio",
     "db:safety": "node scripts/db-safety-check.mjs",
     "db:test:up": "docker compose up -d --wait postgres-test",

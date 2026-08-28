@@ -376,6 +376,10 @@ export async function claimNextResearchRun(now = new Date()): Promise<string | n
   });
 
   if (claimed.count === 0) return null;
+  console.log(
+    `[research-worker] claimed run ${candidate.id} (list ${candidate.contactListId}, ` +
+      `status was ${candidate.status})`,
+  );
   return candidate.id;
 }
 
@@ -407,8 +411,22 @@ async function mapPoolWithShutdown<T, R>(
 
 export async function processResearchRun(runId: string): Promise<void> {
   const run = await prisma.researchRun.findUnique({ where: { id: runId } });
-  if (!run) return;
-  if (run.status !== "IN_PROGRESS") return;
+  if (!run) {
+    console.warn(`[research-run ${runId}] skipped: run not found`);
+    return;
+  }
+  if (run.status !== "IN_PROGRESS") {
+    console.warn(
+      `[research-run ${runId}] skipped: status is ${run.status}, expected IN_PROGRESS`,
+    );
+    return;
+  }
+
+  console.log(
+    `[research-run ${runId}] processing list ${run.contactListId} ` +
+      `(org ${run.organizationId}, totalCompanies ${run.totalCompanies}, ` +
+      `forceRefresh=${run.forceRefresh})`,
+  );
 
   const failureTargetIds = run.failuresOnly
     ? [...new Set(parseStringArray(run.failedCompanyIds))]
@@ -463,9 +481,6 @@ export async function processResearchRun(runId: string): Promise<void> {
 
       const allowedNew = newSlotTargets.slice(0, Math.max(0, remainingSlots));
       const blockedNew = newSlotTargets.slice(Math.max(0, remainingSlots));
-      const workQueue = [...refreshTargets, ...allowedNew].filter(
-        (item) => !processedCompanyIds.has(item.companyId),
-      );
 
       let completedCount = run.completedCount;
       let failedCount = run.failedCount;
@@ -482,6 +497,17 @@ export async function processResearchRun(runId: string): Promise<void> {
       );
       const quotaBlockedCompanyNames = new Set(
         parseStringArray(run.quotaBlockedCompanyNames),
+      );
+
+      const workQueue = [...refreshTargets, ...allowedNew].filter(
+        (item) => !processedCompanyIds.has(item.companyId),
+      );
+
+      console.log(
+        `[research-run ${run.id}] plan: ${plan.uniqueCompanies} companies on list, ` +
+          `${plan.needingResearch} needing research, ${targets.length} run targets, ` +
+          `${workQueue.length} queued (${refreshTargets.length} refresh, ` +
+          `${allowedNew.length} new slots, ${blockedNew.length} quota-blocked)`,
       );
 
       const pendingBlockedNew = blockedNew.filter(
@@ -510,6 +536,12 @@ export async function processResearchRun(runId: string): Promise<void> {
         });
       }
 
+      if (workQueue.length === 0) {
+        console.warn(
+          `[research-run ${run.id}] no companies queued — nothing to research this pass`,
+        );
+      }
+
       await mapPoolWithShutdown(
         workQueue,
         getResearchWorkerConcurrency(),
@@ -526,9 +558,21 @@ export async function processResearchRun(runId: string): Promise<void> {
             },
           });
 
+          console.log(
+            `[research-run ${run.id}] started ${item.companyName} (${item.companyId})`,
+          );
+
           const result = await researchCompany(item.companyId, {
             force: run.forceRefresh,
           });
+
+          console.log(
+            `[research-run ${run.id}] finished ${item.companyName} (${item.companyId}): ` +
+              `skipped=${result.skipped} quotaBlocked=${Boolean(result.quotaBlocked)} ` +
+              `refreshFailed=${Boolean(result.refreshFailed)} ` +
+              `status=${result.research?.status ?? "none"}` +
+              (result.reason ? ` reason=${result.reason}` : ""),
+          );
 
           if (result.quotaBlocked) {
             quotaBlockedCount += 1;
@@ -604,6 +648,12 @@ export async function processResearchRun(runId: string): Promise<void> {
           totalCompanies: total,
         },
       });
+
+      console.log(
+        `[research-run ${run.id}] completed with status ${status}: ` +
+          `${completedCount} completed, ${failedCount} failed, ` +
+          `${skippedFreshCount} skipped, ${quotaBlockedCount} quota-blocked`,
+      );
     },
   );
 }
