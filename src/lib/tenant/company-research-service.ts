@@ -30,6 +30,10 @@ import {
 } from "@/lib/research";
 import { isResearchAiConfigured } from "@/lib/ai/config";
 import { AiConfigError } from "@/lib/ai/errors";
+import {
+  classifyResearchFailure,
+  type ResearchFailureInfo,
+} from "@/lib/research/failure-classification";
 import { isDevTenantBypassEnabled } from "@/lib/auth/config-core";
 import { recordUsageEvent } from "@/lib/usage/events-service";
 import {
@@ -745,16 +749,20 @@ function isSuccessfulResearch(
   );
 }
 
-export async function researchCompany(
-  companyId: string,
-  options?: { force?: boolean },
-): Promise<{
+export type ResearchCompanyResult = {
   skipped: boolean;
   reason?: string;
   research: CompanyResearch | null;
   refreshFailed?: boolean;
+  researchFailed?: boolean;
+  failure?: ResearchFailureInfo;
   quotaBlocked?: boolean;
-}> {
+};
+
+export async function researchCompany(
+  companyId: string,
+  options?: { force?: boolean },
+): Promise<ResearchCompanyResult> {
   // Tenant ownership check BEFORE any external API spend.
   const organizationId = await orgId();
   const company = await prisma.company.findFirst({
@@ -932,6 +940,7 @@ export async function researchCompany(
       };
     }
 
+    const failure = classifyResearchFailure(error);
     const message =
       error instanceof Error ? error.message : "Research provider failed.";
 
@@ -945,16 +954,25 @@ export async function researchCompany(
       metadata: {
         forceRefresh: Boolean(options?.force),
         error: message.slice(0, 500),
+        failureKind: failure.kind,
+        failureCategory: failure.category,
+        userMessage: failure.userMessage,
       },
     });
+
+    const failedResult = {
+      skipped: false as const,
+      reason: failure.userMessage,
+      researchFailed: true,
+      refreshFailed: true,
+      failure,
+    };
 
     // Refresh safety: never replace prior successful research with a FAILED row.
     if (priorSuccessful) {
       return {
-        skipped: false,
-        reason: message,
+        ...failedResult,
         research: priorSuccessful,
-        refreshFailed: true,
       };
     }
 
@@ -972,10 +990,8 @@ export async function researchCompany(
     });
 
     return {
-      skipped: false,
-      reason: message,
+      ...failedResult,
       research: await getLatestCompanyResearch(company.id),
-      refreshFailed: true,
     };
   }
 }

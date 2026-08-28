@@ -17,6 +17,7 @@ import {
   isActiveResearchRunStatus,
   type ResearchRunView,
 } from "@/lib/research/run-types";
+import { formatResearchRunFailureSummary } from "@/lib/research/failure-classification";
 import {
   formatResearchAllowanceWarning,
   RESEARCH_BILLING_HREF,
@@ -71,12 +72,13 @@ function formatRunSummary(run: ResearchRunView): string {
     return `Research in progress: ${done} of ${run.totalCompanies} companies processed.${current}`;
   }
 
-  if (run.status === "COMPLETED") {
-    return `Research complete: ${run.completedCount} completed, ${run.skippedFreshCount} skipped (fresh).`;
+  const failureSummary = formatResearchRunFailureSummary(run);
+  if (failureSummary) {
+    return failureSummary;
   }
 
-  if (run.status === "PARTIAL") {
-    return `Research finished with issues: ${run.completedCount} completed, ${run.failedCount} failed, ${run.quotaBlockedCount} quota-blocked, ${run.skippedFreshCount} skipped.`;
+  if (run.status === "COMPLETED") {
+    return `Research complete: ${run.completedCount} completed, ${run.skippedFreshCount} skipped (fresh).`;
   }
 
   if (run.status === "FAILED") {
@@ -84,6 +86,12 @@ function formatRunSummary(run: ResearchRunView): string {
   }
 
   return "Research run finished.";
+}
+
+function retryableCompanyCount(run: ResearchRunView): number {
+  const failedIds = run.failedCompanyIds.length;
+  const failed = failedIds > 0 ? failedIds : run.failedCount;
+  return failed + run.quotaBlockedCount;
 }
 
 export function ResearchRunPanel({
@@ -201,9 +209,7 @@ export function ResearchRunPanel({
   }
 
   const runInProgress = activeRun != null && isActiveRun(activeRun.status);
-  const retryCount =
-    (lastRun?.failedCompanyIds.length ?? 0) +
-    (lastRun?.quotaBlockedCount ?? 0);
+  const retryCount = lastRun ? retryableCompanyCount(lastRun) : 0;
   const canRetry =
     lastRun != null &&
     !runInProgress &&
@@ -218,6 +224,10 @@ export function ResearchRunPanel({
     (allowance.exhausted && plan.needingResearch > 0);
 
   const displayRun = runInProgress ? activeRun : lastRun;
+  const displayHasFailures =
+    displayRun != null &&
+    !runInProgress &&
+    (displayRun.failedCount > 0 || displayRun.quotaBlockedCount > 0);
 
   return (
     <div className="space-y-4">
@@ -245,9 +255,17 @@ export function ResearchRunPanel({
                 ? "Research paused"
                 : runInProgress
                   ? "Research running"
-                  : "Last research run"}
+                  : displayHasFailures
+                    ? "Research finished with failures"
+                    : "Last research run"}
             </p>
-            <p className="text-slate-600">{displayRun.status.replace("_", " ")}</p>
+            <p
+              className={
+                displayHasFailures ? "font-medium text-rose-800" : "text-slate-600"
+              }
+            >
+              {displayRun.status.replace("_", " ")}
+            </p>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-slate-100">
             <div
@@ -255,7 +273,20 @@ export function ResearchRunPanel({
               style={{ width: `${progressPercent(displayRun)}%` }}
             />
           </div>
-          <p className="text-sm text-slate-600">{formatRunSummary(displayRun)}</p>
+          <p
+            className={
+              displayHasFailures
+                ? "text-sm font-medium text-rose-950"
+                : "text-sm text-slate-600"
+            }
+          >
+            {formatRunSummary(displayRun)}
+          </p>
+          {canRetry ? (
+            <p className="text-sm text-slate-600">
+              Retry will re-run only the failed or blocked companies.
+            </p>
+          ) : null}
           {displayRun.quotaBlockedCount > 0 ? (
             <p className="text-sm text-amber-900">
               {displayRun.quotaBlockedCount} companies were not researched due to

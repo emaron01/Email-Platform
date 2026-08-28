@@ -14,6 +14,7 @@ import {
 import { runWithTenantContext } from "@/lib/tenant/request-context";
 import { TenantError } from "@/lib/tenant/errors";
 import { getResearchWorkerConcurrency } from "@/lib/research/config";
+import { isProviderLevelFailure } from "@/lib/research/failure-classification";
 import type { ResearchRunView } from "@/lib/research/run-types";
 
 export type { ResearchRunView } from "@/lib/research/run-types";
@@ -387,13 +388,14 @@ async function mapPoolWithShutdown<T, R>(
   items: T[],
   concurrency: number,
   worker: (item: T, index: number) => Promise<R>,
+  shouldStop?: () => boolean,
 ): Promise<R[]> {
   if (items.length === 0) return [];
   const results: R[] = new Array(items.length);
   let nextIndex = 0;
 
   async function run(): Promise<void> {
-    while (!researchWorkerShutdown.requested) {
+    while (!researchWorkerShutdown.requested && !shouldStop?.()) {
       const current = nextIndex;
       nextIndex += 1;
       if (current >= items.length) return;
@@ -407,6 +409,28 @@ async function mapPoolWithShutdown<T, R>(
   );
   await Promise.all(runners);
   return results;
+}
+
+function createUpdateLock() {
+  let chain = Promise.resolve();
+  return function withUpdateLock<T>(fn: () => Promise<T>): Promise<T> {
+    const next = chain.then(fn, fn);
+    chain = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  };
+}
+
+function isResearchCompanyFailure(
+  result: Awaited<ReturnType<typeof researchCompany>>,
+): boolean {
+  return Boolean(
+    result.researchFailed ||
+      result.refreshFailed ||
+      result.research?.status === "FAILED",
+  );
 }
 
 export async function processResearchRun(runId: string): Promise<void> {
@@ -542,11 +566,25 @@ export async function processResearchRun(runId: string): Promise<void> {
         );
       }
 
+      const runAbort = { requested: false };
+      const withUpdateLock = createUpdateLock();
+      let runLastError: string | null = run.lastError;
+
+      function queueUnprocessedForRetry(exceptCompanyId?: string): void {
+        for (const pending of workQueue) {
+          if (pending.companyId === exceptCompanyId) continue;
+          if (processedCompanyIds.has(pending.companyId)) continue;
+          if (failedCompanyIds.has(pending.companyId)) continue;
+          failedCompanyIds.add(pending.companyId);
+          failedCount += 1;
+        }
+      }
+
       await mapPoolWithShutdown(
         workQueue,
         getResearchWorkerConcurrency(),
         async (item) => {
-          if (researchWorkerShutdown.requested) return;
+          if (researchWorkerShutdown.requested || runAbort.requested) return;
 
           await prisma.researchRun.update({
             where: { id: run.id },
@@ -566,53 +604,69 @@ export async function processResearchRun(runId: string): Promise<void> {
             force: run.forceRefresh,
           });
 
+          if (researchWorkerShutdown.requested || runAbort.requested) return;
+
           console.log(
             `[research-run ${run.id}] finished ${item.companyName} (${item.companyId}): ` +
               `skipped=${result.skipped} quotaBlocked=${Boolean(result.quotaBlocked)} ` +
-              `refreshFailed=${Boolean(result.refreshFailed)} ` +
+              `researchFailed=${Boolean(result.researchFailed)} ` +
               `status=${result.research?.status ?? "none"}` +
+              (result.failure?.kind ? ` failure=${result.failure.kind}` : "") +
               (result.reason ? ` reason=${result.reason}` : ""),
           );
 
-          if (result.quotaBlocked) {
-            quotaBlockedCount += 1;
-            quotaBlockedCompanyIds.add(item.companyId);
-            quotaBlockedCompanyNames.add(item.companyName);
-          } else if (result.skipped) {
-            skippedFreshCount += 1;
-          } else if (result.refreshFailed) {
-            failedCount += 1;
-            failedCompanyIds.add(item.companyId);
-          } else if (
-            result.research?.status === "COMPLETED" ||
-            result.research?.status === "PARTIAL"
-          ) {
-            completedCount += 1;
-          } else if (result.research?.status === "FAILED") {
-            failedCount += 1;
-            failedCompanyIds.add(item.companyId);
-          }
+          await withUpdateLock(async () => {
+            if (processedCompanyIds.has(item.companyId)) return;
 
-          processedCompanyIds.add(item.companyId);
+            if (result.quotaBlocked) {
+              quotaBlockedCount += 1;
+              quotaBlockedCompanyIds.add(item.companyId);
+              quotaBlockedCompanyNames.add(item.companyName);
+            } else if (result.skipped) {
+              skippedFreshCount += 1;
+            } else if (isResearchCompanyFailure(result)) {
+              failedCount += 1;
+              failedCompanyIds.add(item.companyId);
+              runLastError =
+                result.failure?.userMessage ??
+                result.reason ??
+                "Research failed.";
 
-          await prisma.researchRun.update({
-            where: { id: run.id },
-            data: {
-              completedCount,
-              failedCount,
-              skippedFreshCount,
-              quotaBlockedCount,
-              failedCompanyIds: [...failedCompanyIds],
-              processedCompanyIds: [...processedCompanyIds],
-              quotaBlockedCompanyIds: [...quotaBlockedCompanyIds],
-              quotaBlockedCompanyNames: [...quotaBlockedCompanyNames],
-              workerHeartbeatAt: new Date(),
-              lastError: result.refreshFailed
-                ? (result.reason ?? "Research failed.")
-                : null,
-            },
+              if (isProviderLevelFailure(result.failure)) {
+                runAbort.requested = true;
+                queueUnprocessedForRetry(item.companyId);
+                console.warn(
+                  `[research-run ${run.id}] provider-level failure — pausing batch: ` +
+                    `${runLastError}`,
+                );
+              }
+            } else if (
+              result.research?.status === "COMPLETED" ||
+              result.research?.status === "PARTIAL"
+            ) {
+              completedCount += 1;
+            }
+
+            processedCompanyIds.add(item.companyId);
+
+            await prisma.researchRun.update({
+              where: { id: run.id },
+              data: {
+                completedCount,
+                failedCount,
+                skippedFreshCount,
+                quotaBlockedCount,
+                failedCompanyIds: [...failedCompanyIds],
+                processedCompanyIds: [...processedCompanyIds],
+                quotaBlockedCompanyIds: [...quotaBlockedCompanyIds],
+                quotaBlockedCompanyNames: [...quotaBlockedCompanyNames],
+                workerHeartbeatAt: new Date(),
+                lastError: runLastError,
+              },
+            });
           });
         },
+        () => runAbort.requested,
       );
 
       if (researchWorkerShutdown.requested) {
@@ -646,13 +700,15 @@ export async function processResearchRun(runId: string): Promise<void> {
           currentCompanyName: null,
           workerHeartbeatAt: new Date(),
           totalCompanies: total,
+          lastError: runLastError,
         },
       });
 
       console.log(
         `[research-run ${run.id}] completed with status ${status}: ` +
           `${completedCount} completed, ${failedCount} failed, ` +
-          `${skippedFreshCount} skipped, ${quotaBlockedCount} quota-blocked`,
+          `${skippedFreshCount} skipped, ${quotaBlockedCount} quota-blocked` +
+          (runLastError ? ` lastError=${runLastError}` : ""),
       );
     },
   );
@@ -676,6 +732,9 @@ export function canRetryResearchRun(run: ResearchRun): boolean {
   const failed = parseStringArray(run.failedCompanyIds);
   const quotaBlocked = parseStringArray(run.quotaBlockedCompanyIds);
   return (
-    failed.length + quotaBlocked.length > 0 || run.quotaBlockedCount > 0
+    failed.length > 0 ||
+    quotaBlocked.length > 0 ||
+    run.failedCount > 0 ||
+    run.quotaBlockedCount > 0
   );
 }
