@@ -11,6 +11,10 @@ import {
 import { runWithTenantContext } from "@/lib/tenant/request-context";
 import { TenantError } from "@/lib/tenant/getCurrentOrganization";
 import { getResearchWorkerConcurrency } from "@/lib/research/config";
+import type { ResearchRunView } from "@/lib/research/run-types";
+
+export type { ResearchRunView } from "@/lib/research/run-types";
+export { isResearchRunPaused } from "@/lib/research/run-types";
 
 export const HEARTBEAT_STALE_MS = 15 * 60 * 1000;
 export const RUN_ABANDON_MS = 24 * 60 * 60 * 1000;
@@ -25,28 +29,6 @@ const TERMINAL_STATUSES: ResearchRunStatus[] = [
   "FAILED",
   "CANCELLED",
 ];
-
-export type ResearchRunView = {
-  id: string;
-  contactListId: string;
-  scoringRunId: string | null;
-  status: ResearchRunStatus;
-  forceRefresh: boolean;
-  failuresOnly: boolean;
-  retryOfRunId: string | null;
-  totalCompanies: number;
-  completedCount: number;
-  failedCount: number;
-  skippedFreshCount: number;
-  quotaBlockedCount: number;
-  currentCompanyName: string | null;
-  lastError: string | null;
-  failedCompanyIds: string[];
-  quotaBlockedCompanyNames: string[];
-  startedAt: string | null;
-  completedAt: string | null;
-  pausedAt: string | null;
-};
 
 function parseStringArray(value: Prisma.JsonValue | null | undefined): string[] {
   if (!Array.isArray(value)) return [];
@@ -75,10 +57,6 @@ function toResearchRunView(run: ResearchRun): ResearchRunView {
     completedAt: run.completedAt?.toISOString() ?? null,
     pausedAt: run.pausedAt?.toISOString() ?? null,
   };
-}
-
-export function isResearchRunPaused(run: Pick<ResearchRunView, "status" | "pausedAt">): boolean {
-  return run.status === "IN_PROGRESS" && run.pausedAt != null;
 }
 
 function isTerminalStatus(status: ResearchRunStatus): boolean {

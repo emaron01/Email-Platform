@@ -23,8 +23,8 @@ import {
   getActiveResearchRunForContactList,
   getResearchRunForOrganization,
   requireResearchRunInOrganization,
-  type ResearchRunView,
 } from "@/lib/research/runs";
+import type { ResearchRunView } from "@/lib/research/run-types";
 
 function requiredString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();

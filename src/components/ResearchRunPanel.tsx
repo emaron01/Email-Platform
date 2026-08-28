@@ -14,8 +14,9 @@ import { CompanyResearchAllowanceBanner } from "@/components/CompanyResearchAllo
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
 import {
   isResearchRunPaused,
+  isActiveResearchRunStatus,
   type ResearchRunView,
-} from "@/lib/research/runs";
+} from "@/lib/research/run-types";
 import {
   formatResearchAllowanceWarning,
   RESEARCH_BILLING_HREF,
@@ -39,7 +40,7 @@ export type ResearchPlanView = {
 const POLL_MS = 4_000;
 
 function isActiveRun(status: ResearchRunView["status"]): boolean {
-  return status === "PENDING" || status === "IN_PROGRESS";
+  return isActiveResearchRunStatus(status);
 }
 
 function progressPercent(run: ResearchRunView): number {
