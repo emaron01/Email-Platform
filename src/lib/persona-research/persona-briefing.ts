@@ -196,6 +196,27 @@ export function provenanceForClaim(input: {
   return [...classes];
 }
 
+export function sourceIdsForClaim(input: {
+  claim: string;
+  evidenceRefs: PersonaEvidenceRef[];
+}): string[] {
+  const needle = normalize(input.claim);
+  if (!needle) return [];
+  const ids = new Set<string>();
+  for (const ref of input.evidenceRefs) {
+    const claim = normalize(ref.claim);
+    if (!claim) continue;
+    if (
+      claim === needle ||
+      claim.includes(needle) ||
+      needle.includes(claim)
+    ) {
+      for (const id of ref.sourceIds ?? []) ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
 export function resolvePersonaBriefingView(input: {
   name: string;
   definition?: string | null;

@@ -1,20 +1,26 @@
 "use client";
 
 import { useState } from "react";
+import { SourceMarkers } from "@/components/research-document";
 import {
   PERSONA_PROVENANCE_LABELS,
   provenanceLabelForClasses,
   type PersonaProvenanceClass,
   type PersonaReviewSource,
 } from "@/lib/persona-research/persona-briefing";
+import { sourceMarkerNumbers } from "@/lib/research/source-index";
 
 export function PersonaProvenanceChip({
   classes,
   sources,
+  sourceIds,
+  sourceIndex,
   note,
 }: {
   classes: PersonaProvenanceClass[];
   sources?: PersonaReviewSource[];
+  sourceIds?: string[];
+  sourceIndex?: Map<string, number>;
   note?: string | null;
 }) {
   const [open, setOpen] = useState(false);
@@ -23,6 +29,7 @@ export function PersonaProvenanceChip({
   const label = provenanceLabelForClasses(classes);
   const linkedSources =
     sources?.filter((source) =>
+      sourceIds?.includes(source.id) ||
       classes.some(
         (c) =>
           source.provenanceClass === c ||
@@ -31,20 +38,26 @@ export function PersonaProvenanceChip({
             source.sourceType === "UPLOADED_DOCUMENT"),
       ),
     ) ?? [];
+  const markers = sourceIndex
+    ? sourceMarkerNumbers(sourceIds ?? linkedSources.map((s) => s.id), sourceIndex)
+    : [];
 
   return (
-    <span className="persona-provenance-chip relative ml-1 inline-block align-middle">
+    <span className="persona-provenance-chip research-source-chip relative ml-1 inline-block align-middle">
       <button
         type="button"
         data-print-hide
-        className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-800"
+        className="research-source-chip-button rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-800"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
         {label}
       </button>
+      <span className="research-source-chip-print hidden rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 print:inline">
+        {label}
+      </span>
       {open ? (
-        <span className="absolute left-0 z-10 mt-1 w-72 rounded-md border border-slate-200 bg-white p-3 text-left text-xs text-slate-700 shadow-sm">
+        <span className="research-source-chip-popup absolute left-0 z-10 mt-1 w-72 rounded-md border border-slate-200 bg-white p-3 text-left text-xs text-slate-700 shadow-sm print:hidden">
           <span className="block font-medium text-slate-900">Provenance</span>
           <ul className="mt-1 list-disc pl-4">
             {classes.map((c) => (
@@ -76,10 +89,7 @@ export function PersonaProvenanceChip({
           ) : null}
         </span>
       ) : null}
-      <span className="hidden print:inline text-xs text-slate-500">
-        {" "}
-        ({classes.map((c) => PERSONA_PROVENANCE_LABELS[c]).join("; ")})
-      </span>
+      <SourceMarkers numbers={markers} />
     </span>
   );
 }

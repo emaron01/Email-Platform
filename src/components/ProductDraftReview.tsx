@@ -14,6 +14,7 @@ import {
 } from "@/app/actions/product-setup";
 import { AutosizeTextarea } from "@/components/AutosizeTextarea";
 import { ExportPdfButton } from "@/components/ExportPdfButton";
+import { SourceMarkers } from "@/components/research-document";
 import { SecondaryButton, SubmitButton } from "@/components/ui";
 import type {
   ProductDraft,
@@ -32,6 +33,10 @@ import {
   type ProductDraftStringField,
   type ProductReviewSource,
 } from "@/lib/product-research/review";
+import {
+  buildSourceIndex,
+  sourceMarkerNumbers,
+} from "@/lib/research/source-index";
 
 const initialResult: ProductSetupActionResult | null = null;
 
@@ -72,9 +77,11 @@ function Status({ result }: { result: ProductSetupActionResult | null }) {
 function EvidenceChip({
   refs,
   sources,
+  sourceIndex,
 }: {
   refs: ProductDraftEvidenceRef[];
   sources: ProductReviewSource[];
+  sourceIndex: Map<string, number>;
 }) {
   const [open, setOpen] = useState(false);
   if (refs.length === 0) return null;
@@ -83,20 +90,29 @@ function EvidenceChip({
     first.sourceIds
       .map((id) => sourceLabelForId(id, sources))
       .filter((name) => name !== "Source")[0] ?? "Source";
+  const markers = sourceMarkerNumbers(
+    [...new Set(refs.flatMap((ref) => ref.sourceIds))],
+    sourceIndex,
+  );
 
   return (
-    <span className="relative ml-1 inline-block align-middle">
+    <span className="research-source-chip relative ml-1 inline-block align-middle">
       <button
         type="button"
-        className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-800"
+        data-print-hide
+        className="research-source-chip-button rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:border-slate-300 hover:text-slate-800"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
         {label}
         {refs.length > 1 ? ` +${refs.length - 1}` : ""}
       </button>
+      <span className="research-source-chip-print hidden rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 print:inline">
+        {label}
+        {refs.length > 1 ? ` +${refs.length - 1}` : ""}
+      </span>
       {open ? (
-        <span className="absolute left-0 z-10 mt-1 w-72 rounded-md border border-slate-200 bg-white p-3 text-left text-xs text-slate-700 shadow-sm">
+        <span className="research-source-chip-popup absolute left-0 z-10 mt-1 w-72 rounded-md border border-slate-200 bg-white p-3 text-left text-xs text-slate-700 shadow-sm print:hidden">
           {refs.map((ref, index) => (
             <span key={`${ref.claim}-${index}`} className="block">
               {index > 0 ? <span className="my-2 block border-t border-slate-100" /> : null}
@@ -115,6 +131,7 @@ function EvidenceChip({
           ))}
         </span>
       ) : null}
+      <SourceMarkers numbers={markers} />
     </span>
   );
 }
@@ -123,16 +140,18 @@ function ReadItem({
   text,
   refs,
   sources,
+  sourceIndex,
 }: {
   text: string;
   refs: ProductDraftEvidenceRef[];
   sources: ProductReviewSource[];
+  sourceIndex: Map<string, number>;
 }) {
   const matched = evidenceRefsForText(text, refs);
   return (
     <li className="leading-relaxed text-slate-800">
       {text}
-      <EvidenceChip refs={matched} sources={sources} />
+      <EvidenceChip refs={matched} sources={sources} sourceIndex={sourceIndex} />
     </li>
   );
 }
@@ -252,6 +271,10 @@ export function ProductDraftReview({
     [sources, profile],
   );
   const refs = profile.evidenceRefs ?? [];
+  const sourceIndex = useMemo(
+    () => buildSourceIndex(sources, (source) => source.id),
+    [sources],
+  );
   const unknownLabels = (profile.unknownFields ?? []).map(
     (key) => PRODUCT_DRAFT_FIELD_LABELS[key] ?? key,
   );
@@ -587,6 +610,7 @@ export function ProductDraftReview({
                   <EvidenceChip
                     refs={evidenceRefsForText(profile.description, refs)}
                     sources={sources}
+                    sourceIndex={sourceIndex}
                   />
                 </p>
               ) : null}
@@ -596,6 +620,7 @@ export function ProductDraftReview({
                   <EvidenceChip
                     refs={evidenceRefsForText(profile.valueProposition, refs)}
                     sources={sources}
+                    sourceIndex={sourceIndex}
                   />
                 </p>
               ) : null}
@@ -607,7 +632,7 @@ export function ProductDraftReview({
             >
               <ul className="list-disc space-y-2 pl-5 text-[17px]">
                 {(profile.problemsSolved ?? []).map((item) => (
-                  <ReadItem key={item} text={item} refs={refs} sources={sources} />
+                  <ReadItem key={item} text={item} refs={refs} sources={sources} sourceIndex={sourceIndex} />
                 ))}
               </ul>
             </ReadSection>
@@ -618,7 +643,7 @@ export function ProductDraftReview({
             >
               <ul className="list-disc space-y-2 pl-5 text-[17px]">
                 {(profile.capabilities ?? []).map((item) => (
-                  <ReadItem key={item} text={item} refs={refs} sources={sources} />
+                  <ReadItem key={item} text={item} refs={refs} sources={sources} sourceIndex={sourceIndex} />
                 ))}
               </ul>
             </ReadSection>
@@ -629,7 +654,7 @@ export function ProductDraftReview({
             >
               <ul className="list-disc space-y-2 pl-5 text-[17px]">
                 {(profile.differentiators ?? []).map((item) => (
-                  <ReadItem key={item} text={item} refs={refs} sources={sources} />
+                  <ReadItem key={item} text={item} refs={refs} sources={sources} sourceIndex={sourceIndex} />
                 ))}
               </ul>
             </ReadSection>
@@ -653,6 +678,7 @@ export function ProductDraftReview({
                         text={item}
                         refs={refs}
                         sources={sources}
+                        sourceIndex={sourceIndex}
                       />
                     ))}
                   </ul>
@@ -672,6 +698,7 @@ export function ProductDraftReview({
                         text={item}
                         refs={refs}
                         sources={sources}
+                        sourceIndex={sourceIndex}
                       />
                     ))}
                   </ul>
@@ -698,6 +725,7 @@ export function ProductDraftReview({
                       text={item}
                       refs={refs}
                       sources={sources}
+                      sourceIndex={sourceIndex}
                     />
                   ))}
                 </ul>
@@ -712,6 +740,7 @@ export function ProductDraftReview({
                         text={item}
                         refs={refs}
                         sources={sources}
+                        sourceIndex={sourceIndex}
                       />
                     ))}
                   </ul>
@@ -729,6 +758,7 @@ export function ProductDraftReview({
                   <EvidenceChip
                     refs={evidenceRefsForText(profile.deploymentContext, refs)}
                     sources={sources}
+                    sourceIndex={sourceIndex}
                   />
                 </p>
               ) : null}
@@ -738,6 +768,7 @@ export function ProductDraftReview({
                   <EvidenceChip
                     refs={evidenceRefsForText(profile.pricingAovContext, refs)}
                     sources={sources}
+                    sourceIndex={sourceIndex}
                   />
                 </p>
               ) : null}
@@ -757,6 +788,7 @@ export function ProductDraftReview({
                     <EvidenceChip
                       refs={evidenceRefsForText(term, refs)}
                       sources={sources}
+                      sourceIndex={sourceIndex}
                     />
                   </li>
                 ))}
@@ -778,6 +810,7 @@ export function ProductDraftReview({
                       text={item}
                       refs={refs}
                       sources={sources}
+                      sourceIndex={sourceIndex}
                     />
                   ))}
                 </ul>
@@ -794,6 +827,7 @@ export function ProductDraftReview({
                         text={item}
                         refs={refs}
                         sources={sources}
+                        sourceIndex={sourceIndex}
                       />
                     ))}
                   </ul>
@@ -830,14 +864,19 @@ export function ProductDraftReview({
         ) : null}
 
         {sources.length > 0 ? (
-          <section className="research-sources-appendix mt-8 border-t border-slate-200 pt-6 print:break-before-page">
+          <section className="research-sources-appendix mt-8 border-t border-slate-200 pt-6">
             <h3 className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
               Sources
             </h3>
             <ul className="mt-3 space-y-3 text-sm text-slate-700">
-              {sources.map((source) => (
+              {sources.map((source) => {
+                const number = sourceIndex.get(source.id) ?? 0;
+                return (
                 <li key={source.id}>
                   <p className="font-medium text-slate-900">
+                    {number > 0 ? (
+                      <span className="text-slate-500">[{number}] </span>
+                    ) : null}
                     {source.displayName}
                   </p>
                   <p className="text-xs text-slate-500">{source.sourceType}</p>
@@ -850,7 +889,8 @@ export function ProductDraftReview({
                     <p className="text-xs text-slate-600">{source.filename}</p>
                   ) : null}
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </section>
         ) : null}

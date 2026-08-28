@@ -1,36 +1,47 @@
 "use client";
 
+import { useMemo } from "react";
 import { ResearchReadSection } from "@/components/research-document";
 import { PersonaProvenanceChip } from "@/components/PersonaProvenanceChip";
 import {
   provenanceForClaim,
+  sourceIdsForClaim,
   type PersonaBriefingView,
   type PersonaCriteriaBriefingGroups,
   type PersonaEvidenceRef,
   type PersonaProvenanceAssessment,
   type PersonaReviewSource,
 } from "@/lib/persona-research/persona-briefing";
+import { buildSourceIndex } from "@/lib/research/source-index";
 
 function ClaimLine({
   text,
   evidenceRefs,
   provenanceAssessments,
   sources,
+  sourceIndex,
 }: {
   text: string;
   evidenceRefs: PersonaEvidenceRef[];
   provenanceAssessments: PersonaProvenanceAssessment[];
   sources: PersonaReviewSource[];
+  sourceIndex: Map<string, number>;
 }) {
   const classes = provenanceForClaim({
     claim: text,
     evidenceRefs,
     provenanceAssessments,
   });
+  const sourceIds = sourceIdsForClaim({ claim: text, evidenceRefs });
   return (
     <li className="leading-relaxed text-slate-800">
       {text}
-      <PersonaProvenanceChip classes={classes} sources={sources} />
+      <PersonaProvenanceChip
+        classes={classes}
+        sources={sources}
+        sourceIds={sourceIds}
+        sourceIndex={sourceIndex}
+      />
     </li>
   );
 }
@@ -84,6 +95,11 @@ export function PersonaBriefingDocument({
   sources: PersonaReviewSource[];
   criteriaGroups: PersonaCriteriaBriefingGroups;
 }) {
+  const sourceIndex = useMemo(
+    () => buildSourceIndex(sources, (source) => source.id),
+    [sources],
+  );
+
   return (
     <article className="space-y-8">
       <div>
@@ -113,6 +129,11 @@ export function PersonaBriefingDocument({
                 provenanceAssessments,
               })}
               sources={sources}
+              sourceIds={sourceIdsForClaim({
+                claim: briefing.whoTheyAre,
+                evidenceRefs,
+              })}
+              sourceIndex={sourceIndex}
             />
           </p>
         ) : null}
@@ -140,6 +161,7 @@ export function PersonaBriefingDocument({
                 evidenceRefs={evidenceRefs}
                 provenanceAssessments={provenanceAssessments}
                 sources={sources}
+                sourceIndex={sourceIndex}
               />
             ))}
           </ul>
@@ -153,6 +175,7 @@ export function PersonaBriefingDocument({
                 evidenceRefs={evidenceRefs}
                 provenanceAssessments={provenanceAssessments}
                 sources={sources}
+                sourceIndex={sourceIndex}
               />
             ))}
           </ul>
@@ -168,6 +191,7 @@ export function PersonaBriefingDocument({
                   evidenceRefs={evidenceRefs}
                   provenanceAssessments={provenanceAssessments}
                   sources={sources}
+                  sourceIndex={sourceIndex}
                 />
               ))}
             </ul>
@@ -192,6 +216,7 @@ export function PersonaBriefingDocument({
                 evidenceRefs={evidenceRefs}
                 provenanceAssessments={provenanceAssessments}
                 sources={sources}
+                sourceIndex={sourceIndex}
               />
             ))}
           </ul>
@@ -207,6 +232,7 @@ export function PersonaBriefingDocument({
                   evidenceRefs={evidenceRefs}
                   provenanceAssessments={provenanceAssessments}
                   sources={sources}
+                  sourceIndex={sourceIndex}
                 />
               ))}
             </ul>
@@ -223,6 +249,7 @@ export function PersonaBriefingDocument({
                   evidenceRefs={evidenceRefs}
                   provenanceAssessments={provenanceAssessments}
                   sources={sources}
+                  sourceIndex={sourceIndex}
                 />
               ))}
             </ul>
@@ -242,6 +269,7 @@ export function PersonaBriefingDocument({
               evidenceRefs={evidenceRefs}
               provenanceAssessments={provenanceAssessments}
               sources={sources}
+              sourceIndex={sourceIndex}
             />
           ))}
         </ul>
@@ -265,6 +293,7 @@ export function PersonaBriefingDocument({
                 evidenceRefs={evidenceRefs}
                 provenanceAssessments={provenanceAssessments}
                 sources={sources}
+                sourceIndex={sourceIndex}
               />
             ))}
           </ul>
@@ -280,6 +309,7 @@ export function PersonaBriefingDocument({
                   evidenceRefs={evidenceRefs}
                   provenanceAssessments={provenanceAssessments}
                   sources={sources}
+                  sourceIndex={sourceIndex}
                 />
               ))}
             </ul>
@@ -296,6 +326,7 @@ export function PersonaBriefingDocument({
                   evidenceRefs={evidenceRefs}
                   provenanceAssessments={provenanceAssessments}
                   sources={sources}
+                  sourceIndex={sourceIndex}
                 />
               ))}
             </ul>
@@ -316,6 +347,8 @@ export function PersonaBriefingDocument({
                     provenanceAssessments,
                   })}
                   sources={sources}
+                  sourceIds={sourceIdsForClaim({ claim: term, evidenceRefs })}
+                  sourceIndex={sourceIndex}
                 />
               </li>
             ))}
@@ -351,14 +384,21 @@ export function PersonaBriefingDocument({
       </ResearchReadSection>
 
       {sources.length > 0 ? (
-        <section className="research-sources-appendix mt-8 border-t border-slate-200 pt-6 print:break-before-page">
+        <section className="research-sources-appendix mt-8 border-t border-slate-200 pt-6">
           <h3 className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
             Sources
           </h3>
           <ul className="mt-3 space-y-3 text-sm text-slate-700">
-            {sources.map((source) => (
+            {sources.map((source) => {
+              const number = sourceIndex.get(source.id) ?? 0;
+              return (
               <li key={source.id}>
-                <p className="font-medium text-slate-900">{source.displayName}</p>
+                <p className="font-medium text-slate-900">
+                  {number > 0 ? (
+                    <span className="text-slate-500">[{number}] </span>
+                  ) : null}
+                  {source.displayName}
+                </p>
                 <p className="text-xs text-slate-500">{source.sourceType}</p>
                 {source.originalUrl ? (
                   <p className="break-all text-xs text-slate-600">
@@ -369,7 +409,8 @@ export function PersonaBriefingDocument({
                   <p className="text-xs text-slate-600">{source.filename}</p>
                 ) : null}
               </li>
-            ))}
+              );
+            })}
           </ul>
         </section>
       ) : null}

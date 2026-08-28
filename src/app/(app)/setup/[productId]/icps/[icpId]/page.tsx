@@ -46,7 +46,7 @@ export default async function EditIcpPage({ params }: PageProps) {
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader
-        title={`Edit ICP: ${icp.name}`}
+        title={icp.name}
         description={`Ideal customer profile for ${product.name}.`}
         actions={
           <Link

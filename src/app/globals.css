@@ -37,7 +37,7 @@ body {
     background: white !important;
   }
 
-  .research-read-section {
-    break-inside: avoid;
+  .research-source-chip-popup {
+    display: none !important;
   }
 }

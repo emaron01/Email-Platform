@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ManualCompanyResearchForm } from "@/components/ManualCompanyResearchForm";
 import { RefreshCompanyResearchForm } from "@/components/RefreshCompanyResearchForm";
 import { ExportPdfButton } from "@/components/ExportPdfButton";
@@ -18,6 +18,7 @@ import {
   sourcesSupportingField,
 } from "@/lib/research/company-briefing";
 import { parseStringArray } from "@/lib/research";
+import { buildSourceIndex } from "@/lib/research/source-index";
 import type { ResearchSource } from "@/lib/research/types";
 
 export type CompanyBriefingDefaults = {
@@ -73,6 +74,10 @@ export function CompanyResearchBriefing({
   const riskSignals = parseStringArray(defaults.riskSignals);
 
   const metaLine = formatCompanyBriefingMeta(meta);
+  const sourceIndex = useMemo(
+    () => buildSourceIndex(sources, (source) => source.url),
+    [sources],
+  );
   const hasBriefing =
     Boolean(defaults.companySummary) ||
     Boolean(defaults.whatTheySell) ||
@@ -155,6 +160,7 @@ export function CompanyResearchBriefing({
               <ResearchProse
                 text={defaults.companySummary}
                 sources={sourcesSupportingField(sources, "companySummary")}
+                sourceIndex={sourceIndex}
               />
             ) : null}
           </ResearchReadSection>
@@ -167,6 +173,7 @@ export function CompanyResearchBriefing({
               <ResearchProse
                 text={defaults.whatTheySell}
                 sources={sourcesSupportingField(sources, "whatTheySell")}
+                sourceIndex={sourceIndex}
               />
             ) : null}
           </ResearchReadSection>
@@ -190,6 +197,7 @@ export function CompanyResearchBriefing({
                         item,
                         "customerTypes",
                       )}
+                      sourceIndex={sourceIndex}
                     />
                   ))}
                 </ul>
@@ -210,6 +218,7 @@ export function CompanyResearchBriefing({
                         item,
                         "primaryMarkets",
                       )}
+                      sourceIndex={sourceIndex}
                     />
                   ))}
                 </ul>
@@ -225,12 +234,14 @@ export function CompanyResearchBriefing({
               <ResearchProse
                 text={defaults.businessModel}
                 sources={sourcesSupportingField(sources, "businessModel")}
+                sourceIndex={sourceIndex}
               />
             ) : null}
             {defaults.companySizeContext ? (
               <ResearchProse
                 text={defaults.companySizeContext}
                 sources={sourcesSupportingField(sources, "companySizeContext")}
+                sourceIndex={sourceIndex}
               />
             ) : null}
           </ResearchReadSection>
@@ -243,12 +254,14 @@ export function CompanyResearchBriefing({
               <ResearchProse
                 text={defaults.estimatedAov}
                 sources={sourcesSupportingField(sources, "estimatedAov")}
+                sourceIndex={sourceIndex}
               />
             ) : null}
             {defaults.aovReasoning ? (
               <ResearchProse
                 text={defaults.aovReasoning}
                 sources={sourcesSupportingField(sources, "aovReasoning")}
+                sourceIndex={sourceIndex}
               />
             ) : null}
           </ResearchReadSection>
@@ -267,6 +280,7 @@ export function CompanyResearchBriefing({
                     item,
                     "relevantTechnologies",
                   )}
+                  sourceIndex={sourceIndex}
                 />
               ))}
             </ul>
@@ -291,6 +305,7 @@ export function CompanyResearchBriefing({
                         item,
                         "buyingSignals",
                       )}
+                      sourceIndex={sourceIndex}
                     />
                   ))}
                 </ul>
@@ -311,6 +326,7 @@ export function CompanyResearchBriefing({
                         item,
                         "riskSignals",
                       )}
+                      sourceIndex={sourceIndex}
                     />
                   ))}
                 </ul>
@@ -325,7 +341,7 @@ export function CompanyResearchBriefing({
         </p>
       )}
 
-      <ResearchSourcesAppendix sources={sources} />
+      <ResearchSourcesAppendix sources={sources} sourceIndex={sourceIndex} />
     </div>
   );
 }
