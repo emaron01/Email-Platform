@@ -65,6 +65,19 @@ export type CompanyResearchDepthPolicy = {
   researchFreshnessDays: number;
 };
 
+export type ResearchStoppedReason =
+  | "sufficient"
+  | "website_sufficient"
+  | "max_queries"
+  | "no_web_search";
+
+/** One LLM synthesis stage within automated company research. */
+export type ResearchStageTiming = {
+  stage: "initial" | "follow_up";
+  webSearchEnabled: boolean;
+  durationMs: number;
+};
+
 export type CompanyResearchInput = {
   organizationId: string;
   companyId: string;

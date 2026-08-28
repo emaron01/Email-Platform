@@ -38,8 +38,6 @@ import { assertUsageAllowed } from "@/lib/usage/quota";
 
 export { toSafeEmailGenerationError } from "@/lib/email-generation/errors";
 
-export const EMAIL_GENERATION_MODEL = "gpt-5.6-luna";
-
 export function removeEmDashes(value: string): string {
   return value.replace(/[ \t]*—[ \t]*/g, ", ").trim();
 }
@@ -258,11 +256,6 @@ export async function generateEmailDraft(
     });
     context = await ensureContactResearchForEmailGeneration(context);
     const config = getEmailAiConfig();
-    if (config.model !== EMAIL_GENERATION_MODEL) {
-      throw new AiConfigError(
-        `EMAIL_AI_MODEL must be ${EMAIL_GENERATION_MODEL}.`,
-      );
-    }
     provider = config.provider;
     model = config.model;
 

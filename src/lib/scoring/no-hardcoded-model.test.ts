@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 
 const scoringRoot = path.resolve(process.cwd(), "src/lib/scoring");
 const researchRoot = path.resolve(process.cwd(), "src/lib/research");
+const emailGenerationRoot = path.resolve(
+  process.cwd(),
+  "src/lib/email-generation",
+);
 
 function listTsFiles(dir: string): string[] {
   const out: string[] = [];
@@ -17,9 +21,13 @@ function listTsFiles(dir: string): string[] {
   return out;
 }
 
-describe("scoring/research business logic model hard-coding", () => {
-  it("does not hard-code a vendor model id in scoring or research business logic", () => {
-    const files = [...listTsFiles(scoringRoot), ...listTsFiles(researchRoot)];
+describe("scoring/research/email business logic model hard-coding", () => {
+  it("does not hard-code a vendor model id in scoring, research, or email generation business logic", () => {
+    const files = [
+      ...listTsFiles(scoringRoot),
+      ...listTsFiles(researchRoot),
+      ...listTsFiles(emailGenerationRoot),
+    ];
     const banned = [
       /model:\s*["']gpt-/i,
       /["']gpt-4/i,

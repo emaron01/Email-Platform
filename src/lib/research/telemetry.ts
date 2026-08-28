@@ -11,6 +11,8 @@ export type ResearchTelemetryEvent = {
   model: string;
   durationMs: number;
   webSearchCalls: number | null;
+  searchStagesUsed?: number | null;
+  researchStoppedReason?: string | null;
   sourceCount: number;
   status: "COMPLETED" | "PARTIAL" | "FAILED" | "SKIPPED";
   retries: number;

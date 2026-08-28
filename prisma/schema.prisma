@@ -1572,6 +1572,12 @@ model CompanyResearch {
   outputTokens         Int?
   webSearchCallCount   Int?
   researchDurationMs   Int?
+  /// LLM synthesis stages executed (prefetch + web-search passes).
+  searchStagesUsed     Int?
+  /// Why progressive search stopped (sufficient, max_queries, etc.).
+  researchStoppedReason String?
+  /// Per-stage wall times — array of { stage, webSearchEnabled, durationMs }.
+  researchStageTimings Json?
   /// User who initiated this research run (metering). Ownership remains Organization.
   researchedByUserId   String?
   createdAt            DateTime              @default(now())

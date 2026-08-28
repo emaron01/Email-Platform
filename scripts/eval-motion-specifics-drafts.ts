@@ -34,7 +34,11 @@ async function main() {
     process.env.EMAIL_AI_MODEL_URL =
       process.env.EMAIL_AI_MODEL_URL || process.env.RESEARCH_AI_MODEL_URL;
   }
-  process.env.EMAIL_AI_MODEL = "gpt-5.6-luna";
+  if (!process.env.EMAIL_AI_MODEL?.trim()) {
+    throw new Error(
+      "EMAIL_AI_MODEL is required. Set EMAIL_AI_MODEL in .env.local before running this script.",
+    );
+  }
 
   const { PrismaClient } = await import("@prisma/client");
   const { loadEmailGenerationContext } = await import(

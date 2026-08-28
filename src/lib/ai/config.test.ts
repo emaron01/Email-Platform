@@ -134,11 +134,11 @@ describe("role-specific AI configuration", () => {
     expect(getResearchAiConfig().model).not.toBe(getScoringAiConfig().model);
   });
 
-  it("keeps Email AI isolated and configured for gpt-5.6-luna", () => {
+  it("keeps Email AI isolated and reads model from EMAIL_AI_MODEL", () => {
     clearAllAiEnv();
     setResearchEnv("must-not-leak-into-email");
     process.env.EMAIL_AI_PROVIDER = "openai-responses";
-    process.env.EMAIL_AI_MODEL = "gpt-5.6-luna";
+    process.env.EMAIL_AI_MODEL = "email-model-from-env";
     process.env.EMAIL_AI_MODEL_URL =
       "https://api.openai.com/v1/responses";
     process.env.EMAIL_AI_API_KEY = "email-secret-key";
@@ -147,7 +147,7 @@ describe("role-specific AI configuration", () => {
     const email = getEmailAiConfig();
     expect(email.role).toBe("email");
     expect(email.provider).toBe("openai-responses");
-    expect(email.model).toBe("gpt-5.6-luna");
+    expect(email.model).toBe("email-model-from-env");
     expect(email.model).not.toBe(getResearchAiConfig().model);
   });
 
@@ -155,7 +155,9 @@ describe("role-specific AI configuration", () => {
     clearAllAiEnv();
     setScoringEnv();
     expect(isEmailAiConfigured()).toBe(false);
-    expect(() => getEmailAiConfig()).toThrow(/Email generation AI is not configured/);
+    expect(() => getEmailAiConfig()).toThrow(
+      /Missing required environment variable: EMAIL_AI_/,
+    );
   });
 
   it("allows openai-responses for Research and Scoring independently", () => {

@@ -20,7 +20,7 @@ import {
   researchExpiresAt,
   getCompanyResearchProvider,
   UnconfiguredCompanyResearchProvider,
-  RESEARCH_CONCURRENCY,
+  getResearchConcurrency,
   type CompanyResearchResult,
   type CompanyResearchProvenance,
   type ResearchSource,
@@ -656,6 +656,11 @@ export async function saveCompanyResearch(input: {
     webSearchCallCount?: number | null;
     researchDurationMs?: number | null;
   } | null;
+  telemetry?: {
+    searchStagesUsed?: number | null;
+    researchStoppedReason?: string | null;
+    researchStageTimings?: Prisma.InputJsonValue | null;
+  } | null;
   researchedByUserId?: string | null;
   freshnessDays?: number;
 }): Promise<CompanyResearch> {
@@ -703,6 +708,9 @@ export async function saveCompanyResearch(input: {
       outputTokens: input.usage?.outputTokens ?? null,
       webSearchCallCount: input.usage?.webSearchCallCount ?? null,
       researchDurationMs: input.usage?.researchDurationMs ?? null,
+      searchStagesUsed: input.telemetry?.searchStagesUsed ?? null,
+      researchStoppedReason: input.telemetry?.researchStoppedReason ?? null,
+      researchStageTimings: input.telemetry?.researchStageTimings ?? undefined,
       researchedByUserId: input.researchedByUserId ?? null,
     },
   });
@@ -840,6 +848,17 @@ export async function researchCompany(
         : null;
     const usage =
       "usage" in result && result.usage ? result.usage : null;
+    const telemetry =
+      "searchStagesUsed" in result
+        ? {
+            searchStagesUsed: result.searchStagesUsed ?? null,
+            researchStoppedReason: result.stoppedReason ?? null,
+            researchStageTimings:
+              result.stageTimings && result.stageTimings.length > 0
+                ? result.stageTimings
+                : null,
+          }
+        : null;
     const identityAmbiguous =
       "identityAmbiguous" in result && Boolean(result.identityAmbiguous);
 
@@ -859,6 +878,7 @@ export async function researchCompany(
       status,
       provenance,
       usage,
+      telemetry,
       researchedByUserId: user?.id ?? null,
       freshnessDays: researchPolicy.researchFreshnessDays,
     });
@@ -882,6 +902,8 @@ export async function researchCompany(
         activeCompanyCountAfter: await countActiveResearchedCompanies(
           organizationId,
         ),
+        searchStagesUsed: telemetry?.searchStagesUsed ?? null,
+        researchStoppedReason: telemetry?.researchStoppedReason ?? null,
       },
     });
 
@@ -1031,7 +1053,7 @@ export async function runResearchForContactList(
 
   const results = await mapPool(
     [...refreshTargets, ...allowedNew],
-    RESEARCH_CONCURRENCY,
+    getResearchConcurrency(),
     (item) =>
       researchCompany(item.companyId, {
         force: options?.forceRefresh,

@@ -35,6 +35,8 @@ import type {
   CompanyResearchResult,
   CompanyResearchProvenance,
   ResearchSource,
+  ResearchStageTiming,
+  ResearchStoppedReason,
 } from "@/lib/research/types";
 import {
   assertResearchConfidenceAllowed,
@@ -61,11 +63,8 @@ export type AutomatedCompanyResearchResult = CompanyResearchResult & {
   searchStagesUsed?: number;
   /** Telemetry only — true when strict website gate would have skipped search (prefetch never stops). */
   websitePrefetchGatePass?: boolean;
-  stoppedReason?:
-    | "sufficient"
-    | "website_sufficient"
-    | "max_queries"
-    | "no_web_search";
+  stoppedReason?: ResearchStoppedReason;
+  stageTimings?: ResearchStageTiming[];
 };
 
 function sleep(ms: number): Promise<void> {
@@ -132,6 +131,7 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
     let totalOutputTokens: number | null = null;
     let totalWebSearchCalls = 0;
     let searchStagesUsed = 0;
+    const stageTimings: ResearchStageTiming[] = [];
     let stoppedReason: AutomatedCompanyResearchResult["stoppedReason"] =
       "no_web_search";
 
@@ -172,6 +172,7 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         searchesRemaining: number;
         webSearchEnabled: boolean;
       }): Promise<CompanyResearchResult> => {
+        const stageStarted = Date.now();
         const { value: response, retries: usedRetries } = await withRetries(
           () =>
             ai.generateStructured({
@@ -192,6 +193,11 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         );
         retries += usedRetries;
         searchStagesUsed += 1;
+        stageTimings.push({
+          stage: opts.stage,
+          webSearchEnabled: opts.webSearchEnabled,
+          durationMs: Date.now() - stageStarted,
+        });
 
         if (response.usage?.inputTokens != null) {
           totalInputTokens =
@@ -362,6 +368,7 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         searchStagesUsed,
         websitePrefetchGatePass,
         stoppedReason,
+        stageTimings,
       };
 
       logResearchTelemetry({
@@ -372,6 +379,8 @@ export class AiCompanyResearchProvider implements CompanyResearchProvider {
         model: config.model,
         durationMs: Date.now() - started,
         webSearchCalls: result.usage?.webSearchCallCount ?? null,
+        searchStagesUsed: result.searchStagesUsed ?? null,
+        researchStoppedReason: result.stoppedReason ?? null,
         sourceCount: result.sources.length,
         status:
           identityAmbiguous || result.sources.length === 0
