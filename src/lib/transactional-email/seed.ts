@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { TransactionalEmailTemplateKey } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { BASELINE_TEMPLATES } from "@/lib/transactional-email/templates";

@@ -1,3 +1,5 @@
+import "server-only";
+
 import { resolveIcpQualification } from "@/lib/scoring/icp-qualification";
 import { SCORING_LOGIC_VERSION } from "@/lib/scoring/config";
 import { buildExclusionDetails } from "@/lib/scoring/exclusion-detail";

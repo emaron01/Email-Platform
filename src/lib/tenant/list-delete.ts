@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Ordered archive / hard-delete of a ContactList (Phase A membership model).
  *

@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { AiProvider, AiStructuredResponse } from "@/lib/ai/types";
 import {
   AiConfigError,

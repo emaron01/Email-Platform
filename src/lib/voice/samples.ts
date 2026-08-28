@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * User-scoped voice sample capture. No AI. No generation.
  */

@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Convert legacy ICP / Persona firmographic fields into structured criteria.
  * Additive — does not delete legacy columns.

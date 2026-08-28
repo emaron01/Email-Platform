@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Campaign soft-archive. History (contacts, drafts, sends) stays intact.
  * Archived campaigns are hidden from home and the campaign list by default

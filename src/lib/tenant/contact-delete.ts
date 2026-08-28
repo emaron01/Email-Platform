@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Soft-archive or hard-delete a Contact.
  *
