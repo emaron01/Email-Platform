@@ -25,3 +25,22 @@ export function getResearchConcurrency(): number {
   }
   return Math.min(parsed, RESEARCH_CONCURRENCY_MAX);
 }
+
+/** Default when RESEARCH_WORKER_CONCURRENCY is unset (Render worker Starter). */
+export const RESEARCH_WORKER_CONCURRENCY_DEFAULT = 5;
+
+/**
+ * Concurrent company research jobs per background worker process.
+ * Separate from web RESEARCH_CONCURRENCY (single-company refresh on web).
+ */
+export function getResearchWorkerConcurrency(): number {
+  const raw = process.env.RESEARCH_WORKER_CONCURRENCY?.trim();
+  if (!raw) return RESEARCH_WORKER_CONCURRENCY_DEFAULT;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error(
+      `Invalid RESEARCH_WORKER_CONCURRENCY "${raw}". Use an integer from 1 to ${RESEARCH_CONCURRENCY_MAX}.`,
+    );
+  }
+  return Math.min(parsed, RESEARCH_CONCURRENCY_MAX);
+}

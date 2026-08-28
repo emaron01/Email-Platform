@@ -5,16 +5,26 @@ import {
   getCompaniesNeedingResearchForContactList,
   getCompaniesNeedingResearchForScoringRun,
   researchCompany,
-  runResearchForContactList,
-  runResearchForScoringRun,
   updateManualCompanyResearch,
 } from "@/lib/tenant/companies";
-import { TenantError } from "@/lib/tenant/getCurrentOrganization";
+import {
+  requireOrganizationId,
+  TenantError,
+} from "@/lib/tenant/getCurrentOrganization";
+import { requireCurrentUser } from "@/lib/auth/session";
 import type { ResearchConfidence } from "@prisma/client";
 import {
   formatResearchAllowanceExhausted,
   RESEARCH_BILLING_HREF,
 } from "@/lib/usage/research-allowance";
+import {
+  canRetryResearchRun,
+  createResearchRun,
+  getActiveResearchRunForContactList,
+  getResearchRunForOrganization,
+  requireResearchRunInOrganization,
+  type ResearchRunView,
+} from "@/lib/research/runs";
 
 function requiredString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -27,48 +37,55 @@ function parseLineList(value: string): string[] {
     .filter(Boolean);
 }
 
-function formatQuotaBlockedSummary(input: {
-  quotaBlocked: number;
-  quotaBlockedCompanyNames: string[];
-  completed: number;
-  limit: number;
-}): string {
-  const names = input.quotaBlockedCompanyNames;
-  const preview = names.slice(0, 5).join(", ");
-  const more =
-    names.length > 5 ? ` and ${names.length - 5} more` : names.length > 0 ? "" : "";
-  const listed =
-    names.length > 0
-      ? ` Not researched: ${preview}${more}.`
-      : "";
+export type ResearchStartResult = {
+  ok: boolean;
+  message: string;
+  runId?: string;
+  code?: "ACTIVE_RUN" | "NOTHING_TO_DO" | "INVALID_RETRY";
+  activeRunId?: string;
+  run?: ResearchRunView;
+};
 
-  if (input.completed > 0) {
-    return (
-      `Researched ${input.completed} compan${input.completed === 1 ? "y" : "ies"} ` +
-      `with your remaining allowance. ${input.quotaBlocked} left unresearched because ` +
-      `the allowance is used (${input.limit} companies). Add capacity in Billing.` +
-      listed
-    );
+async function startResearchRun(input: {
+  contactListId: string;
+  forceRefresh: boolean;
+  scoringRunId?: string;
+  revalidatePathname: string;
+}): Promise<ResearchStartResult> {
+  const organizationId = await requireOrganizationId();
+  const user = await requireCurrentUser();
+
+  const result = await createResearchRun({
+    organizationId,
+    contactListId: input.contactListId,
+    initiatedByUserId: user.id,
+    forceRefresh: input.forceRefresh,
+    scoringRunId: input.scoringRunId,
+  });
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      message: result.message,
+      code: result.code,
+      activeRunId: "activeRunId" in result ? result.activeRunId : undefined,
+    };
   }
 
-  return formatResearchAllowanceExhausted(input.limit) + listed;
+  revalidatePath(input.revalidatePathname);
+  return {
+    ok: true,
+    message: input.forceRefresh
+      ? `Refreshing research for ${result.run.totalCompanies} companies in the background.`
+      : `Research started for ${result.run.totalCompanies} companies in the background.`,
+    runId: result.run.id,
+    run: result.run,
+  };
 }
 
 export async function researchCompaniesForContactListAction(
   formData: FormData,
-): Promise<{
-  ok: boolean;
-  message: string;
-  attempted?: number;
-  skippedFresh?: number;
-  failed?: number;
-  completed?: number;
-  quotaBlocked?: number;
-  exhausted?: boolean;
-  warning?: boolean;
-  remaining?: number;
-  billingHref?: string;
-}> {
+): Promise<ResearchStartResult> {
   const contactListId = requiredString(formData, "contactListId");
   const forceRefresh = requiredString(formData, "forceRefresh") === "1";
 
@@ -77,99 +94,34 @@ export async function researchCompaniesForContactListAction(
   }
 
   try {
-    const plan = await getCompaniesNeedingResearchForContactList(contactListId);
-    if (!forceRefresh && plan.needingResearch === 0) {
-      revalidatePath(`/lists/${contactListId}`);
-      return {
-        ok: true,
-        message: `All ${plan.uniqueCompanies} unique companies already have fresh research.`,
-        attempted: 0,
-        skippedFresh: plan.alreadyResearched,
-        failed: 0,
-        completed: 0,
-        quotaBlocked: 0,
-        billingHref: RESEARCH_BILLING_HREF,
-      };
+    if (!forceRefresh) {
+      const plan = await getCompaniesNeedingResearchForContactList(contactListId);
+      if (plan.needingResearch === 0) {
+        return {
+          ok: true,
+          message: `All ${plan.uniqueCompanies} unique companies already have fresh research.`,
+          code: "NOTHING_TO_DO",
+        };
+      }
     }
 
-    const result = await runResearchForContactList(contactListId, {
+    return await startResearchRun({
+      contactListId,
       forceRefresh,
+      revalidatePathname: `/lists/${contactListId}`,
     });
-
-    revalidatePath(`/lists/${contactListId}`);
-
-    if (result.quotaBlocked > 0) {
-      return {
-        ok: result.completed > 0,
-        message: formatQuotaBlockedSummary({
-          quotaBlocked: result.quotaBlocked,
-          quotaBlockedCompanyNames: result.quotaBlockedCompanyNames,
-          completed: result.completed,
-          limit: result.allowance.limit,
-        }),
-        ...result,
-        exhausted: result.allowance.exhausted,
-        remaining: result.allowance.remaining,
-        billingHref: RESEARCH_BILLING_HREF,
-      };
-    }
-
-    if (
-      result.attempted > 0 &&
-      result.completed === 0 &&
-      result.failed === 0 &&
-      result.skippedFresh === result.attempted
-    ) {
-      return {
-        ok: true,
-        message:
-          "Automated company research is not configured. Set RESEARCH_AI_* in .env.local (or Render). Manual research on company pages still works.",
-        ...result,
-        billingHref: RESEARCH_BILLING_HREF,
-      };
-    }
-
-    if (result.failed > 0 && result.completed === 0) {
-      return {
-        ok: false,
-        message: `Research failed for ${result.failed} compan${result.failed === 1 ? "y" : "ies"}. Prior successful research was preserved where available.`,
-        ...result,
-        billingHref: RESEARCH_BILLING_HREF,
-      };
-    }
-
-    return {
-      ok: true,
-      message: `Research pass finished: ${result.completed} completed, ${result.failed} failed, ${result.skippedFresh} skipped (fresh/unconfigured).`,
-      ...result,
-      remaining: result.allowance.remaining,
-      exhausted: result.allowance.exhausted,
-      billingHref: RESEARCH_BILLING_HREF,
-    };
   } catch (error) {
     const message =
       error instanceof TenantError
         ? error.message
-        : "Unable to run company research.";
+        : "Unable to start company research.";
     return { ok: false, message };
   }
 }
 
 export async function researchCompaniesForScoringRunAction(
   formData: FormData,
-): Promise<{
-  ok: boolean;
-  message: string;
-  attempted?: number;
-  skippedFresh?: number;
-  failed?: number;
-  completed?: number;
-  quotaBlocked?: number;
-  exhausted?: boolean;
-  warning?: boolean;
-  remaining?: number;
-  billingHref?: string;
-}> {
+): Promise<ResearchStartResult> {
   const scoringRunId = requiredString(formData, "scoringRunId");
   const forceRefresh = requiredString(formData, "forceRefresh") === "1";
 
@@ -178,80 +130,106 @@ export async function researchCompaniesForScoringRunAction(
   }
 
   try {
-    const plan = await getCompaniesNeedingResearchForScoringRun(scoringRunId);
-    if (!forceRefresh && plan.needingResearch === 0) {
-      revalidatePath(`/scoring/${scoringRunId}`);
-      return {
-        ok: true,
-        message: `All ${plan.uniqueCompanies} unique companies already have fresh research.`,
-        attempted: 0,
-        skippedFresh: plan.alreadyResearched,
-        failed: 0,
-        completed: 0,
-        quotaBlocked: 0,
-        billingHref: RESEARCH_BILLING_HREF,
-      };
-    }
-
-    const result = await runResearchForScoringRun(scoringRunId, {
-      forceRefresh,
+    const organizationId = await requireOrganizationId();
+    const { prisma } = await import("@/lib/prisma");
+    const run = await prisma.scoringRun.findFirst({
+      where: { id: scoringRunId, organizationId },
+      select: { contactListId: true },
     });
-
-    revalidatePath(`/scoring/${scoringRunId}`);
-
-    if (result.quotaBlocked > 0) {
-      return {
-        ok: result.completed > 0,
-        message: formatQuotaBlockedSummary({
-          quotaBlocked: result.quotaBlocked,
-          quotaBlockedCompanyNames: result.quotaBlockedCompanyNames,
-          completed: result.completed,
-          limit: result.allowance.limit,
-        }),
-        ...result,
-        exhausted: result.allowance.exhausted,
-        remaining: result.allowance.remaining,
-        billingHref: RESEARCH_BILLING_HREF,
-      };
+    if (!run) {
+      return { ok: false, message: "Scoring run not found." };
     }
 
-    if (
-      result.attempted > 0 &&
-      result.completed === 0 &&
-      result.failed === 0 &&
-      result.skippedFresh === result.attempted
-    ) {
-      return {
-        ok: true,
-        message:
-          "Automated company research is not configured. Set RESEARCH_AI_* in .env.local (or Render). Manual research on company pages still works.",
-        ...result,
-        billingHref: RESEARCH_BILLING_HREF,
-      };
+    if (!forceRefresh) {
+      const plan = await getCompaniesNeedingResearchForScoringRun(scoringRunId);
+      if (plan.needingResearch === 0) {
+        return {
+          ok: true,
+          message: `All ${plan.uniqueCompanies} unique companies already have fresh research.`,
+          code: "NOTHING_TO_DO",
+        };
+      }
     }
 
-    if (result.failed > 0 && result.completed === 0) {
+    return await startResearchRun({
+      contactListId: run.contactListId,
+      forceRefresh,
+      scoringRunId,
+      revalidatePathname: `/scoring/${scoringRunId}`,
+    });
+  } catch (error) {
+    const message =
+      error instanceof TenantError
+        ? error.message
+        : "Unable to start company research.";
+    return { ok: false, message };
+  }
+}
+
+export async function getResearchRunStatusAction(
+  runId: string,
+): Promise<ResearchRunView | null> {
+  const organizationId = await requireOrganizationId();
+  return getResearchRunForOrganization(runId, organizationId);
+}
+
+export async function getActiveResearchRunForListAction(
+  contactListId: string,
+): Promise<ResearchRunView | null> {
+  const organizationId = await requireOrganizationId();
+  return getActiveResearchRunForContactList(contactListId, organizationId);
+}
+
+export async function retryFailedResearchRunAction(
+  runId: string,
+): Promise<ResearchStartResult> {
+  try {
+    const organizationId = await requireOrganizationId();
+    const user = await requireCurrentUser();
+    const prior = await requireResearchRunInOrganization(runId, organizationId);
+
+    if (!canRetryResearchRun(prior)) {
       return {
         ok: false,
-        message: `Research failed for ${result.failed} compan${result.failed === 1 ? "y" : "ies"}. Prior successful research was preserved where available.`,
-        ...result,
-        billingHref: RESEARCH_BILLING_HREF,
+        message: "This run has no failed or quota-blocked companies to retry.",
+        code: "NOTHING_TO_DO",
       };
     }
+
+    const result = await createResearchRun({
+      organizationId,
+      contactListId: prior.contactListId,
+      initiatedByUserId: user.id,
+      failuresOnly: true,
+      retryOfRunId: prior.id,
+      scoringRunId: prior.scoringRunId ?? undefined,
+    });
+
+    if (!result.ok) {
+      return {
+        ok: false,
+        message: result.message,
+        code: result.code,
+        activeRunId: "activeRunId" in result ? result.activeRunId : undefined,
+      };
+    }
+
+    const revalidatePathname = prior.scoringRunId
+      ? `/scoring/${prior.scoringRunId}`
+      : `/lists/${prior.contactListId}`;
+    revalidatePath(revalidatePathname);
 
     return {
       ok: true,
-      message: `Research pass finished: ${result.completed} completed, ${result.failed} failed, ${result.skippedFresh} skipped (fresh/unconfigured).`,
-      ...result,
-      remaining: result.allowance.remaining,
-      exhausted: result.allowance.exhausted,
-      billingHref: RESEARCH_BILLING_HREF,
+      message: `Retrying ${result.run.totalCompanies} failed or blocked companies in the background.`,
+      runId: result.run.id,
+      run: result.run,
     };
   } catch (error) {
     const message =
       error instanceof TenantError
         ? error.message
-        : "Unable to run company research.";
+        : "Unable to retry company research.";
     return { ok: false, message };
   }
 }

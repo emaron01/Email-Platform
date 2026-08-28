@@ -20,7 +20,6 @@ import {
   researchExpiresAt,
   getCompanyResearchProvider,
   UnconfiguredCompanyResearchProvider,
-  getResearchConcurrency,
   type CompanyResearchResult,
   type CompanyResearchProvenance,
   type ResearchSource,
@@ -44,8 +43,11 @@ import {
   requireOrganizationId,
   TenantError,
 } from "@/lib/tenant/getCurrentOrganization";
+import { getTenantContext } from "@/lib/tenant/request-context";
 
 async function orgId(): Promise<string> {
+  const context = getTenantContext();
+  if (context?.organizationId) return context.organizationId;
   return requireOrganizationId();
 }
 
@@ -748,7 +750,11 @@ export async function researchCompany(
   if (!company) notFound("Company");
 
   const researchPolicy = await getResearchPolicy(organizationId);
-  const user = await getCurrentUser();
+  const context = getTenantContext();
+  let user = await getCurrentUser();
+  if (!user && context?.userId) {
+    user = await prisma.user.findUnique({ where: { id: context.userId } });
+  }
 
   if (user && !user.emailVerifiedAt && !isDevTenantBypassEnabled()) {
     return {
@@ -963,182 +969,6 @@ export async function researchCompany(
       refreshFailed: true,
     };
   }
-}
-
-async function mapPool<T, R>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T) => Promise<R>,
-): Promise<R[]> {
-  if (items.length === 0) return [];
-  const results: R[] = new Array(items.length);
-  let nextIndex = 0;
-
-  async function run(): Promise<void> {
-    while (nextIndex < items.length) {
-      const current = nextIndex;
-      nextIndex += 1;
-      results[current] = await worker(items[current]!);
-    }
-  }
-
-  const runners = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    () => run(),
-  );
-  await Promise.all(runners);
-  return results;
-}
-
-export async function runResearchForContactList(
-  contactListId: string,
-  options?: { forceRefresh?: boolean },
-): Promise<{
-  attempted: number;
-  skippedFresh: number;
-  failed: number;
-  completed: number;
-  quotaBlocked: number;
-  quotaBlockedCompanyNames: string[];
-  allowance: {
-    used: number;
-    limit: number;
-    remaining: number;
-    exhausted: boolean;
-  };
-}> {
-  const organizationId = await orgId();
-  const plan = await getCompaniesNeedingResearchForContactList(contactListId);
-  const user = await getCurrentUser();
-
-  const targets = options?.forceRefresh
-    ? plan.items
-    : plan.items.filter((item) => item.reason !== "fresh");
-
-  const refreshTargets: typeof targets = [];
-  const newSlotTargets: typeof targets = [];
-  for (const item of targets) {
-    const hasSlot = await companyHasActiveResearchSlot(
-      organizationId,
-      item.companyId,
-    );
-    if (hasSlot) refreshTargets.push(item);
-    else newSlotTargets.push(item);
-  }
-
-  let remainingSlots = Number.POSITIVE_INFINITY;
-  let allowanceView = {
-    used: 0,
-    limit: 0,
-    remaining: 0,
-    exhausted: false,
-  };
-  if (user) {
-    const { getActiveResearchedCompanyUsage } = await import("@/lib/usage/quota");
-    const usage = await getActiveResearchedCompanyUsage({
-      organizationId,
-      userId: user.id,
-    });
-    remainingSlots = usage.remaining;
-    allowanceView = {
-      used: usage.used,
-      limit: usage.limit,
-      remaining: usage.remaining,
-      exhausted: usage.exhausted,
-    };
-  }
-
-  const allowedNew = newSlotTargets.slice(0, Math.max(0, remainingSlots));
-  const blockedNew = newSlotTargets.slice(Math.max(0, remainingSlots));
-
-  const results = await mapPool(
-    [...refreshTargets, ...allowedNew],
-    getResearchConcurrency(),
-    (item) =>
-      researchCompany(item.companyId, {
-        force: options?.forceRefresh,
-      }),
-  );
-
-  let skippedFresh = 0;
-  let failed = 0;
-  let completed = 0;
-  let quotaBlocked = blockedNew.length;
-  const quotaBlockedCompanyNames = blockedNew.map((item) => item.companyName);
-
-  for (const result of results) {
-    if (result.quotaBlocked) {
-      quotaBlocked += 1;
-      continue;
-    }
-    if (result.skipped) {
-      skippedFresh += 1;
-      continue;
-    }
-    if (result.refreshFailed) {
-      failed += 1;
-      continue;
-    }
-    if (
-      result.research?.status === "COMPLETED" ||
-      result.research?.status === "PARTIAL"
-    ) {
-      completed += 1;
-    } else if (result.research?.status === "FAILED") {
-      failed += 1;
-    }
-  }
-
-  if (user) {
-    const { getActiveResearchedCompanyUsage } = await import("@/lib/usage/quota");
-    const usage = await getActiveResearchedCompanyUsage({
-      organizationId,
-      userId: user.id,
-    });
-    allowanceView = {
-      used: usage.used,
-      limit: usage.limit,
-      remaining: usage.remaining,
-      exhausted: usage.exhausted,
-    };
-  }
-
-  return {
-    attempted: results.length + blockedNew.length,
-    skippedFresh,
-    failed,
-    completed,
-    quotaBlocked,
-    quotaBlockedCompanyNames,
-    allowance: allowanceView,
-  };
-}
-
-export async function runResearchForScoringRun(
-  scoringRunId: string,
-  options?: { forceRefresh?: boolean },
-): Promise<{
-  attempted: number;
-  skippedFresh: number;
-  failed: number;
-  completed: number;
-  quotaBlocked: number;
-  quotaBlockedCompanyNames: string[];
-  allowance: {
-    used: number;
-    limit: number;
-    remaining: number;
-    exhausted: boolean;
-  };
-}> {
-  const organizationId = await orgId();
-  const run = await prisma.scoringRun.findFirst({
-    where: { id: scoringRunId, organizationId },
-    select: { contactListId: true },
-  });
-  if (!run) notFound("Scoring run");
-
-  return runResearchForContactList(run.contactListId, options);
 }
 
 export async function updateManualCompanyResearch(input: {

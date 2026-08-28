@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   RESEARCH_CONCURRENCY_DEFAULT,
+  RESEARCH_WORKER_CONCURRENCY_DEFAULT,
   getResearchConcurrency,
+  getResearchWorkerConcurrency,
 } from "@/lib/research/config";
 
 describe("getResearchConcurrency", () => {
@@ -30,5 +32,26 @@ describe("getResearchConcurrency", () => {
   it("rejects invalid values", () => {
     process.env.RESEARCH_CONCURRENCY = "0";
     expect(() => getResearchConcurrency()).toThrow(/RESEARCH_CONCURRENCY/);
+  });
+});
+
+describe("getResearchWorkerConcurrency", () => {
+  const original = process.env.RESEARCH_WORKER_CONCURRENCY;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.RESEARCH_WORKER_CONCURRENCY;
+    else process.env.RESEARCH_WORKER_CONCURRENCY = original;
+  });
+
+  it("defaults to 5 when unset", () => {
+    delete process.env.RESEARCH_WORKER_CONCURRENCY;
+    expect(getResearchWorkerConcurrency()).toBe(
+      RESEARCH_WORKER_CONCURRENCY_DEFAULT,
+    );
+  });
+
+  it("reads RESEARCH_WORKER_CONCURRENCY from env", () => {
+    process.env.RESEARCH_WORKER_CONCURRENCY = "8";
+    expect(getResearchWorkerConcurrency()).toBe(8);
   });
 });

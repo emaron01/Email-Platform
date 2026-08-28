@@ -29,6 +29,10 @@ import {
   getContactListCompanyGroups,
 } from "@/lib/tenant/companies";
 import {
+  getActiveResearchRunForContactList,
+  getLatestResearchRunForContactList,
+} from "@/lib/research/runs";
+import {
   getCurrentOrganization,
   TenantError,
 } from "@/lib/tenant/getCurrentOrganization";
@@ -82,6 +86,8 @@ export default async function ListDetailPage({
     icps,
     personas,
     researchAllowance,
+    activeResearchRun,
+    latestResearchRun,
   ] = await Promise.all([
     getContactListCompanyGroups(id, { page, pageSize: 25 }),
     getCompaniesNeedingResearchForContactList(id),
@@ -93,6 +99,8 @@ export default async function ListDetailPage({
       organizationId: organization.id,
       userId: membership.user.id,
     }),
+    getActiveResearchRunForContactList(id, organization.id),
+    getLatestResearchRunForContactList(id, organization.id),
   ]);
 
   const allEmails = companyGroups.groups.flatMap((group) =>
@@ -192,6 +200,10 @@ export default async function ListDetailPage({
             contactListId={id}
             researchAiConfigured={isResearchAiConfigured()}
             allowance={researchAllowance}
+            initialActiveRun={activeResearchRun}
+            initialLastRun={
+              activeResearchRun ? null : latestResearchRun
+            }
             plan={{
               totalContacts: researchPlan.totalContacts,
               uniqueCompanies: researchPlan.uniqueCompanies,

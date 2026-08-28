@@ -18,6 +18,10 @@ import {
   type ScoreReportSort,
 } from "@/lib/tenant/data";
 import { getCompaniesNeedingResearchForScoringRun } from "@/lib/tenant/companies";
+import {
+  getActiveResearchRunForContactList,
+  getLatestResearchRunForContactList,
+} from "@/lib/research/runs";
 import { getScoringReadiness } from "@/lib/scoring/engine";
 import { collectMandatorySuggestions } from "@/lib/scoring/mandatory-suggestion";
 import type { IcpSnapshot } from "@/lib/scoring/types";
@@ -103,6 +107,8 @@ export default async function ScoringReportPage({
     personas,
     titleSuggestions,
     researchAllowance,
+    activeResearchRun,
+    latestResearchRun,
   ] = await Promise.all([
     getScoreReportRows(runId, {
       scoreLabel: (query.scoreLabel as ScoreLabel | undefined) || "",
@@ -123,6 +129,8 @@ export default async function ScoringReportPage({
       organizationId: organization.id,
       userId: membership.user.id,
     }),
+    getActiveResearchRunForContactList(run.contactListId, organization.id),
+    getLatestResearchRunForContactList(run.contactListId, organization.id),
   ]);
 
   const suppressedEmails = await listActiveNormalizedEmails(
@@ -194,6 +202,10 @@ export default async function ScoringReportPage({
             runId={run.id}
             researchAiConfigured={isResearchAiConfigured()}
             allowance={researchAllowance}
+            initialActiveRun={activeResearchRun}
+            initialLastRun={
+              activeResearchRun ? null : latestResearchRun
+            }
             plan={{
               totalContacts: researchPlan.totalContacts,
               uniqueCompanies: researchPlan.uniqueCompanies,

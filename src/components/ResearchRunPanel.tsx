@@ -1,11 +1,21 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { researchCompaniesForContactListAction, researchCompaniesForScoringRunAction } from "@/app/actions/research";
+import {
+  getResearchRunStatusAction,
+  researchCompaniesForContactListAction,
+  researchCompaniesForScoringRunAction,
+  retryFailedResearchRunAction,
+  type ResearchStartResult,
+} from "@/app/actions/research";
 import { CompanyResearchAllowanceBanner } from "@/components/CompanyResearchAllowanceBanner";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
+import {
+  isResearchRunPaused,
+  type ResearchRunView,
+} from "@/lib/research/runs";
 import {
   formatResearchAllowanceWarning,
   RESEARCH_BILLING_HREF,
@@ -26,18 +36,71 @@ export type ResearchPlanView = {
   };
 };
 
+const POLL_MS = 4_000;
+
+function isActiveRun(status: ResearchRunView["status"]): boolean {
+  return status === "PENDING" || status === "IN_PROGRESS";
+}
+
+function progressPercent(run: ResearchRunView): number {
+  if (run.totalCompanies <= 0) return 0;
+  const done =
+    run.completedCount +
+    run.failedCount +
+    run.skippedFreshCount +
+    run.quotaBlockedCount;
+  return Math.min(100, Math.round((done / run.totalCompanies) * 100));
+}
+
+function formatRunSummary(run: ResearchRunView): string {
+  const done =
+    run.completedCount +
+    run.failedCount +
+    run.skippedFreshCount +
+    run.quotaBlockedCount;
+
+  if (isResearchRunPaused(run)) {
+    return `Paused, resuming shortly. ${done} of ${run.totalCompanies} companies processed so far.`;
+  }
+
+  if (isActiveRun(run.status)) {
+    const current = run.currentCompanyName
+      ? ` Currently researching ${run.currentCompanyName}.`
+      : "";
+    return `Research in progress: ${done} of ${run.totalCompanies} companies processed.${current}`;
+  }
+
+  if (run.status === "COMPLETED") {
+    return `Research complete: ${run.completedCount} completed, ${run.skippedFreshCount} skipped (fresh).`;
+  }
+
+  if (run.status === "PARTIAL") {
+    return `Research finished with issues: ${run.completedCount} completed, ${run.failedCount} failed, ${run.quotaBlockedCount} quota-blocked, ${run.skippedFreshCount} skipped.`;
+  }
+
+  if (run.status === "FAILED") {
+    return run.lastError ?? "Research run failed.";
+  }
+
+  return "Research run finished.";
+}
+
 export function ResearchRunPanel({
   runId,
   contactListId,
   plan,
   researchAiConfigured,
   allowance,
+  initialActiveRun,
+  initialLastRun,
 }: {
   runId?: string;
   contactListId?: string;
   plan: ResearchPlanView;
   researchAiConfigured: boolean;
   allowance: ActiveResearchedCompanyUsageView;
+  initialActiveRun?: ResearchRunView | null;
+  initialLastRun?: ResearchRunView | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -45,6 +108,52 @@ export function ResearchRunPanel({
   const [confirmWarning, setConfirmWarning] = useState<null | "research" | "refresh">(
     null,
   );
+  const [activeRun, setActiveRun] = useState<ResearchRunView | null>(
+    initialActiveRun ?? null,
+  );
+  const [lastRun, setLastRun] = useState<ResearchRunView | null>(
+    initialLastRun ?? null,
+  );
+
+  useEffect(() => {
+    setActiveRun(initialActiveRun ?? null);
+  }, [initialActiveRun]);
+
+  useEffect(() => {
+    if (!initialLastRun) return;
+    setLastRun(initialLastRun);
+  }, [initialLastRun]);
+
+  useEffect(() => {
+    const run = activeRun;
+    if (!run || !isActiveRun(run.status)) return;
+
+    const interval = window.setInterval(async () => {
+      const latest = await getResearchRunStatusAction(run.id);
+      if (!latest) return;
+      setActiveRun(latest);
+      if (!isActiveRun(latest.status)) {
+        setLastRun(latest);
+        setMessage(formatRunSummary(latest));
+        router.refresh();
+      }
+    }, POLL_MS);
+
+    return () => window.clearInterval(interval);
+  }, [activeRun, router]);
+
+  function handleStartResult(result: ResearchStartResult) {
+    setMessage(result.message);
+    setConfirmWarning(null);
+    if (result.run) {
+      setActiveRun(result.run);
+    } else if (result.activeRunId) {
+      void getResearchRunStatusAction(result.activeRunId).then((run) => {
+        if (run) setActiveRun(run);
+      });
+    }
+    router.refresh();
+  }
 
   function executeResearch(forceRefresh: boolean) {
     const formData = new FormData();
@@ -61,9 +170,7 @@ export function ResearchRunPanel({
 
     startTransition(async () => {
       const result = await action(formData);
-      setMessage(result.message);
-      setConfirmWarning(null);
-      router.refresh();
+      handleStartResult(result);
     });
   }
 
@@ -83,11 +190,33 @@ export function ResearchRunPanel({
     executeResearch(forceRefresh);
   }
 
+  function retryFailed() {
+    const targetRunId = lastRun?.id;
+    if (!targetRunId) return;
+    startTransition(async () => {
+      const result = await retryFailedResearchRunAction(targetRunId);
+      handleStartResult(result);
+    });
+  }
+
+  const runInProgress = activeRun != null && isActiveRun(activeRun.status);
+  const retryCount =
+    (lastRun?.failedCompanyIds.length ?? 0) +
+    (lastRun?.quotaBlockedCount ?? 0);
+  const canRetry =
+    lastRun != null &&
+    !runInProgress &&
+    (lastRun.status === "PARTIAL" || lastRun.status === "FAILED") &&
+    retryCount > 0;
+
   const researchDisabled =
     pending ||
+    runInProgress ||
     !researchAiConfigured ||
     plan.needingResearch === 0 ||
     (allowance.exhausted && plan.needingResearch > 0);
+
+  const displayRun = runInProgress ? activeRun : lastRun;
 
   return (
     <div className="space-y-4">
@@ -104,9 +233,45 @@ export function ResearchRunPanel({
         <Stat label="Not Started" value={plan.statusCounts.notStarted} />
       </div>
 
+      {displayRun ? (
+        <div
+          className="space-y-2 rounded-md border border-slate-200 bg-white px-3 py-3"
+          data-testid="research-run-progress"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <p className="font-medium text-slate-900">
+              {isResearchRunPaused(displayRun)
+                ? "Research paused"
+                : runInProgress
+                  ? "Research running"
+                  : "Last research run"}
+            </p>
+            <p className="text-slate-600">{displayRun.status.replace("_", " ")}</p>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-slate-900 transition-all"
+              style={{ width: `${progressPercent(displayRun)}%` }}
+            />
+          </div>
+          <p className="text-sm text-slate-600">{formatRunSummary(displayRun)}</p>
+          {displayRun.quotaBlockedCount > 0 ? (
+            <p className="text-sm text-amber-900">
+              {displayRun.quotaBlockedCount} companies were not researched due to
+              allowance limits.{" "}
+              <Link href={RESEARCH_BILLING_HREF} className="underline">
+                Add capacity in Billing
+              </Link>
+              .
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       <p className="text-sm text-slate-600">
-        Research runs once per unique company, not once per contact. Uses
-        Research AI configuration only (independent from Scoring AI).
+        Research runs once per unique company in the background. Results appear
+        below as each company finishes. Uses Research AI only (independent from
+        Scoring AI).
       </p>
 
       {!researchAiConfigured ? (
@@ -171,11 +336,16 @@ export function ResearchRunPanel({
             disabled={researchDisabled}
             onClick={() => requestResearch(false)}
           >
-            {pending ? "Working…" : "Research Companies"}
+            {pending
+              ? "Starting…"
+              : runInProgress
+                ? "Research running…"
+                : "Research Companies"}
           </PrimaryButton>
           <SecondaryButton
             disabled={
               pending ||
+              runInProgress ||
               !researchAiConfigured ||
               plan.uniqueCompanies === 0
             }
@@ -183,6 +353,11 @@ export function ResearchRunPanel({
           >
             Refresh Research
           </SecondaryButton>
+          {canRetry ? (
+            <SecondaryButton disabled={pending} onClick={retryFailed}>
+              Retry {retryCount} failed
+            </SecondaryButton>
+          ) : null}
         </div>
       )}
 
