@@ -8,8 +8,18 @@ import {
   type PersonaSetupActionResult,
 } from "@/app/actions/persona-setup";
 import { AutosizeTextarea } from "@/components/AutosizeTextarea";
-import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
+import { ExportPdfButton } from "@/components/ExportPdfButton";
+import { PersonaBriefingDocument } from "@/components/PersonaBriefingDocument";
+import { SecondaryButton, SubmitButton } from "@/components/ui";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
+import {
+  describePersonaSourceLead,
+  formatPersonaBriefingMeta,
+  groupPersonaCriteriaForBriefing,
+  readProvenanceFromProfile,
+  resolvePersonaBriefingView,
+  type PersonaReviewSource,
+} from "@/lib/persona-research/persona-briefing";
 import {
   NEEDS_REVIEW_CLASSIFY_TARGETS,
   appendCriterionLineToBox,
@@ -242,6 +252,69 @@ function PersonaCriteriaEditor({
   );
 }
 
+function draftToFormState(draft: PersonaAiDraft) {
+  return {
+    name: draft.name,
+    likelyTitles: draft.likelyTitles.join(", "),
+    department: draft.departmentFunction ?? "",
+    seniority: draft.seniority ?? "",
+    definition: draft.roleSummary ?? "",
+    responsibilities: draft.primaryResponsibilities.join("\n"),
+    painPoints: draft.painPoints.join("\n"),
+    desiredOutcomes: draft.desiredOutcomesFromSolution.join("\n"),
+    messagingNotes: draft.messagingNotes.join("\n"),
+  };
+}
+
+function DraftEditField({
+  label,
+  name,
+  value,
+  onChange,
+  required,
+  multiline = false,
+  hint,
+}: {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  multiline?: boolean;
+  hint?: string;
+}) {
+  const shared =
+    "mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 placeholder:text-slate-400 focus:ring-2";
+  return (
+    <label className="block text-sm">
+      <span className="font-medium text-slate-700">{label}</span>
+      {hint ? (
+        <span className="mt-0.5 block text-xs font-normal text-slate-500">
+          {hint}
+        </span>
+      ) : null}
+      {multiline ? (
+        <AutosizeTextarea
+          name={name}
+          value={value}
+          required={required}
+          minRows={3}
+          onChange={(event) => onChange(event.target.value)}
+          className={`${shared} resize-none overflow-hidden`}
+        />
+      ) : (
+        <input
+          name={name}
+          value={value}
+          required={required}
+          onChange={(event) => onChange(event.target.value)}
+          className={shared}
+        />
+      )}
+    </label>
+  );
+}
+
 export function PersonaDraftReview({
   productId,
   personaSetupRunId,
@@ -249,6 +322,8 @@ export function PersonaDraftReview({
   failed,
   errorSafe,
   maxProjectedPersonaCriteria = 15,
+  sources = [],
+  includesProductEvidence = false,
 }: {
   productId: string;
   personaSetupRunId: string;
@@ -256,8 +331,11 @@ export function PersonaDraftReview({
   failed?: boolean;
   errorSafe?: string | null;
   maxProjectedPersonaCriteria?: number;
+  sources?: PersonaReviewSource[];
+  includesProductEvidence?: boolean;
 }) {
   const router = useRouter();
+  const [editing, setEditing] = useState(false);
   const [state, action, pending] = useActionState(
     saveApprovedPersonaFromRunAction,
     initial,
@@ -282,6 +360,18 @@ export function PersonaDraftReview({
   );
   const initialCriteria = reviewResult.criteria;
   const [criteriaJson, setCriteriaJson] = useState("[]");
+  const [formState, setFormState] = useState({
+    name: draft?.name ?? "",
+    likelyTitles: draft?.likelyTitles.join(", ") ?? "",
+    department: draft?.departmentFunction ?? "",
+    seniority: draft?.seniority ?? "",
+    definition: draft?.roleSummary ?? "",
+    responsibilities: draft?.primaryResponsibilities.join("\n") ?? "",
+    painPoints: draft?.painPoints.join("\n") ?? "",
+    desiredOutcomes: draft?.desiredOutcomesFromSolution.join("\n") ?? "",
+    messagingNotes: draft?.messagingNotes.join("\n") ?? "",
+  });
+
   const handleCriteriaChange = useMemo(
     () => (rows: PersonaCriterionFormRow[]) => {
       setCriteriaJson(JSON.stringify(rows));
@@ -291,6 +381,7 @@ export function PersonaDraftReview({
 
   useEffect(() => {
     if (draft) {
+      setFormState(draftToFormState(draft));
       setCriteriaJson(JSON.stringify(reviewResult.criteria));
     }
   }, [draft, reviewResult.criteria]);
@@ -308,6 +399,45 @@ export function PersonaDraftReview({
       router.refresh();
     }
   }, [retry, productId, router]);
+
+  const briefing = useMemo(
+    () =>
+      draft
+        ? resolvePersonaBriefingView({
+            name: formState.name,
+            definition: formState.definition,
+            responsibilities: formState.responsibilities,
+            painPoints: formState.painPoints,
+            desiredOutcomes: formState.desiredOutcomes,
+            messagingNotes: formState.messagingNotes,
+            targetTitles: formState.likelyTitles,
+            department: formState.department,
+            seniority: formState.seniority,
+            profileJson: draft,
+          })
+        : null,
+    [draft, formState],
+  );
+  const { evidenceRefs, provenanceAssessments } = useMemo(
+    () => readProvenanceFromProfile(draft),
+    [draft],
+  );
+  const criteriaGroups = useMemo(
+    () =>
+      groupPersonaCriteriaForBriefing(
+        JSON.parse(criteriaJson || "[]") as PersonaCriterionFormRow[],
+      ),
+    [criteriaJson],
+  );
+  const sourceLead = useMemo(
+    () =>
+      describePersonaSourceLead({
+        personaSources: sources,
+        includesProductEvidence,
+      }),
+    [sources, includesProductEvidence],
+  );
+  const metaLine = briefing ? formatPersonaBriefingMeta(briefing) : "";
 
   if (failed || !draft) {
     return (
@@ -335,93 +465,189 @@ export function PersonaDraftReview({
   }
 
   return (
-    <form action={action} className="grid gap-4 md:grid-cols-2">
-      <input type="hidden" name="productId" value={productId} />
-      <input type="hidden" name="personaSetupRunId" value={personaSetupRunId} />
-      <input type="hidden" name="criteriaJson" value={criteriaJson} />
-      <Field label="Persona Name" name="name" required defaultValue={draft.name} />
-      <Field
-        label="Likely Titles"
-        name="likelyTitles"
-        defaultValue={draft.likelyTitles.join(", ")}
-      />
-      <Field
-        label="Function"
-        name="department"
-        defaultValue={draft.departmentFunction ?? ""}
-      />
-      <Field
-        label="Seniority"
-        name="seniority"
-        defaultValue={draft.seniority ?? ""}
-      />
-      <div className="md:col-span-2">
-        <Field
-          label="Role summary"
-          name="definition"
-          as="textarea"
-          defaultValue={draft.roleSummary ?? ""}
-        />
-      </div>
-      <div className="md:col-span-2">
-        <Field
-          label="Primary Responsibilities"
-          name="responsibilities"
-          as="textarea"
-          defaultValue={draft.primaryResponsibilities.join("\n")}
-        />
-      </div>
-      <div className="md:col-span-2">
-        <Field
-          label="Pain Points"
-          name="painPoints"
-          as="textarea"
-          defaultValue={draft.painPoints.join("\n")}
-        />
-      </div>
-      <div className="md:col-span-2">
-        <Field
-          label="Desired Outcomes From Your Solution"
-          name="desiredOutcomes"
-          as="textarea"
-          defaultValue={draft.desiredOutcomesFromSolution.join("\n")}
-          hint="Outcomes from using the product — not campaign CTAs."
-        />
-      </div>
-      <div className="md:col-span-2">
-        <Field
-          label="Messaging Notes"
-          name="messagingNotes"
-          as="textarea"
-          defaultValue={draft.messagingNotes.join("\n")}
-        />
-      </div>
-      <PersonaCriteriaEditor
-        initialCriteria={initialCriteria}
-        onChange={handleCriteriaChange}
-      />
-      {reviewResult.unmappedCriterionTypes.length > 0 ? (
-        <p className="md:col-span-2 text-xs text-slate-500">
-          Unrecognized AI criterion types logged for review:{" "}
-          {reviewResult.unmappedCriterionTypes.join(", ")}
-        </p>
-      ) : null}
-      <div className="md:col-span-2">
-        <SubmitButton disabled={pending}>
-          {pending ? "Saving…" : "Review & Save Persona"}
-        </SubmitButton>
-      </div>
-      {state ? (
-        <p
-          className={
-            state.ok
-              ? "md:col-span-2 text-sm text-emerald-700"
-              : "md:col-span-2 text-sm text-red-600"
-          }
-        >
-          {state.message}
-        </p>
-      ) : null}
-    </form>
+    <div
+      className="mx-auto max-w-3xl space-y-6"
+      data-testid="persona-draft-review"
+      data-print-document
+    >
+      <form action={action} className="space-y-6">
+        <input type="hidden" name="productId" value={productId} />
+        <input type="hidden" name="personaSetupRunId" value={personaSetupRunId} />
+        <input type="hidden" name="criteriaJson" value={criteriaJson} />
+        {!editing ? (
+          <>
+            <input type="hidden" name="name" value={formState.name} />
+            <input
+              type="hidden"
+              name="likelyTitles"
+              value={formState.likelyTitles}
+            />
+            <input type="hidden" name="department" value={formState.department} />
+            <input type="hidden" name="seniority" value={formState.seniority} />
+            <input type="hidden" name="definition" value={formState.definition} />
+            <input
+              type="hidden"
+              name="responsibilities"
+              value={formState.responsibilities}
+            />
+            <input type="hidden" name="painPoints" value={formState.painPoints} />
+            <input
+              type="hidden"
+              name="desiredOutcomes"
+              value={formState.desiredOutcomes}
+            />
+            <input
+              type="hidden"
+              name="messagingNotes"
+              value={formState.messagingNotes}
+            />
+          </>
+        ) : null}
+
+        <div className="flex flex-wrap justify-end gap-2" data-print-hide>
+          <ExportPdfButton />
+          <SecondaryButton
+            type="button"
+            onClick={() => setEditing((value) => !value)}
+          >
+            {editing ? "Done editing" : "Edit"}
+          </SecondaryButton>
+        </div>
+
+        {!editing && briefing ? (
+          <PersonaBriefingDocument
+            briefing={briefing}
+            sourceLead={sourceLead.sentence}
+            sourceNames={sourceLead.names}
+            metaLine={metaLine}
+            evidenceRefs={evidenceRefs}
+            provenanceAssessments={provenanceAssessments}
+            sources={sources}
+            criteriaGroups={criteriaGroups}
+          />
+        ) : null}
+
+        {editing ? (
+          <div className="grid gap-4 md:grid-cols-2" data-print-hide>
+            <DraftEditField
+              label="Persona Name"
+              name="name"
+              required
+              value={formState.name}
+              onChange={(value) =>
+                setFormState((prev) => ({ ...prev, name: value }))
+              }
+            />
+            <DraftEditField
+              label="Likely Titles"
+              name="likelyTitles"
+              value={formState.likelyTitles}
+              onChange={(value) =>
+                setFormState((prev) => ({ ...prev, likelyTitles: value }))
+              }
+            />
+            <DraftEditField
+              label="Function"
+              name="department"
+              value={formState.department}
+              onChange={(value) =>
+                setFormState((prev) => ({ ...prev, department: value }))
+              }
+            />
+            <DraftEditField
+              label="Seniority"
+              name="seniority"
+              value={formState.seniority}
+              onChange={(value) =>
+                setFormState((prev) => ({ ...prev, seniority: value }))
+              }
+            />
+            <div className="md:col-span-2">
+              <DraftEditField
+                label="Role summary"
+                name="definition"
+                value={formState.definition}
+                onChange={(value) =>
+                  setFormState((prev) => ({ ...prev, definition: value }))
+                }
+                multiline
+              />
+            </div>
+            <div className="md:col-span-2">
+              <DraftEditField
+                label="Primary Responsibilities"
+                name="responsibilities"
+                value={formState.responsibilities}
+                onChange={(value) =>
+                  setFormState((prev) => ({ ...prev, responsibilities: value }))
+                }
+                multiline
+              />
+            </div>
+            <div className="md:col-span-2">
+              <DraftEditField
+                label="Pain Points"
+                name="painPoints"
+                value={formState.painPoints}
+                onChange={(value) =>
+                  setFormState((prev) => ({ ...prev, painPoints: value }))
+                }
+                multiline
+              />
+            </div>
+            <div className="md:col-span-2">
+              <DraftEditField
+                label="Desired Outcomes From Your Solution"
+                name="desiredOutcomes"
+                value={formState.desiredOutcomes}
+                onChange={(value) =>
+                  setFormState((prev) => ({ ...prev, desiredOutcomes: value }))
+                }
+                multiline
+                hint="Outcomes from using the product — not campaign CTAs."
+              />
+            </div>
+            <div className="md:col-span-2">
+              <DraftEditField
+                label="Messaging Notes"
+                name="messagingNotes"
+                value={formState.messagingNotes}
+                onChange={(value) =>
+                  setFormState((prev) => ({ ...prev, messagingNotes: value }))
+                }
+                multiline
+              />
+            </div>
+            <PersonaCriteriaEditor
+              initialCriteria={initialCriteria}
+              onChange={handleCriteriaChange}
+            />
+            {reviewResult.unmappedCriterionTypes.length > 0 ? (
+              <p className="md:col-span-2 text-xs text-slate-500">
+                Unrecognized AI criterion types logged for review:{" "}
+                {reviewResult.unmappedCriterionTypes.join(", ")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="border-t border-slate-200 pt-5" data-print-hide>
+          <SubmitButton disabled={pending}>
+            {pending ? "Saving…" : "Review & Save Persona"}
+          </SubmitButton>
+          {state ? (
+            <p
+              className={
+                state.ok
+                  ? "mt-3 text-sm text-emerald-700"
+                  : "mt-3 text-sm text-red-600"
+              }
+            >
+              {state.message}
+            </p>
+          ) : null}
+        </div>
+      </form>
+    </div>
   );
 }

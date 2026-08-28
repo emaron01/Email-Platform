@@ -3,7 +3,9 @@
 import {
   useActionState,
   useEffect,
+  useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -19,9 +21,19 @@ import {
 } from "@/app/actions/interpretation";
 import { projectPersonaSignalsFromProfileAction } from "@/app/actions/persona-setup";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
+import { ExportPdfButton } from "@/components/ExportPdfButton";
+import { PersonaBriefingDocument } from "@/components/PersonaBriefingDocument";
 import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
 import { formatCriterionDisplay } from "@/lib/criteria/types";
 import type { PersonaActionResult } from "@/lib/persona/save";
+import {
+  describePersonaSourceLead,
+  formatPersonaBriefingMeta,
+  groupPersonaCriteriaForBriefing,
+  readProvenanceFromProfile,
+  resolvePersonaBriefingView,
+  type PersonaReviewSource,
+} from "@/lib/persona-research/persona-briefing";
 import { NEEDS_REVIEW_CLASSIFY_TARGETS } from "@/lib/persona-research/project-signals";
 import { listToCommaString } from "@/lib/utils";
 
@@ -285,17 +297,196 @@ function NeedsReviewCriterionRow({
   );
 }
 
+function PersonaHiddenFields({ persona }: { persona: Persona }) {
+  return (
+    <>
+      <input type="hidden" name="id" value={persona.id} />
+      <input type="hidden" name="name" value={persona.name} />
+      <input
+        type="hidden"
+        name="targetTitles"
+        value={listToCommaString(persona.targetTitles)}
+      />
+      <input
+        type="hidden"
+        name="definition"
+        value={persona.definition ?? persona.responsibilities ?? ""}
+      />
+      <input
+        type="hidden"
+        name="additionalContext"
+        value={persona.additionalContext ?? ""}
+      />
+      <input type="hidden" name="department" value={persona.department ?? ""} />
+      <input type="hidden" name="seniority" value={persona.seniority ?? ""} />
+      <input
+        type="hidden"
+        name="responsibilities"
+        value={persona.responsibilities ?? ""}
+      />
+      <input type="hidden" name="painPoints" value={persona.painPoints ?? ""} />
+      <input
+        type="hidden"
+        name="desiredOutcomes"
+        value={persona.desiredOutcomes ?? ""}
+      />
+      <input
+        type="hidden"
+        name="messagingNotes"
+        value={persona.messagingNotes ?? ""}
+      />
+    </>
+  );
+}
+
+function NewPersonaForm({
+  productId,
+}: {
+  productId: string;
+}) {
+  const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [saveState, saveAction, savePending] = useActionState(
+    upsertPersonaAction,
+    initialResult,
+  );
+  const [interpretState, interpretAction, interpretPending] = useActionState(
+    saveAndInterpretPersonaAction,
+    initialResult,
+  );
+
+  const status = interpretState ?? saveState;
+  const pending = savePending || interpretPending;
+
+  useEffect(() => {
+    if (saveState?.ok && saveState.personaId) {
+      router.refresh();
+    }
+    if (interpretState?.ok) {
+      router.refresh();
+    }
+  }, [saveState, interpretState, router]);
+
+  return (
+    <div
+      className="rounded-md border border-slate-200 p-4"
+      data-testid="persona-form"
+    >
+      <p className="mb-3 text-xs text-slate-500">
+        Workflow: Persona definition → Save → AI Interpretation → Review
+        criteria. AI is optional for saving.
+      </p>
+      <form
+        ref={formRef}
+        action={saveAction}
+        className="grid gap-4 md:grid-cols-2"
+      >
+        <input type="hidden" name="id" value="" />
+        <input type="hidden" name="productId" value={productId} />
+        <Field label="Persona Name" name="name" required />
+        <Field
+          label="Likely Titles (evidence)"
+          name="targetTitles"
+          placeholder="CRO, VP Sales, Director of Sales"
+          hint="Literal job titles only — not generic labels like “Sales Leader”."
+        />
+        <div className="md:col-span-2">
+          <Field
+            label="Describe the person who buys / cares"
+            name="definition"
+            as="textarea"
+            placeholder="The executive responsible for…"
+            hint="Authoritative buyer-role narrative. Preserved as source data."
+          />
+        </div>
+        <div className="md:col-span-2">
+          <Field
+            label="Additional context (optional)"
+            name="additionalContext"
+            as="textarea"
+          />
+        </div>
+        <Field
+          label="Department / Function"
+          name="department"
+          placeholder="Sales"
+          hint="Organizational function (e.g. Sales, Finance) — not “Sales Leader”."
+        />
+        <Field
+          label="Seniority"
+          name="seniority"
+          placeholder="Director through C-Suite"
+          hint="Organizational level — distinct from title and function."
+        />
+        <div className="md:col-span-2">
+          <Field
+            label="Primary Responsibilities"
+            name="responsibilities"
+            as="textarea"
+            hint="What they own, manage, decide, or are accountable for."
+          />
+        </div>
+        <div className="md:col-span-2">
+          <Field
+            label="Problems / Pain Points"
+            name="painPoints"
+            as="textarea"
+          />
+        </div>
+        <div className="md:col-span-2">
+          <Field
+            label="Desired Outcomes From Your Solution"
+            name="desiredOutcomes"
+            as="textarea"
+            hint="What does this person want to improve, achieve, reduce, or avoid by using a solution like yours? Not a campaign CTA (meeting, demo, reply)."
+            placeholder="Reduce forecast administration time; improve forecast confidence…"
+          />
+        </div>
+        <div className="md:col-span-2">
+          <Field
+            label="Messaging Notes"
+            name="messagingNotes"
+            as="textarea"
+            hint="Communication guidance only — not automatic scoring criteria."
+          />
+        </div>
+        <div className="md:col-span-2 flex flex-wrap items-center gap-2">
+          <SubmitButton disabled={pending}>
+            {savePending ? "Saving…" : "Add persona"}
+          </SubmitButton>
+          <button
+            type="submit"
+            formAction={interpretAction}
+            disabled={pending}
+            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {interpretPending
+              ? "Interpreting…"
+              : "Interpret / Reinterpret Persona"}
+          </button>
+        </div>
+      </form>
+      <StatusBanner result={status} />
+    </div>
+  );
+}
+
 export function PersonaForm({
   productId,
   persona,
   criteria,
+  sources = [],
+  includesProductEvidence = false,
 }: {
   productId: string;
   persona?: Persona;
   criteria: CriterionRow[];
+  sources?: PersonaReviewSource[];
+  includesProductEvidence?: boolean;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
+  const [editing, setEditing] = useState(false);
   const [saveState, saveAction, savePending] = useActionState(
     upsertPersonaAction,
     initialResult,
@@ -312,8 +503,47 @@ export function PersonaForm({
   const status = interpretState ?? saveState ?? projectState;
   const pending = savePending || interpretPending || projectPending;
 
+  const briefing = useMemo(
+    () =>
+      persona
+        ? resolvePersonaBriefingView({
+            name: persona.name,
+            definition: persona.definition,
+            responsibilities: persona.responsibilities,
+            painPoints: persona.painPoints,
+            desiredOutcomes: persona.desiredOutcomes,
+            messagingNotes: persona.messagingNotes,
+            targetTitles: persona.targetTitles,
+            department: persona.department,
+            seniority: persona.seniority,
+            profileJson: persona.profileJson,
+          })
+        : null,
+    [persona],
+  );
+  const { evidenceRefs, provenanceAssessments } = useMemo(
+    () => readProvenanceFromProfile(persona?.profileJson),
+    [persona?.profileJson],
+  );
+  const criteriaGroups = useMemo(
+    () => groupPersonaCriteriaForBriefing(criteria),
+    [criteria],
+  );
+  const sourceLead = useMemo(
+    () =>
+      describePersonaSourceLead({
+        personaSources: sources,
+        includesProductEvidence,
+        manualOnly:
+          !persona?.approvedPersonaSetupRunId && sources.length === 0,
+      }),
+    [sources, includesProductEvidence, persona?.approvedPersonaSetupRunId],
+  );
+  const metaLine = briefing ? formatPersonaBriefingMeta(briefing) : "";
+
   useEffect(() => {
-    if (saveState?.ok && saveState.personaId && !persona) {
+    if (saveState?.ok) {
+      setEditing(false);
       router.refresh();
     }
     if (interpretState?.ok) {
@@ -322,163 +552,213 @@ export function PersonaForm({
     if (projectState?.ok) {
       router.refresh();
     }
-  }, [saveState, interpretState, projectState, persona, router]);
+  }, [saveState, interpretState, projectState, router]);
+
+  if (!persona) {
+    return <NewPersonaForm productId={productId} />;
+  }
 
   return (
     <div
-      className="rounded-md border border-slate-200 p-4"
-      data-testid="persona-form"
+      className="mx-auto max-w-3xl space-y-6"
+      data-testid="persona-briefing"
+      data-print-document
     >
-      <p className="mb-3 text-xs text-slate-500">
-        Workflow: Persona definition → Save → AI Interpretation → Review
-        criteria. AI is optional for saving.
-      </p>
-      <form
-        ref={formRef}
-        action={saveAction}
-        className="grid gap-4 md:grid-cols-2"
-      >
-        <input type="hidden" name="id" value={persona?.id ?? ""} />
-        <input type="hidden" name="productId" value={productId} />
-        <Field
-          label="Persona Name"
-          name="name"
-          defaultValue={persona?.name}
-          required
+      <div className="flex flex-wrap justify-end gap-2" data-print-hide>
+        <ExportPdfButton />
+        <SecondaryButton
+          type="button"
+          onClick={() => setEditing((value) => !value)}
+        >
+          {editing ? "Done editing" : "Edit"}
+        </SecondaryButton>
+      </div>
+
+      {!editing && briefing ? (
+        <PersonaBriefingDocument
+          briefing={briefing}
+          sourceLead={sourceLead.sentence}
+          sourceNames={sourceLead.names}
+          metaLine={metaLine}
+          evidenceRefs={evidenceRefs}
+          provenanceAssessments={provenanceAssessments}
+          sources={sources}
+          criteriaGroups={criteriaGroups}
         />
-        <Field
-          label="Likely Titles (evidence)"
-          name="targetTitles"
-          defaultValue={listToCommaString(persona?.targetTitles)}
-          placeholder="CRO, VP Sales, Director of Sales"
-          hint="Literal job titles only — not generic labels like “Sales Leader”."
-        />
-        <div className="md:col-span-2">
-          <Field
-            label="Describe the person who buys / cares"
-            name="definition"
-            defaultValue={persona?.definition ?? persona?.responsibilities}
-            as="textarea"
-            placeholder="The executive responsible for…"
-            hint="Authoritative buyer-role narrative. Preserved as source data."
-          />
-        </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Additional context (optional)"
-            name="additionalContext"
-            defaultValue={persona?.additionalContext}
-            as="textarea"
-          />
-        </div>
-        <Field
-          label="Department / Function"
-          name="department"
-          defaultValue={persona?.department}
-          placeholder="Sales"
-          hint="Organizational function (e.g. Sales, Finance) — not “Sales Leader”."
-        />
-        <Field
-          label="Seniority"
-          name="seniority"
-          defaultValue={persona?.seniority}
-          placeholder="Director through C-Suite"
-          hint="Organizational level — distinct from title and function."
-        />
-        <div className="md:col-span-2">
-          <Field
-            label="Primary Responsibilities"
-            name="responsibilities"
-            defaultValue={persona?.responsibilities}
-            as="textarea"
-            hint="What they own, manage, decide, or are accountable for."
-          />
-        </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Problems / Pain Points"
-            name="painPoints"
-            defaultValue={persona?.painPoints}
-            as="textarea"
-          />
-        </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Desired Outcomes From Your Solution"
-            name="desiredOutcomes"
-            defaultValue={persona?.desiredOutcomes}
-            as="textarea"
-            hint="What does this person want to improve, achieve, reduce, or avoid by using a solution like yours? Not a campaign CTA (meeting, demo, reply)."
-            placeholder="Reduce forecast administration time; improve forecast confidence…"
-          />
-        </div>
-        <div className="md:col-span-2">
-          <Field
-            label="Messaging Notes"
-            name="messagingNotes"
-            defaultValue={persona?.messagingNotes}
-            as="textarea"
-            hint="Communication guidance only — not automatic scoring criteria."
-          />
-        </div>
-        <div className="md:col-span-2 flex flex-wrap items-center gap-2">
-          <SubmitButton disabled={pending}>
-            {savePending
-              ? "Saving…"
-              : persona
-                ? "Save persona"
-                : "Add persona"}
-          </SubmitButton>
-          <button
-            type="submit"
-            formAction={interpretAction}
-            disabled={pending}
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+      ) : null}
+
+      {editing ? (
+        <div
+          className="rounded-md border border-slate-200 p-4"
+          data-print-hide
+          data-testid="persona-form"
+        >
+          <p className="mb-3 text-xs text-slate-500">
+            Workflow: Persona definition → Save → AI Interpretation → Review
+            criteria. AI is optional for saving.
+          </p>
+          <form
+            ref={formRef}
+            action={saveAction}
+            className="grid gap-4 md:grid-cols-2"
           >
-            {interpretPending
-              ? "Interpreting…"
-              : "Interpret / Reinterpret Persona"}
-          </button>
-        </div>
-      </form>
-      <StatusBanner result={status} />
-      {persona ? (
-        <>
+            <input type="hidden" name="id" value={persona.id} />
+            <input type="hidden" name="productId" value={productId} />
+            <Field
+              label="Persona Name"
+              name="name"
+              defaultValue={persona.name}
+              required
+            />
+            <Field
+              label="Likely Titles (evidence)"
+              name="targetTitles"
+              defaultValue={listToCommaString(persona.targetTitles)}
+              placeholder="CRO, VP Sales, Director of Sales"
+              hint="Literal job titles only — not generic labels like “Sales Leader”."
+            />
+            <div className="md:col-span-2">
+              <Field
+                label="Describe the person who buys / cares"
+                name="definition"
+                defaultValue={persona.definition ?? persona.responsibilities}
+                as="textarea"
+                placeholder="The executive responsible for…"
+                hint="Authoritative buyer-role narrative. Preserved as source data."
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Field
+                label="Additional context (optional)"
+                name="additionalContext"
+                defaultValue={persona.additionalContext}
+                as="textarea"
+              />
+            </div>
+            <Field
+              label="Department / Function"
+              name="department"
+              defaultValue={persona.department}
+              placeholder="Sales"
+              hint="Organizational function (e.g. Sales, Finance) — not “Sales Leader”."
+            />
+            <Field
+              label="Seniority"
+              name="seniority"
+              defaultValue={persona.seniority}
+              placeholder="Director through C-Suite"
+              hint="Organizational level — distinct from title and function."
+            />
+            <div className="md:col-span-2">
+              <Field
+                label="Primary Responsibilities"
+                name="responsibilities"
+                defaultValue={persona.responsibilities}
+                as="textarea"
+                hint="What they own, manage, decide, or are accountable for."
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Field
+                label="Problems / Pain Points"
+                name="painPoints"
+                defaultValue={persona.painPoints}
+                as="textarea"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Field
+                label="Desired Outcomes From Your Solution"
+                name="desiredOutcomes"
+                defaultValue={persona.desiredOutcomes}
+                as="textarea"
+                hint="What does this person want to improve, achieve, reduce, or avoid by using a solution like yours? Not a campaign CTA (meeting, demo, reply)."
+                placeholder="Reduce forecast administration time; improve forecast confidence…"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Field
+                label="Messaging Notes"
+                name="messagingNotes"
+                defaultValue={persona.messagingNotes}
+                as="textarea"
+                hint="Communication guidance only — not automatic scoring criteria."
+              />
+            </div>
+            <div className="md:col-span-2 flex flex-wrap items-center gap-2">
+              <SubmitButton disabled={pending}>
+                {savePending ? "Saving…" : "Save persona"}
+              </SubmitButton>
+              <button
+                type="submit"
+                formAction={interpretAction}
+                disabled={pending}
+                className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {interpretPending
+                  ? "Interpreting…"
+                  : "Interpret / Reinterpret Persona"}
+              </button>
+            </div>
+          </form>
+          <StatusBanner result={status} />
           <CriteriaReview
             productId={productId}
             personaId={persona.id}
             criteria={criteria}
           />
-          {persona.profileJson ? (
-            <form action={projectAction} className="mt-3">
-              <input type="hidden" name="productId" value={productId} />
-              <input type="hidden" name="personaId" value={persona.id} />
-              <SecondaryButton type="submit" disabled={projectPending}>
-                {projectPending
-                  ? "Projecting…"
-                  : "Project role signals from profile"}
-              </SecondaryButton>
-              <p className="mt-1 text-xs text-slate-500">
-                Adds criteria from stored AI role signals (ownership, KPIs,
-                positive/negative signals) without rewriting existing rows.
-              </p>
-            </form>
-          ) : null}
-          <div className="mt-3">
-            <ConfirmDeleteForm
-              action={deletePersonaAction}
-              hiddenFields={{
-                id: persona.id,
-                productId,
-              }}
-              triggerLabel="Delete persona"
-              confirmTitle={`Delete Persona "${persona.name}"?`}
-              confirmBody={`This will remove this Persona and its current generated criteria.\nHistorical scoring snapshots will not be changed.\nIf scoring runs reference this Persona, it will be archived instead of permanently deleted.`}
-              confirmButtonLabel="Delete Persona"
-            />
-          </div>
-        </>
+        </div>
       ) : null}
+
+      <div className="space-y-3 border-t border-slate-200 pt-4" data-print-hide>
+        {!editing ? (
+          <form action={interpretAction} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="productId" value={productId} />
+            <PersonaHiddenFields persona={persona} />
+            <button
+              type="submit"
+              disabled={interpretPending}
+              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {interpretPending
+                ? "Interpreting…"
+                : "Interpret / Reinterpret Persona"}
+            </button>
+          </form>
+        ) : null}
+        {!editing && interpretState ? (
+          <StatusBanner result={interpretState} />
+        ) : null}
+        {persona.profileJson ? (
+          <form action={projectAction}>
+            <input type="hidden" name="productId" value={productId} />
+            <input type="hidden" name="personaId" value={persona.id} />
+            <SecondaryButton type="submit" disabled={projectPending}>
+              {projectPending
+                ? "Projecting…"
+                : "Project role signals from profile"}
+            </SecondaryButton>
+            <p className="mt-1 text-xs text-slate-500">
+              Adds criteria from stored AI role signals (ownership, KPIs,
+              positive/negative signals) without rewriting existing rows.
+            </p>
+          </form>
+        ) : null}
+        {projectState && !editing ? (
+          <StatusBanner result={projectState} />
+        ) : null}
+        <ConfirmDeleteForm
+          action={deletePersonaAction}
+          hiddenFields={{
+            id: persona.id,
+            productId,
+          }}
+          triggerLabel="Delete persona"
+          confirmTitle={`Delete Persona "${persona.name}"?`}
+          confirmBody={`This will remove this Persona and its current generated criteria.\nHistorical scoring snapshots will not be changed.\nIf scoring runs reference this Persona, it will be archived instead of permanently deleted.`}
+          confirmButtonLabel="Delete Persona"
+        />
+      </div>
     </div>
   );
 }

@@ -50,6 +50,22 @@ export default async function PersonaSetupRunPage({ params }: PageProps) {
   const draft = (run.personaDraftJson as PersonaAiDraft | null) ?? null;
   const failed = run.status === "FAILED";
 
+  const sources = await prisma.personaSource.findMany({
+    where: {
+      organizationId: organization.id,
+      personaSetupRunId: run.id,
+    },
+    select: {
+      id: true,
+      sourceType: true,
+      displayName: true,
+      originalUrl: true,
+      filename: true,
+      provenanceClass: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -72,6 +88,8 @@ export default async function PersonaSetupRunPage({ params }: PageProps) {
           failed={failed}
           errorSafe={run.errorSafe}
           maxProjectedPersonaCriteria={researchPolicy.maxProjectedPersonaCriteria}
+          sources={sources}
+          includesProductEvidence={Boolean(run.productEvidenceBundleId)}
         />
       </section>
     </div>

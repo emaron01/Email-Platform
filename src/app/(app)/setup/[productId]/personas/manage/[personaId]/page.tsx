@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PersonaForm } from "@/components/PersonaForm";
 import { PageHeader, TenantMissing } from "@/components/ui";
 import { listPersonaCriteria } from "@/lib/interpretation/persona";
+import { prisma } from "@/lib/prisma";
 import { getPersona, getProduct } from "@/lib/tenant/data";
 import {
   getCurrentOrganization,
@@ -20,7 +21,7 @@ export default async function ManagePersonaPage({ params }: PageProps) {
   if (!organization) {
     return (
       <div>
-        <PageHeader title="Edit persona" />
+        <PageHeader title="Persona" />
         <TenantMissing />
       </div>
     );
@@ -42,10 +43,43 @@ export default async function ManagePersonaPage({ params }: PageProps) {
 
   const criteria = await listPersonaCriteria(organization.id, persona.id);
 
+  const sources = await prisma.personaSource.findMany({
+    where: {
+      organizationId: organization.id,
+      OR: [
+        { personaId: persona.id },
+        ...(persona.approvedPersonaSetupRunId
+          ? [{ personaSetupRunId: persona.approvedPersonaSetupRunId }]
+          : []),
+      ],
+    },
+    select: {
+      id: true,
+      sourceType: true,
+      displayName: true,
+      originalUrl: true,
+      filename: true,
+      provenanceClass: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  let includesProductEvidence = false;
+  if (persona.approvedPersonaSetupRunId) {
+    const run = await prisma.personaSetupRun.findFirst({
+      where: {
+        id: persona.approvedPersonaSetupRunId,
+        organizationId: organization.id,
+      },
+      select: { productEvidenceBundleId: true },
+    });
+    includesProductEvidence = Boolean(run?.productEvidenceBundleId);
+  }
+
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader
-        title={`Edit persona: ${persona.name}`}
+        title={persona.name}
         description={`Buyer role for ${product.name}.`}
         actions={
           <Link
@@ -60,6 +94,8 @@ export default async function ManagePersonaPage({ params }: PageProps) {
         productId={product.id}
         persona={persona}
         criteria={criteria}
+        sources={sources}
+        includesProductEvidence={includesProductEvidence}
       />
     </div>
   );
