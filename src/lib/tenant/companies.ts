@@ -351,23 +351,23 @@ export async function setContactCompany(
   });
 }
 
-export async function getCompaniesNeedingResearchForScoringRun(
-  scoringRunId: string,
+export async function getCompaniesNeedingResearchForContactList(
+  contactListId: string,
 ): Promise<ResearchPlanSummary> {
   const organizationId = await orgId();
-  const run = await prisma.scoringRun.findFirst({
-    where: { id: scoringRunId, organizationId },
-    select: { id: true, contactListId: true },
+  const list = await prisma.contactList.findFirst({
+    where: { id: contactListId, organizationId },
+    select: { id: true },
   });
-  if (!run) notFound("Scoring run");
+  if (!list) notFound("Contact list");
 
-  await associateContactsForList(run.contactListId);
+  await associateContactsForList(contactListId);
 
   const contacts = await prisma.contact.findMany({
     where: {
       organizationId,
       archivedAt: null,
-      memberships: { some: { contactListId: run.contactListId } },
+      memberships: { some: { contactListId } },
       companyId: { not: null },
     },
     select: {
@@ -444,7 +444,7 @@ export async function getCompaniesNeedingResearchForScoringRun(
     where: {
       organizationId,
       archivedAt: null,
-      memberships: { some: { contactListId: run.contactListId } },
+      memberships: { some: { contactListId } },
     },
   });
 
@@ -455,6 +455,168 @@ export async function getCompaniesNeedingResearchForScoringRun(
     needingResearch,
     statusCounts,
     items,
+  };
+}
+
+export async function getCompaniesNeedingResearchForScoringRun(
+  scoringRunId: string,
+): Promise<ResearchPlanSummary> {
+  const organizationId = await orgId();
+  const run = await prisma.scoringRun.findFirst({
+    where: { id: scoringRunId, organizationId },
+    select: { id: true, contactListId: true },
+  });
+  if (!run) notFound("Scoring run");
+
+  return getCompaniesNeedingResearchForContactList(run.contactListId);
+}
+
+export type ContactListGroupContact = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  title: string | null;
+};
+
+export type ContactListCompanyGroup = {
+  companyId: string;
+  companyName: string;
+  website: string | null;
+  industry: string | null;
+  employeeCount: number | null;
+  revenue: number | null;
+  latestResearch: CompanyResearch | null;
+  researchReason: ResearchPlanItem["reason"];
+  contacts: ContactListGroupContact[];
+};
+
+export async function getContactListCompanyGroups(
+  contactListId: string,
+  options?: { page?: number; pageSize?: number },
+): Promise<{
+  groups: ContactListCompanyGroup[];
+  totalCompanies: number;
+  totalContacts: number;
+  page: number;
+  pageSize: number;
+  showIndustry: boolean;
+}> {
+  const organizationId = await orgId();
+  const list = await prisma.contactList.findFirst({
+    where: { id: contactListId, organizationId },
+    select: { id: true },
+  });
+  if (!list) notFound("Contact list");
+
+  const [plan, contacts] = await Promise.all([
+    getCompaniesNeedingResearchForContactList(contactListId),
+    prisma.contact.findMany({
+      where: {
+        organizationId,
+        archivedAt: null,
+        memberships: { some: { contactListId } },
+      },
+      orderBy: [
+        { lastName: "asc" },
+        { firstName: "asc" },
+        { createdAt: "asc" },
+      ],
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        title: true,
+        companyId: true,
+        company: true,
+      },
+    }),
+  ]);
+
+  const contactsByCompany = new Map<string, ContactListGroupContact[]>();
+  const unlinkedContacts: ContactListGroupContact[] = [];
+
+  for (const contact of contacts) {
+    const row: ContactListGroupContact = {
+      id: contact.id,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      email: contact.email,
+      title: contact.title,
+    };
+    if (contact.companyId) {
+      const existing = contactsByCompany.get(contact.companyId) ?? [];
+      existing.push(row);
+      contactsByCompany.set(contact.companyId, existing);
+    } else {
+      unlinkedContacts.push(row);
+    }
+  }
+
+  const allGroups: ContactListCompanyGroup[] = plan.items
+    .map((item) => ({
+      companyId: item.companyId,
+      companyName: item.companyName,
+      website: item.normalizedDomain,
+      industry: null as string | null,
+      employeeCount: null as number | null,
+      revenue: null as number | null,
+      latestResearch: item.latestResearch,
+      researchReason: item.reason,
+      contacts: contactsByCompany.get(item.companyId) ?? [],
+    }))
+    .sort((a, b) => a.companyName.localeCompare(b.companyName));
+
+  // Need company record fields - fetch companies in one query
+  const companyIds = allGroups.map((g) => g.companyId);
+  const companies = await prisma.company.findMany({
+    where: { organizationId, id: { in: companyIds } },
+  });
+  const companyById = new Map(companies.map((c) => [c.id, c]));
+
+  for (const group of allGroups) {
+    const company = companyById.get(group.companyId);
+    if (company) {
+      group.industry = company.industry;
+      group.employeeCount = company.employeeCount;
+      group.revenue =
+        company.revenue != null ? Number(company.revenue) : null;
+      group.website = company.normalizedDomain ?? company.website;
+    }
+  }
+
+  if (unlinkedContacts.length > 0) {
+    allGroups.push({
+      companyId: "",
+      companyName: "Unlinked contacts",
+      website: null,
+      industry: null,
+      employeeCount: null,
+      revenue: null,
+      latestResearch: null,
+      researchReason: "missing",
+      contacts: unlinkedContacts,
+    });
+  }
+
+  const showIndustry = allGroups.some(
+    (group) => group.industry != null && group.industry.trim() !== "",
+  );
+
+  const page = Math.max(1, options?.page ?? 1);
+  const pageSize = Math.min(50, Math.max(1, options?.pageSize ?? 25));
+  const totalCompanies = allGroups.length;
+  const skip = (page - 1) * pageSize;
+  const groups = allGroups.slice(skip, skip + pageSize);
+
+  return {
+    groups,
+    totalCompanies,
+    totalContacts: plan.totalContacts,
+    page,
+    pageSize,
+    showIndustry,
   };
 }
 
@@ -806,8 +968,8 @@ async function mapPool<T, R>(
   return results;
 }
 
-export async function runResearchForScoringRun(
-  scoringRunId: string,
+export async function runResearchForContactList(
+  contactListId: string,
   options?: { forceRefresh?: boolean },
 ): Promise<{
   attempted: number;
@@ -824,7 +986,7 @@ export async function runResearchForScoringRun(
   };
 }> {
   const organizationId = await orgId();
-  const plan = await getCompaniesNeedingResearchForScoringRun(scoringRunId);
+  const plan = await getCompaniesNeedingResearchForContactList(contactListId);
   const user = await getCurrentUser();
 
   const targets = options?.forceRefresh
@@ -928,6 +1090,33 @@ export async function runResearchForScoringRun(
     quotaBlockedCompanyNames,
     allowance: allowanceView,
   };
+}
+
+export async function runResearchForScoringRun(
+  scoringRunId: string,
+  options?: { forceRefresh?: boolean },
+): Promise<{
+  attempted: number;
+  skippedFresh: number;
+  failed: number;
+  completed: number;
+  quotaBlocked: number;
+  quotaBlockedCompanyNames: string[];
+  allowance: {
+    used: number;
+    limit: number;
+    remaining: number;
+    exhausted: boolean;
+  };
+}> {
+  const organizationId = await orgId();
+  const run = await prisma.scoringRun.findFirst({
+    where: { id: scoringRunId, organizationId },
+    select: { contactListId: true },
+  });
+  if (!run) notFound("Scoring run");
+
+  return runResearchForContactList(run.contactListId, options);
 }
 
 export async function updateManualCompanyResearch(input: {

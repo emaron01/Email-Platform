@@ -6,7 +6,8 @@ import {
   unarchiveContactListAction,
 } from "@/app/actions";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
-import { SuppressContactForm } from "@/components/SuppressContactForm";
+import { ListCompanyResearchView } from "@/components/ListCompanyResearchView";
+import { ResearchRunPanel } from "@/components/ResearchRunPanel";
 import { UnarchiveForm } from "@/components/UnarchiveForm";
 import {
   EmptyState,
@@ -14,14 +15,19 @@ import {
   Panel,
   TenantMissing,
 } from "@/components/ui";
+import { isResearchAiConfigured } from "@/lib/ai/config";
+import { getMembershipForCurrentUser } from "@/lib/org/authz";
 import {
   getContactList,
-  getContactListContacts,
   listIcps,
   listPersonas,
   listProducts,
   listScoringRunsForList,
 } from "@/lib/tenant/data";
+import {
+  getCompaniesNeedingResearchForContactList,
+  getContactListCompanyGroups,
+} from "@/lib/tenant/companies";
 import {
   getCurrentOrganization,
   TenantError,
@@ -32,15 +38,9 @@ import {
   listArchiveConfirmBody,
   listDeleteConfirmBody,
 } from "@/lib/tenant/list-delete";
-import {
-  contactMatchesSuppressionSet,
-  listActiveNormalizedEmails,
-} from "@/lib/suppression/service";
-import {
-  contactDisplayName,
-  formatDate,
-  formatNumber,
-} from "@/lib/utils";
+import { listActiveNormalizedEmails } from "@/lib/suppression/service";
+import { getActiveResearchedCompanyUsage } from "@/lib/usage/quota";
+import { formatDate, formatNumber } from "@/lib/utils";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -73,25 +73,43 @@ export default async function ListDetailPage({
     throw error;
   }
 
-  const [{ contacts, total, pageSize }, scoringRuns, products, icps, personas] =
-    await Promise.all([
-      getContactListContacts(id, { page, pageSize: 50 }),
-      listScoringRunsForList(id),
-      listProducts(),
-      listIcps(),
-      listPersonas(),
-    ]);
+  const membership = await getMembershipForCurrentUser(organization.id);
+  const [
+    companyGroups,
+    researchPlan,
+    scoringRuns,
+    products,
+    icps,
+    personas,
+    researchAllowance,
+  ] = await Promise.all([
+    getContactListCompanyGroups(id, { page, pageSize: 25 }),
+    getCompaniesNeedingResearchForContactList(id),
+    listScoringRunsForList(id),
+    listProducts(),
+    listIcps(),
+    listPersonas(),
+    getActiveResearchedCompanyUsage({
+      organizationId: organization.id,
+      userId: membership.user.id,
+    }),
+  ]);
+
+  const allEmails = companyGroups.groups.flatMap((group) =>
+    group.contacts.map((contact) => contact.email),
+  );
   const [impact, suppressedEmails] = await Promise.all([
     getListLifecycleImpact(organization.id, id),
-    listActiveNormalizedEmails(
-      organization.id,
-      contacts.map((contact) => contact.email),
-    ),
+    listActiveNormalizedEmails(organization.id, allEmails),
   ]);
   const deleteDecision = decideListDelete(impact);
   const listArchived = list.archivedAt != null;
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(companyGroups.totalCompanies / companyGroups.pageSize),
+  );
+
   const readyProducts = products.filter((product) => {
     const hasIcp = icps.some((icp) => icp.productId === product.id);
     const hasPersona = personas.some((persona) => persona.productId === product.id);
@@ -160,10 +178,30 @@ export default async function ListDetailPage({
 
       {listArchived ? (
         <div className="mb-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          This list is archived and read-only. Unarchive it to score or attach
-          it to a campaign.
+          This list is archived and read-only. Unarchive it to score, research, or
+          attach it to a campaign.
         </div>
       ) : null}
+
+      <div className="mb-6">
+        <Panel
+          title="Company Research"
+          description="Research runs once per unique company on this list. Results appear below grouped by company — qualification scoring stays on the score report."
+        >
+          <ResearchRunPanel
+            contactListId={id}
+            researchAiConfigured={isResearchAiConfigured()}
+            allowance={researchAllowance}
+            plan={{
+              totalContacts: researchPlan.totalContacts,
+              uniqueCompanies: researchPlan.uniqueCompanies,
+              alreadyResearched: researchPlan.alreadyResearched,
+              needingResearch: researchPlan.needingResearch,
+              statusCounts: researchPlan.statusCounts,
+            }}
+          />
+        </Panel>
+      </div>
 
       <div className="mb-6">
         <Panel
@@ -213,96 +251,26 @@ export default async function ListDetailPage({
         </Panel>
       </div>
 
-      {contacts.length === 0 ? (
+      {companyGroups.totalContacts === 0 ? (
         <EmptyState
           title="No contacts in this list"
           description="This list exists but has no contact records."
         />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
-                  <th className="px-4 py-3 font-medium">Title</th>
-                  <th className="px-4 py-3 font-medium">Company</th>
-                  <th className="px-4 py-3 font-medium">Industry</th>
-                  <th className="px-4 py-3 font-medium">Employees</th>
-                  <th className="px-4 py-3 font-medium">Revenue</th>
-                  <th className="px-4 py-3 font-medium">Suppression</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {contacts.map((contact) => (
-                  <tr key={contact.id}>
-                    <td className="px-4 py-3 font-medium text-slate-900">
-                      {contactDisplayName(contact.firstName, contact.lastName)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {contact.email ? (
-                        <>
-                          {contact.email}
-                          {contactMatchesSuppressionSet(
-                            contact.email,
-                            suppressedEmails,
-                          ) ? (
-                            <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800">
-                              Opted out
-                            </span>
-                          ) : null}
-                        </>
-                      ) : (
-                        <span
-                          className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700"
-                          title="No email address — cannot be emailed, scored, or suppressed."
-                        >
-                          No email — unusable
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {contact.title ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {contact.company ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {contact.industry ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {formatNumber(contact.employeeCount)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {contact.revenue != null
-                        ? formatNumber(Number(contact.revenue))
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {contact.email ? (
-                        <SuppressContactForm
-                          contactId={contact.id}
-                          email={contact.email}
-                          suppressed={contactMatchesSuppressionSet(
-                            contact.email,
-                            suppressedEmails,
-                          )}
-                        />
-                      ) : (
-                        <span className="text-xs text-slate-400">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ListCompanyResearchView
+            groups={companyGroups.groups}
+            contactListId={id}
+            showIndustry={companyGroups.showIndustry}
+            listArchived={listArchived}
+            suppressedEmails={suppressedEmails}
+          />
 
           {totalPages > 1 ? (
             <div className="mt-4 flex items-center justify-between text-sm text-slate-600">
               <span>
-                Page {page} of {totalPages}
+                Companies {companyGroups.page} of {totalPages} ·{" "}
+                {formatNumber(companyGroups.totalContacts)} contacts total
               </span>
               <div className="flex gap-2">
                 {page > 1 ? (

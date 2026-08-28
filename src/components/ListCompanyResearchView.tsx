@@ -1,0 +1,244 @@
+import Link from "next/link";
+import { RefreshCompanyResearchForm } from "@/components/RefreshCompanyResearchForm";
+import { SuppressContactForm } from "@/components/SuppressContactForm";
+import type { ContactListCompanyGroup } from "@/lib/tenant/companies";
+import { parseStringArray } from "@/lib/research/freshness";
+import { contactMatchesSuppressionSet } from "@/lib/suppression/service";
+import { contactDisplayName, formatNumber } from "@/lib/utils";
+import type { CompanyResearch } from "@prisma/client";
+
+function hasResearchSummary(research: CompanyResearch | null): boolean {
+  if (!research) return false;
+  if (research.status !== "COMPLETED" && research.status !== "PARTIAL") {
+    return false;
+  }
+  return Boolean(
+    research.whatTheySell?.trim() ||
+      parseStringArray(research.customerTypes).length > 0 ||
+      parseStringArray(research.buyingSignals).length > 0 ||
+      research.companySummary?.trim(),
+  );
+}
+
+function formatCustomerAudience(research: CompanyResearch): string | null {
+  const customerTypes = parseStringArray(research.customerTypes);
+  if (customerTypes.length > 0) {
+    return customerTypes.slice(0, 2).join(" · ");
+  }
+  const markets = parseStringArray(research.primaryMarkets);
+  if (markets.length > 0) {
+    return markets.slice(0, 2).join(" · ");
+  }
+  return null;
+}
+
+function firstBuyingSignal(research: CompanyResearch): string | null {
+  const signals = parseStringArray(research.buyingSignals);
+  return signals[0] ?? null;
+}
+
+function confidenceLabel(
+  confidence: CompanyResearch["researchConfidence"],
+): string {
+  switch (confidence) {
+    case "HIGH":
+      return "High confidence";
+    case "MEDIUM":
+      return "Medium confidence";
+    case "LOW":
+      return "Low confidence";
+    default:
+      return "Confidence unknown";
+  }
+}
+
+function compactQualifiers(group: ContactListCompanyGroup, showIndustry: boolean) {
+  const parts: string[] = [];
+  if (showIndustry && group.industry?.trim()) {
+    parts.push(group.industry.trim());
+  }
+  if (group.employeeCount != null) {
+    parts.push(`${formatNumber(group.employeeCount)} employees`);
+  }
+  if (group.revenue != null) {
+    parts.push(`$${formatNumber(group.revenue)} revenue`);
+  }
+  return parts;
+}
+
+export function ListCompanyResearchView({
+  groups,
+  contactListId,
+  showIndustry,
+  listArchived,
+  suppressedEmails,
+}: {
+  groups: ContactListCompanyGroup[];
+  contactListId: string;
+  showIndustry: boolean;
+  listArchived: boolean;
+  suppressedEmails: Set<string>;
+}) {
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => {
+        const qualifiers = compactQualifiers(group, showIndustry);
+        const research = group.latestResearch;
+        const showSummary = hasResearchSummary(research);
+        const isLinkedCompany = group.companyId.length > 0;
+
+        return (
+          <section
+            key={group.companyId || "unlinked"}
+            className="rounded-lg border border-slate-200 bg-white"
+          >
+            <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">
+                    {group.companyName}
+                  </h2>
+                  {group.website ? (
+                    <p className="mt-0.5 text-sm text-slate-500">{group.website}</p>
+                  ) : null}
+                  {qualifiers.length > 0 ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      {qualifiers.join(" · ")}
+                    </p>
+                  ) : null}
+                </div>
+                {isLinkedCompany && showSummary ? (
+                  <Link
+                    href={`/companies/${group.companyId}`}
+                    className="inline-flex shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Full company briefing
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+
+            {isLinkedCompany ? (
+              <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
+                {showSummary && research ? (
+                  <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                    {research.whatTheySell?.trim() ? (
+                      <div className="sm:col-span-2">
+                        <dt className="font-medium text-slate-700">What they sell</dt>
+                        <dd className="mt-0.5 text-slate-600">
+                          {research.whatTheySell.trim()}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {formatCustomerAudience(research) ? (
+                      <div className="sm:col-span-2">
+                        <dt className="font-medium text-slate-700">Who they sell to</dt>
+                        <dd className="mt-0.5 text-slate-600">
+                          {formatCustomerAudience(research)}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {firstBuyingSignal(research) ? (
+                      <div className="sm:col-span-2">
+                        <dt className="font-medium text-slate-700">Buying signal</dt>
+                        <dd className="mt-0.5 text-slate-600">
+                          {firstBuyingSignal(research)}
+                        </dd>
+                      </div>
+                    ) : null}
+                    <div>
+                      <dt className="font-medium text-slate-700">Confidence</dt>
+                      <dd className="mt-0.5 text-slate-600">
+                        {confidenceLabel(research.researchConfidence)}
+                      </dd>
+                    </div>
+                  </dl>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-slate-600">
+                      Company research has not been run yet.
+                    </p>
+                    {!listArchived ? (
+                      <RefreshCompanyResearchForm
+                        companyId={group.companyId}
+                        contactListId={contactListId}
+                        label="Research this company"
+                      />
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
+                <p className="text-sm text-slate-600">
+                  These contacts could not be linked to a company record. Add a
+                  company name on import to enable research.
+                </p>
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-100 text-sm">
+                <thead className="bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium sm:px-5">Contact</th>
+                    <th className="px-4 py-2.5 font-medium sm:px-5">Title</th>
+                    <th className="px-4 py-2.5 font-medium sm:px-5">Suppression</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {group.contacts.map((contact) => (
+                    <tr key={contact.id}>
+                      <td className="px-4 py-2.5 sm:px-5">
+                        <p className="font-medium text-slate-900">
+                          {contactDisplayName(contact.firstName, contact.lastName)}
+                        </p>
+                        {contact.email ? (
+                          <p className="mt-0.5 text-slate-600">
+                            {contact.email}
+                            {contactMatchesSuppressionSet(
+                              contact.email,
+                              suppressedEmails,
+                            ) ? (
+                              <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800">
+                                Opted out
+                              </span>
+                            ) : null}
+                          </p>
+                        ) : (
+                          <span
+                            className="mt-0.5 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700"
+                            title="No email address — cannot be emailed, scored, or suppressed."
+                          >
+                            No email — unusable
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-600 sm:px-5">
+                        {contact.title ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 sm:px-5">
+                        {contact.email && !listArchived ? (
+                          <SuppressContactForm
+                            contactId={contact.id}
+                            email={contact.email}
+                            suppressed={contactMatchesSuppressionSet(
+                              contact.email,
+                              suppressedEmails,
+                            )}
+                          />
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}

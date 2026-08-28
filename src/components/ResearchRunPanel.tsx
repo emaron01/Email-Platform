@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { researchCompaniesForScoringRunAction } from "@/app/actions/research";
+import { researchCompaniesForContactListAction, researchCompaniesForScoringRunAction } from "@/app/actions/research";
 import { CompanyResearchAllowanceBanner } from "@/components/CompanyResearchAllowanceBanner";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
 import {
@@ -28,11 +28,13 @@ export type ResearchPlanView = {
 
 export function ResearchRunPanel({
   runId,
+  contactListId,
   plan,
   researchAiConfigured,
   allowance,
 }: {
-  runId: string;
+  runId?: string;
+  contactListId?: string;
   plan: ResearchPlanView;
   researchAiConfigured: boolean;
   allowance: ActiveResearchedCompanyUsageView;
@@ -46,11 +48,19 @@ export function ResearchRunPanel({
 
   function executeResearch(forceRefresh: boolean) {
     const formData = new FormData();
-    formData.set("scoringRunId", runId);
+    if (contactListId) {
+      formData.set("contactListId", contactListId);
+    } else if (runId) {
+      formData.set("scoringRunId", runId);
+    }
     if (forceRefresh) formData.set("forceRefresh", "1");
 
+    const action = contactListId
+      ? researchCompaniesForContactListAction
+      : researchCompaniesForScoringRunAction;
+
     startTransition(async () => {
-      const result = await researchCompaniesForScoringRunAction(formData);
+      const result = await action(formData);
       setMessage(result.message);
       setConfirmWarning(null);
       router.refresh();

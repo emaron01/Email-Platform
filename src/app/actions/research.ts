@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  getCompaniesNeedingResearchForContactList,
   getCompaniesNeedingResearchForScoringRun,
   researchCompany,
+  runResearchForContactList,
   runResearchForScoringRun,
   updateManualCompanyResearch,
 } from "@/lib/tenant/companies";
@@ -50,6 +52,107 @@ function formatQuotaBlockedSummary(input: {
   }
 
   return formatResearchAllowanceExhausted(input.limit) + listed;
+}
+
+export async function researchCompaniesForContactListAction(
+  formData: FormData,
+): Promise<{
+  ok: boolean;
+  message: string;
+  attempted?: number;
+  skippedFresh?: number;
+  failed?: number;
+  completed?: number;
+  quotaBlocked?: number;
+  exhausted?: boolean;
+  warning?: boolean;
+  remaining?: number;
+  billingHref?: string;
+}> {
+  const contactListId = requiredString(formData, "contactListId");
+  const forceRefresh = requiredString(formData, "forceRefresh") === "1";
+
+  if (!contactListId) {
+    return { ok: false, message: "Contact list is required." };
+  }
+
+  try {
+    const plan = await getCompaniesNeedingResearchForContactList(contactListId);
+    if (!forceRefresh && plan.needingResearch === 0) {
+      revalidatePath(`/lists/${contactListId}`);
+      return {
+        ok: true,
+        message: `All ${plan.uniqueCompanies} unique companies already have fresh research.`,
+        attempted: 0,
+        skippedFresh: plan.alreadyResearched,
+        failed: 0,
+        completed: 0,
+        quotaBlocked: 0,
+        billingHref: RESEARCH_BILLING_HREF,
+      };
+    }
+
+    const result = await runResearchForContactList(contactListId, {
+      forceRefresh,
+    });
+
+    revalidatePath(`/lists/${contactListId}`);
+
+    if (result.quotaBlocked > 0) {
+      return {
+        ok: result.completed > 0,
+        message: formatQuotaBlockedSummary({
+          quotaBlocked: result.quotaBlocked,
+          quotaBlockedCompanyNames: result.quotaBlockedCompanyNames,
+          completed: result.completed,
+          limit: result.allowance.limit,
+        }),
+        ...result,
+        exhausted: result.allowance.exhausted,
+        remaining: result.allowance.remaining,
+        billingHref: RESEARCH_BILLING_HREF,
+      };
+    }
+
+    if (
+      result.attempted > 0 &&
+      result.completed === 0 &&
+      result.failed === 0 &&
+      result.skippedFresh === result.attempted
+    ) {
+      return {
+        ok: true,
+        message:
+          "Automated company research is not configured. Set RESEARCH_AI_* in .env.local (or Render). Manual research on company pages still works.",
+        ...result,
+        billingHref: RESEARCH_BILLING_HREF,
+      };
+    }
+
+    if (result.failed > 0 && result.completed === 0) {
+      return {
+        ok: false,
+        message: `Research failed for ${result.failed} compan${result.failed === 1 ? "y" : "ies"}. Prior successful research was preserved where available.`,
+        ...result,
+        billingHref: RESEARCH_BILLING_HREF,
+      };
+    }
+
+    return {
+      ok: true,
+      message: `Research pass finished: ${result.completed} completed, ${result.failed} failed, ${result.skippedFresh} skipped (fresh/unconfigured).`,
+      ...result,
+      remaining: result.allowance.remaining,
+      exhausted: result.allowance.exhausted,
+      billingHref: RESEARCH_BILLING_HREF,
+    };
+  } catch (error) {
+    const message =
+      error instanceof TenantError
+        ? error.message
+        : "Unable to run company research.";
+    return { ok: false, message };
+  }
 }
 
 export async function researchCompaniesForScoringRunAction(
@@ -170,6 +273,10 @@ export async function refreshCompanyResearchAction(
 
     const result = await researchCompany(companyId, { force: true });
     revalidatePath(`/companies/${companyId}`);
+    const contactListId = requiredString(formData, "contactListId");
+    if (contactListId) {
+      revalidatePath(`/lists/${contactListId}`);
+    }
     if (result.quotaBlocked) {
       return {
         ok: false,
