@@ -5,7 +5,7 @@
  */
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma-client";
 import { getAuthEnv } from "@/lib/auth/config-core";
 import { getBetterAuthIpAddressOptions } from "@/lib/auth/ip-config";
 import { provisionIndividualWorkspace } from "@/lib/auth/provision-service";

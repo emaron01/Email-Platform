@@ -4,7 +4,7 @@
  */
 import sanitizeHtml from "sanitize-html";
 import type { TransactionalEmailTemplateKey } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma-client";
 import {
   BASELINE_TEMPLATES,
   TEMPLATE_REQUIRED_VARIABLES,

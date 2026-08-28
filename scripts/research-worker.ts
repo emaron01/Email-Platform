@@ -10,7 +10,7 @@ import {
   claimNextResearchRun,
   processResearchRun,
   researchWorkerShutdown,
-} from "@/lib/research/runs";
+} from "@/lib/research/runs-service";
 
 const IDLE_POLL_MS = 5_000;
 

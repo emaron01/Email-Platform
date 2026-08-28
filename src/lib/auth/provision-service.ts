@@ -3,7 +3,7 @@
  * Next.js entry: `@/lib/auth/provision` re-exports behind server-only.
  */
 import type { MembershipRole, Organization, User } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma-client";
 import { recordAdminAuditEvent } from "@/lib/auth/audit-service";
 import {
   DEFAULT_ORGANIZATION_TIMEZONE,

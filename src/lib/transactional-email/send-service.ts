@@ -3,7 +3,7 @@
  * Next.js entry: `@/lib/transactional-email/send` re-exports behind server-only.
  */
 import type { TransactionalEmailTemplateKey } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma-client";
 import { getTransactionalEmailConfig } from "@/lib/transactional-email/config-core";
 import {
   getTransactionalEmailProvider,

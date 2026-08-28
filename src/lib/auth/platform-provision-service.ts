@@ -11,7 +11,7 @@
  */
 import type { AuthUser, User } from "@prisma/client";
 import { createLocalAccountIssuer } from "@better-auth/core/db";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma-client";
 import { normalizeEmail } from "@/lib/auth/provision-service";
 import { recordAdminAuditEvent } from "@/lib/auth/audit-service";
 import {

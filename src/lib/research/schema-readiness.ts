@@ -1,6 +1,7 @@
-import "server-only";
-
-import { prisma } from "@/lib/prisma";
+/**
+ * Schema readiness polling for the research worker (Node-safe).
+ */
+import { prisma } from "@/lib/prisma-client";
 
 function isMissingResearchRunTable(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;

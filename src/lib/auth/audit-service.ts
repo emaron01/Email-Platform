@@ -3,7 +3,7 @@
  * Next.js entry: `@/lib/auth/audit` re-exports behind server-only.
  */
 import type { AdminAuditAction, Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma-client";
 
 export async function recordAdminAuditEvent(input: {
   action: AdminAuditAction;

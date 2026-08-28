@@ -225,7 +225,7 @@ describe("usage alert ledger uniqueness seam", () => {
   });
 
   it("quota path calls usage alert helper after consume", () => {
-    const quota = readFileSync(resolve("src/lib/usage/quota.ts"), "utf8");
+    const quota = readFileSync(resolve("src/lib/usage/quota-service.ts"), "utf8");
     expect(quota).toContain("maybeFireUsageAlert");
     expect(quota).toContain("ACTIVE_COMPANY");
     expect(quota).toContain("EMAIL_GENERATION");

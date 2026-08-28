@@ -123,7 +123,7 @@ describe("Product synthesis contract", () => {
       DEFAULT_RESEARCH_POLICY_VALUES.productSourceResearchFreshnessDays,
     ).toBe(120);
     const policySrc = await import("node:fs").then((fs) =>
-      fs.readFileSync("src/lib/usage/policy.ts", "utf8"),
+      fs.readFileSync("src/lib/usage/policy-service.ts", "utf8"),
     );
     const acquireSrc = await import("node:fs").then((fs) =>
       fs.readFileSync("src/lib/product-research/acquire.ts", "utf8"),
