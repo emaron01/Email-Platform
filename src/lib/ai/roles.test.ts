@@ -48,6 +48,7 @@ describe("AI role readiness", () => {
       "product",
       "persona",
       "email",
+      "email_facts",
     ]);
     expect(statuses.every((row) => !row.configured)).toBe(true);
     expect(

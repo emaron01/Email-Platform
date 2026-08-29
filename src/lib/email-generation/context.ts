@@ -96,6 +96,7 @@ export type EmailGenerationContext = {
   emailLength: EmailLength;
   contact: {
     id: string;
+    companyId: string | null;
     firstName: string | null;
     lastName: string | null;
     email: string | null;
@@ -158,6 +159,7 @@ export type EmailGenerationContext = {
     researchedAt: Date;
   } | null;
   companyResearch: EmailCompanyResearch | null;
+  companyResearchUpdatedAt: string | null;
   /**
    * Research fields intentionally excluded from the generation prompt.
    * Used only by the claim guard to detect model leakage into copy.
@@ -397,6 +399,7 @@ export async function loadEmailGenerationContext(
     emailLength,
     contact: {
       id: contact.id,
+      companyId: contact.companyId,
       firstName: contact.firstName,
       lastName: contact.lastName,
       email: contact.email,
@@ -491,6 +494,7 @@ export async function loadEmailGenerationContext(
           confidence: freshCompanyResearch.researchConfidence,
         }
       : null,
+    companyResearchUpdatedAt: freshCompanyResearch?.updatedAt.toISOString() ?? null,
     excludedCopySignals: {
       riskSignals: freshCompanyResearch
         ? parseStringArray(freshCompanyResearch.riskSignals)

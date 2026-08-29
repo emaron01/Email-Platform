@@ -7,16 +7,22 @@ import {
 } from "@/lib/email-generation/company-research-use";
 import {
   REQUIRED_MOTION_SPECIFICS_INSTRUCTIONS,
-  selectRequiredMotionSpecifics,
+  type RequiredMotionSpecific,
 } from "@/lib/email-generation/motion-specifics";
 import {
   PERSONALIZATION_TIER_INSTRUCTIONS,
   contactResearchForPrompt,
-  resolvePersonalization,
+  resolvePersonalizationForGeneration,
+  type PersonalizationDecision,
 } from "@/lib/email-generation/personalization";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "15";
+export const EMAIL_GENERATION_PROMPT_VERSION = "16";
 export const ADDITIONAL_GUIDANCE_MAX_CHARS = 200;
+
+export type EmailPromptOptions = {
+  personalization: PersonalizationDecision;
+  requiredMotionSpecifics: RequiredMotionSpecific[];
+};
 
 const SYSTEM_PROMPT = `You write concise, credible one-to-one outbound emails.
 
@@ -60,9 +66,24 @@ Return exactly one JSON object matching:
 
 Return JSON only. No markdown fences, no preamble, and no text after the JSON object. The body must be ready to send as plain text.`;
 
+export function emailPromptOptionsForContext(
+  context: EmailGenerationContext,
+  requiredMotionSpecifics: RequiredMotionSpecific[] = [],
+): EmailPromptOptions {
+  return {
+    personalization: resolvePersonalizationForGeneration({
+      companyResearch: context.companyResearch,
+      contactResearch: contactResearchForPrompt(context.contactResearch),
+      hasRelevantCompanyFacts: requiredMotionSpecifics.length > 0,
+    }),
+    requiredMotionSpecifics,
+  };
+}
+
 export function buildEmailPrompt(
   context: EmailGenerationContext,
-  additionalGuidance?: string | null,
+  options: EmailPromptOptions,
+  additionalGuidance: string | null = null,
 ): [AiMessage, AiMessage] {
   const firstVoiceSample = context.voiceSamples[0] ?? null;
   const regenerationGuidance = additionalGuidance?.trim() || null;
@@ -84,21 +105,11 @@ export function buildEmailPrompt(
             instruction:
               "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from paragraph1ProblemFraming, 2 sentences max. Do not lead with product name or capability. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
           };
-  const personalization = resolvePersonalization({
-    companyResearch: context.companyResearch,
-    contactResearch: contactResearchForPrompt(context.contactResearch),
-  });
+  const { personalization, requiredMotionSpecifics } = options;
   const problemSpace = {
     problemsSolved: context.product.problemsSolved,
     painPoints: context.persona.painPoints,
   };
-  const requiredMotionSpecifics = personalization.companyResearchUsable
-    ? selectRequiredMotionSpecifics({
-        research: personalization.companyResearch,
-        problemSpace,
-        contactTitle: context.contact.title,
-      })
-    : [];
   const userPayload = {
     regenerationInstructions: regenerationGuidance
       ? `Per-contact regeneration instruction that overrides campaign guidance: ${regenerationGuidance}`
@@ -127,11 +138,11 @@ export function buildEmailPrompt(
     requiredMotionSpecifics,
     requiredMotionSpecificsInstruction:
       requiredMotionSpecifics.length > 0
-        ? "Reason FROM at least one requiredMotionSpecifics[].text to the executive problem in paragraph 1. The specific must do causal work (why the problem is acute for them) — not decorate a generic sentence or quote headcount/location/LinkedIn."
+        ? "Reason FROM at least one requiredMotionSpecifics[].text to the executive problem in paragraph 1. Use whyItMatters as the intended connection. The specific must do causal work — not decorate a generic sentence or quote headcount/location/LinkedIn."
         : null,
     paragraph1ProblemFraming: {
       instruction:
-        "Open with the executive or business problem. Prefer messagingNotes; if empty, use painPoints. Do not open with product name, mechanism, or capability. When requiredMotionSpecifics is present, Reason FROM one listed offering/market/customer-type fact to that problem — never quote headcount, location, or directory research.",
+        "Open with the executive or business problem. Prefer messagingNotes; if empty, use painPoints. Do not open with product name, mechanism, or capability. When requiredMotionSpecifics is present, reason FROM one listed fact to that problem — never quote headcount, location, or directory research.",
       messagingNotes: context.persona.messagingNotes,
       painPoints: context.persona.painPoints,
     },
@@ -220,59 +231,6 @@ export function followUpGuidance(sequenceNumber: number): string {
   return "Write a brief close-out with its own useful reason to exist. Do not make “following up on my last email” the entire content, and do not repeat a prior opener or ask.";
 }
 
-export function buildFollowUpEmailPrompt(
-  context: EmailGenerationContext,
-  sequenceNumber: number,
-  additionalGuidance?: string | null,
-): AiMessage[] {
-  const messages = buildEmailPrompt(context, additionalGuidance);
-  const priorEmails = context.sequence
-    .filter(
-      (draft) =>
-        draft.sequenceNumber < sequenceNumber &&
-        draft.status === "SENT" &&
-        draft.subject &&
-        draft.body,
-    )
-    .map((draft) => ({
-      sequenceNumber: draft.sequenceNumber,
-      subject: draft.subject,
-      body: draft.body,
-      sentAt: draft.sentAt?.toISOString() ?? null,
-    }));
-  const previous = priorEmails.at(-1);
-
-  return [
-    {
-      role: "system",
-      content: `${messages[0].content}
-
-This is Email ${sequenceNumber} in an existing sequence. Every prior email is supplied verbatim. Do not repeat any prior opener, angle, framing, or closing ask. The new email must carry its own reason to exist and should be shorter than the immediately preceding email by default.
-For follow-ups, being shorter than the prior email and the position guidance override the campaign word target and default paragraph count. Keep paragraphs short and preserve all factual and claim guards.
-
-Position guidance: ${followUpGuidance(sequenceNumber)}`,
-    },
-    {
-      role: "user",
-      content: `${messages[1].content}
-
-SEQUENCE CONTEXT:
-${JSON.stringify(
-  {
-    currentPosition: sequenceNumber,
-    positionGuidance: followUpGuidance(sequenceNumber),
-    priorEmailsVerbatim: priorEmails,
-    previousEmailWordCount: previous?.body
-      ? previous.body.trim().split(/\s+/).length
-      : null,
-  },
-  null,
-  2,
-)}`,
-    },
-  ];
-}
-
 export function replyStrategy(
   classification: ReplyClassification,
 ): string {
@@ -288,53 +246,4 @@ export function replyStrategy(
     case "NOT_INTERESTED":
       return "Respect the decline, stop selling, and close politely without manufacturing urgency or another pitch.";
   }
-}
-
-export function buildReplyEmailPrompt(input: {
-  context: EmailGenerationContext;
-  sourceDraft: {
-    sequenceNumber: number;
-    subject: string;
-    body: string;
-  };
-  prospectReply: string;
-  classification: ReplyClassification;
-  additionalGuidance?: string | null;
-}): AiMessage[] {
-  const messages = buildEmailPrompt(
-    input.context,
-    input.additionalGuidance,
-  );
-  return [
-    {
-      role: "system",
-      content: `${messages[0].content}
-
-Draft a direct reply to the prospect. Classification: ${input.classification}.
-Required response strategy: ${replyStrategy(input.classification)}
-The pasted prospect reply and original sent email are authoritative and must be handled specifically. Do not restart the original outbound pitch.
-Reply emails must not include a sign-off, sender name, signature, or signature block. End immediately after the closing question or final sentence.
-The classification strategy overrides outbound email length, offer, and closing-question defaults when they conflict. Keep every factual and claim guard.`,
-    },
-    {
-      role: "user",
-      content: `${messages[1].content}
-
-REPLY CONTEXT:
-${JSON.stringify(
-  {
-    classification: input.classification,
-    responseStrategy: replyStrategy(input.classification),
-    originalSentEmail: input.sourceDraft,
-    prospectReplyVerbatim: input.prospectReply,
-    referralInstruction:
-      input.classification === "REFERRAL"
-        ? "Reply to the original contact and flag that a new contact may need to be added. Do not create one."
-        : null,
-  },
-  null,
-  2,
-)}`,
-    },
-  ];
 }

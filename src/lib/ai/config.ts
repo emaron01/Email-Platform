@@ -33,7 +33,8 @@ export type AiRole =
   | "contact_research"
   | "product"
   | "persona"
-  | "email";
+  | "email"
+  | "email_facts";
 
 /**
  * OpenAI Responses `reasoning.effort` values.
@@ -154,6 +155,15 @@ const ROLE_ENV: Record<AiRole, RoleEnv> = {
     maxRetries: "EMAIL_AI_MAX_RETRIES",
     temperature: "EMAIL_AI_TEMPERATURE",
   },
+  email_facts: {
+    provider: "EMAIL_FACTS_AI_PROVIDER",
+    model: "EMAIL_FACTS_AI_MODEL",
+    modelUrl: "EMAIL_FACTS_AI_MODEL_URL",
+    apiKey: "EMAIL_FACTS_AI_API_KEY",
+    timeoutMs: "EMAIL_FACTS_AI_TIMEOUT_MS",
+    maxRetries: "EMAIL_FACTS_AI_MAX_RETRIES",
+    temperature: "EMAIL_FACTS_AI_TEMPERATURE",
+  },
 };
 
 function notConfiguredMessage(role: AiRole): string {
@@ -172,6 +182,8 @@ function notConfiguredMessage(role: AiRole): string {
       return "Persona research & synthesis AI is not configured.";
     case "email":
       return "Email generation AI is not configured.";
+    case "email_facts":
+      return "Email company-fact selection AI is not configured.";
   }
 }
 
@@ -375,6 +387,20 @@ export function getEmailAiConfig(): AiConfig {
 export function isEmailAiConfigured(): boolean {
   try {
     getEmailAiConfig();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Fail closed for email company-fact selection AI. Never reads Email AI vars. */
+export function getEmailFactsAiConfig(): AiConfig {
+  return getAiConfigForRole("email_facts");
+}
+
+export function isEmailFactsAiConfigured(): boolean {
+  try {
+    getEmailFactsAiConfig();
     return true;
   } catch {
     return false;

@@ -8,7 +8,32 @@ import {
   titleResearchOverlapTokens,
   type EmailCompanyResearch,
 } from "@/lib/email-generation/company-research-use";
-import { buildEmailPrompt } from "@/lib/email-generation/prompt";
+import { buildEmailPrompt, emailPromptOptionsForContext } from "@/lib/email-generation/prompt";
+import {
+  collectMotionSpecificCandidates,
+  type RequiredMotionSpecific,
+} from "@/lib/email-generation/motion-specifics";
+
+function testSpecificsFromResearch(
+  research: EmailCompanyResearch | null,
+): RequiredMotionSpecific[] {
+  if (!research) return [];
+  return collectMotionSpecificCandidates(research)
+    .slice(0, 2)
+    .map((candidate) => ({
+      text: candidate.text,
+      sourceField: candidate.sourceField,
+      whyItMatters: "Test-selected company fact.",
+    }));
+}
+
+function promptMessages(context: EmailGenerationContext) {
+  const specifics = testSpecificsFromResearch(context.companyResearch);
+  return buildEmailPrompt(
+    context,
+    emailPromptOptionsForContext(context, specifics),
+  );
+}
 
 function baseContext(
   overrides: Omit<Partial<EmailGenerationContext>, "product" | "persona"> & {
@@ -39,6 +64,7 @@ function baseContext(
     emailLength: "MEDIUM",
     contact: {
       id: "contact_1",
+      companyId: "company_1",
       firstName: "Alex",
       lastName: "Rivera",
       email: "alex@example.test",
@@ -91,6 +117,7 @@ function baseContext(
     },
     contactResearch: null,
     companyResearch: null,
+    companyResearchUpdatedAt: null,
     excludedCopySignals: {
       riskSignals: [],
       professionalSignals: [],
@@ -212,10 +239,11 @@ describe("company research use in email prompts", () => {
   });
 
   it("builds a runtime reasoning sketch from this product's problems and research", () => {
-    const messages = buildEmailPrompt(
+    const messages = promptMessages(
       baseContext({
         contact: {
           id: "c1",
+          companyId: "company_stone",
           firstName: "Alex",
           lastName: "Rivera",
           email: "alex@example.test",
@@ -324,7 +352,7 @@ describe("generated email uses research as inference", () => {
   });
 
   it("prompt construction for the two unrelated products stays generic", () => {
-    const securityPrompt = buildEmailPrompt(
+    const securityPrompt = promptMessages(
       baseContext({
         companyResearch: securityResearch,
         product: {
@@ -337,7 +365,7 @@ describe("generated email uses research as inference", () => {
         },
       }),
     );
-    const staffingPrompt = buildEmailPrompt(
+    const staffingPrompt = promptMessages(
       baseContext({
         companyResearch: staffingResearch,
         product: {
@@ -455,7 +483,7 @@ describe("anti-title overlap (B1)", () => {
 
 describe("messagingNotes elevation (B2)", () => {
   it("elevates messagingNotes into paragraph1ProblemFraming ahead of product capabilities", () => {
-    const messages = buildEmailPrompt(
+    const messages = promptMessages(
       baseContext({
         persona: {
           name: "Operator",

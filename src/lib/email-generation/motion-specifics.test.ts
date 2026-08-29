@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EmailCompanyResearch } from "@/lib/email-generation/company-research-use";
+import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import {
   bodyReferencesRequiredSpecific,
   buildPortfolioOfferingSpecific,
@@ -9,12 +10,12 @@ import {
   isFirmographicResearchObjectPhrase,
   isLocationOnlyFragment,
   isUnusableEmailFirmographicPhrase,
-  scoreMotionSpecificUsability,
-  selectRequiredMotionSpecifics,
   splitResearchPhrases,
 } from "@/lib/email-generation/motion-specifics";
-import { buildEmailPrompt } from "@/lib/email-generation/prompt";
-import type { EmailGenerationContext } from "@/lib/email-generation/context";
+import {
+  buildEmailPrompt,
+  emailPromptOptionsForContext,
+} from "@/lib/email-generation/prompt";
 
 const telecomResearch: EmailCompanyResearch = {
   companySummary:
@@ -45,26 +46,10 @@ const staffingResearch: EmailCompanyResearch = {
   confidence: "HIGH",
 };
 
-const problemSpaceForecast = {
-  problemsSolved: [
-    "Forecast stages hide missing buyer evidence",
-    "Managers spend time on status instead of coaching",
-  ],
-  painPoints: [
-    "Hard to trust the forecast",
-    "Revenue risk is hard to see early",
-  ],
-};
-
-const problemSpaceStaffingOps = {
-  problemsSolved: ["Missed handoffs between crews and planners"],
-  painPoints: ["Incomplete status on who is actually on site"],
-};
-
 const multiProductWhatTheySell =
   "A B2B automotive-retail software suite: StoneEagleMENU for F&I presentations; StoneEagleMETRICS and METRICS SERVICE for dealership performance reporting; PENCILWRENCH for repair-documentation workflows; and StoneEagleDATA for transaction-level automotive market intelligence.";
 
-describe("motion specifics selection", () => {
+describe("motion specifics candidates", () => {
   it("counts distinct named offerings by orthography, not a product-name list", () => {
     expect(countNamedOfferings(multiProductWhatTheySell)).toBeGreaterThanOrEqual(
       3,
@@ -79,82 +64,12 @@ describe("motion specifics selection", () => {
     ).toBeLessThan(2);
   });
 
-  it("prefers the portfolio over a single SKU when whatTheySell has multiple named offerings", () => {
-    const research: EmailCompanyResearch = {
-      companySummary: "Dealer software vendor.",
-      whatTheySell: multiProductWhatTheySell,
-      customerTypes: ["auto dealer groups"],
-      primaryMarkets: ["United States automotive retail"],
-      businessModel: "B2B software licensed to dealer groups",
-      companySizeContext: "201–500 employees",
-      confidence: "HIGH",
-    };
+  it("builds a portfolio phrase when whatTheySell has multiple named offerings", () => {
     const portfolio = buildPortfolioOfferingSpecific(multiProductWhatTheySell);
     expect(portfolio).toMatch(/suite|spanning|StoneEagleMENU/i);
     expect(portfolio.toLowerCase()).not.toMatch(
       /^metrics service for dealership/,
     );
-    const selected = selectRequiredMotionSpecifics({
-      research,
-      problemSpace: problemSpaceForecast,
-      contactTitle: "Founder",
-    });
-    const whatTheySell = selected.filter(
-      (item) => item.sourceField === "whatTheySell",
-    );
-    expect(whatTheySell.length).toBe(1);
-    expect(whatTheySell[0].text).toMatch(/suite|spanning/i);
-    expect(whatTheySell[0].whyItMatters).toMatch(/portfolio/i);
-    expect(
-      selected.some((item) =>
-        /^METRICS SERVICE for dealership/i.test(item.text),
-      ),
-    ).toBe(false);
-  });
-
-  it("rejects generic catalog phrases without a build-time domain list", () => {
-    const generic = {
-      text: "Cloud Platform",
-      sourceField: "whatTheySell",
-      tokens: ["cloud", "platform"],
-    };
-    const suite = {
-      text: "Analytics Suite",
-      sourceField: "whatTheySell",
-      tokens: ["analytics", "suite"],
-    };
-    expect(
-      scoreMotionSpecificUsability(generic, {
-        problemSpace: problemSpaceForecast,
-      }),
-    ).toBe(-Infinity);
-    expect(
-      scoreMotionSpecificUsability(suite, {
-        problemSpace: problemSpaceForecast,
-      }),
-    ).toBe(-Infinity);
-  });
-
-  it("selects concrete named offerings and markets for a telecom-like company", () => {
-    const selected = selectRequiredMotionSpecifics({
-      research: telecomResearch,
-      problemSpace: problemSpaceForecast,
-      contactTitle: "VP of Sales - Carrier/Wholesale & Enterprise",
-    });
-    expect(selected.length).toBeGreaterThanOrEqual(2);
-    expect(selected.length).toBeLessThanOrEqual(3);
-    const joined = selected.map((item) => item.text.toLowerCase()).join(" ");
-    // Title-dominated carrier/wholesale/enterprise alone should not be the only evidence.
-    expect(joined).toMatch(
-      /fiber|dark|municipal|dedicated internet|telecommunications/i,
-    );
-    expect(joined).not.toMatch(/110|employee|linkedin|houston|texas/i);
-    for (const item of selected) {
-      expect(item.whyItMatters.length).toBeGreaterThan(10);
-      expect(["whatTheySell", "customerTypes", "primaryMarkets", "businessModel"]).toContain(
-        item.sourceField,
-      );
-    }
   });
 
   it("excludes firmographic size and directory phrases from email specifics", () => {
@@ -179,14 +94,6 @@ describe("motion specifics selection", () => {
     expect(
       isUnusableEmailFirmographicPhrase("Greater Houston metropolitan area"),
     ).toBe(true);
-    const selected = selectRequiredMotionSpecifics({
-      research: telecomResearch,
-      problemSpace: problemSpaceForecast,
-      contactTitle: "VP Sales",
-    });
-    expect(
-      selected.every((item) => !isUnusableEmailFirmographicPhrase(item.text)),
-    ).toBe(true);
     expect(
       collectMotionSpecificCandidates(telecomResearch).every(
         (item) =>
@@ -199,18 +106,6 @@ describe("motion specifics selection", () => {
         /houston|texas/i.test(item.text),
       ),
     ).toBe(false);
-  });
-
-  it("selects concrete specifics for an unrelated staffing domain without shared vocabulary", () => {
-    const selected = selectRequiredMotionSpecifics({
-      research: staffingResearch,
-      problemSpace: problemSpaceStaffingOps,
-      contactTitle: "Director of Plant Operations",
-    });
-    expect(selected.length).toBeGreaterThanOrEqual(2);
-    const joined = selected.map((item) => item.text.toLowerCase()).join(" ");
-    expect(joined).toMatch(/weldright|refiner|shutdown/i);
-    expect(joined).not.toMatch(/fiber|houston|telecom|2,?400|employee|^louisiana$| louisiana /i);
   });
 
   it("splits research phrases without knowing fact types", () => {
@@ -227,7 +122,6 @@ describe("motion specifics selection", () => {
     expect(candidates.some((row) => row.sourceField === "whatTheySell")).toBe(
       true,
     );
-    // Pure location primaryMarkets are dropped; offerings/customers remain.
     expect(
       candidates.some((row) => /houston|texas/i.test(row.text)),
     ).toBe(false);
@@ -287,6 +181,7 @@ function promptContext(
     emailLength: "MEDIUM",
     contact: {
       id: "contact_1",
+      companyId: "company_1",
       firstName: "Alex",
       lastName: "Rivera",
       email: "alex@example.test",
@@ -301,7 +196,10 @@ function promptContext(
       description: "Helps operators see what is actually happening",
       valueProposition: "Fewer surprises in daily operations",
       evidence: ["Published product fact: configurable workflow."],
-      problemsSolved: problemSpaceForecast.problemsSolved,
+      problemsSolved: [
+        "Forecast stages hide missing buyer evidence",
+        "Managers spend time on status instead of coaching",
+      ],
       messaging: {
         primaryPositioning: [],
         coreValueThemes: [],
@@ -316,11 +214,12 @@ function promptContext(
     persona: {
       id: "persona_1",
       name: "Operator",
-      painPoints: problemSpaceForecast.painPoints,
-      desiredOutcomes: ["A shared picture of what is true"],
-      messagingNotes: [
-        "Lead with forecast trust, not product mechanism",
+      painPoints: [
+        "Hard to trust the forecast",
+        "Revenue risk is hard to see early",
       ],
+      desiredOutcomes: ["A shared picture of what is true"],
+      messagingNotes: ["Lead with forecast trust, not product mechanism"],
       messaging: {
         positioning: [],
         proofPoints: [],
@@ -341,6 +240,7 @@ function promptContext(
     },
     contactResearch: null,
     companyResearch: research,
+    companyResearchUpdatedAt: "2026-08-28T12:00:00.000Z",
     excludedCopySignals: {
       riskSignals: [],
       professionalSignals: [],
@@ -356,25 +256,40 @@ function promptContext(
 }
 
 describe("requiredMotionSpecifics in prompt", () => {
-  it("passes a required list for two unrelated domains without cross-domain bleed", () => {
-    const telecomPrompt = buildEmailPrompt(promptContext(telecomResearch))[1]
-      .content;
-    const staffingPrompt = buildEmailPrompt(promptContext(staffingResearch))[1]
-      .content;
+  it("passes supplied specifics and rationales into the generation payload", () => {
+    const telecomContext = promptContext(telecomResearch);
+    const staffingContext = promptContext(staffingResearch);
+    const telecomSpecifics = [
+      {
+        text: "dark fiber",
+        sourceField: "whatTheySell",
+        whyItMatters: "Named carrier offering relevant to network operations.",
+      },
+    ];
+    const staffingSpecifics = [
+      {
+        text: "WeldRight certified welders",
+        sourceField: "whatTheySell",
+        whyItMatters: "Skilled-trades staffing motion for plant operators.",
+      },
+    ];
+    const telecomPrompt = buildEmailPrompt(
+      telecomContext,
+      emailPromptOptionsForContext(telecomContext, telecomSpecifics),
+    )[1].content;
+    const staffingPrompt = buildEmailPrompt(
+      staffingContext,
+      emailPromptOptionsForContext(staffingContext, staffingSpecifics),
+    )[1].content;
     expect(telecomPrompt).toContain('"requiredMotionSpecifics"');
     expect(staffingPrompt).toContain('"requiredMotionSpecifics"');
-    expect(telecomPrompt).toMatch(/fiber|dark fiber|municipal|Dedicated Internet/i);
-    expect(staffingPrompt).toMatch(/WeldRight|refiner/i);
+    expect(telecomPrompt).toContain("dark fiber");
+    expect(staffingPrompt).toContain("WeldRight certified welders");
     expect(telecomPrompt).not.toMatch(/WeldRight|Louisiana refiner/i);
     expect(staffingPrompt).not.toMatch(/Greater Houston|dark fiber/i);
     expect(telecomPrompt).toContain("Reason FROM");
-    const requiredBlock =
-      telecomPrompt.match(
-        /"requiredMotionSpecifics": \[[\s\S]*?\],\s*"requiredMotionSpecificsInstruction"/,
-      )?.[0] ?? "";
-    expect(requiredBlock.length).toBeGreaterThan(20);
-    expect(requiredBlock).not.toMatch(
-      /110 employees|LinkedIn|Greater Houston|Texas/i,
+    expect(telecomPrompt).toContain(
+      "Named carrier offering relevant to network operations.",
     );
   });
 });

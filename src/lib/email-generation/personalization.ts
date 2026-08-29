@@ -154,6 +154,38 @@ export function resolvePersonalization(input: {
   };
 }
 
+export function resolvePersonalizationForGeneration(input: {
+  companyResearch: EmailCompanyResearch | null;
+  contactResearch: ContactResearchSlice;
+  hasRelevantCompanyFacts: boolean;
+}): PersonalizationDecision {
+  if (!input.hasRelevantCompanyFacts) {
+    const base = resolvePersonalization({
+      companyResearch: null,
+      contactResearch: input.contactResearch,
+    });
+    return {
+      ...base,
+      tier: "THIN",
+      companyResearchUsable: false,
+      companyResearch: null,
+      label: "Persona and product only",
+      detail:
+        "No company research fact connected this persona's problem to this prospect. Write a clean persona-and-product email. Do not invent a company situation.",
+      sources: personalizationSourceSummary({
+        companyResearch: null,
+        contactResearch: base.contactResearch,
+        companyResearchUsable: false,
+        contactResearchUsable: base.contactResearchUsable,
+      }),
+    };
+  }
+  return resolvePersonalization({
+    companyResearch: input.companyResearch,
+    contactResearch: input.contactResearch,
+  });
+}
+
 export const PERSONALIZATION_TIER_INSTRUCTIONS = `Personalization is graded. The user payload includes personalization.tier. Follow that tier. Do not upgrade it by inventing specifics.
 
 BEST — usable contact research and usable company research:

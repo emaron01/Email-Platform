@@ -3,11 +3,15 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TenantError } from "@/lib/tenant/errors";
-import { buildEmailPrompt } from "@/lib/email-generation/prompt";
+import { buildEmailPrompt, emailPromptOptionsForContext } from "@/lib/email-generation/prompt";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import { seedContactOnList } from "@/test/contact-seed";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
+
+function promptMessages(context: EmailGenerationContext) {
+  return buildEmailPrompt(context, emailPromptOptionsForContext(context));
+}
 
 function contextFor(input: {
   organizationId: string;
@@ -39,6 +43,7 @@ function contextFor(input: {
     emailLength: "MEDIUM",
     contact: {
       id: input.contactId,
+      companyId: "company_1",
       firstName: "Alex",
       lastName: "Rivera",
       email: input.email,
@@ -91,6 +96,7 @@ function contextFor(input: {
     },
     contactResearch: null,
     companyResearch: null,
+    companyResearchUpdatedAt: null,
     excludedCopySignals: {
       riskSignals: [],
       professionalSignals: [],
@@ -254,10 +260,10 @@ describe.skipIf(!hasDatabase)(
         email,
       });
       await expect(
-        generateEmailDraft(context, buildEmailPrompt(context)),
+        generateEmailDraft(context, promptMessages(context)),
       ).rejects.toBeInstanceOf(TenantError);
       await expect(
-        generateEmailDraft(context, buildEmailPrompt(context)),
+        generateEmailDraft(context, promptMessages(context)),
       ).rejects.toThrow(/do-not-contact/i);
     });
 
@@ -315,7 +321,7 @@ describe.skipIf(!hasDatabase)(
         "@/lib/email-generation/service"
       );
       await expect(
-        generateEmailDraft(followUpContext, buildEmailPrompt(followUpContext), {
+        generateEmailDraft(followUpContext, promptMessages(followUpContext), {
           sequenceNumber: 2,
           kind: "FOLLOW_UP",
         }),

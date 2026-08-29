@@ -2,6 +2,7 @@ import type { AiRole } from "@/lib/ai/config";
 import {
   isContactResearchAiConfigured,
   isEmailAiConfigured,
+  isEmailFactsAiConfigured,
   isInterpretationAiConfigured,
   isPersonaAiConfigured,
   isProductAiConfigured,
@@ -118,6 +119,18 @@ export const AI_ROLE_CATALOG: readonly AiRoleCatalogEntry[] = [
     ],
     requiredForScoring: false,
   },
+  {
+    role: "email_facts",
+    label: "Email company-fact selection",
+    requiredEnv: [
+      "EMAIL_FACTS_AI_PROVIDER",
+      "EMAIL_FACTS_AI_MODEL",
+      "EMAIL_FACTS_AI_MODEL_URL",
+      "EMAIL_FACTS_AI_API_KEY",
+    ],
+    operations: ["Email company-fact selection (EMAIL_COMPANY_FACT_SELECTION)"],
+    requiredForScoring: false,
+  },
 ] as const;
 
 const CONFIGURED: Record<AiRole, () => boolean> = {
@@ -128,6 +141,7 @@ const CONFIGURED: Record<AiRole, () => boolean> = {
   product: isProductAiConfigured,
   persona: isPersonaAiConfigured,
   email: isEmailAiConfigured,
+  email_facts: isEmailFactsAiConfigured,
 };
 
 export type AiRoleStatus = AiRoleCatalogEntry & {

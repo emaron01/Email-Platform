@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import type { EmailCompanyResearch } from "@/lib/email-generation/company-research-use";
-import { buildEmailPrompt } from "@/lib/email-generation/prompt";
+import { buildEmailPrompt, emailPromptOptionsForContext } from "@/lib/email-generation/prompt";
+import {
+  collectMotionSpecificCandidates,
+  type RequiredMotionSpecific,
+} from "@/lib/email-generation/motion-specifics";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import {
   distinctiveContentTokens,
@@ -46,6 +50,31 @@ const thinResearch: EmailCompanyResearch = {
   confidence: "HIGH",
 };
 
+function testSpecificsFromResearch(
+  research: EmailCompanyResearch | null,
+): RequiredMotionSpecific[] {
+  if (!research) return [];
+  return collectMotionSpecificCandidates(research)
+    .slice(0, 2)
+    .map((candidate) => ({
+      text: candidate.text,
+      sourceField: candidate.sourceField,
+      whyItMatters: "Test-selected company fact.",
+    }));
+}
+
+function promptMessages(
+  context: EmailGenerationContext = contextFixture(),
+  guidance?: string | null,
+) {
+  const specifics = testSpecificsFromResearch(context.companyResearch);
+  return buildEmailPrompt(
+    context,
+    emailPromptOptionsForContext(context, specifics),
+    guidance ?? null,
+  );
+}
+
 function contextFixture(
   overrides: Partial<EmailGenerationContext> = {},
 ): EmailGenerationContext {
@@ -72,6 +101,7 @@ function contextFixture(
     emailLength: "MEDIUM",
     contact: {
       id: "contact_1",
+      companyId: "company_1",
       firstName: "Alex",
       lastName: "Rivera",
       email: "alex@example.test",
@@ -124,6 +154,7 @@ function contextFixture(
     },
     contactResearch: null,
     companyResearch: null,
+    companyResearchUpdatedAt: null,
     excludedCopySignals: {
       riskSignals: [],
       professionalSignals: [],
@@ -156,7 +187,7 @@ function emailFromPrompt(context: EmailGenerationContext): {
   subject: string;
   body: string;
 } {
-  const content = buildEmailPrompt(context)[1]!.content;
+  const content = promptMessages(context)[1]!.content;
   const jsonPart = content
     .replace(
       /^Generate the first outbound email for this campaign contact.\s*/,
@@ -274,7 +305,7 @@ describe("personalization tiers", () => {
   });
 
   it("signals tier and degrade rules in the generation prompt", () => {
-    const messages = buildEmailPrompt(
+    const messages = promptMessages(
       contextFixture({ companyResearch: stoneEagleResearch }),
     );
     const system = messages[0]!.content;
@@ -396,6 +427,7 @@ describe("materially different emails from company research", () => {
       contextFixture({
         contact: {
           id: "c_stone",
+          companyId: "company_stone",
           firstName: "Alex",
           lastName: "Rivera",
           email: "alex@stone.test",
@@ -411,6 +443,7 @@ describe("materially different emails from company research", () => {
       contextFixture({
         contact: {
           id: "c_plg",
+          companyId: "company_plg",
           firstName: "Alex",
           lastName: "Rivera",
           email: "alex@northwind.test",
@@ -514,7 +547,7 @@ describe("materially different emails from company research", () => {
 
 describe("generation constraints", () => {
   it("does not put company facts, risk signals, or fabricated role hooks in the prompt when they are absent", () => {
-    const messages = buildEmailPrompt(contextFixture());
+    const messages = promptMessages(contextFixture());
     const user = messages[1]!.content;
     expect(user).not.toContain("riskSignals");
     expect(user).not.toContain("professionalSignals");
@@ -525,7 +558,7 @@ describe("generation constraints", () => {
   });
 
   it("never includes CompanyResearch.riskSignals in the company research payload", () => {
-    const messages = buildEmailPrompt(
+    const messages = promptMessages(
       contextFixture({ companyResearch: stoneEagleResearch }),
     );
     expect(messages[1]!.content).not.toContain("riskSignals");
@@ -533,7 +566,7 @@ describe("generation constraints", () => {
   });
 
   it("keeps excludedCopySignals out of the generation prompt", () => {
-    const messages = buildEmailPrompt(
+    const messages = promptMessages(
       contextFixture({
         excludedCopySignals: {
           riskSignals: ["secret churn marker"],

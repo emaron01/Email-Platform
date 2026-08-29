@@ -18,11 +18,12 @@ import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import {
   contactResearchForPrompt,
   personalizationSourceSummary,
-  resolvePersonalization,
+  resolvePersonalizationForGeneration,
+  type PersonalizationDecision,
 } from "@/lib/email-generation/personalization";
 import {
   bodyReferencesRequiredSpecific,
-  selectRequiredMotionSpecifics,
+  type RequiredMotionSpecific,
 } from "@/lib/email-generation/motion-specifics";
 import { ensureContactResearchForEmailGeneration } from "@/lib/email-generation/context";
 import {
@@ -31,6 +32,8 @@ import {
   logEmailGenerationValidationFailure,
 } from "@/lib/email-generation/errors";
 import { EMAIL_GENERATION_PROMPT_VERSION } from "@/lib/email-generation/prompt";
+import { estimateFactSelectionCostUsd } from "@/lib/email-generation/semantic-fact-selector";
+import type { FactSelectionUsage } from "@/lib/email-generation/semantic-fact-selector";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
@@ -172,6 +175,10 @@ export async function generateEmailDraft(
     inReplyToDraftId?: string | null;
     regenerationGuidance?: string | null;
     repReplyContext?: string | null;
+    requiredMotionSpecifics?: RequiredMotionSpecific[];
+    personalization?: PersonalizationDecision;
+    factSelectionUsage?: FactSelectionUsage | null;
+    factSelectionCacheKey?: string | null;
   } = {},
 ): Promise<{
   draftId: string;
@@ -274,21 +281,14 @@ export async function generateEmailDraft(
     let subject = removeEmDashes(response.data.subject);
     let body = sanitizeGeneratedEmailBody(response.data.body);
 
-    const personalizationForSpecifics = resolvePersonalization({
-      companyResearch: context.companyResearch,
-      contactResearch: contactResearchForPrompt(context.contactResearch),
-    });
-    const requiredMotionSpecifics =
-      personalizationForSpecifics.companyResearchUsable
-        ? selectRequiredMotionSpecifics({
-            research: personalizationForSpecifics.companyResearch,
-            problemSpace: {
-              problemsSolved: context.product.problemsSolved,
-              painPoints: context.persona.painPoints,
-            },
-            contactTitle: context.contact.title,
-          })
-        : [];
+    const requiredMotionSpecifics = options.requiredMotionSpecifics ?? [];
+    const personalization =
+      options.personalization ??
+      resolvePersonalizationForGeneration({
+        companyResearch: context.companyResearch,
+        contactResearch: contactResearchForPrompt(context.contactResearch),
+        hasRelevantCompanyFacts: requiredMotionSpecifics.length > 0,
+      });
     let requiredMotionSpecificRetry = false;
     let requiredMotionSpecificReferenced = bodyReferencesRequiredSpecific(
       body,
@@ -347,12 +347,41 @@ export async function generateEmailDraft(
     });
     const claimConflicts = claimValidation.violations;
 
-    const personalization = resolvePersonalization({
-      companyResearch: context.companyResearch,
-      contactResearch: contactResearchForPrompt(context.contactResearch),
-    });
     const emailLength = context.emailLength ?? context.campaign.emailLength;
-    const personalizationSources = personalizationSourceSummary(personalization);
+    const personalizationSources = personalizationSourceSummary({
+      companyResearch: personalization.companyResearch,
+      contactResearch: personalization.contactResearch,
+      companyResearchUsable: personalization.companyResearchUsable,
+      contactResearchUsable: personalization.contactResearchUsable,
+    });
+
+    if (options.factSelectionUsage) {
+      const factUsage = options.factSelectionUsage;
+      await recordUsageEvent({
+        organizationId: context.organizationId,
+        userId: context.userId,
+        campaignId: context.campaign.id,
+        contactId: context.contact.id,
+        category: "EMAIL_GENERATION",
+        operation: "EMAIL_COMPANY_FACT_SELECTION",
+        provider: factUsage.provider,
+        model: factUsage.model,
+        inputTokens: factUsage.inputTokens,
+        outputTokens: factUsage.outputTokens,
+        status: "SUCCESS",
+        retryCount: 0,
+        durationMs: factUsage.durationMs,
+        metadata: {
+          campaignContactId: context.campaignContact.id,
+          sequenceNumber,
+          cached: factUsage.cached,
+          cacheKey: options.factSelectionCacheKey ?? null,
+          noneRelevant: requiredMotionSpecifics.length === 0,
+          selectedCount: requiredMotionSpecifics.length,
+          estimatedCostUsd: estimateFactSelectionCostUsd(factUsage),
+        },
+      });
+    }
 
     // Always persist the draft — claim conflicts are reviewable, not discarded.
     const draft = await prisma.emailDraft.upsert({

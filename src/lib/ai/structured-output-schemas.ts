@@ -3,6 +3,7 @@ import { offerValidationSchema } from "@/lib/campaign/offer-validation-contract"
 import { contactResearchAiResultSchema } from "@/lib/contact-research/contract";
 import { claimValidationSchema } from "@/lib/email-generation/claim-validation-contract";
 import { emailDraftGenerationSchema } from "@/lib/email-generation/contract";
+import { emailFactSelectionResultSchema } from "@/lib/email-generation/fact-selection-contract";
 import { replyClassificationSchema } from "@/lib/email-generation/reply-contract";
 import {
   icpInterpretationResultSchema,
@@ -28,6 +29,7 @@ export type StructuredOutputSchemaEntry = {
     | "RESEARCH_SYNTHESIS"
     | "PRODUCT_WEB_SEARCH"
     | "EMAIL_DRAFT_CREATED"
+    | "EMAIL_COMPANY_FACT_SELECTION"
     | "CAMPAIGN_OFFER_VALIDATED"
     | "EMAIL_REPLY_CLASSIFIED"
     | "PERSONA_WEB_SEARCH"
@@ -89,6 +91,11 @@ export const STRUCTURED_OUTPUT_SCHEMAS = {
     schemaName: "email_draft_generation",
     schema: emailDraftGenerationSchema,
     usageOperations: ["EMAIL_DRAFT_CREATED"],
+  },
+  emailCompanyFactSelection: {
+    schemaName: "email_company_fact_selection",
+    schema: emailFactSelectionResultSchema,
+    usageOperations: ["EMAIL_COMPANY_FACT_SELECTION"],
   },
   campaignOfferValidation: {
     schemaName: "campaign_offer_validation",

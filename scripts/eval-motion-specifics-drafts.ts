@@ -34,27 +34,34 @@ async function main() {
     process.env.EMAIL_AI_MODEL_URL =
       process.env.EMAIL_AI_MODEL_URL || process.env.RESEARCH_AI_MODEL_URL;
   }
+  if (!process.env.EMAIL_FACTS_AI_PROVIDER && process.env.EMAIL_AI_PROVIDER) {
+    process.env.EMAIL_FACTS_AI_PROVIDER = process.env.EMAIL_AI_PROVIDER;
+    process.env.EMAIL_FACTS_AI_API_KEY =
+      process.env.EMAIL_FACTS_AI_API_KEY || process.env.EMAIL_AI_API_KEY;
+    process.env.EMAIL_FACTS_AI_MODEL_URL =
+      process.env.EMAIL_FACTS_AI_MODEL_URL || process.env.EMAIL_AI_MODEL_URL;
+  }
   if (!process.env.EMAIL_AI_MODEL?.trim()) {
     throw new Error(
       "EMAIL_AI_MODEL is required. Set EMAIL_AI_MODEL in .env.local before running this script.",
     );
+  }
+  if (!process.env.EMAIL_FACTS_AI_MODEL?.trim()) {
+    process.env.EMAIL_FACTS_AI_MODEL = process.env.EMAIL_AI_MODEL;
   }
 
   const { PrismaClient } = await import("@prisma/client");
   const { loadEmailGenerationContext } = await import(
     "../src/lib/email-generation/context"
   );
-  const { buildEmailPrompt } = await import(
-    "../src/lib/email-generation/prompt"
+  const { prepareEmailGenerationMessages } = await import(
+    "../src/lib/email-generation/prepare-email-generation"
   );
   const { generateEmailDraft } = await import(
     "../src/lib/email-generation/service"
   );
-  const { selectRequiredMotionSpecifics } = await import(
-    "../src/lib/email-generation/motion-specifics"
-  );
-  const { resolvePersonalization, contactResearchForPrompt } = await import(
-    "../src/lib/email-generation/personalization"
+  const { estimateFactSelectionCostUsd } = await import(
+    "../src/lib/email-generation/semantic-fact-selector"
   );
 
   const prisma = new PrismaClient();
@@ -88,31 +95,33 @@ async function main() {
 
       const cc = contact.campaignContacts[0];
       const context = await loadEmailGenerationContext(cc.id, membership.userId);
-      const personalization = resolvePersonalization({
-        companyResearch: context.companyResearch,
-        contactResearch: contactResearchForPrompt(context.contactResearch),
-      });
-      const specifics = selectRequiredMotionSpecifics({
-        research: personalization.companyResearch,
-        problemSpace: {
-          problemsSolved: context.product.problemsSolved,
-          painPoints: context.persona.painPoints,
-        },
-        contactTitle: context.contact.title,
-      });
+      const prepared = await prepareEmailGenerationMessages(context);
       console.log("\n==========");
       console.log(
         `${context.contact.firstName} ${context.contact.lastName} — ${context.contact.title} @ ${context.contact.company}`,
       );
-      console.log("Selected specifics:");
-      for (const item of specifics) {
-        console.log(`  - [${item.sourceField}] ${item.text}`);
+      console.log(`Fact selection cache key: ${prepared.factSelection.cacheKey ?? "n/a"}`);
+      if (prepared.factSelection.usage) {
+        console.log(
+          `Fact selection cost (est. USD): ${estimateFactSelectionCostUsd(prepared.factSelection.usage).toFixed(6)}`,
+        );
       }
-      const draft = await generateEmailDraft(
-        context,
-        buildEmailPrompt(context),
-        { sequenceNumber: 1, kind: "INITIAL" },
-      );
+      console.log("Selected specifics:");
+      for (const item of prepared.requiredMotionSpecifics) {
+        console.log(`  - [${item.sourceField}] ${item.text}`);
+        console.log(`    why: ${item.whyItMatters}`);
+      }
+      if (prepared.requiredMotionSpecifics.length === 0) {
+        console.log("  (none — THIN personalization)");
+      }
+      const draft = await generateEmailDraft(context, prepared.messages, {
+        sequenceNumber: 1,
+        kind: "INITIAL",
+        requiredMotionSpecifics: prepared.requiredMotionSpecifics,
+        personalization: prepared.personalization,
+        factSelectionUsage: prepared.factSelection.usage,
+        factSelectionCacheKey: prepared.factSelection.cacheKey,
+      });
       console.log(`Subject: ${draft.subject}`);
       console.log("Body:");
       console.log(draft.body);

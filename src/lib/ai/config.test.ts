@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { clearAiProviderCache, createAiProvider } from "@/lib/ai/provider";
 import {
   getEmailAiConfig,
+  getEmailFactsAiConfig,
   getResearchAiConfig,
   getScoringAiConfig,
   isEmailAiConfigured,
+  isEmailFactsAiConfigured,
   isResearchAiConfigured,
   isScoringAiConfigured,
 } from "@/lib/ai/config";
@@ -50,6 +52,7 @@ function clearAllAiEnv() {
       key.startsWith("PRODUCT_AI_") ||
       key.startsWith("PERSONA_AI_") ||
       key.startsWith("EMAIL_AI_") ||
+      key.startsWith("EMAIL_FACTS_AI_") ||
       key.startsWith("AI_")
     ) {
       delete process.env[key];
@@ -158,6 +161,23 @@ describe("role-specific AI configuration", () => {
     expect(() => getEmailAiConfig()).toThrow(
       /Missing required environment variable: EMAIL_AI_/,
     );
+  });
+
+  it("keeps Email Facts AI isolated and reads model from EMAIL_FACTS_AI_MODEL", () => {
+    clearAllAiEnv();
+    setResearchEnv("must-not-leak-into-email-facts");
+    process.env.EMAIL_FACTS_AI_PROVIDER = "openai-compatible";
+    process.env.EMAIL_FACTS_AI_MODEL = "email-facts-model-from-env";
+    process.env.EMAIL_FACTS_AI_MODEL_URL =
+      "https://facts.example.test/v1/chat/completions";
+    process.env.EMAIL_FACTS_AI_API_KEY = "email-facts-secret-key";
+
+    expect(isEmailFactsAiConfigured()).toBe(true);
+    const facts = getEmailFactsAiConfig();
+    expect(facts.role).toBe("email_facts");
+    expect(facts.provider).toBe("openai-compatible");
+    expect(facts.model).toBe("email-facts-model-from-env");
+    expect(facts.model).not.toBe(getResearchAiConfig().model);
   });
 
   it("allows openai-responses for Research and Scoring independently", () => {

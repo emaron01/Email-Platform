@@ -7,7 +7,6 @@
 import {
   contentTokens,
   type EmailCompanyResearch,
-  type ProductProblemSpace,
 } from "@/lib/email-generation/company-research-use";
 
 export type RequiredMotionSpecific = {
@@ -50,9 +49,6 @@ const GENERIC_BUSINESS_NOUNS = new Set([
   "technology",
   "tools",
 ]);
-
-const MAX_SPECIFICS = 3;
-const MIN_SPECIFICS = 2;
 
 export type MotionSpecificCandidate = {
   text: string;
@@ -479,171 +475,6 @@ export function collectMotionSpecificCandidates(
 }
 
 /**
- * Usability without a build-time fact-type list:
- * - Only motion fields (offerings, markets, customers, business model).
- * - Reject firmographic "research object" phrases (headcount, HQ, directories).
- * - Reject phrases that are only generic business nouns ("Cloud Platform").
- * - Prefer overlap with problemsSolved / painPoints (relevance), not invention.
- * - Drop title-dominated phrases (same rule as B1 motion checks).
- */
-export function scoreMotionSpecificUsability(
-  candidate: MotionSpecificCandidate,
-  input: {
-    problemSpace: ProductProblemSpace;
-    contactTitle?: string | null;
-  },
-): number {
-  if (
-    !EMAIL_MOTION_SPECIFIC_SOURCE_FIELDS.includes(
-      candidate.sourceField as EmailMotionSpecificSourceField,
-    )
-  ) {
-    return -Infinity;
-  }
-  if (isUnusableEmailFirmographicPhrase(candidate.text)) {
-    return -Infinity;
-  }
-
-  const titleTokens = new Set(contentTokens(input.contactTitle ?? ""));
-  if (titleTokens.size > 0 && candidate.tokens.length >= 2) {
-    const overlap = candidate.tokens.filter((token) =>
-      titleTokens.has(token),
-    ).length;
-    if (overlap / candidate.tokens.length >= 0.5) return -Infinity;
-  }
-
-  const nonGeneric = candidate.tokens.filter(
-    (token) => !GENERIC_BUSINESS_NOUNS.has(token),
-  );
-  if (nonGeneric.length === 0) return -Infinity;
-
-  // Single-token generics already rejected; single non-generic tokens need
-  // length signal to count as a usable specific (digits alone are often size).
-  if (candidate.tokens.length === 1 && candidate.text.length < 8) {
-    return -Infinity;
-  }
-
-  let score = 0;
-  score += nonGeneric.length * 3;
-  score += Math.min(candidate.tokens.length, 6);
-  // Capitalized multi-word or camel/product-like tokens tend to be named entities.
-  if (/[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/.test(candidate.text)) score += 6;
-  if (/[A-Z]{2,}|[A-Z][a-z]+[A-Z]/.test(candidate.text)) score += 4;
-  // Prefer mid-length concreteness over essay fragments.
-  if (candidate.text.length >= 12 && candidate.text.length <= 70) score += 3;
-  if (candidate.text.length > 90) score -= 4;
-
-  const problemTokens = new Set(
-    [
-      ...input.problemSpace.problemsSolved,
-      ...input.problemSpace.painPoints,
-    ].flatMap((value) => contentTokens(value)),
-  );
-  const relevance = nonGeneric.filter((token) => problemTokens.has(token));
-  score += relevance.length * 2;
-
-  if (candidate.sourceField === "whatTheySell") {
-    score += 5;
-    // Prefer portfolio framing when the candidate itself names multiple offerings.
-    if (extractNamedOfferingLabels(candidate.text).length >= 2) score += 8;
-    if (/\b(?:suite|portfolio|spanning)\b/i.test(candidate.text)) score += 4;
-  }
-  if (candidate.sourceField === "customerTypes") score += 4;
-  if (candidate.sourceField === "primaryMarkets") score += 4;
-  if (candidate.sourceField === "businessModel") score += 2;
-
-  return score;
-}
-
-function whyItMatters(
-  candidate: MotionSpecificCandidate,
-  problemSpace: ProductProblemSpace,
-): string {
-  if (
-    candidate.sourceField === "whatTheySell" &&
-    (extractNamedOfferingLabels(candidate.text).length >= 2 ||
-      /\b(?:suite|portfolio|spanning)\b/i.test(candidate.text))
-  ) {
-    return "Multi-offering portfolio — reason from the portfolio motion (several lines into overlapping accounts), not a single SKU.";
-  }
-  const problemTokens = [
-    ...problemSpace.problemsSolved,
-    ...problemSpace.painPoints,
-  ];
-  const candidateSet = new Set(candidate.tokens);
-  for (const line of problemTokens) {
-    const overlap = contentTokens(line).filter((token) =>
-      candidateSet.has(token),
-    );
-    if (overlap.length > 0) {
-      return `Connects this company's ${candidate.sourceField} detail to: ${line}`;
-    }
-  }
-  return `Concrete ${candidate.sourceField} detail that distinguishes this company from a generic peer.`;
-}
-
-/**
- * Select 2–3 usable required specifics for generation.
- */
-export function selectRequiredMotionSpecifics(input: {
-  research: EmailCompanyResearch | null;
-  problemSpace: ProductProblemSpace;
-  contactTitle?: string | null;
-}): RequiredMotionSpecific[] {
-  if (!input.research) return [];
-  const scored = collectMotionSpecificCandidates(input.research)
-    .map((candidate) => ({
-      candidate,
-      score: scoreMotionSpecificUsability(candidate, {
-        problemSpace: input.problemSpace,
-        contactTitle: input.contactTitle,
-      }),
-    }))
-    .filter((row) => Number.isFinite(row.score) && row.score > 0)
-    .sort((a, b) => b.score - a.score);
-
-  const selected: RequiredMotionSpecific[] = [];
-  const usedTokenKeys = new Set<string>();
-  for (const row of scored) {
-    if (selected.length >= MAX_SPECIFICS) break;
-    const key = row.candidate.tokens.slice(0, 4).join(" ");
-    if (usedTokenKeys.has(key)) continue;
-    // Avoid near-duplicates that share most tokens with an already-selected item.
-    const tooSimilar = selected.some((existing) => {
-      const existingTokens = new Set(contentTokens(existing.text));
-      const shared = row.candidate.tokens.filter((token) =>
-        existingTokens.has(token),
-      ).length;
-      return (
-        shared / Math.max(row.candidate.tokens.length, existingTokens.size) >=
-        0.6
-      );
-    });
-    if (tooSimilar) continue;
-    usedTokenKeys.add(key);
-    selected.push({
-      text: row.candidate.text,
-      sourceField: row.candidate.sourceField,
-      whyItMatters: whyItMatters(row.candidate, input.problemSpace),
-    });
-  }
-
-  if (selected.length < MIN_SPECIFICS && scored.length > selected.length) {
-    for (const row of scored) {
-      if (selected.length >= MIN_SPECIFICS) break;
-      if (selected.some((item) => item.text === row.candidate.text)) continue;
-      selected.push({
-        text: row.candidate.text,
-        sourceField: row.candidate.sourceField,
-        whyItMatters: whyItMatters(row.candidate, input.problemSpace),
-      });
-    }
-  }
-
-  return selected.slice(0, MAX_SPECIFICS);
-}
-
-/**
  * True when the body references at least one required specific by name
  * (case-insensitive substring or majority of its non-generic tokens).
  */
@@ -666,9 +497,8 @@ export function bodyReferencesRequiredSpecific(
 }
 
 export const REQUIRED_MOTION_SPECIFICS_INSTRUCTIONS = `Required company specifics (when requiredMotionSpecifics is non-empty):
-- Reason FROM at least one requiredMotionSpecifics[].text to the executive problem. The specific must do causal work in the sentence (market, offering, portfolio, or customer type that makes the problem acute for them).
-- When the specific is a multi-offering suite or portfolio, reason from that portfolio motion (several products into overlapping accounts) — do not narrow the email to a single SKU.
-- Do NOT decorate a generic problem with a bolted-on product name, and do NOT quote research back to the recipient (no headcount, LinkedIn, directories, or "your company has N employees").
-- Prefer a framing like "In [market / for teams selling X / when serving Y / across a portfolio of …], [problem]…" — not "With [product name], [generic problem]…" or "When selling [one SKU], …".
-- Reference the chosen specific by name (exact phrase or unmistakable named reference). Do not invent other company facts or replace it with a vague category synonym.
-- If unsure which specific to use, pick the first item in the list.`;
+- Each item was selected because it suggests this persona has the problem this product solves at this company — not because it is distinctive.
+- Reason FROM at least one requiredMotionSpecifics[].text to the executive problem. The specific must do causal work in the sentence.
+- Use whyItMatters as the intended connection; do not bolt on a fact that does not support the problem framing.
+- Do NOT decorate a generic problem with a bolted-on company fact, and do NOT quote research back to the recipient (no headcount, LinkedIn, or directories).
+- Reference the chosen specific by name (exact phrase or unmistakable named reference). Do not invent other company facts.`;

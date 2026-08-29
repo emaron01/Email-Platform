@@ -3,10 +3,13 @@ import { readFileSync } from "node:fs";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import {
   buildEmailPrompt,
-  buildFollowUpEmailPrompt,
-  buildReplyEmailPrompt,
+  emailPromptOptionsForContext,
   replyStrategy,
 } from "@/lib/email-generation/prompt";
+import {
+  buildFollowUpEmailPrompt,
+  buildReplyEmailPrompt,
+} from "@/lib/email-generation/prepare-email-generation";
 import { TenantError } from "@/lib/tenant/errors";
 import { seedContactOnList } from "@/test/contact-seed";
 
@@ -36,6 +39,7 @@ function contextFixture(
     emailLength: "MEDIUM",
     contact: {
       id: "contact_1",
+      companyId: "company_1",
       firstName: "Alex",
       lastName: "Rivera",
       email: "alex@example.test",
@@ -98,6 +102,7 @@ function contextFixture(
       researchedAt: new Date(),
     },
     companyResearch: null,
+    companyResearchUpdatedAt: null,
     excludedCopySignals: {
       riskSignals: [],
       professionalSignals: [],
@@ -126,9 +131,20 @@ function contextFixture(
   };
 }
 
+function promptMessages(
+  context: EmailGenerationContext = contextFixture(),
+  guidance?: string | null,
+) {
+  return buildEmailPrompt(
+    context,
+    emailPromptOptionsForContext(context),
+    guidance ?? null,
+  );
+}
+
 describe("buildEmailPrompt", () => {
   it("builds one system and one user message in the required priority order", () => {
-    const messages = buildEmailPrompt(contextFixture());
+    const messages = promptMessages();
     expect(messages).toHaveLength(2);
     expect(messages[0].role).toBe("system");
     expect(messages[1].role).toBe("user");
@@ -185,7 +201,7 @@ describe("buildEmailPrompt", () => {
   });
 
   it("places regeneration guidance above campaign guidance", () => {
-    const messages = buildEmailPrompt(
+    const messages = promptMessages(
       contextFixture(),
       "Make the hook more direct",
     );
@@ -217,7 +233,7 @@ describe("buildEmailPrompt", () => {
     ],
   ] as const)("uses the exact %s structure instruction", (emailLength, instruction) => {
     const base = contextFixture();
-    const messages = buildEmailPrompt(
+    const messages = promptMessages(
       contextFixture({
         campaign: {
           ...base.campaign,
@@ -240,17 +256,18 @@ describe("buildEmailPrompt", () => {
 
   it("uses a per-draft length override instead of the campaign default", () => {
     const base = contextFixture();
-    const messages = buildEmailPrompt({
+    const context = {
       ...base,
-      campaign: { ...base.campaign, emailLength: "MEDIUM" },
-      emailLength: "SHORT",
-    });
+      campaign: { ...base.campaign, emailLength: "MEDIUM" as const },
+      emailLength: "SHORT" as const,
+    };
+    const messages = promptMessages(context);
     expect(messages[1].content).toContain('"emailLength": "SHORT"');
     expect(messages[1].content).toContain("exactly 1 content paragraph");
   });
 
   it("places prefixed campaign guidance immediately after the offer", () => {
-    const prompt = buildEmailPrompt(contextFixture())[1].content;
+    const prompt = promptMessages()[1].content;
     const offer = prompt.indexOf('"offer"');
     const guidance = prompt.indexOf('"additionalInstructions"');
     const persona = prompt.indexOf('"personaNeeds"');
@@ -263,7 +280,7 @@ describe("buildEmailPrompt", () => {
   });
 
   it("uses the first voice sample as the structural reference", () => {
-    const messages = buildEmailPrompt(contextFixture());
+    const messages = promptMessages();
     const systemPrompt = messages[0].content;
     const userPrompt = messages[1].content;
 
@@ -324,7 +341,7 @@ describe("buildEmailPrompt", () => {
         },
       },
     });
-    const messages = buildEmailPrompt(context);
+    const messages = promptMessages(context);
     expect(messages[1].content).toContain('"freshRoleResearch": null');
     expect(messages[1].content).toContain('"companyResearch": null');
     expect(messages[1].content).toContain(
@@ -445,17 +462,17 @@ describe("sequence and claim guards", () => {
     inReplyToDraftId: null,
   };
 
-  it("puts Email 1 verbatim into the Email 2 prompt", () => {
-    const messages = buildFollowUpEmailPrompt(
+  it("puts Email 1 verbatim into the Email 2 prompt", async () => {
+    const prepared = await buildFollowUpEmailPrompt(
       contextFixture({ sequence: [sentEmail] }),
       2,
     );
-    expect(messages[1].content).toContain(sentEmail.subject);
-    expect(messages[1].content).toContain(
+    expect(prepared.messages[1].content).toContain(sentEmail.subject);
+    expect(prepared.messages[1].content).toContain(
       JSON.stringify(sentEmail.body).slice(1, -1),
     );
-    expect(messages[0].content).toMatch(/different angle or proof point/i);
-    expect(messages[0].content).toMatch(/shorter than/i);
+    expect(prepared.messages[0].content).toMatch(/different angle or proof point/i);
+    expect(prepared.messages[0].content).toMatch(/shorter than/i);
   });
 
   it("does not expose Email 2 until Email 1 is marked sent", async () => {
@@ -954,7 +971,7 @@ describe("email generation action and UI seams", () => {
       /generateEmailDraftAction\([\s\S]*Promise<GenerateEmailDraftActionResult>/,
     );
     expect(action).toContain("loadEmailGenerationContext");
-    expect(action).toContain("buildEmailPrompt");
+    expect(action).toContain("prepareEmailGenerationMessages");
     expect(action).toContain("generateEmailDraft");
     expect(action).toContain("requireVerifiedForAiSpend");
     expect(action).toContain("ADDITIONAL_GUIDANCE_MAX_CHARS");
@@ -1587,7 +1604,7 @@ describe.skipIf(!hasDatabase)(
       );
       const created = await generateEmailDraft(
         context,
-        buildEmailPrompt(context),
+        promptMessages(context),
       );
       expect(created.subject).toBe("A forecast, without the guesswork");
       expect(created.body).toBe(
@@ -1682,7 +1699,7 @@ describe.skipIf(!hasDatabase)(
 
       const regenerated = await generateEmailDraft(
         context,
-        buildEmailPrompt(context, "Make it shorter"),
+        promptMessages(context, "Make it shorter"),
       );
       expect(regenerated.regenerated).toBe(true);
       expect(regenerated.draftId).toBe(created.draftId);
@@ -1723,7 +1740,7 @@ describe.skipIf(!hasDatabase)(
       );
 
       await expect(
-        generateEmailDraft(context, buildEmailPrompt(context), {
+        generateEmailDraft(context, promptMessages(context), {
           sequenceNumber: 2,
           kind: "FOLLOW_UP",
         }),
@@ -1743,7 +1760,7 @@ describe.skipIf(!hasDatabase)(
       expect(sentContext.sequence[0].status).toBe("SENT");
       expect(sentContext.sequence[0].sentAt).toBeInstanceOf(Date);
       await expect(
-        generateEmailDraft(sentContext, buildEmailPrompt(sentContext)),
+        generateEmailDraft(sentContext, promptMessages(sentContext)),
       ).rejects.toThrow(/read-only/i);
 
       const { classifyProspectReply } = await import(
@@ -1764,18 +1781,19 @@ describe.skipIf(!hasDatabase)(
       const contactCountBeforeReferral = await prisma.contact.count({
         where: { organizationId },
       });
+      const replyPrepared = await buildReplyEmailPrompt({
+        context: sentContext,
+        sourceDraft: {
+          sequenceNumber: sourceDraft.sequenceNumber,
+          subject: sourceDraft.subject ?? "",
+          body: sourceDraft.body ?? "",
+        },
+        prospectReply,
+        classification: classification.classification,
+      });
       const replyDraft = await generateEmailDraft(
         sentContext,
-        buildReplyEmailPrompt({
-          context: sentContext,
-          sourceDraft: {
-            sequenceNumber: sourceDraft.sequenceNumber,
-            subject: sourceDraft.subject ?? "",
-            body: sourceDraft.body ?? "",
-          },
-          prospectReply,
-          classification: classification.classification,
-        }),
+        replyPrepared.messages,
         {
           sequenceNumber: 2,
           kind: "REPLY",
@@ -1783,6 +1801,10 @@ describe.skipIf(!hasDatabase)(
           prospectReplyText: prospectReply,
           referralSuggested: classification.referralSuggested,
           inReplyToDraftId: sourceDraft.id,
+          requiredMotionSpecifics: replyPrepared.requiredMotionSpecifics,
+          personalization: replyPrepared.personalization,
+          factSelectionUsage: replyPrepared.factSelection.usage,
+          factSelectionCacheKey: replyPrepared.factSelection.cacheKey,
         },
       );
       expect(replyDraft.kind).toBe("REPLY");

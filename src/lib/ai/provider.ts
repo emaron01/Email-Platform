@@ -1,6 +1,7 @@
 import {
   getContactResearchAiConfig,
   getEmailAiConfig,
+  getEmailFactsAiConfig,
   getInterpretationAiConfig,
   getPersonaAiConfig,
   getProductAiConfig,
@@ -57,6 +58,10 @@ const personaCache: { key: string; provider: AiProvider | null } = {
   provider: null,
 };
 const emailCache: { key: string; provider: AiProvider | null } = {
+  key: "",
+  provider: null,
+};
+const emailFactsCache: { key: string; provider: AiProvider | null } = {
   key: "",
   provider: null,
 };
@@ -156,6 +161,19 @@ export function getEmailAiProvider(): AiProvider {
   return provider;
 }
 
+/** Email company-fact selection AI only — never uses Email draft AI configuration. */
+export function getEmailFactsAiProvider(): AiProvider {
+  const config = getEmailFactsAiConfig();
+  const key = cacheKey(config);
+  if (emailFactsCache.key === key && emailFactsCache.provider) {
+    return emailFactsCache.provider;
+  }
+  const provider = createAiProvider(config);
+  emailFactsCache.key = key;
+  emailFactsCache.provider = provider;
+  return provider;
+}
+
 /** Test helper to clear provider caches. */
 export function clearAiProviderCache(): void {
   researchCache.key = "";
@@ -172,4 +190,6 @@ export function clearAiProviderCache(): void {
   personaCache.provider = null;
   emailCache.key = "";
   emailCache.provider = null;
+  emailFactsCache.key = "";
+  emailFactsCache.provider = null;
 }

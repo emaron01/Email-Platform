@@ -11,12 +11,13 @@ import {
   loadExistingEmailDraftContext,
   loadEmailReplyContext,
 } from "@/lib/email-generation/context";
+import { ADDITIONAL_GUIDANCE_MAX_CHARS } from "@/lib/email-generation/prompt";
 import {
-  ADDITIONAL_GUIDANCE_MAX_CHARS,
-  buildEmailPrompt,
   buildFollowUpEmailPrompt,
   buildReplyEmailPrompt,
-} from "@/lib/email-generation/prompt";
+  prepareEmailGenerationMessages,
+  type PreparedEmailGeneration,
+} from "@/lib/email-generation/prepare-email-generation";
 import {
   generateEmailDraft,
   toSafeEmailGenerationError,
@@ -35,7 +36,6 @@ import { isMeetingSchedulingReply } from "@/lib/cadence/engine";
 import { stopSequenceForContact } from "@/lib/cadence/stop-sequence";
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
 import { unacknowledgedOfferWarnings } from "@/lib/email-generation/offer-warnings";
-import type { AiMessage } from "@/lib/ai/types";
 import {
   EMAIL_CLIENTS,
   type EmailClient,
@@ -88,6 +88,19 @@ function revalidateCampaign(campaignId: string): void {
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
+function generationOptionsFromPrepared(
+  prepared: PreparedEmailGeneration,
+  extra: Parameters<typeof generateEmailDraft>[2] = {},
+) {
+  return {
+    ...extra,
+    requiredMotionSpecifics: prepared.requiredMotionSpecifics,
+    personalization: prepared.personalization,
+    factSelectionUsage: prepared.factSelection.usage,
+    factSelectionCacheKey: prepared.factSelection.cacheKey,
+  };
+}
+
 export async function generateEmailDraftAction(
   campaignContactId: string,
   additionalGuidance?: string,
@@ -112,10 +125,17 @@ export async function generateEmailDraftAction(
       user.id,
       { personaId, emailLength: parseEmailLength(emailLength) },
     );
-    const messages = buildEmailPrompt(context, normalizedGuidance);
-    const draft = await generateEmailDraft(context, messages, {
-      regenerationGuidance: normalizedGuidance,
-    });
+    const prepared = await prepareEmailGenerationMessages(
+      context,
+      normalizedGuidance,
+    );
+    const draft = await generateEmailDraft(
+      context,
+      prepared.messages,
+      generationOptionsFromPrepared(prepared, {
+        regenerationGuidance: normalizedGuidance,
+      }),
+    );
 
     revalidateCampaign(context.campaign.id);
     const hasClaimConflicts = draft.claimConflicts.length > 0;
@@ -172,11 +192,20 @@ export async function regenerateEmailDraftAction(
       user.id,
       { personaId, emailLength: parseEmailLength(emailLength) },
     );
-    let messages: AiMessage[];
+    let prepared: PreparedEmailGeneration;
     if (existing.kind === "INITIAL") {
-      messages = buildEmailPrompt(context, normalizedGuidance);
+      const initial = await prepareEmailGenerationMessages(
+        context,
+        normalizedGuidance,
+      );
+      prepared = {
+        messages: initial.messages,
+        requiredMotionSpecifics: initial.requiredMotionSpecifics,
+        personalization: initial.personalization,
+        factSelection: initial.factSelection,
+      };
     } else if (existing.kind === "FOLLOW_UP") {
-      messages = buildFollowUpEmailPrompt(
+      prepared = await buildFollowUpEmailPrompt(
         context,
         existing.sequenceNumber,
         normalizedGuidance,
@@ -196,7 +225,7 @@ export async function regenerateEmailDraftAction(
           message: "This reply draft is missing its thread context.",
         };
       }
-      messages = buildReplyEmailPrompt({
+      prepared = await buildReplyEmailPrompt({
         context,
         sourceDraft: {
           sequenceNumber: source.sequenceNumber,
@@ -208,7 +237,10 @@ export async function regenerateEmailDraftAction(
         additionalGuidance: normalizedGuidance,
       });
     }
-    const regenerated = await generateEmailDraft(context, messages, {
+    const regenerated = await generateEmailDraft(
+      context,
+      prepared.messages,
+      generationOptionsFromPrepared(prepared, {
       sequenceNumber: existing.sequenceNumber,
       kind: existing.kind,
       replyClassification: existing.replyClassification,
@@ -216,7 +248,8 @@ export async function regenerateEmailDraftAction(
       referralSuggested: existing.referralSuggested,
       inReplyToDraftId: existing.inReplyToDraftId,
       regenerationGuidance: normalizedGuidance,
-    });
+      }),
+    );
     revalidateCampaign(context.campaign.id);
     const hasClaimConflicts = regenerated.claimConflicts.length > 0;
     return {
@@ -258,10 +291,14 @@ export async function addFollowUpEmailAction(
       { personaId, emailLength: parseEmailLength(emailLength) },
     );
     const sequenceNumber = nextSequencePosition(context);
+    const prepared = await buildFollowUpEmailPrompt(context, sequenceNumber);
     const draft = await generateEmailDraft(
       context,
-      buildFollowUpEmailPrompt(context, sequenceNumber),
-      { sequenceNumber, kind: "FOLLOW_UP" },
+      prepared.messages,
+      generationOptionsFromPrepared(prepared, {
+        sequenceNumber,
+        kind: "FOLLOW_UP",
+      }),
     );
     revalidateCampaign(context.campaign.id);
     const hasClaimConflicts = draft.claimConflicts.length > 0;
@@ -478,15 +515,16 @@ export async function draftReplyAction(
       };
     }
 
+    const prepared = await buildReplyEmailPrompt({
+      context,
+      sourceDraft,
+      prospectReply: normalizedReply,
+      classification: classification.classification,
+    });
     const draft = await generateEmailDraft(
       context,
-      buildReplyEmailPrompt({
-        context,
-        sourceDraft,
-        prospectReply: normalizedReply,
-        classification: classification.classification,
-      }),
-      {
+      prepared.messages,
+      generationOptionsFromPrepared(prepared, {
         sequenceNumber,
         kind: "REPLY",
         replyClassification: classification.classification,
@@ -494,7 +532,7 @@ export async function draftReplyAction(
         referralSuggested: classification.referralSuggested,
         inReplyToDraftId: sourceDraft.id,
         repReplyContext: normalizedReply,
-      },
+      }),
     );
     revalidateCampaign(context.campaign.id);
     revalidatePath("/");
