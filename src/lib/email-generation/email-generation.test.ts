@@ -445,6 +445,66 @@ describe("generated email output", () => {
     expect(launch.bodyToCopy).toBe(body);
     expect(launch.bodyToCopy?.endsWith("Closing paragraph?")).toBe(true);
   });
+
+  it("opens each handoff href exactly once (no noopener null-fallback double fire)", async () => {
+    const { openEmailClientHref } = await import(
+      "@/lib/email-generation/email-body"
+    );
+    const assign = vi.fn();
+    const click = vi.fn();
+    const remove = vi.fn();
+    const appendChild = vi.fn();
+    const createElement = vi.fn(() => ({
+      href: "",
+      target: "",
+      rel: "",
+      referrerPolicy: "",
+      click,
+      remove,
+    }));
+    const open = vi.fn(() => null);
+    vi.stubGlobal("window", {
+      location: { assign },
+      open,
+    });
+    vi.stubGlobal("document", {
+      createElement,
+      body: { appendChild },
+    });
+
+    openEmailClientHref("mailto:alex@example.com?subject=Hi&body=Hello");
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledWith(
+      "mailto:alex@example.com?subject=Hi&body=Hello",
+    );
+    expect(open).not.toHaveBeenCalled();
+    expect(createElement).not.toHaveBeenCalled();
+
+    assign.mockClear();
+    openEmailClientHref(
+      "https://outlook.office.com/mail/deeplink/compose?to=a%40b.com",
+    );
+    expect(assign).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(createElement).toHaveBeenCalledWith("a");
+    expect(appendChild).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+
+    click.mockClear();
+    remove.mockClear();
+    appendChild.mockClear();
+    createElement.mockClear();
+    openEmailClientHref(
+      "https://mail.google.com/mail/?view=cm&fs=1&to=a%40b.com",
+    );
+    expect(assign).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(createElement).toHaveBeenCalledWith("a");
+    expect(click).toHaveBeenCalledTimes(1);
+
+    vi.unstubAllGlobals();
+  });
 });
 
 describe("sequence and claim guards", () => {
@@ -1006,7 +1066,12 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("Outlook desktop");
     expect(form).toContain("Gmail");
     expect(form).toContain("buildEmailClientLaunch");
+    expect(form).toContain("openEmailClientHref");
     expect(form).toContain("recordEmailClientIntentAction");
+    expect(form).not.toContain(
+      'window.open(href, "_blank", "noopener,noreferrer")',
+    );
+    expect(form).toContain("clientOpenInFlight");
     expect(form).toContain("Opened");
     expect(form).toContain("Sent");
     expect(campaignDetailPage).toContain("handoffAt");

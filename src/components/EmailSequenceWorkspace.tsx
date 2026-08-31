@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   addFollowUpEmailAction,
@@ -27,6 +27,7 @@ import {
   buildEmailClientLaunch,
   EMAIL_BODY_MAX_CHARS,
   EMAIL_SUBJECT_MAX_CHARS,
+  openEmailClientHref,
   type EmailClient,
 } from "@/lib/email-generation/email-body";
 import { SuppressContactForm } from "@/components/SuppressContactForm";
@@ -182,6 +183,7 @@ export function EmailSequenceWorkspace({
   }, [selected?.id, selected?.handoffAt]);
 
   const [deeplinkSendDeclined, setDeeplinkSendDeclined] = useState(false);
+  const clientOpenInFlight = useRef(false);
   useEffect(() => {
     if (!selected?.id || !selected.handoffAt) {
       setDeeplinkSendDeclined(false);
@@ -319,7 +321,7 @@ export function EmailSequenceWorkspace({
   }
 
   function openInEmailClient(client: EmailClient) {
-    if (!selected || !contactEmail) return;
+    if (!selected || !contactEmail || clientOpenInFlight.current) return;
     const launch = buildEmailClientLaunch({
       client,
       to: contactEmail,
@@ -348,37 +350,39 @@ export function EmailSequenceWorkspace({
       }
       copyPromise = navigator.clipboard.writeText(launch.bodyToCopy);
     }
+    clientOpenInFlight.current = true;
     startTransition(async () => {
-      if (selected.status !== "SENT") {
-        const saved = await persistDraft(selected);
-        if (!saved.ok || !saved.subject || !saved.body) return;
-      }
-      if (copyPromise) {
-        try {
-          await copyPromise;
-        } catch {
-          setResult({
-            ok: false,
-            message:
-              "The browser could not copy the full email body. Copy it from the editor before opening your email client.",
-          });
-          return;
+      try {
+        if (selected.status !== "SENT") {
+          const saved = await persistDraft(selected);
+          if (!saved.ok || !saved.subject || !saved.body) return;
         }
-      }
-      const recorded = await recordEmailClientIntentAction({
-        emailDraftId: selected.id,
-        client,
-        bodyHandling: launch.bodyHandling,
-      });
-      setResult(recorded);
-      if (!recorded.ok) return;
-      if (recorded.handoffAt) {
-        updateSelectedDraft({ handoffAt: recorded.handoffAt });
-        setSendConfirmDismissed(false);
-      }
-      const opened = window.open(href, "_blank", "noopener,noreferrer");
-      if (!opened) {
-        window.location.assign(href);
+        if (copyPromise) {
+          try {
+            await copyPromise;
+          } catch {
+            setResult({
+              ok: false,
+              message:
+                "The browser could not copy the full email body. Copy it from the editor before opening your email client.",
+            });
+            return;
+          }
+        }
+        const recorded = await recordEmailClientIntentAction({
+          emailDraftId: selected.id,
+          client,
+          bodyHandling: launch.bodyHandling,
+        });
+        setResult(recorded);
+        if (!recorded.ok) return;
+        if (recorded.handoffAt) {
+          updateSelectedDraft({ handoffAt: recorded.handoffAt });
+          setSendConfirmDismissed(false);
+        }
+        openEmailClientHref(href);
+      } finally {
+        clientOpenInFlight.current = false;
       }
     });
   }

@@ -83,3 +83,28 @@ export function buildEmailClientLaunch(input: {
     bodyToCopy: normalizeEmailBody(input.body),
   };
 }
+
+/**
+ * Open a compose deeplink exactly once.
+ *
+ * Do not use `window.open(href, "_blank", "noopener,noreferrer")` and then fall
+ * back on a null return: with `noopener`, modern browsers always return `null`
+ * even when the window opened, so a `location.assign` fallback double-fires
+ * (two Outlook desktop compose windows for mailto; new tab + same-tab for
+ * Outlook Web / Gmail).
+ */
+export function openEmailClientHref(href: string): void {
+  if (typeof window === "undefined") return;
+  if (href.startsWith("mailto:")) {
+    window.location.assign(href);
+    return;
+  }
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  anchor.referrerPolicy = "no-referrer";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
