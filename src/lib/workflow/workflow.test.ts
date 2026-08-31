@@ -75,6 +75,14 @@ describe("home workflow", () => {
     prismaMock.product.findMany.mockResolvedValue([productFixture()]);
     const result = await getHomeWorkflow("org_1");
     expect(result.setupComplete).toBe(true);
+    expect(result.campaignProducts).toEqual([
+      expect.objectContaining({
+        id: "product_1",
+        name: "Forecast",
+        ready: true,
+        omissionReason: null,
+      }),
+    ]);
     expect(result.product.label).toBe("Approved");
     expect(result.icp.done).toBe(true);
     expect(result.icp.label).toBe("Saved");
@@ -156,6 +164,11 @@ describe("home workflow", () => {
     ]);
     const result = await getHomeWorkflow("org_1");
     expect(result.setupComplete).toBe(false);
+    expect(result.campaignProducts[0]).toMatchObject({
+      id: "product_1",
+      ready: false,
+      blockers: expect.arrayContaining(["Needs an ICP with criteria"]),
+    });
     expect(result.icp.done).toBe(false);
     expect(result.icp.label).toBe("Not started");
     expect(result.icp.count).toBe(0);

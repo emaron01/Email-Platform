@@ -6,7 +6,6 @@ import {
   listCampaigns,
   listIcps,
   listPersonas,
-  listProducts,
 } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
@@ -34,19 +33,17 @@ export default async function CampaignsPage({
     );
   }
 
-  const [campaigns, products, icps, personas, workflow] = await Promise.all([
+  const [campaigns, icps, personas, workflow] = await Promise.all([
     listCampaigns({ includeArchived }),
-    listProducts(),
     listIcps(),
     listPersonas(),
     getHomeWorkflow(organization.id),
   ]);
 
-  const readyProducts = products.filter((product) => {
-    return workflow.completeProductIds.includes(product.id);
-  });
-
-  const canCreate = workflow.setupComplete && readyProducts.length > 0;
+  const campaignProducts = workflow.campaignProducts;
+  const readyProducts = campaignProducts.filter((product) => product.ready);
+  const unavailableProducts = campaignProducts.filter((product) => !product.ready);
+  const canCreate = campaignProducts.length > 0;
 
   return (
     <div>
@@ -69,9 +66,11 @@ export default async function CampaignsPage({
         >
           {canCreate ? (
             <NewCampaignForm
-              products={readyProducts.map((product) => ({
+              products={campaignProducts.map((product) => ({
                 id: product.id,
                 name: product.name,
+                ready: product.ready,
+                omissionReason: product.omissionReason,
               }))}
               icps={icps.map((icp) => ({
                 id: icp.id,
@@ -86,10 +85,41 @@ export default async function CampaignsPage({
             />
           ) : (
             <p className="text-sm text-slate-600">
-              Finish setup first: approve a Product, save at least one ICP
-              with criteria, and save a Persona for that Product.
+              Add a product in Setup before creating a campaign.
             </p>
           )}
+          {canCreate && readyProducts.length === 0 ? (
+            <p
+              className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+              data-testid="campaign-product-setup-required"
+            >
+              No products are ready for campaigns yet. Each product needs
+              approval, an ICP with criteria, and at least one saved persona.
+            </p>
+          ) : null}
+          {unavailableProducts.length > 0 && readyProducts.length > 0 ? (
+            <div
+              className="mt-3 space-y-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+              data-testid="campaign-product-omissions"
+            >
+              <p className="font-medium text-slate-900">
+                Products not yet available
+              </p>
+              <ul className="list-disc space-y-1 pl-5">
+                {unavailableProducts.map((product) => (
+                  <li key={product.id}>
+                    <Link
+                      href={`/setup/${product.id}`}
+                      className="font-medium text-slate-900 underline-offset-2 hover:underline"
+                    >
+                      {product.name}
+                    </Link>
+                    : {product.omissionReason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </Panel>
       </div>
 

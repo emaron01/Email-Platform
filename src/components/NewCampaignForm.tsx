@@ -9,9 +9,16 @@ import {
   EMAIL_LENGTH_OPTIONS,
   type CampaignActionResult,
 } from "@/lib/campaign/save";
+import { formatProductCampaignOmission } from "@/lib/workflow/product-campaign-readiness";
 import { Field, SubmitButton } from "@/components/ui";
 
 type Option = { id: string; name: string; productId: string };
+type ProductOption = {
+  id: string;
+  name: string;
+  ready: boolean;
+  omissionReason: string | null;
+};
 
 const initial: CampaignActionResult | null = null;
 
@@ -20,7 +27,7 @@ export function NewCampaignForm({
   icps,
   personas,
 }: {
-  products: Array<{ id: string; name: string }>;
+  products: ProductOption[];
   icps: Option[];
   personas: Option[];
 }) {
@@ -48,11 +55,14 @@ export function NewCampaignForm({
     [personas, productId],
   );
 
+  const selectedProduct = products.find((product) => product.id === productId);
+  const productReady = selectedProduct?.ready ?? false;
   const allProductPersonasSelected =
     productPersonas.length > 0 &&
     productPersonas.every((persona) => personaIds.includes(persona.id));
   const canSubmit =
     Boolean(productId) &&
+    productReady &&
     Boolean(icpId) &&
     productIcps.some((icp) => icp.id === icpId);
 
@@ -126,11 +136,27 @@ export function NewCampaignForm({
             Select product
           </option>
           {products.map((product) => (
-            <option key={product.id} value={product.id}>
-              {product.name}
+            <option
+              key={product.id}
+              value={product.id}
+              disabled={!product.ready}
+            >
+              {formatProductCampaignOmission(product.name, {
+                ready: product.ready,
+                blockers: product.omissionReason
+                  ? product.omissionReason.split("; ")
+                  : [],
+                omissionReason: product.omissionReason,
+              })}
             </option>
           ))}
         </select>
+        {selectedProduct && !selectedProduct.ready && selectedProduct.omissionReason ? (
+          <p className="mt-2 text-sm text-amber-900">
+            {selectedProduct.name} cannot be used yet:{" "}
+            {selectedProduct.omissionReason}
+          </p>
+        ) : null}
       </label>
 
       <label className="block text-sm">
@@ -286,7 +312,9 @@ export function NewCampaignForm({
             ? "Creating…"
             : canSubmit
               ? "Create campaign"
-              : "Select product and ICP"}
+              : productId && !productReady
+                ? "Finish product setup first"
+                : "Select product and ICP"}
         </SubmitButton>
       </div>
     </form>

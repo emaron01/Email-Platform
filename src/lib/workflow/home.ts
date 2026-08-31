@@ -8,6 +8,7 @@ import {
 } from "@/lib/criteria/evidence-class";
 import { getDueContactsForUser, type CampaignDueSummary } from "@/lib/cadence/dashboard";
 import { normalizeSuggestedBuyerRoles } from "@/lib/setup/product-overview";
+import { getProductCampaignReadiness } from "@/lib/workflow/product-campaign-readiness";
 
 export type SetupCardState = {
   done: boolean;
@@ -20,6 +21,13 @@ export type SetupCardState = {
 export type HomeWorkflow = {
   setupComplete: boolean;
   completeProductIds: string[];
+  campaignProducts: Array<{
+    id: string;
+    name: string;
+    ready: boolean;
+    blockers: string[];
+    omissionReason: string | null;
+  }>;
   product: SetupCardState & { suggestedRoleCount: number };
   icp: SetupCardState & {
     name: string | null;
@@ -44,6 +52,14 @@ export type HomeWorkflow = {
 /** Criteria rows are the interpreted ICP. lastInterpretedAt is not required — legacy/manual backfill never sets it. */
 function hasInterpretedCriteria(icp: { criteria: unknown[] }): boolean {
   return icp.criteria.length > 0;
+}
+
+function isCampaignReadyProduct(product: {
+  approvalStatus: string;
+  icps: Array<{ criteria: unknown[] }>;
+  personas: unknown[];
+}): boolean {
+  return getProductCampaignReadiness(product).ready;
 }
 
 export async function getHomeWorkflow(
@@ -115,12 +131,17 @@ export async function getHomeWorkflow(
   ]);
 
   const firstProduct = products[0] ?? null;
-  const completeProducts = products.filter(
-    (product) =>
-      product.approvalStatus === "APPROVED" &&
-      product.icps.some(hasInterpretedCriteria) &&
-      product.personas.length > 0,
-  );
+  const campaignProducts = products.map((product) => {
+    const readiness = getProductCampaignReadiness(product);
+    return {
+      id: product.id,
+      name: product.name,
+      ready: readiness.ready,
+      blockers: readiness.blockers,
+      omissionReason: readiness.omissionReason,
+    };
+  });
+  const completeProducts = products.filter(isCampaignReadyProduct);
   const completeProduct = completeProducts[0] ?? null;
   const activeProduct = completeProduct ?? firstProduct;
   const readyIcps = activeProduct?.icps.filter(hasInterpretedCriteria) ?? [];
@@ -139,6 +160,7 @@ export async function getHomeWorkflow(
   return {
     setupComplete: Boolean(completeProduct),
     completeProductIds: completeProducts.map((product) => product.id),
+    campaignProducts,
     product: {
       done: productDone,
       label: productDone ? "Approved" : "Not started",
