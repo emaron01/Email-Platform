@@ -541,9 +541,29 @@ export function scoreMotionSpecificUsability(
   );
   const relevance = nonGeneric.filter((token) => problemTokens.has(token));
   // Relevance is a gate preference: relevant candidates sort above others via large boost.
-  // Distinctive-only candidates remain eligible as fallback when nothing is relevant.
-  if (relevance.length > 0) score += 20 + relevance.length * 2;
-  else score += 0;
+  // Distinctive-only candidates remain eligible as fallback when nothing is relevant —
+  // except multi-offering portfolios with no meaningful problem overlap.
+  // Tokens that only appear inside named offering labels do not count as relevance
+  // (avoids false friends when an offering name shares a common business noun).
+  const namedLabelTokens = new Set(
+    extractNamedOfferingLabels(candidate.text).flatMap((label) =>
+      contentTokens(label),
+    ),
+  );
+  const meaningfulRelevance = relevance.filter(
+    (token) => !namedLabelTokens.has(token),
+  );
+  const isMultiOfferingPortfolio =
+    extractNamedOfferingLabels(candidate.text).length >= 2 ||
+    /\b(?:suite|portfolio|spanning)\b/i.test(candidate.text);
+  if (meaningfulRelevance.length > 0) {
+    score += 20 + meaningfulRelevance.length * 2;
+  } else if (
+    candidate.sourceField === "whatTheySell" &&
+    isMultiOfferingPortfolio
+  ) {
+    return -Infinity;
+  }
 
   if (candidate.sourceField === "whatTheySell") {
     score += 5;

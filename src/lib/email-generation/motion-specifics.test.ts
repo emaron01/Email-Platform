@@ -180,11 +180,51 @@ describe("motion specifics candidates", () => {
       contactTitle: "Founder",
     });
     expect(selected.length).toBeGreaterThanOrEqual(2);
-    expect(selected.some((item) => item.sourceField === "whatTheySell")).toBe(
-      true,
-    );
     expect(selected.map((item) => item.text).join(" ")).toMatch(
-      /StoneEagleMENU|suite|spanning|auto dealer/i,
+      /auto dealer|automotive retail|dealer groups|B2B software/i,
+    );
+    // Zero-relevance multi-SKU portfolio must not be forced for an unrelated problem space.
+    expect(
+      selected.some((item) =>
+        /StoneEagleMENU.*PENCILWRENCH|spanning StoneEagleMENU/i.test(item.text),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects zero-relevance SoftWriters portfolio for an infrastructure problem space", () => {
+    const research: EmailCompanyResearch = {
+      companySummary: "LTC pharmacy software vendor.",
+      whatTheySell:
+        "A suite of LTC pharmacy products: FrameworkLTC, FrameworkECM, FrameworkFlow, FrameworkVision, and FrameworkRxP",
+      customerTypes: [
+        "Long-term care pharmacy operators",
+        "Institutional pharmacies serving distributed care facilities",
+      ],
+      primaryMarkets: ["United States long-term care pharmacy market"],
+      businessModel: "B2B software for pharmacy operators",
+      companySizeContext: "201–500 employees",
+      confidence: "HIGH",
+    };
+    const selected = selectRequiredMotionSpecifics({
+      research,
+      problemSpace: {
+        problemsSolved: [
+          "Lack of end-to-end visibility across distributed operational sites",
+          "Network policy drift and compliance gaps between locations",
+        ],
+        painPoints: [
+          "Limited visibility into what is happening at remote facilities",
+          "Inconsistent network posture between sites",
+        ],
+      },
+      contactTitle: "VP Infrastructure",
+    });
+    expect(
+      selected.some((item) => /FrameworkLTC|FrameworkECM|suite spanning/i.test(item.text)),
+    ).toBe(false);
+    expect(selected.length).toBeGreaterThanOrEqual(1);
+    expect(selected.map((item) => item.text).join(" ")).toMatch(
+      /long-term care|pharmacy|distributed/i,
     );
   });
 });
