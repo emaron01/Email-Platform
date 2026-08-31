@@ -1041,6 +1041,8 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("Did you send this email?");
     expect(form).toContain("deeplink-send-confirm");
     expect(form).toContain('aria-modal="true"');
+    expect(form).toContain("fixed inset-0");
+    expect(form).not.toContain("absolute inset-0 z-20");
     expect(form).toContain("Not yet");
     expect(form).toContain("follow-ups are timed correctly");
     expect(form).toContain("formatDailySendAdvisory");
@@ -1077,6 +1079,8 @@ describe("email generation action and UI seams", () => {
     expect(campaignDetailPage).toContain("handoffAt");
     expect(action).toContain("saveEmailDraftAction");
     expect(campaignDetailPage).toContain("EmailDraftsStage");
+    const draftsStage = readFileSync("src/components/EmailDraftsStage.tsx", "utf8");
+    expect(draftsStage).toContain("sortEmailDraftContactsForSendQueue");
     expect(action).toContain("parseEmailLength");
     expect(form).toContain("selectedLength");
     expect(form).toContain("regenerateEmailDraftAction");

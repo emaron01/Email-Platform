@@ -6,6 +6,7 @@ import { EmailSequenceWorkspace } from "@/components/EmailSequenceWorkspace";
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
 import type { ClaimValidationViolation } from "@/lib/email-generation/claim-validation-contract";
 import type { CampaignEmailLength } from "@/lib/campaign/save";
+import { sortEmailDraftContactsForSendQueue } from "@/lib/campaign/email-draft-contact-order";
 import { QUALIFICATION_BUCKET_LABELS } from "@/lib/workflow/qualification";
 
 export type EmailDraftsStageContact = {
@@ -86,10 +87,11 @@ export function EmailDraftsStage({
   );
 
   const visibleContacts = useMemo(() => {
-    if (contactFilter === "ready_to_send") {
-      return contacts.filter((row) => row.drafts.length > 0);
-    }
-    return contacts;
+    const filtered =
+      contactFilter === "ready_to_send"
+        ? contacts.filter((row) => row.drafts.length > 0)
+        : contacts;
+    return sortEmailDraftContactsForSendQueue(filtered);
   }, [contactFilter, contacts]);
 
   const selected =
