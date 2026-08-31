@@ -25,6 +25,11 @@ import {
 } from "@/lib/email-generation/motion-specifics";
 import { isUsableCompanyResearch } from "@/lib/email-generation/personalization";
 
+export type FactSelectionSkipReason =
+  | "EMAIL_FACTS_AI not configured"
+  | "no usable company research"
+  | "no structural candidates";
+
 export type FactSelectionUsage = {
   provider: string;
   model: string;
@@ -32,13 +37,16 @@ export type FactSelectionUsage = {
   outputTokens: number | null;
   cached: boolean;
   durationMs: number;
+  skipReason?: FactSelectionSkipReason | null;
 };
 
 export type FactSelectionResult = {
   specifics: RequiredMotionSpecific[];
   noneRelevant: boolean;
-  usage: FactSelectionUsage | null;
+  usage: FactSelectionUsage;
   cacheKey: string | null;
+  skipReason: FactSelectionSkipReason | null;
+  candidateCount: number;
 };
 
 export type SelectRelevantCompanyFactsInput = {
@@ -47,6 +55,8 @@ export type SelectRelevantCompanyFactsInput = {
   productId: string;
   personaId: string;
   contactTitle?: string | null;
+  /** Optional draft id when known (regeneration); logged when present. */
+  draftId?: string | null;
   product: {
     problemsSolved: string[];
   };
@@ -176,26 +186,82 @@ function isRetryable(error: unknown): boolean {
   return false;
 }
 
+function logFactSelection(input: {
+  organizationId: string;
+  companyId: string;
+  draftId?: string | null;
+  message: string;
+  candidateCount?: number;
+  selectedCount?: number;
+}): void {
+  console.info("[email-fact-selection]", {
+    message: input.message,
+    organizationId: input.organizationId,
+    companyId: input.companyId,
+    draftId: input.draftId ?? null,
+    candidateCount: input.candidateCount ?? null,
+    selectedCount: input.selectedCount ?? null,
+  });
+}
+
+function skippedResult(input: {
+  organizationId: string;
+  companyId: string;
+  draftId?: string | null;
+  skipReason: FactSelectionSkipReason;
+  cacheKey: string | null;
+  candidateCount: number;
+}): FactSelectionResult {
+  logFactSelection({
+    organizationId: input.organizationId,
+    companyId: input.companyId,
+    draftId: input.draftId,
+    message: `fact selection skipped: ${input.skipReason}`,
+    candidateCount: input.candidateCount,
+    selectedCount: 0,
+  });
+  return {
+    specifics: [],
+    noneRelevant: true,
+    usage: {
+      provider: "skipped",
+      model: "skipped",
+      inputTokens: 0,
+      outputTokens: 0,
+      cached: false,
+      durationMs: 0,
+      skipReason: input.skipReason,
+    },
+    cacheKey: input.cacheKey,
+    skipReason: input.skipReason,
+    candidateCount: input.candidateCount,
+  };
+}
+
 export async function selectRelevantCompanyFacts(
   input: SelectRelevantCompanyFactsInput,
 ): Promise<FactSelectionResult> {
   if (!input.research || !isUsableCompanyResearch(input.research)) {
-    return {
-      specifics: [],
-      noneRelevant: true,
-      usage: null,
+    return skippedResult({
+      organizationId: input.organizationId,
+      companyId: input.companyId,
+      draftId: input.draftId,
+      skipReason: "no usable company research",
       cacheKey: null,
-    };
+      candidateCount: 0,
+    });
   }
 
   const candidates = indexedCandidates(input.research);
   if (candidates.length === 0) {
-    return {
-      specifics: [],
-      noneRelevant: true,
-      usage: null,
+    return skippedResult({
+      organizationId: input.organizationId,
+      companyId: input.companyId,
+      draftId: input.draftId,
+      skipReason: "no structural candidates",
       cacheKey: null,
-    };
+      candidateCount: 0,
+    });
   }
 
   const fingerprints = buildFactSelectionFingerprints({
@@ -215,6 +281,14 @@ export async function selectRelevantCompanyFacts(
   if (!input.skipCache) {
     const cached = getCachedFactSelection(cacheKey);
     if (cached) {
+      logFactSelection({
+        organizationId: input.organizationId,
+        companyId: input.companyId,
+        draftId: input.draftId,
+        message: `fact selection ran: ${candidates.length} candidates, ${cached.specifics.length} selected`,
+        candidateCount: candidates.length,
+        selectedCount: cached.specifics.length,
+      });
       return {
         specifics: cached.specifics,
         noneRelevant: cached.noneRelevant,
@@ -225,8 +299,11 @@ export async function selectRelevantCompanyFacts(
           outputTokens: 0,
           cached: true,
           durationMs: 0,
+          skipReason: null,
         },
         cacheKey,
+        skipReason: null,
+        candidateCount: candidates.length,
       };
     }
   }
@@ -236,12 +313,14 @@ export async function selectRelevantCompanyFacts(
     config = getEmailFactsAiConfig();
   } catch (error) {
     if (error instanceof AiConfigError) {
-      return {
-        specifics: [],
-        noneRelevant: true,
-        usage: null,
+      return skippedResult({
+        organizationId: input.organizationId,
+        companyId: input.companyId,
+        draftId: input.draftId,
+        skipReason: "EMAIL_FACTS_AI not configured",
         cacheKey,
-      };
+        candidateCount: candidates.length,
+      });
     }
     throw error;
   }
@@ -296,6 +375,15 @@ export async function selectRelevantCompanyFacts(
   };
   setCachedFactSelection(cacheKey, entry);
 
+  logFactSelection({
+    organizationId: input.organizationId,
+    companyId: input.companyId,
+    draftId: input.draftId,
+    message: `fact selection ran: ${candidates.length} candidates, ${specifics.length} selected`,
+    candidateCount: candidates.length,
+    selectedCount: specifics.length,
+  });
+
   return {
     specifics,
     noneRelevant: entry.noneRelevant,
@@ -306,16 +394,18 @@ export async function selectRelevantCompanyFacts(
       outputTokens: response.usage?.outputTokens ?? null,
       cached: false,
       durationMs: Date.now() - started,
+      skipReason: null,
     },
     cacheKey,
+    skipReason: null,
+    candidateCount: candidates.length,
   };
 }
 
 /** Rough marginal cost estimate for one fact-selection call (USD). */
 export function estimateFactSelectionCostUsd(usage: FactSelectionUsage): number {
-  if (usage.cached) return 0;
+  if (usage.cached || usage.provider === "skipped") return 0;
   const input = usage.inputTokens ?? 0;
   const output = usage.outputTokens ?? 0;
-  // Same ballpark as email draft (~$0.003): small structured call, often ~half the tokens.
   return (input * 0.15 + output * 0.6) / 1_000_000;
 }

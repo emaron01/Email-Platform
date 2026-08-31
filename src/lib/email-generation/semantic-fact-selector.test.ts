@@ -212,6 +212,20 @@ describe("selectRelevantCompanyFacts", () => {
     expect(result.specifics[0]?.text).toMatch(/long-term care pharmacy operators/i);
   });
 
+  it("skips with an explicit reason when EMAIL_FACTS_AI is not configured", async () => {
+    const { AiConfigError } = await import("@/lib/ai");
+    getEmailFactsAiConfig.mockImplementationOnce(() => {
+      throw new AiConfigError("missing");
+    });
+
+    const result = await selectRelevantCompanyFacts(baseInput());
+    expect(result.skipReason).toBe("EMAIL_FACTS_AI not configured");
+    expect(result.specifics).toEqual([]);
+    expect(result.candidateCount).toBeGreaterThan(0);
+    expect(result.usage.provider).toBe("skipped");
+    expect(generateStructured).not.toHaveBeenCalled();
+  });
+
   it("returns none for a sales-leader product when only infrastructure evidence exists", async () => {
     mockSelection([], true);
 

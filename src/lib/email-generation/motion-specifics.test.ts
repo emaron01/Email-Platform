@@ -10,6 +10,7 @@ import {
   isFirmographicResearchObjectPhrase,
   isLocationOnlyFragment,
   isUnusableEmailFirmographicPhrase,
+  selectRequiredMotionSpecifics,
   splitResearchPhrases,
 } from "@/lib/email-generation/motion-specifics";
 import {
@@ -152,6 +153,39 @@ describe("motion specifics candidates", () => {
         specifics,
       ),
     ).toBe(false);
+  });
+
+  it("lexical fallback selects StoneEagle portfolio-style offerings for a forecast product", () => {
+    const research: EmailCompanyResearch = {
+      companySummary: "Dealer software vendor.",
+      whatTheySell: multiProductWhatTheySell,
+      customerTypes: ["auto dealer groups"],
+      primaryMarkets: ["United States automotive retail"],
+      businessModel: "B2B software licensed to dealer groups",
+      companySizeContext: "201–500 employees",
+      confidence: "HIGH",
+    };
+    const selected = selectRequiredMotionSpecifics({
+      research,
+      problemSpace: {
+        problemsSolved: [
+          "Forecast stages hide missing buyer evidence",
+          "Managers spend time on status instead of coaching",
+        ],
+        painPoints: [
+          "Hard to trust the forecast",
+          "Revenue risk is hard to see early",
+        ],
+      },
+      contactTitle: "Founder",
+    });
+    expect(selected.length).toBeGreaterThanOrEqual(2);
+    expect(selected.some((item) => item.sourceField === "whatTheySell")).toBe(
+      true,
+    );
+    expect(selected.map((item) => item.text).join(" ")).toMatch(
+      /StoneEagleMENU|suite|spanning|auto dealer/i,
+    );
   });
 });
 

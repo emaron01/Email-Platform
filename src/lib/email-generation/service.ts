@@ -376,6 +376,7 @@ export async function generateEmailDraft(
           sequenceNumber,
           cached: factUsage.cached,
           cacheKey: options.factSelectionCacheKey ?? null,
+          skipReason: factUsage.skipReason ?? null,
           noneRelevant: requiredMotionSpecifics.length === 0,
           selectedCount: requiredMotionSpecifics.length,
           estimatedCostUsd: estimateFactSelectionCostUsd(factUsage),

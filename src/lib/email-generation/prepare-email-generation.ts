@@ -4,6 +4,7 @@ import type { AiMessage } from "@/lib/ai/types";
 import type { ReplyClassification } from "@prisma/client";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import type { RequiredMotionSpecific } from "@/lib/email-generation/motion-specifics";
+import { selectRequiredMotionSpecifics } from "@/lib/email-generation/motion-specifics";
 import {
   contactResearchForPrompt,
   resolvePersonalizationForGeneration,
@@ -26,6 +27,12 @@ export type PreparedEmailGeneration = {
   factSelection: FactSelectionResult;
 };
 
+/**
+ * Semantic selection first. When the semantic path is skipped (config / no
+ * research / no candidates), fall back to the prior lexical selector so
+ * company-specific emails are not wiped to THIN by an unconfigured role.
+ * When semantic runs and returns none, keep THIN — that is an intentional gate.
+ */
 export async function prepareEmailGenerationMessages(
   context: EmailGenerationContext,
   additionalGuidance?: string | null,
@@ -53,26 +60,53 @@ export async function prepareEmailGenerationMessages(
     researchUpdatedAt: context.companyResearchUpdatedAt,
   });
 
+  let requiredMotionSpecifics = factSelection.specifics;
+  if (
+    factSelection.skipReason === "EMAIL_FACTS_AI not configured" &&
+    factSelection.candidateCount > 0
+  ) {
+    requiredMotionSpecifics = selectRequiredMotionSpecifics({
+      research: context.companyResearch,
+      problemSpace: {
+        problemsSolved: context.product.problemsSolved,
+        painPoints: context.persona.painPoints,
+      },
+      contactTitle: context.contact.title,
+    });
+    console.info("[email-fact-selection]", {
+      message: `lexical fallback after semantic skip: ${requiredMotionSpecifics.length} selected`,
+      organizationId: context.organizationId,
+      companyId: context.contact.companyId ?? "none",
+      draftId: null,
+      candidateCount: factSelection.candidateCount,
+      selectedCount: requiredMotionSpecifics.length,
+    });
+  }
+
   const personalization = resolvePersonalizationForGeneration({
     companyResearch: context.companyResearch,
     contactResearch: contactResearchForPrompt(context.contactResearch),
-    hasRelevantCompanyFacts: factSelection.specifics.length > 0,
+    hasRelevantCompanyFacts: requiredMotionSpecifics.length > 0,
   });
 
   const messages = buildEmailPrompt(
     context,
     {
       personalization,
-      requiredMotionSpecifics: factSelection.specifics,
+      requiredMotionSpecifics,
     },
     additionalGuidance ?? null,
   );
 
   return {
     messages,
-    requiredMotionSpecifics: factSelection.specifics,
+    requiredMotionSpecifics,
     personalization,
-    factSelection,
+    factSelection: {
+      ...factSelection,
+      specifics: requiredMotionSpecifics,
+      noneRelevant: requiredMotionSpecifics.length === 0,
+    },
   };
 }
 
