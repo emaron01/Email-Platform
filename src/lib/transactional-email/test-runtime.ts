@@ -12,14 +12,6 @@ export function isTransactionalEmailTestRuntime(): boolean {
   );
 }
 
-/**
- * Explicit opt-in for SMTP adapter tests that mock nodemailer.
- * Never set in .env.local — only in tests that mock transport.
- */
-export function isLiveSmtpExplicitlyAllowedInTests(): boolean {
-  return process.env.TRANSACTIONAL_EMAIL_ALLOW_LIVE_SMTP_IN_TESTS === "1";
-}
-
 export class LiveSmtpBlockedInTestError extends Error {
   readonly templateKey?: string;
   readonly recipient?: string;
@@ -35,22 +27,34 @@ export class LiveSmtpBlockedInTestError extends Error {
   }
 }
 
-/** Fail loudly if a test attempts live SMTP without mocking + opt-in. */
+/** Fail loudly if a test attempts a live mail provider (SMTP or Resend HTTP). */
+export function assertLiveTransactionalEmailBlockedInTests(context: {
+  phase: "construct" | "send" | "verify";
+  provider: "smtp" | "resend";
+  templateKey?: string;
+  recipient?: string;
+}): void {
+  if (!isTransactionalEmailTestRuntime()) return;
+
+  const template = context.templateKey ?? "(unknown template)";
+  const recipient = context.recipient ?? "(unknown recipient)";
+  throw new LiveSmtpBlockedInTestError(
+    `Live ${context.provider.toUpperCase()} ${context.phase} is blocked while running tests ` +
+      `(template=${template}, recipient=${recipient}). ` +
+      `Tests must use TRANSACTIONAL_EMAIL_PROVIDER=console. ` +
+      `SMTP/Resend adapter tests must mock transport/fetch in the test file.`,
+    { templateKey: context.templateKey, recipient: context.recipient },
+  );
+}
+
+/** @deprecated Use assertLiveTransactionalEmailBlockedInTests */
 export function assertLiveSmtpAllowedInTests(context: {
   phase: "construct" | "send" | "verify";
   templateKey?: string;
   recipient?: string;
 }): void {
-  if (!isTransactionalEmailTestRuntime()) return;
-  if (isLiveSmtpExplicitlyAllowedInTests()) return;
-
-  const template = context.templateKey ?? "(unknown template)";
-  const recipient = context.recipient ?? "(unknown recipient)";
-  throw new LiveSmtpBlockedInTestError(
-    `Live SMTP ${context.phase} is blocked while running tests ` +
-      `(template=${template}, recipient=${recipient}). ` +
-      `Tests must use TRANSACTIONAL_EMAIL_PROVIDER=console by default, or set ` +
-      `TRANSACTIONAL_EMAIL_ALLOW_LIVE_SMTP_IN_TESTS=1 when exercising SMTP with a mocked transport.`,
-    { templateKey: context.templateKey, recipient: context.recipient },
-  );
+  assertLiveTransactionalEmailBlockedInTests({
+    ...context,
+    provider: "smtp",
+  });
 }

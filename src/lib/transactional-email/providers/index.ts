@@ -6,9 +6,16 @@ import { ConsoleTransactionalEmailProvider } from "@/lib/transactional-email/pro
 import { ResendTransactionalEmailProvider } from "@/lib/transactional-email/providers/resend";
 import { SmtpTransactionalEmailProvider } from "@/lib/transactional-email/providers/smtp";
 import type { TransactionalEmailProvider } from "@/lib/transactional-email/providers/types";
-import { assertLiveSmtpAllowedInTests } from "@/lib/transactional-email/test-runtime";
+import {
+  assertLiveTransactionalEmailBlockedInTests,
+  isTransactionalEmailTestRuntime,
+} from "@/lib/transactional-email/test-runtime";
 
 export function getTransactionalEmailProvider(): TransactionalEmailProvider {
+  if (isTransactionalEmailTestRuntime()) {
+    return new ConsoleTransactionalEmailProvider();
+  }
+
   const config = getTransactionalEmailConfig();
   const from = formatFromAddress(config);
 
@@ -16,6 +23,10 @@ export function getTransactionalEmailProvider(): TransactionalEmailProvider {
     if (!config.apiKey) {
       throw new Error("Resend API key missing.");
     }
+    assertLiveTransactionalEmailBlockedInTests({
+      phase: "construct",
+      provider: "resend",
+    });
     return new ResendTransactionalEmailProvider(
       config.apiKey,
       from,
@@ -27,7 +38,10 @@ export function getTransactionalEmailProvider(): TransactionalEmailProvider {
     if (!config.smtp) {
       throw new Error("SMTP configuration missing.");
     }
-    assertLiveSmtpAllowedInTests({ phase: "construct" });
+    assertLiveTransactionalEmailBlockedInTests({
+      phase: "construct",
+      provider: "smtp",
+    });
     return new SmtpTransactionalEmailProvider(
       config.smtp,
       from,

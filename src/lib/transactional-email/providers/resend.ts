@@ -4,6 +4,7 @@ import type {
   TransactionalEmailProvider,
 } from "@/lib/transactional-email/providers/types";
 import { TransactionalEmailSendError } from "@/lib/transactional-email/providers/types";
+import { assertLiveTransactionalEmailBlockedInTests } from "@/lib/transactional-email/test-runtime";
 
 export class ResendTransactionalEmailProvider
   implements TransactionalEmailProvider
@@ -19,6 +20,11 @@ export class ResendTransactionalEmailProvider
   async send(
     input: SendTransactionalMessageInput,
   ): Promise<SendTransactionalMessageResult> {
+    assertLiveTransactionalEmailBlockedInTests({
+      phase: "send",
+      provider: "resend",
+      recipient: input.to,
+    });
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {

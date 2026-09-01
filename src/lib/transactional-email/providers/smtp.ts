@@ -9,7 +9,9 @@ import {
   type SendTransactionalMessageResult,
   type TransactionalEmailProvider,
 } from "@/lib/transactional-email/providers/types";
-import { assertLiveSmtpAllowedInTests } from "@/lib/transactional-email/test-runtime";
+import {
+  assertLiveTransactionalEmailBlockedInTests,
+} from "@/lib/transactional-email/test-runtime";
 
 type Transporter = nodemailer.Transporter<SMTPTransport.SentMessageInfo>;
 
@@ -28,6 +30,10 @@ function transporterKey(smtp: SmtpConfig, fromEmail: string): string {
 function createTransporter(
   smtp: SmtpConfig,
 ): Transporter {
+  assertLiveTransactionalEmailBlockedInTests({
+    phase: "construct",
+    provider: "smtp",
+  });
   const options: SMTPTransport.Options = {
     host: smtp.host,
     port: smtp.port,
@@ -147,7 +153,11 @@ export class SmtpTransactionalEmailProvider
     input: SendTransactionalMessageInput,
   ): Promise<SendTransactionalMessageResult> {
     const to = assertSafeRecipient(input.to);
-    assertLiveSmtpAllowedInTests({ phase: "send", recipient: to });
+    assertLiveTransactionalEmailBlockedInTests({
+      phase: "send",
+      provider: "smtp",
+      recipient: to,
+    });
     const subject = assertSafeSubject(input.subject);
     const transporter = getSharedTransporter(this.smtp, this.fromEmail);
 
@@ -179,7 +189,10 @@ export class SmtpTransactionalEmailProvider
   }
 
   async verify(): Promise<void> {
-    assertLiveSmtpAllowedInTests({ phase: "verify" });
+    assertLiveTransactionalEmailBlockedInTests({
+      phase: "verify",
+      provider: "smtp",
+    });
     const transporter = getSharedTransporter(this.smtp, this.fromEmail);
     try {
       await transporter.verify();

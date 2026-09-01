@@ -1,14 +1,56 @@
 /**
  * Unit/integration tests for SMTP transactional email provider.
- * Live SMTP is not required — transport is mocked.
+ * Live SMTP is never used — nodemailer and test-runtime guards are mocked here.
  */
+import nodemailer from "nodemailer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const nodemailerMocks = vi.hoisted(() => {
+  const sendMail = vi.fn(async () => ({ messageId: "<msg@smtp>" }));
+  const verify = vi.fn(async () => true);
+  const close = vi.fn();
+  const createTransport = vi.fn(() => ({
+    sendMail,
+    verify,
+    close,
+  }));
+  return { sendMail, verify, close, createTransport };
+});
+
+vi.mock("@/lib/transactional-email/test-runtime", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/transactional-email/test-runtime")>();
+  return {
+    ...actual,
+    assertLiveTransactionalEmailBlockedInTests: () => {},
+    assertLiveSmtpAllowedInTests: () => {},
+  };
+});
+
+vi.mock("nodemailer", () => ({
+  default: {
+    createTransport: nodemailerMocks.createTransport,
+  },
+}));
+
+const { sendMail, verify, close, createTransport } = nodemailerMocks;
 
 const ORIGINAL_ENV = { ...process.env };
 
+function restoreProcessEnv(): void {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in ORIGINAL_ENV)) {
+      delete process.env[key];
+    }
+  }
+  for (const [key, value] of Object.entries(ORIGINAL_ENV)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
+
 function setSmtpEnv(overrides: Record<string, string> = {}) {
   process.env.TRANSACTIONAL_EMAIL_PROVIDER = "smtp";
-  process.env.TRANSACTIONAL_EMAIL_ALLOW_LIVE_SMTP_IN_TESTS = "1";
   process.env.TRANSACTIONAL_EMAIL_FROM_EMAIL = "platform@example.com";
   process.env.TRANSACTIONAL_EMAIL_FROM_NAME = "Platform";
   process.env.TRANSACTIONAL_EMAIL_REPLY_TO = "support@example.com";
@@ -21,31 +63,68 @@ function setSmtpEnv(overrides: Record<string, string> = {}) {
   Object.assign(process.env, overrides);
 }
 
+async function smtpProviderFromConfig() {
+  const { getTransactionalEmailConfig, formatFromAddress } = await import(
+    "@/lib/transactional-email/config"
+  );
+  const { SmtpTransactionalEmailProvider } = await import(
+    "@/lib/transactional-email/providers/smtp"
+  );
+  const { resetSmtpTransportForTests } = await import(
+    "@/lib/transactional-email/providers/smtp"
+  );
+  resetSmtpTransportForTests();
+  const config = getTransactionalEmailConfig();
+  if (!config.smtp) throw new Error("SMTP config missing in test.");
+  return new SmtpTransactionalEmailProvider(
+    config.smtp,
+    formatFromAddress(config),
+    config.replyTo,
+    config.fromEmail,
+  );
+}
+
+beforeEach(() => {
+  sendMail.mockReset();
+  sendMail.mockResolvedValue({ messageId: "<msg@smtp>" });
+  verify.mockReset();
+  verify.mockResolvedValue(true);
+  close.mockReset();
+  createTransport.mockReset();
+  createTransport.mockImplementation(() => ({
+    sendMail,
+    verify,
+    close,
+  }));
+});
+
 afterEach(() => {
-  process.env = { ...ORIGINAL_ENV };
-  vi.restoreAllMocks();
+  restoreProcessEnv();
+  vi.clearAllMocks();
   vi.resetModules();
 });
 
 describe("test runtime SMTP guard", () => {
-  it("blocks SMTP provider construction without explicit test opt-in", async () => {
-    process.env.TRANSACTIONAL_EMAIL_PROVIDER = "smtp";
-    process.env.TRANSACTIONAL_EMAIL_FROM_EMAIL = "platform@example.com";
-    process.env.TRANSACTIONAL_EMAIL_FROM_NAME = "Platform";
-    process.env.TRANSACTIONAL_EMAIL_SMTP_HOST = "smtp.ionos.com";
-    process.env.TRANSACTIONAL_EMAIL_SMTP_PORT = "587";
-    process.env.TRANSACTIONAL_EMAIL_SMTP_SECURE = "false";
-    process.env.TRANSACTIONAL_EMAIL_SMTP_USER = "platform@example.com";
-    process.env.TRANSACTIONAL_EMAIL_SMTP_PASSWORD = "secret";
-    delete process.env.TRANSACTIONAL_EMAIL_ALLOW_LIVE_SMTP_IN_TESTS;
-
+  it("factory returns console in Vitest even when env requests smtp", async () => {
     vi.resetModules();
+    vi.doUnmock("@/lib/transactional-email/test-runtime");
+    setSmtpEnv();
     const { getTransactionalEmailProvider } = await import(
       "@/lib/transactional-email/providers"
     );
-    expect(() => getTransactionalEmailProvider()).toThrow(
-      /blocked while running tests/i,
-    );
+    const provider = getTransactionalEmailProvider();
+    expect(provider.name).toBe("console");
+    vi.doMock("@/lib/transactional-email/test-runtime", async (importOriginal) => {
+      const actual =
+        await importOriginal<
+          typeof import("@/lib/transactional-email/test-runtime")
+        >();
+      return {
+        ...actual,
+        assertLiveTransactionalEmailBlockedInTests: () => {},
+        assertLiveSmtpAllowedInTests: () => {},
+      };
+    });
   });
 });
 
@@ -148,26 +227,7 @@ describe("SMTP provider adapter", () => {
   });
 
   it("builds SMTP transport with TLS validation enabled, HTML+text, platform From", async () => {
-    const sendMail = vi.fn(async () => ({ messageId: "<msg@smtp>" }));
-    const createTransport = vi.fn(() => ({
-      sendMail,
-      verify: vi.fn(async () => true),
-      close: vi.fn(),
-    }));
-
-    vi.doMock("nodemailer", () => ({
-      default: { createTransport },
-    }));
-
-    const { resetSmtpTransportForTests } = await import(
-      "@/lib/transactional-email/providers/smtp"
-    );
-    resetSmtpTransportForTests();
-
-    const { getTransactionalEmailProvider } = await import(
-      "@/lib/transactional-email/providers"
-    );
-    const provider = getTransactionalEmailProvider();
+    const provider = await smtpProviderFromConfig();
     expect(provider.name).toBe("smtp");
 
     const result = await provider.send({
@@ -203,7 +263,6 @@ describe("SMTP provider adapter", () => {
       }),
     );
 
-    // Send API has no from field — user input cannot override platform From.
     const mailCalls = sendMail.mock.calls as unknown as unknown[][];
     const callArg = mailCalls[0]![0] as Record<string, unknown>;
     expect(callArg.from).toBe("Platform <platform@example.com>");
@@ -215,22 +274,8 @@ describe("SMTP provider adapter", () => {
       TRANSACTIONAL_EMAIL_SMTP_PORT: "465",
       TRANSACTIONAL_EMAIL_SMTP_SECURE: "true",
     });
-    const createTransport = vi.fn(() => ({
-      sendMail: vi.fn(async () => ({ messageId: null })),
-      verify: vi.fn(async () => true),
-      close: vi.fn(),
-    }));
-    vi.doMock("nodemailer", () => ({
-      default: { createTransport },
-    }));
-    const { resetSmtpTransportForTests } = await import(
-      "@/lib/transactional-email/providers/smtp"
-    );
-    resetSmtpTransportForTests();
-    const { getTransactionalEmailProvider } = await import(
-      "@/lib/transactional-email/providers"
-    );
-    await getTransactionalEmailProvider().send({
+    const provider = await smtpProviderFromConfig();
+    await provider.send({
       to: "a@b.com",
       subject: "s",
       html: "h",
@@ -256,23 +301,8 @@ describe("SMTP provider adapter", () => {
       logs.push(args);
     });
 
-    const createTransport = vi.fn(() => ({
-      sendMail: vi.fn(async () => ({ messageId: null })),
-      verify: vi.fn(async () => true),
-      close: vi.fn(),
-    }));
-    vi.doMock("nodemailer", () => ({
-      default: { createTransport },
-    }));
-
-    const { resetSmtpTransportForTests } = await import(
-      "@/lib/transactional-email/providers/smtp"
-    );
-    resetSmtpTransportForTests();
-    const { getTransactionalEmailProvider } = await import(
-      "@/lib/transactional-email/providers"
-    );
-    await getTransactionalEmailProvider().send({
+    const provider = await smtpProviderFromConfig();
+    await provider.send({
       to: "user@example.com",
       subject: "Hi",
       html: "<p>x</p>",
@@ -285,34 +315,13 @@ describe("SMTP provider adapter", () => {
   });
 
   it("classifies auth failures as non-retryable", async () => {
-    const sendMail = vi.fn(async () => {
+    sendMail.mockImplementation(async () => {
       const err = new Error("Invalid login") as Error & { code: string };
       err.code = "EAUTH";
       throw err;
     });
-    vi.doMock("nodemailer", () => ({
-      default: {
-        createTransport: () => ({
-          sendMail,
-          close: vi.fn(),
-        }),
-      },
-    }));
 
-    const { resetSmtpTransportForTests, SmtpTransactionalEmailProvider } =
-      await import("@/lib/transactional-email/providers/smtp");
-    resetSmtpTransportForTests();
-    const { getTransactionalEmailConfig } = await import(
-      "@/lib/transactional-email/config"
-    );
-    const config = getTransactionalEmailConfig();
-    const provider = new SmtpTransactionalEmailProvider(
-      config.smtp!,
-      "Platform <platform@example.com>",
-      null,
-      "platform@example.com",
-    );
-
+    const provider = await smtpProviderFromConfig();
     await expect(
       provider.send({
         to: "a@b.com",
@@ -328,20 +337,12 @@ describe("SMTP provider adapter", () => {
   });
 
   it("exposes verify() without returning credentials", async () => {
-    const verify = vi.fn(async () => true);
-    vi.doMock("nodemailer", () => ({
-      default: {
-        createTransport: () => ({
-          sendMail: vi.fn(),
-          verify,
-          close: vi.fn(),
-        }),
-      },
-    }));
-    const { resetSmtpTransportForTests } = await import(
-      "@/lib/transactional-email/providers/smtp"
+    const provider = await smtpProviderFromConfig();
+    const providers = await import("@/lib/transactional-email/providers");
+    vi.spyOn(providers, "getTransactionalEmailProvider").mockReturnValue(
+      provider,
     );
-    resetSmtpTransportForTests();
+
     const { verifyTransactionalEmailProvider } = await import(
       "@/lib/transactional-email/send"
     );
@@ -383,10 +384,18 @@ describe("console and resend providers still work", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const { getTransactionalEmailProvider } = await import(
-      "@/lib/transactional-email/providers"
+    const { ResendTransactionalEmailProvider } = await import(
+      "@/lib/transactional-email/providers/resend"
     );
-    const result = await getTransactionalEmailProvider().send({
+    const { getTransactionalEmailConfig, formatFromAddress } = await import(
+      "@/lib/transactional-email/config"
+    );
+    const config = getTransactionalEmailConfig();
+    const result = await new ResendTransactionalEmailProvider(
+      config.apiKey!,
+      formatFromAddress(config),
+      config.replyTo,
+    ).send({
       to: "user@example.com",
       subject: "Hello",
       html: "<p>Hi</p>",
@@ -407,6 +416,7 @@ describe("console and resend providers still work", () => {
     expect(body.html).toBe("<p>Hi</p>");
     expect(body.text).toBe("Hi");
     expect(body.from).toBe("Platform <from@platform.test>");
+    vi.unstubAllGlobals();
   });
 });
 
@@ -419,7 +429,7 @@ describe("sendTransactionalEmail retry + telemetry with SMTP mock", () => {
       setSmtpEnv({ TRANSACTIONAL_EMAIL_SMTP_PASSWORD: "secret-pass" });
 
       let attempts = 0;
-      const sendMail = vi.fn(async () => {
+      sendMail.mockImplementation(async () => {
         attempts += 1;
         if (attempts === 1) {
           const err = new Error("connection timeout") as Error & {
@@ -431,54 +441,53 @@ describe("sendTransactionalEmail retry + telemetry with SMTP mock", () => {
         return { messageId: "<ok@smtp>" };
       });
 
-      vi.doMock("nodemailer", () => ({
-        default: {
-          createTransport: () => ({
-            sendMail,
-            verify: vi.fn(async () => true),
-            close: vi.fn(),
-          }),
-        },
-      }));
-
       vi.resetModules();
       setSmtpEnv({ TRANSACTIONAL_EMAIL_SMTP_PASSWORD: "secret-pass" });
       const { resetSmtpTransportForTests } = await import(
         "@/lib/transactional-email/providers/smtp"
       );
       resetSmtpTransportForTests();
+      const provider = await smtpProviderFromConfig();
+      const providers = await import("@/lib/transactional-email/providers");
+      const spy = vi
+        .spyOn(providers, "getTransactionalEmailProvider")
+        .mockReturnValue(provider);
 
-      const { ensureTransactionalTemplatesSeeded } = await import(
-        "@/lib/transactional-email/seed"
-      );
-      await ensureTransactionalTemplatesSeeded();
+      try {
+        const { ensureTransactionalTemplatesSeeded } = await import(
+          "@/lib/transactional-email/seed"
+        );
+        await ensureTransactionalTemplatesSeeded();
 
-      const { sendTransactionalEmail } = await import(
-        "@/lib/transactional-email/send"
-      );
-      const token = "live-reset-token-should-not-persist";
-      const { eventId } = await sendTransactionalEmail({
-        templateKey: "PASSWORD_RESET",
-        to: `smtp-test-${Date.now()}@example.test`,
-        variables: {
-          firstName: "Sam",
-          resetUrl: `https://example.test/reset?token=${token}`,
-          expirationTime: "1 hour",
-        },
-        maxRetries: 2,
-      });
+        const { sendTransactionalEmail } = await import(
+          "@/lib/transactional-email/send"
+        );
+        const token = "live-reset-token-should-not-persist";
+        const { eventId } = await sendTransactionalEmail({
+          templateKey: "PASSWORD_RESET",
+          to: `smtp-test-${Date.now()}@example.test`,
+          variables: {
+            firstName: "Sam",
+            resetUrl: `https://example.test/reset?token=${token}`,
+            expirationTime: "1 hour",
+          },
+          maxRetries: 2,
+        });
 
-      const { prisma } = await import("@/lib/prisma");
-      const event = await prisma.transactionalEmailEvent.findUniqueOrThrow({
-        where: { id: eventId },
-      });
-      expect(event.provider).toBe("smtp");
-      expect(event.status).toBe("SENT");
-      expect(event.retryCount).toBeGreaterThanOrEqual(1);
-      expect(event.providerMessageId).toBe("<ok@smtp>");
-      expect(JSON.stringify(event)).not.toContain(token);
-      expect(JSON.stringify(event)).not.toContain("secret-pass");
-      expect(attempts).toBe(2);
+        const { prisma } = await import("@/lib/prisma");
+        const event = await prisma.transactionalEmailEvent.findUniqueOrThrow({
+          where: { id: eventId },
+        });
+        expect(event.provider).toBe("smtp");
+        expect(event.status).toBe("SENT");
+        expect(event.retryCount).toBeGreaterThanOrEqual(1);
+        expect(event.providerMessageId).toBe("<ok@smtp>");
+        expect(JSON.stringify(event)).not.toContain(token);
+        expect(JSON.stringify(event)).not.toContain("secret-pass");
+        expect(attempts).toBe(2);
+      } finally {
+        spy.mockRestore();
+      }
     },
     60_000,
   );
@@ -489,21 +498,14 @@ describe("sendTransactionalEmail retry + telemetry with SMTP mock", () => {
       setSmtpEnv({ TRANSACTIONAL_EMAIL_SMTP_PASSWORD: "bad" });
 
       let attempts = 0;
-      vi.doMock("nodemailer", () => ({
-        default: {
-          createTransport: () => ({
-            sendMail: vi.fn(async () => {
-              attempts += 1;
-              const err = new Error("Invalid login") as Error & {
-                code: string;
-              };
-              err.code = "EAUTH";
-              throw err;
-            }),
-            close: vi.fn(),
-          }),
-        },
-      }));
+      sendMail.mockImplementation(async () => {
+        attempts += 1;
+        const err = new Error("Invalid login") as Error & {
+          code: string;
+        };
+        err.code = "EAUTH";
+        throw err;
+      });
 
       vi.resetModules();
       setSmtpEnv({ TRANSACTIONAL_EMAIL_SMTP_PASSWORD: "bad" });
@@ -511,27 +513,37 @@ describe("sendTransactionalEmail retry + telemetry with SMTP mock", () => {
         "@/lib/transactional-email/providers/smtp"
       );
       resetSmtpTransportForTests();
-      const { ensureTransactionalTemplatesSeeded } = await import(
-        "@/lib/transactional-email/seed"
-      );
-      await ensureTransactionalTemplatesSeeded();
-      const { sendTransactionalEmail } = await import(
-        "@/lib/transactional-email/send"
-      );
+      const provider = await smtpProviderFromConfig();
+      const providers = await import("@/lib/transactional-email/providers");
+      const spy = vi
+        .spyOn(providers, "getTransactionalEmailProvider")
+        .mockReturnValue(provider);
 
-      await expect(
-        sendTransactionalEmail({
-          templateKey: "WELCOME",
-          to: `smtp-auth-fail-${Date.now()}@example.test`,
-          variables: {
-            firstName: "Sam",
-            workspaceName: "Workspace",
-          },
-          maxRetries: 3,
-        }),
-      ).rejects.toMatchObject({ category: "AUTH", retryable: false });
+      try {
+        const { ensureTransactionalTemplatesSeeded } = await import(
+          "@/lib/transactional-email/seed"
+        );
+        await ensureTransactionalTemplatesSeeded();
+        const { sendTransactionalEmail } = await import(
+          "@/lib/transactional-email/send"
+        );
 
-      expect(attempts).toBe(1);
+        await expect(
+          sendTransactionalEmail({
+            templateKey: "WELCOME",
+            to: `smtp-auth-fail-${Date.now()}@example.test`,
+            variables: {
+              firstName: "Sam",
+              workspaceName: "Workspace",
+            },
+            maxRetries: 3,
+          }),
+        ).rejects.toMatchObject({ category: "AUTH", retryable: false });
+
+        expect(attempts).toBe(1);
+      } finally {
+        spy.mockRestore();
+      }
     },
     60_000,
   );
@@ -563,7 +575,6 @@ describe("sendTransactionalEmail retry + telemetry with SMTP mock", () => {
         where: { id: eventId },
       });
       expect(event.status).toBe("SENT");
-      // Test placeholders must not look like live auth tokens in event row.
       expect(JSON.stringify(event)).not.toContain("test-placeholder");
     },
     60_000,
@@ -606,7 +617,6 @@ describe("sendTransactionalEmail retry + telemetry with SMTP mock", () => {
 
 describe("auth email failure safety helpers", () => {
   it("password-reset client path stays neutral regardless of fetch outcome", async () => {
-    // Mirrors forgot-password page contract: always show the same message.
     const outcomes = [200, 500, 0] as const;
     for (const status of outcomes) {
       const message =
@@ -614,5 +624,11 @@ describe("auth email failure safety helpers", () => {
       expect(message).toContain("If an account exists");
       expect(status === 500 || status === 0 || status === 200).toBe(true);
     }
+  });
+});
+
+describe("nodemailer import safety", () => {
+  it("uses the mocked nodemailer transport in this file", () => {
+    expect(nodemailer.createTransport).toBe(createTransport);
   });
 });
