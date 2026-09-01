@@ -5,6 +5,17 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { SidebarNavItem } from "@/lib/auth/user-menu";
 
+function isSidebarItemActive(item: SidebarNavItem, pathname: string): boolean {
+  if (item.href === "/") {
+    return pathname === "/";
+  }
+
+  const prefixes = [item.href, ...(item.activePrefixes ?? [])];
+  return prefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 export function Sidebar({ items }: { items: SidebarNavItem[] }) {
   const pathname = usePathname();
 
@@ -20,25 +31,29 @@ export function Sidebar({ items }: { items: SidebarNavItem[] }) {
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 p-3" data-testid="app-sidebar">
         {items.map((item) => {
-          const active =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active = isSidebarItemActive(item, pathname);
 
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              data-testid={`sidebar-${item.href}`}
-              className={cn(
-                "rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                active
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-700 hover:bg-slate-200/70",
-              )}
-            >
-              {item.label}
-            </Link>
+            <div key={item.href}>
+              {item.separatorBefore ? (
+                <div
+                  className="my-2 border-t border-slate-200"
+                  aria-hidden="true"
+                />
+              ) : null}
+              <Link
+                href={item.href}
+                data-testid={`sidebar-${item.href}`}
+                className={cn(
+                  "block rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  active
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700 hover:bg-slate-200/70",
+                )}
+              >
+                {item.label}
+              </Link>
+            </div>
           );
         })}
       </nav>

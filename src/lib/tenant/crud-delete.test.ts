@@ -28,7 +28,7 @@ describe("setup delete authorization policy", () => {
 
   it("product delete confirmation copy describes dependents", async () => {
     const src = await import("node:fs").then((fs) =>
-      fs.readFileSync("src/app/(app)/setup/page.tsx", "utf8"),
+      fs.readFileSync("src/components/ProductCatalogPanel.tsx", "utf8"),
     );
     expect(src).toContain("ConfirmDeleteForm");
     expect(src).toContain("Historical scoring snapshots");

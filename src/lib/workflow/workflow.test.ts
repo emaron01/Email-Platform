@@ -15,6 +15,7 @@ import {
 const prismaMock = vi.hoisted(() => ({
   product: { findMany: vi.fn() },
   campaign: { findMany: vi.fn() },
+  voiceSample: { count: vi.fn() },
 }));
 
 vi.mock("server-only", () => ({}));
@@ -56,6 +57,7 @@ describe("home workflow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     prismaMock.campaign.findMany.mockResolvedValue([]);
+    prismaMock.voiceSample.count.mockResolvedValue(3);
   });
 
   it.each([

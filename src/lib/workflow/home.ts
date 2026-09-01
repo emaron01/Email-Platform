@@ -8,6 +8,8 @@ import {
 } from "@/lib/criteria/evidence-class";
 import { getDueContactsForUser, type CampaignDueSummary } from "@/lib/cadence/dashboard";
 import { normalizeSuggestedBuyerRoles } from "@/lib/setup/product-overview";
+import { voiceReadiness } from "@/lib/voice/types";
+import { buildHomeSetupLine } from "@/lib/workflow/home-setup-line";
 import { getProductCampaignReadiness } from "@/lib/workflow/product-campaign-readiness";
 
 export type SetupCardState = {
@@ -20,6 +22,8 @@ export type SetupCardState = {
 
 export type HomeWorkflow = {
   setupComplete: boolean;
+  setupLine: { text: string; href: string | null };
+  voice: ReturnType<typeof voiceReadiness>;
   completeProductIds: string[];
   campaignProducts: Array<{
     id: string;
@@ -130,6 +134,16 @@ export async function getHomeWorkflow(
       : Promise.resolve([] as CampaignDueSummary[]),
   ]);
 
+  const voiceSampleCount =
+    options?.userId != null
+      ? await prisma.voiceSample.count({
+          where: {
+            organizationId,
+            userId: options.userId,
+          },
+        })
+      : 0;
+
   const firstProduct = products[0] ?? null;
   const campaignProducts = products.map((product) => {
     const readiness = getProductCampaignReadiness(product);
@@ -156,9 +170,28 @@ export async function getHomeWorkflow(
   const suggestedRoleCount = normalizeSuggestedBuyerRoles(
     activeProduct?.setupRuns[0]?.suggestedPersonasJson,
   ).length;
+  const totalIcps = products.reduce(
+    (count, product) =>
+      count + product.icps.filter(hasInterpretedCriteria).length,
+    0,
+  );
+  const totalPersonas = products.reduce(
+    (count, product) => count + product.personas.length,
+    0,
+  );
+  const setupLine = buildHomeSetupLine({
+    products: products.map((product) => ({
+      name: product.name,
+      readiness: getProductCampaignReadiness(product),
+    })),
+    totalIcps,
+    totalPersonas,
+  });
 
   return {
     setupComplete: Boolean(completeProduct),
+    setupLine,
+    voice: voiceReadiness(voiceSampleCount),
     completeProductIds: completeProducts.map((product) => product.id),
     campaignProducts,
     product: {

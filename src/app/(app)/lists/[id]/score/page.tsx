@@ -81,7 +81,10 @@ export default async function ScoreListPage({ params }: PageProps) {
           </p>
         ) : readyProducts.length === 0 ? (
           <p className="text-sm text-slate-600">
-            Add a Product with at least one ICP and one Persona on the Setup page
+            Add a Product with at least one ICP and one Persona on the{" "}
+            <Link href="/products" className="underline">
+              Products page
+            </Link>{" "}
             first.
           </p>
         ) : (

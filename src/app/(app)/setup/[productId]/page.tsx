@@ -248,7 +248,7 @@ export default async function SetupProductPage({ params }: PageProps) {
               confirmTitle={`Delete Product "${product.name}"?`}
               confirmBody={productDeleteBody}
               confirmButtonLabel="Delete Product"
-              onSuccessNavigate="/setup"
+              onSuccessNavigate="/products"
             />
           </div>
         </Panel>

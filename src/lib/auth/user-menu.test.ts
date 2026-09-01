@@ -125,6 +125,16 @@ describe("buildSidebarNavItems", () => {
       items.some((i) => i.href === "/campaigns" && i.label === "Campaigns"),
     ).toBe(true);
     expect(
+      items.some((i) => i.href === "/products" && i.label === "Products"),
+    ).toBe(true);
+    expect(items.some((i) => i.href === "/icps" && i.label === "ICPs")).toBe(
+      true,
+    );
+    expect(
+      items.some((i) => i.href === "/personas" && i.label === "Personas"),
+    ).toBe(true);
+    expect(items.some((i) => i.href === "/setup")).toBe(false);
+    expect(
       items.some(
         (i) => i.href === "/settings/voice" && i.label === "Your Voice",
       ),

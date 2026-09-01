@@ -38,6 +38,9 @@ export type UserMenuModel = {
 export type SidebarNavItem = {
   href: string;
   label: string;
+  separatorBefore?: boolean;
+  /** Additional path prefixes that should highlight this item (e.g. /setup under Products). */
+  activePrefixes?: string[];
 };
 
 export function displayNameFromUser(input: {
@@ -155,11 +158,22 @@ export function buildSidebarNavItems(input: {
 
   const items: SidebarNavItem[] = [
     { href: "/", label: "Home" },
-    { href: "/setup", label: "Setup" },
+    { href: "/campaigns", label: "Campaigns" },
     { href: "/lists", label: "Lists" },
     { href: "/contacts", label: "Contacts" },
-    { href: "/campaigns", label: "Campaigns" },
-    { href: "/settings/voice", label: "Your Voice" },
+    {
+      href: "/products",
+      label: "Products",
+      separatorBefore: true,
+      activePrefixes: ["/products", "/setup"],
+    },
+    { href: "/icps", label: "ICPs" },
+    { href: "/personas", label: "Personas" },
+    {
+      href: "/settings/voice",
+      label: "Your Voice",
+      separatorBefore: true,
+    },
     { href: "/settings/email", label: "Email Connection" },
     { href: "/settings", label: "Settings" },
     { href: "/settings/account", label: "Account" },
