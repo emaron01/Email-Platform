@@ -1,12 +1,12 @@
 /**
  * Live persona-convergence drafts from fixture contexts (no production DB required).
- * npx dotenv -e .env.local -e .env -- tsx scripts/validate-persona-convergence-drafts.ts
+ * npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/validate-persona-convergence-drafts.ts
  */
 import Module from "node:module";
-import { CRO_PERSONA_DRAFT_V2_FIXTURE } from "../src/lib/persona-research/fixtures/cro-setup-run-draft-v2";
-import { REVOPS_PERSONA_DRAFT_FIXTURE } from "../src/lib/persona-research/fixtures/revops-setup-run-draft";
-import type { EmailGenerationContext } from "../src/lib/email-generation/context";
-import type { EmailCompanyResearch } from "../src/lib/email-generation/company-research-use";
+import { CRO_PERSONA_DRAFT_V2_FIXTURE } from "../../src/lib/persona-research/fixtures/cro-setup-run-draft-v2";
+import { REVOPS_PERSONA_DRAFT_FIXTURE } from "../../src/lib/persona-research/fixtures/revops-setup-run-draft";
+import type { EmailGenerationContext } from "../../src/lib/email-generation/context";
+import type { EmailCompanyResearch } from "../../src/lib/email-generation/company-research-use";
 
 type ModuleLoad = (
   request: string,
@@ -378,14 +378,14 @@ async function main() {
   }
 
   const { prepareEmailGenerationMessages } = await import(
-    "../src/lib/email-generation/prepare-email-generation"
+    "../../src/lib/email-generation/prepare-email-generation"
   );
   const { getEmailAiProvider, getEmailAiConfig } = await import("@/lib/ai");
   const { structuredOutputRequest } = await import(
     "@/lib/ai/structured-output-schemas"
   );
   const { removeEmDashes, sanitizeGeneratedEmailBody } = await import(
-    "../src/lib/email-generation/service"
+    "../../src/lib/email-generation/service"
   );
 
   const ai = getEmailAiProvider();

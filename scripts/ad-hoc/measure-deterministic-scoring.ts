@@ -2,8 +2,8 @@
  * Re-score a production run and report deterministic qualification metrics.
  *
  * Usage:
- *   npx dotenv -e .env.local -e .env -- tsx scripts/measure-deterministic-scoring.ts --run-id <id>
- *   npx dotenv -e .env.local -e .env -- tsx scripts/measure-deterministic-scoring.ts --run-id <id> --rescore
+ *   npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/measure-deterministic-scoring.ts --run-id <id>
+ *   npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/measure-deterministic-scoring.ts --run-id <id> --rescore
  */
 import Module from "node:module";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -29,7 +29,7 @@ patchedModule._load = function load(
 };
 
 import { PrismaClient } from "@prisma/client";
-import { scoreLabelToBucket } from "../src/lib/workflow/qualification";
+import { scoreLabelToBucket } from "../../src/lib/workflow/qualification";
 
 const DEFAULT_RUN_ID = "cmtadmg9e00h6ls2vjls8vg3s";
 const OUT_DIR = join(process.cwd(), "tmp", "research-measure");
@@ -190,10 +190,10 @@ async function main() {
 
     if (rescore) {
       const { resolvePersonaSnapshots } = await import(
-        "../src/lib/scoring/title-fit"
+        "../../src/lib/scoring/title-fit"
       );
       const { scoreSingleContact } = await import(
-        "../src/lib/scoring/score-contact"
+        "../../src/lib/scoring/score-contact"
       );
       const personas = resolvePersonaSnapshots({
         personaSnapshot: run.personaSnapshot,

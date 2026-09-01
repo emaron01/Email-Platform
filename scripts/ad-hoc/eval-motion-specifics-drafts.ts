@@ -1,6 +1,6 @@
 /**
  * One-off eval for motion-specific drafts.
- * npx dotenv -e .env.local -e .env -- tsx scripts/eval-motion-specifics-drafts.ts
+ * npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/eval-motion-specifics-drafts.ts
  */
 import Module from "node:module";
 
@@ -52,16 +52,16 @@ async function main() {
 
   const { PrismaClient } = await import("@prisma/client");
   const { loadEmailGenerationContext } = await import(
-    "../src/lib/email-generation/context"
+    "../../src/lib/email-generation/context"
   );
   const { prepareEmailGenerationMessages } = await import(
-    "../src/lib/email-generation/prepare-email-generation"
+    "../../src/lib/email-generation/prepare-email-generation"
   );
   const { generateEmailDraft } = await import(
-    "../src/lib/email-generation/service"
+    "../../src/lib/email-generation/service"
   );
   const { estimateFactSelectionCostUsd } = await import(
-    "../src/lib/email-generation/semantic-fact-selector"
+    "../../src/lib/email-generation/semantic-fact-selector"
   );
 
   const prisma = new PrismaClient();

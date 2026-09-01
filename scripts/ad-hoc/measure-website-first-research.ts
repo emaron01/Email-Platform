@@ -2,23 +2,23 @@
  * Snapshot + force-refresh + report for website-first measurement.
  *
  * Usage:
- *   npx dotenv -e .env.local -e .env -- tsx scripts/measure-website-first-research.ts --snapshot
- *   npx dotenv -e .env.local -e .env -- tsx scripts/measure-website-first-research.ts --probe-retrieval
- *   npx dotenv -e .env.local -e .env -- tsx scripts/measure-website-first-research.ts --report
- *   MEASURE_RESEARCH_ALLOW_PROD=1 npx dotenv -e .env.local -e .env -- tsx scripts/measure-website-first-research.ts --refresh
+ *   npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/measure-website-first-research.ts --snapshot
+ *   npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/measure-website-first-research.ts --probe-retrieval
+ *   npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/measure-website-first-research.ts --report
+ *   MEASURE_RESEARCH_ALLOW_PROD=1 npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/measure-website-first-research.ts --refresh
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { PrismaClient, type Prisma } from "@prisma/client";
-import { AiCompanyResearchProvider } from "../src/lib/research/provider";
+import { AiCompanyResearchProvider } from "../../src/lib/research/provider";
 import {
   retrieveLegacySinglePageEvidence,
   retrieveWebsiteEvidence,
-} from "../src/lib/research/sources";
-import { WEBSITE_FIRST_MIN_EXCERPT_CHARS } from "../src/lib/research/website-first-sufficiency";
-import { DEFAULT_RESEARCH_POLICY_VALUES } from "../src/lib/usage/defaults";
-import { researchExpiresAt } from "../src/lib/research/freshness";
-import { compareFirmographics } from "../src/lib/research/measure-firmographics";
+} from "../../src/lib/research/sources";
+import { WEBSITE_FIRST_MIN_EXCERPT_CHARS } from "../../src/lib/research/website-first-sufficiency";
+import { DEFAULT_RESEARCH_POLICY_VALUES } from "../../src/lib/usage/defaults";
+import { researchExpiresAt } from "../../src/lib/research/freshness";
+import { compareFirmographics } from "../../src/lib/research/measure-firmographics";
 
 type SourceRow = {
   url?: string;

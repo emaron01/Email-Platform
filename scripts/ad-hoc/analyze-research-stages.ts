@@ -1,9 +1,9 @@
 /**
  * Analyze recent automated company research stage usage from stored metadata.
- * npx dotenv -e .env.local -e .env -- tsx scripts/analyze-research-stages.ts
+ * npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/analyze-research-stages.ts
  */
 import { PrismaClient } from "@prisma/client";
-import type { ResearchStageTiming } from "../src/lib/research/types";
+import type { ResearchStageTiming } from "../../src/lib/research/types";
 
 const prisma = new PrismaClient();
 

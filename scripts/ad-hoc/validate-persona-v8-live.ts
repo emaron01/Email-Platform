@@ -1,18 +1,18 @@
 /**
  * Live v8 validation — review-only drafts, no DB writes.
- * npx dotenv -e .env.local -e .env -- tsx scripts/validate-persona-v8-live.ts
+ * npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/validate-persona-v8-live.ts
  */
 import Module from "node:module";
-import { CRO_PERSONA_DRAFT_V2_FIXTURE } from "../src/lib/persona-research/fixtures/cro-setup-run-draft-v2";
-import { buildPersonaSynthesisMessages } from "../src/lib/persona-research/prompt";
+import { CRO_PERSONA_DRAFT_V2_FIXTURE } from "../../src/lib/persona-research/fixtures/cro-setup-run-draft-v2";
+import { buildPersonaSynthesisMessages } from "../../src/lib/persona-research/prompt";
 import {
   PERSONA_SYNTHESIS_PROMPT_VERSION,
   parsePersonaAiResponse,
   type PersonaAiDraft,
-} from "../src/lib/persona-research/contract";
-import { structuredOutputRequest } from "../src/lib/ai/structured-output-schemas";
-import type { EmailGenerationContext } from "../src/lib/email-generation/context";
-import type { EmailCompanyResearch } from "../src/lib/email-generation/company-research-use";
+} from "../../src/lib/persona-research/contract";
+import { structuredOutputRequest } from "../../src/lib/ai/structured-output-schemas";
+import type { EmailGenerationContext } from "../../src/lib/email-generation/context";
+import type { EmailCompanyResearch } from "../../src/lib/email-generation/company-research-use";
 
 type ModuleLoad = (
   request: string,
@@ -154,6 +154,7 @@ const PHARMACY_OPS_PEER = {
 const salesForecasterEvidence = [
   {
     sourceId: "sf_1",
+    sourceType: "USER_NOTE",
     displayName: "Product overview",
     text: `SalesForecaster helps B2B revenue teams run evidence-backed forecast calls.
 Executives need to know which commits are real before they reach the board.
@@ -165,6 +166,7 @@ The platform surfaces unsupported commits, qualification gaps, and coaching oppo
 const nomEvidence = [
   {
     sourceId: "nom_1",
+    sourceType: "USER_NOTE",
     displayName: "Product overview",
     text: `OpenText Network Operations Management provides end-to-end visibility across distributed operational sites.
 Infrastructure leaders need centralized telemetry, policy compliance, and incident visibility without dispatching engineers to every location.
@@ -337,7 +339,12 @@ async function synthesizePersona(input: {
   productName: string;
   productSnapshot: Record<string, unknown>;
   productMessaging: Record<string, unknown>;
-  productEvidence: Array<{ sourceId: string; displayName: string; text: string }>;
+  productEvidence: Array<{
+    sourceId: string;
+    sourceType: string;
+    displayName: string;
+    text: string;
+  }>;
   buyerRole: {
     name: string;
     likelyTitles: string[];
@@ -354,7 +361,7 @@ async function synthesizePersona(input: {
     messagingNotes: string[];
   }>;
 }): Promise<PersonaAiDraft> {
-  const { getPersonaAiProvider } = await import("../src/lib/ai");
+  const { getPersonaAiProvider } = await import("../../src/lib/ai");
   const ai = getPersonaAiProvider();
   const messages = buildPersonaSynthesisMessages({
     productName: input.productName,
@@ -413,7 +420,7 @@ async function main() {
   mirrorPersonaAiEnv();
   mirrorEmailAiEnv();
 
-  const { isPersonaAiConfigured } = await import("../src/lib/ai");
+  const { isPersonaAiConfigured } = await import("../../src/lib/ai");
   if (!isPersonaAiConfigured()) {
     throw new Error("Persona AI is not configured.");
   }
@@ -521,11 +528,11 @@ async function main() {
   );
 
   const { prepareEmailGenerationMessages } = await import(
-    "../src/lib/email-generation/prepare-email-generation"
+    "../../src/lib/email-generation/prepare-email-generation"
   );
   const { getEmailAiProvider } = await import("@/lib/ai");
   const { removeEmDashes, sanitizeGeneratedEmailBody } = await import(
-    "../src/lib/email-generation/service"
+    "../../src/lib/email-generation/service"
   );
   const ai = getEmailAiProvider();
 
