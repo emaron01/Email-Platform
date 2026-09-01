@@ -79,7 +79,7 @@ describe("Product save UI seam", () => {
   it("wires useActionState result into visible status on success and failure", () => {
     const formSrc = readFileSync("src/components/ProductDetailsForm.tsx", "utf8");
     const actionsSrc = readFileSync("src/app/actions.ts", "utf8");
-    const setupSrc = readFileSync("src/components/ProductCatalogPanel.tsx", "utf8");
+    const setupSrc = readFileSync("src/app/(app)/products/new/page.tsx", "utf8");
 
     expect(actionsSrc).toMatch(
       /export async function upsertProductAction\([\s\S]*Promise<ProductActionResult>/,

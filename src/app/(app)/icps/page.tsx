@@ -31,6 +31,7 @@ export default async function IcpsPage({
     listIcps(productId ?? undefined),
   ]);
   const productNameById = new Map(products.map((product) => [product.id, product.name]));
+  const canCreate = products.length > 0;
 
   return (
     <div>
@@ -38,14 +39,23 @@ export default async function IcpsPage({
         title="ICPs"
         description="Org-wide ICP list. Open an ICP to review criteria or attach it to a campaign."
         actions={
-          productId ? (
+          canCreate ? (
             <Link
-              href={`/setup/${productId}/icps/new`}
+              href={
+                productId ? `/icps/new?product=${productId}` : "/icps/new"
+              }
               className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white"
             >
-              Add ICP
+              New ICP
             </Link>
-          ) : null
+          ) : (
+            <span
+              title="Add a product first"
+              className="inline-flex cursor-not-allowed items-center justify-center rounded-md bg-slate-300 px-3.5 py-2 text-sm font-medium text-slate-500"
+            >
+              New ICP
+            </span>
+          )
         }
       />
 
@@ -64,10 +74,23 @@ export default async function IcpsPage({
       {icps.length === 0 ? (
         <EmptyState
           title="No ICPs yet"
-          description={
-            productId
-              ? "Add an ICP for this product, or clear the filter to see other products."
-              : "Create a product first, then define ICPs from the product setup flow."
+          description="An ICP defines who you sell to — natural-language criteria interpreted for scoring and campaigns."
+          actions={
+            canCreate ? (
+              <Link
+                href="/icps/new"
+                className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              >
+                New ICP
+              </Link>
+            ) : (
+              <Link
+                href="/products/new"
+                className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              >
+                New product
+              </Link>
+            )
           }
         />
       ) : (

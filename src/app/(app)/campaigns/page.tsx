@@ -1,14 +1,8 @@
 import Link from "next/link";
-import { EmptyState, PageHeader, Panel, TenantMissing } from "@/components/ui";
-import { NewCampaignForm } from "@/components/NewCampaignForm";
+import { EmptyState, PageHeader, TenantMissing } from "@/components/ui";
 import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
-import {
-  listCampaigns,
-  listIcps,
-  listPersonas,
-} from "@/lib/tenant/data";
+import { listCampaigns } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
-import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
 import { formatDate } from "@/lib/utils";
 import { getHomeWorkflow } from "@/lib/workflow/home";
 
@@ -33,111 +27,75 @@ export default async function CampaignsPage({
     );
   }
 
-  const [campaigns, icps, personas, workflow] = await Promise.all([
+  const [campaigns, workflow] = await Promise.all([
     listCampaigns({ includeArchived }),
-    listIcps(),
-    listPersonas(),
     getHomeWorkflow(organization.id),
   ]);
 
-  const campaignProducts = workflow.campaignProducts;
-  const readyProducts = campaignProducts.filter((product) => product.ready);
-  const unavailableProducts = campaignProducts.filter((product) => !product.ready);
-  const canCreate = campaignProducts.length > 0;
+  const canCreate = workflow.campaignProducts.length > 0;
 
   return (
     <div>
       <PageHeader
         title="Campaigns"
-        description="Each campaign selects a Product, an ICP, and a campaign-specific Offer. Personas in play default to every persona for the product."
+        description="Each campaign selects a product, an ICP, personas in play, and a campaign-specific offer. Open a campaign to attach contacts and work through qualification and email."
         actions={
-          <ShowArchivedToggle
-            href={includeArchived ? "/campaigns" : "/campaigns?archived=1"}
-            includeArchived={includeArchived}
-            label="campaigns"
-          />
+          <>
+            <ShowArchivedToggle
+              href={includeArchived ? "/campaigns" : "/campaigns?archived=1"}
+              includeArchived={includeArchived}
+              label="campaigns"
+            />
+            {canCreate ? (
+              <Link
+                href="/campaigns/new"
+                className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white"
+              >
+                New campaign
+              </Link>
+            ) : (
+              <span
+                title="Add a product first"
+                className="inline-flex cursor-not-allowed items-center justify-center rounded-md bg-slate-300 px-3.5 py-2 text-sm font-medium text-slate-500"
+              >
+                New campaign
+              </span>
+            )}
+          </>
         }
       />
-
-      <div className="mb-6">
-        <Panel
-          title="New Campaign"
-          description="ICP and Persona options are filtered by the selected Product. Relationships are validated server-side."
-        >
-          {canCreate ? (
-            <NewCampaignForm
-              products={campaignProducts.map((product) => ({
-                id: product.id,
-                name: product.name,
-                ready: product.ready,
-                omissionReason: product.omissionReason,
-              }))}
-              icps={icps.map((icp) => ({
-                id: icp.id,
-                name: icp.name,
-                productId: icp.productId,
-              }))}
-              personas={personas.map((persona) => ({
-                id: persona.id,
-                name: persona.name,
-                productId: persona.productId,
-              }))}
-            />
-          ) : (
-            <p className="text-sm text-slate-600">
-              Add a product in Setup before creating a campaign.
-            </p>
-          )}
-          {canCreate && readyProducts.length === 0 ? (
-            <p
-              className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
-              data-testid="campaign-product-setup-required"
-            >
-              No products are ready for campaigns yet. Each product needs
-              approval, an ICP with criteria, and at least one saved persona.
-            </p>
-          ) : null}
-          {unavailableProducts.length > 0 && readyProducts.length > 0 ? (
-            <div
-              className="mt-3 space-y-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
-              data-testid="campaign-product-omissions"
-            >
-              <p className="font-medium text-slate-900">
-                Products not yet available
-              </p>
-              <ul className="list-disc space-y-1 pl-5">
-                {unavailableProducts.map((product) => (
-                  <li key={product.id}>
-                    <Link
-                      href={`/setup/${product.id}`}
-                      className="font-medium text-slate-900 underline-offset-2 hover:underline"
-                    >
-                      {product.name}
-                    </Link>
-                    : {product.omissionReason}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </Panel>
-      </div>
 
       {campaigns.length === 0 ? (
         <EmptyState
           title="No campaigns yet"
-          description="Create a campaign above, then attach contacts and generate drafts from its detail page."
+          description="A campaign ties your product setup to a contact list — qualify companies, score contacts, and write emails in one workspace."
+          actions={
+            canCreate ? (
+              <Link
+                href="/campaigns/new"
+                className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              >
+                New campaign
+              </Link>
+            ) : (
+              <Link
+                href="/products/new"
+                className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              >
+                New product
+              </Link>
+            )
+          }
         />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-medium">Campaign Name</th>
+                <th className="px-4 py-3 font-medium">Campaign</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Product</th>
                 <th className="px-4 py-3 font-medium">ICP</th>
-                <th className="px-4 py-3 font-medium">Persona</th>
                 <th className="px-4 py-3 font-medium">Offer</th>
                 <th className="px-4 py-3 font-medium">Contacts</th>
                 <th className="px-4 py-3 font-medium">Created</th>
@@ -167,17 +125,6 @@ export default async function CampaignsPage({
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {campaign.icp.name}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {campaignPersonasDisplayName({
-                      fallbackPersonaName: campaign.persona?.name,
-                      inPlayNames: campaign.personasInPlay.map(
-                        (row) => row.persona.name,
-                      ),
-                      productPersonaCount: personas.filter(
-                        (persona) => persona.productId === campaign.productId,
-                      ).length,
-                    })}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {campaign.offerName ?? campaign.offer?.name ?? "—"}

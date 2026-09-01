@@ -99,7 +99,7 @@ export default async function DashboardPage({
         <h2 className="text-xl font-semibold text-slate-900">Campaigns</h2>
         {workflow.setupComplete ? (
           <Link
-            href="/campaigns?new=1"
+            href="/campaigns/new"
             className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
           >
             New campaign
@@ -135,7 +135,7 @@ export default async function DashboardPage({
           </p>
           {workflow.setupComplete ? (
             <Link
-              href="/campaigns?new=1"
+              href="/campaigns/new"
               className="mt-4 inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
             >
               New campaign

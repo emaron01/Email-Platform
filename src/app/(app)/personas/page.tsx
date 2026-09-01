@@ -31,6 +31,7 @@ export default async function PersonasPage({
     listPersonas(productId ?? undefined),
   ]);
   const productNameById = new Map(products.map((product) => [product.id, product.name]));
+  const canCreate = products.length > 0;
 
   return (
     <div>
@@ -38,14 +39,25 @@ export default async function PersonasPage({
         title="Personas"
         description="Org-wide persona list. Open a persona to manage titles, criteria, and rebuilds."
         actions={
-          productId ? (
+          canCreate ? (
             <Link
-              href={`/setup/${productId}#personas`}
+              href={
+                productId
+                  ? `/personas/new?product=${productId}`
+                  : "/personas/new"
+              }
               className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white"
             >
-              Build persona
+              New persona
             </Link>
-          ) : null
+          ) : (
+            <span
+              title="Add a product first"
+              className="inline-flex cursor-not-allowed items-center justify-center rounded-md bg-slate-300 px-3.5 py-2 text-sm font-medium text-slate-500"
+            >
+              New persona
+            </span>
+          )
         }
       />
 
@@ -64,10 +76,23 @@ export default async function PersonasPage({
       {personas.length === 0 ? (
         <EmptyState
           title="No personas yet"
-          description={
-            productId
-              ? "Build a persona for this product, or clear the filter to see other products."
-              : "Create a product and ICP first, then build personas from the product setup flow."
+          description="A persona is a buyer role you score and email against — titles, responsibilities, and discriminators that separate good fits from bad ones."
+          actions={
+            canCreate ? (
+              <Link
+                href="/personas/new"
+                className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              >
+                New persona
+              </Link>
+            ) : (
+              <Link
+                href="/products/new"
+                className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              >
+                New product
+              </Link>
+            )
           }
         />
       ) : (
