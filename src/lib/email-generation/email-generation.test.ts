@@ -1082,6 +1082,10 @@ describe("email generation action and UI seams", () => {
     const draftsStage = readFileSync("src/components/EmailDraftsStage.tsx", "utf8");
     expect(draftsStage).toContain("sortEmailDraftContactsForSendQueue");
     expect(draftsStage).toContain("lookaheadGenerateEmailDraftAction");
+    expect(draftsStage).toContain("pickNextContactAfterSend");
+    expect(draftsStage).toContain("onSendComplete");
+    expect(draftsStage).toContain("campaign-queue-complete");
+    expect(form).toContain("onSendComplete");
     expect(draftsStage).toContain("Prepared");
     expect(draftsStage).toContain("Ready to review");
     expect(draftsStage).not.toContain("1 draft");

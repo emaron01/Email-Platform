@@ -111,6 +111,7 @@ export function EmailSequenceWorkspace({
   sequenceStoppedReason = null,
   onDraftOpenedForReview,
   onDraftGenerated,
+  onSendComplete,
 }: {
   campaignContactId: string;
   contactId: string;
@@ -151,6 +152,7 @@ export function EmailSequenceWorkspace({
     sequenceNumber: number;
     kind: "INITIAL" | "FOLLOW_UP" | "REPLY";
   }) => void;
+  onSendComplete?: (draft: { id: string; sentAt: string }) => void;
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState(initialDrafts);
@@ -452,18 +454,19 @@ export function EmailSequenceWorkspace({
       const next = await markEmailDraftSentAction(selected.id);
       setResult(next);
       if (next.ok) {
+        const sentAt = new Date().toISOString();
         setDrafts((current) =>
           current.map((draft) =>
             draft.id === selected.id
               ? {
                   ...draft,
                   status: "SENT",
-                  sentAt: new Date().toISOString(),
+                  sentAt,
                 }
               : draft,
           ),
         );
-        router.refresh();
+        onSendComplete?.({ id: selected.id, sentAt });
       }
     });
   }
@@ -487,7 +490,7 @@ export function EmailSequenceWorkspace({
               : draft,
           ),
         );
-        router.refresh();
+        onSendComplete?.({ id: selected.id, sentAt: sent.sentAt });
       }
     });
   }

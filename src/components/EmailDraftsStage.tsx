@@ -6,7 +6,7 @@ import { EmailSequenceWorkspace } from "@/components/EmailSequenceWorkspace";
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
 import type { ClaimValidationViolation } from "@/lib/email-generation/claim-validation-contract";
 import type { CampaignEmailLength } from "@/lib/campaign/save";
-import { sortEmailDraftContactsForSendQueue } from "@/lib/campaign/email-draft-contact-order";
+import { sortEmailDraftContactsForSendQueue, pickNextContactAfterSend, CAMPAIGN_QUEUE_COMPLETE_MESSAGE } from "@/lib/campaign/email-draft-contact-order";
 import {
   contactDraftListStatus,
   pickLookaheadContacts,
@@ -145,6 +145,7 @@ export function EmailDraftsStage({
     contacts[0]?.campaignContactId ?? "",
   );
   const [preparingIds, setPreparingIds] = useState<Set<string>>(new Set());
+  const [queueComplete, setQueueComplete] = useState(false);
   const triggeredReviewKeys = useRef(new Set<string>());
   const lookaheadRunId = useRef(0);
 
@@ -206,10 +207,9 @@ export function EmailDraftsStage({
     [readOnly, view, visibleContacts],
   );
 
-  const handleSelectContact = useCallback(
-    async (campaignContactId: string) => {
-      setSelectedId(campaignContactId);
-      const contact = stageContacts.find(
+  const commitLookaheadQuotaForContact = useCallback(
+    async (campaignContactId: string, contacts: EmailDraftsStageContact[]) => {
+      const contact = contacts.find(
         (row) => row.campaignContactId === campaignContactId,
       );
       const uncommitted = contact?.drafts.find(
@@ -238,7 +238,56 @@ export function EmailDraftsStage({
         );
       }
     },
-    [stageContacts],
+    [],
+  );
+
+  const handleSelectContact = useCallback(
+    async (campaignContactId: string) => {
+      setQueueComplete(false);
+      setSelectedId(campaignContactId);
+      await commitLookaheadQuotaForContact(campaignContactId, stageContacts);
+    },
+    [commitLookaheadQuotaForContact, stageContacts],
+  );
+
+  const handleSendComplete = useCallback(
+    (campaignContactId: string, draftId: string, sentAt: string) => {
+      const nextContact = pickNextContactAfterSend(
+        visibleContacts,
+        campaignContactId,
+      );
+
+      setStageContacts((current) => {
+        const updated = current.map((contact) =>
+          contact.campaignContactId === campaignContactId
+            ? {
+                ...contact,
+                drafts: contact.drafts.map((draft) =>
+                  draft.id === draftId
+                    ? { ...draft, status: "SENT" as const, sentAt }
+                    : draft,
+                ),
+              }
+            : contact,
+        );
+        if (nextContact) {
+          void commitLookaheadQuotaForContact(
+            nextContact.campaignContactId,
+            updated,
+          );
+        }
+        return updated;
+      });
+
+      if (nextContact) {
+        setQueueComplete(false);
+        setSelectedId(nextContact.campaignContactId);
+      } else {
+        setSelectedId("");
+        setQueueComplete(true);
+      }
+    },
+    [commitLookaheadQuotaForContact, visibleContacts],
   );
 
   if (contacts.length === 0) {
@@ -360,7 +409,16 @@ export function EmailDraftsStage({
               </ul>
             )}
           </nav>
-          {selected ? (
+          {queueComplete ? (
+            <section
+              data-testid="campaign-queue-complete"
+              className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center"
+            >
+              <p className="text-sm font-medium text-slate-900">
+                {CAMPAIGN_QUEUE_COMPLETE_MESSAGE}
+              </p>
+            </section>
+          ) : selected ? (
             <section
               key={selected.campaignContactId}
               className="grid gap-4 rounded-md border border-slate-200 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"
@@ -412,6 +470,9 @@ export function EmailDraftsStage({
                     ),
                   );
                   void runLookahead(selected.campaignContactId, draft.id);
+                }}
+                onSendComplete={({ id, sentAt }) => {
+                  handleSendComplete(selected.campaignContactId, id, sentAt);
                 }}
               />
             </section>
