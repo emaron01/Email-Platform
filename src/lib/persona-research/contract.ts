@@ -152,4 +152,4 @@ export function parsePersonaAiResponse(
   };
 }
 
-export const PERSONA_SYNTHESIS_PROMPT_VERSION = "7";
+export const PERSONA_SYNTHESIS_PROMPT_VERSION = "8";
