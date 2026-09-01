@@ -19,7 +19,7 @@ import {
   saveAndInterpretPersonaAction,
   updatePersonaCriterionAction,
 } from "@/app/actions/interpretation";
-import { projectPersonaSignalsFromProfileAction } from "@/app/actions/persona-setup";
+import { projectPersonaSignalsFromProfileAction, rebuildPersonaFromProductEvidenceAction, type PersonaSetupActionResult } from "@/app/actions/persona-setup";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { ExportPdfButton } from "@/components/ExportPdfButton";
 import { PersonaBriefingDocument } from "@/components/PersonaBriefingDocument";
@@ -461,8 +461,8 @@ function NewPersonaForm({
             className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {interpretPending
-              ? "Interpreting…"
-              : "Interpret / Reinterpret Persona"}
+              ? "Regenerating criteria…"
+              : "Regenerate criteria"}
           </button>
         </div>
       </form>
@@ -499,9 +499,13 @@ export function PersonaForm({
     projectPersonaSignalsFromProfileAction,
     initialResult,
   );
+  const [rebuildState, rebuildAction, rebuildPending] = useActionState(
+    rebuildPersonaFromProductEvidenceAction,
+    null as PersonaSetupActionResult | null,
+  );
 
-  const status = interpretState ?? saveState ?? projectState;
-  const pending = savePending || interpretPending || projectPending;
+  const status = interpretState ?? saveState ?? projectState ?? rebuildState;
+  const pending = savePending || interpretPending || projectPending || rebuildPending;
 
   const briefing = useMemo(
     () =>
@@ -552,7 +556,17 @@ export function PersonaForm({
     if (projectState?.ok) {
       router.refresh();
     }
-  }, [saveState, interpretState, projectState, router]);
+    if (
+      rebuildState?.ok &&
+      rebuildState.personaSetupRunId &&
+      rebuildState.personaId
+    ) {
+      router.push(
+        `/setup/${productId}/personas/manage/${rebuildState.personaId}/rebuild/${rebuildState.personaSetupRunId}`,
+      );
+      router.refresh();
+    }
+  }, [saveState, interpretState, projectState, rebuildState, productId, router]);
 
   if (!persona) {
     return <NewPersonaForm productId={productId} />;
@@ -696,8 +710,8 @@ export function PersonaForm({
                 className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {interpretPending
-                  ? "Interpreting…"
-                  : "Interpret / Reinterpret Persona"}
+                  ? "Regenerating criteria…"
+                  : "Regenerate criteria"}
               </button>
             </div>
           </form>
@@ -712,22 +726,50 @@ export function PersonaForm({
 
       <div className="space-y-3 border-t border-slate-200 pt-4" data-print-hide>
         {!editing ? (
-          <form action={interpretAction} className="flex flex-wrap items-center gap-2">
-            <input type="hidden" name="productId" value={productId} />
-            <PersonaHiddenFields persona={persona} />
-            <button
-              type="submit"
-              disabled={interpretPending}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {interpretPending
-                ? "Interpreting…"
-                : "Interpret / Reinterpret Persona"}
-            </button>
-          </form>
+          <div className="flex flex-wrap items-center gap-2">
+            <form action={interpretAction} className="inline">
+              <input type="hidden" name="productId" value={productId} />
+              <PersonaHiddenFields persona={persona} />
+              <button
+                type="submit"
+                disabled={interpretPending}
+                className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {interpretPending
+                  ? "Regenerating criteria…"
+                  : "Regenerate criteria"}
+              </button>
+            </form>
+            {persona.approvalStatus === "APPROVED" ? (
+              <form action={rebuildAction} className="inline">
+                <input type="hidden" name="productId" value={productId} />
+                <input type="hidden" name="personaId" value={persona.id} />
+                <button
+                  type="submit"
+                  disabled={rebuildPending}
+                  className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {rebuildPending
+                    ? "Rebuilding…"
+                    : "Rebuild from product evidence"}
+                </button>
+              </form>
+            ) : null}
+          </div>
+        ) : null}
+        {!editing ? (
+          <p className="text-xs text-slate-500">
+            Regenerate criteria updates scoring criteria from the text fields
+            above. Rebuild from product evidence re-synthesizes role summary,
+            pains, outcomes, and messaging from stored product research (review
+            before anything changes).
+          </p>
         ) : null}
         {!editing && interpretState ? (
           <StatusBanner result={interpretState} />
+        ) : null}
+        {!editing && rebuildState ? (
+          <StatusBanner result={rebuildState} />
         ) : null}
         {persona.profileJson ? (
           <form action={projectAction}>

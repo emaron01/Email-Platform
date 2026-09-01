@@ -122,7 +122,7 @@ export async function saveAndInterpretPersonaAction(
     return {
       ok: true,
       message:
-        "Persona saved. AI interpretation could not be completed. You can retry Interpret / Reinterpret later.",
+        "Persona saved. AI criteria regeneration could not be completed. You can retry later.",
       personaId,
     };
   }

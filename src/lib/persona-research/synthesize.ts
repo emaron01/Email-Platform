@@ -221,6 +221,8 @@ export async function synthesizePersonaFromEvidence(input: {
   personaEvidence: Awaited<
     ReturnType<typeof runProgressivePersonaWebSearch>
   >["excerpts"];
+  /** When re-synthesizing an approved persona, omit it from peer differentiation context. */
+  excludePersonaIdFromPeers?: string;
 }): Promise<{
   personaSetupRunId: string;
   status: "NEEDS_REVIEW" | "FAILED";
@@ -334,6 +336,9 @@ export async function synthesizePersonaFromEvidence(input: {
         productId: input.productId,
         archivedAt: null,
         approvalStatus: "APPROVED",
+        ...(input.excludePersonaIdFromPeers
+          ? { id: { not: input.excludePersonaIdFromPeers } }
+          : {}),
       },
       select: {
         id: true,
@@ -498,6 +503,7 @@ export async function resynthesizePersonaFromRun(input: {
     data: {
       organizationId: input.organizationId,
       productId: input.productId,
+      personaId: prior.personaId ?? undefined,
       productEvidenceBundleId: prior.productEvidenceBundleId,
       personaEvidenceBundleId: prior.personaEvidenceBundleId,
       correlationId,
@@ -522,5 +528,6 @@ export async function resynthesizePersonaFromRun(input: {
       (prior.userContextJson as BuildPersonaInput["userContext"]) ?? null,
     productEvidence,
     personaEvidence,
+    excludePersonaIdFromPeers: prior.personaId ?? undefined,
   });
 }

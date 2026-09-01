@@ -1,5 +1,13 @@
 /**
  * Live v8 validation — review-only drafts, no DB writes.
+ *
+ * FIXTURE-ONLY: uses hardcoded peers (VP_SALES_PEER, PHARMACY_OPS_PEER), inline
+ * product evidence, and cro-setup-run-draft-v2 for baselines. Proves the synthesis
+ * code path and prompt wiring — NOT behavior on your real personas or bundles.
+ *
+ * For DB-backed validation against approved personas and product evidence, use:
+ *   npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/validate-persona-v8-db-live.ts
+ *
  * npx dotenv -e .env.local -e .env -- tsx scripts/ad-hoc/validate-persona-v8-live.ts
  */
 import Module from "node:module";
@@ -555,7 +563,7 @@ async function main() {
       }),
     },
     {
-      label: "(c) Email · VP of Sales @ StoneEagle (stored VP persona)",
+      label: "(c) Email · VP of Sales @ StoneEagle (VP_SALES_PEER fixture)",
       context: baseEmailContext({
         contact: {
           id: "c_vp",
