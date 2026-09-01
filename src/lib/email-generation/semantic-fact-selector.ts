@@ -135,11 +135,12 @@ Selection criterion — NOT "what is distinctive about this company":
 Choose only facts that suggest THIS persona has THIS problem that THIS product solves.
 
 Intersection to apply:
-1. Persona painPoints and desiredOutcomes — what this role struggles with and wants
-2. Product problemsSolved — what the product fixes
+1. Persona painPoints and desiredOutcomes — what this role struggles with and wants (primary)
+2. Product problemsSolved — what the product fixes (secondary; use only when it aligns with the persona pain)
 3. Company research candidates — evidence this prospect plausibly has that problem
 
 Rules:
+- When persona painPoints and product problemsSolved suggest different framing, prioritize the persona pain in selection and rationale.
 - Select 0–3 candidate facts. Returning zero is valid when none bridge company evidence to the persona's problem and product's problemsSolved.
 - Do NOT select a fact merely because it is distinctive, well-known, or names many products.
 - Semantic relevance counts: facts can connect without sharing words (e.g. a distributed customer base can evidence multi-site operations pain even when painPoints use different vocabulary).

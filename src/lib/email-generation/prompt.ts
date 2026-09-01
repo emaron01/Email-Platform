@@ -16,7 +16,7 @@ import {
   type PersonalizationDecision,
 } from "@/lib/email-generation/personalization";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "16";
+export const EMAIL_GENERATION_PROMPT_VERSION = "17";
 export const ADDITIONAL_GUIDANCE_MAX_CHARS = 200;
 
 export type EmailPromptOptions = {
@@ -30,7 +30,7 @@ Use the supplied context in this strict priority order:
 1. Per-contact regeneration instructions, when supplied. They override campaign guidance and writing defaults.
 2. Additional campaign instructions, when supplied. They override writing defaults.
 3. The campaign offer and call to action.
-4. Paragraph 1 problem framing (hard): lead with the executive or business problem from paragraph1ProblemFraming (messagingNotes first, then painPoints). Do this before naming the product or any product capability.
+4. Paragraph 1 problem framing (hard): lead with the executive or business problem from paragraph1ProblemFraming (painPoints first; messagingNotes inform tone and emphasis only, not the opener). Do this before naming the product or any product capability.
 5. Required company specifics, when requiredMotionSpecifics is non-empty: Reason FROM at least one listed specific to the executive problem (mandatory and checkable). The specific must do causal work in the sentence — not decorate a generic clause or quote firmographics.
 6. Company research, when personalization.companyResearchUsable is true: infer selling motion and connect it to this product's problem in that motion. Do not restate what the company does.
 7. Persona as angle only: which value prop leads, what this role cares about, what objections to preempt, what vocabulary to use. Persona is not personalization.
@@ -142,9 +142,9 @@ export function buildEmailPrompt(
         : null,
     paragraph1ProblemFraming: {
       instruction:
-        "Open with the executive or business problem. Prefer messagingNotes; if empty, use painPoints. Do not open with product name, mechanism, or capability. When requiredMotionSpecifics is present, reason FROM one listed fact to that problem — never quote headcount, location, or directory research.",
-      messagingNotes: context.persona.messagingNotes,
+        "Open with the executive or business problem from painPoints. Use messagingNotes only for tone, emphasis, and what to avoid — never as the opener when painPoints are present. Do not open with product name, mechanism, capability, or productProblemSpace.problemsSolved. When requiredMotionSpecifics is present, reason FROM one listed fact to the persona's pain — never quote headcount, location, or directory research.",
       painPoints: context.persona.painPoints,
+      messagingNotes: context.persona.messagingNotes,
     },
     personaNeeds: {
       persona: context.persona.name,

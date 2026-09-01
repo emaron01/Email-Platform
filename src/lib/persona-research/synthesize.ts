@@ -28,6 +28,7 @@ import {
 } from "@/lib/persona-research/contract";
 import { buildPersonaSynthesisMessages } from "@/lib/persona-research/prompt";
 import { runProgressivePersonaWebSearch } from "@/lib/persona-research/progressive-search";
+import { parsePersonaListField } from "@/lib/persona/persona-differentiation";
 import {
   classifyProductSynthesisError,
   logProductSynthesisFailure,
@@ -327,6 +328,28 @@ export async function synthesizePersonaFromEvidence(input: {
       orderBy: { updatedAt: "desc" },
     });
 
+    const approvedPersonas = await prisma.persona.findMany({
+      where: {
+        organizationId: input.organizationId,
+        productId: input.productId,
+        archivedAt: null,
+        approvalStatus: "APPROVED",
+      },
+      select: {
+        id: true,
+        name: true,
+        painPoints: true,
+        messagingNotes: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    const existingApprovedPersonas = approvedPersonas.map((persona) => ({
+      id: persona.id,
+      name: persona.name,
+      painPoints: parsePersonaListField(persona.painPoints),
+      messagingNotes: parsePersonaListField(persona.messagingNotes),
+    }));
+
     stage = "generateStructured";
     const response = await ai.generateStructured({
       ...structuredOutputRequest("personaSynthesis"),
@@ -355,6 +378,7 @@ export async function synthesizePersonaFromEvidence(input: {
               definition: approvedIcp.definition,
             }
           : null,
+        existingApprovedPersonas,
       }),
       parseOutput: parsePersonaAiResponse,
     });

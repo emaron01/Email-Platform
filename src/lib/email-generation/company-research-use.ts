@@ -49,7 +49,7 @@ export const COMPANY_RESEARCH_USE_INSTRUCTIONS = `How to use company research (w
 - Do NOT restate what the company does. The recipient already knows.
 - DO infer their selling motion from customerTypes, businessModel, whatTheySell, and primaryMarkets, and reference that motion rather than the company description.
 - Infer motion characteristics such as deal complexity, cycle length, stakeholder count, buying centers, and customer type, then connect that motion to the problem this product addresses for this persona.
-- Ground that connection in productProblemSpace.problemsSolved and persona painPoints. Do not invent a different problem than those fields describe.
+- Ground that connection in persona painPoints first; use productProblemSpace.problemsSolved only when it aligns with that persona pain. Do not invent a different problem than those fields describe.
 - Where the inference is uncertain, phrase it as an observation the recipient can correct, not as an assertion about their internals.
 - Never state a company fact the research does not support.
 - The reasoning chain is: company research → infer selling motion → identify the problem this product addresses in that motion → connect. Do not print the chain; use it to write the email.
@@ -261,8 +261,8 @@ export function buildRuntimeReasoningSketch(input: {
       inferSellingMotionFrom:
         "the supportedSignals above (deal complexity, cycle length, stakeholder count, buying centers, customer type)",
       doNotOpenWith: "a restatement of whatTheySell or companySummary",
-      reasonTowardProductProblems: input.problemSpace.problemsSolved,
-      connectToPersonaPains: input.problemSpace.painPoints,
+      reasonTowardPersonaPains: input.problemSpace.painPoints,
+      productProblemsWhenAligned: input.problemSpace.problemsSolved,
       ifUncertain:
         "phrase the motion as an observation the recipient can correct",
     },

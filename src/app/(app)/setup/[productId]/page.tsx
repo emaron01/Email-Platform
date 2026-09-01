@@ -23,6 +23,11 @@ import {
   summarizePersonaCriteriaCounts,
   truncateText,
 } from "@/lib/setup/product-overview";
+import {
+  findNearDuplicatePersonaPairs,
+  formatNearDuplicateWarning,
+  parsePersonaListField,
+} from "@/lib/persona/persona-differentiation";
 
 type PageProps = {
   params: Promise<{ productId: string }>;
@@ -155,6 +160,15 @@ export default async function SetupProductPage({ params }: PageProps) {
     }),
   ]);
 
+  const nearDuplicatePersonaPairs = findNearDuplicatePersonaPairs(
+    personas.map((persona) => ({
+      id: persona.id,
+      name: persona.name,
+      painPoints: parsePersonaListField(persona.painPoints),
+      messagingNotes: parsePersonaListField(persona.messagingNotes),
+    })),
+  );
+
   const suggestedRoles = normalizeSuggestedBuyerRoles(
     latestRun?.suggestedPersonasJson,
   );
@@ -249,6 +263,18 @@ export default async function SetupProductPage({ params }: PageProps) {
               <h4 className="text-sm font-semibold text-slate-900">
                 Saved personas
               </h4>
+              {nearDuplicatePersonaPairs.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  {nearDuplicatePersonaPairs.map((pair) => (
+                    <p
+                      key={`${pair.personaA.id}-${pair.personaB.id}`}
+                      className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+                    >
+                      {formatNearDuplicateWarning(pair)}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
               {personas.length === 0 ? (
                 <p className="mt-2 text-sm text-slate-500">
                   None saved yet. Build a suggested role or add a custom persona.

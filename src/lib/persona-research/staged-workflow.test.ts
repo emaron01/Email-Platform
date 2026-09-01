@@ -14,6 +14,7 @@ import {
 } from "@/lib/persona-research/sufficiency";
 import { selectProductEvidenceForPersona } from "@/lib/persona-research/compact";
 import { PERSONA_SYNTHESIS_PROMPT_VERSION } from "@/lib/persona-research/contract";
+import { buildPersonaSynthesisMessages } from "@/lib/persona-research/prompt";
 import { DEFAULT_RESEARCH_POLICY_VALUES } from "@/lib/usage/defaults";
 
 describe("Product synthesis v3 — no full Persona drafts", () => {
@@ -58,6 +59,41 @@ describe("Product synthesis v3 — no full Persona drafts", () => {
   });
 });
 
+describe("persona synthesis differentiation prompt", () => {
+  it("passes existing approved personas for runtime differentiation", () => {
+    const messages = buildPersonaSynthesisMessages({
+      productName: "Example",
+      productSnapshot: { name: "Example" },
+      productMessaging: null,
+      buyerRole: {
+        name: "Role B",
+        likelyTitles: ["Director"],
+        departmentFunction: "Operations",
+        whyThisRoleMatters: "Owns process",
+        suggestionKey: "role_b",
+        confidence: "HIGH",
+        evidenceRefs: [],
+      },
+      userContext: null,
+      productEvidence: [],
+      personaEvidence: [],
+      icpContext: null,
+      existingApprovedPersonas: [
+        {
+          id: "p1",
+          name: "Role A",
+          painPoints: ["Shared operational delay pain"],
+          messagingNotes: ["Emphasize handoff risk"],
+        },
+      ],
+    });
+    expect(messages[0]!.content).toContain("existingApprovedPersonas");
+    expect(messages[0]!.content).toContain("do not invent contrast");
+    expect(messages[1]!.content).toContain("Role A");
+    expect(messages[1]!.content).toContain("Shared operational delay pain");
+  });
+});
+
 describe("Persona evidence sufficiency + progressive search triggers", () => {
   it("CRO with rich product evidence may skip web search", () => {
     const rich = `
@@ -99,7 +135,7 @@ describe("Persona evidence sufficiency + progressive search triggers", () => {
   it("persona policy defaults exist separately from product", () => {
     expect(DEFAULT_RESEARCH_POLICY_VALUES.maxSearchQueriesPerPersona).toBe(2);
     expect(DEFAULT_RESEARCH_POLICY_VALUES.maxSourcesPerPersona).toBe(8);
-    expect(PERSONA_SYNTHESIS_PROMPT_VERSION).toBe("6");
+    expect(PERSONA_SYNTHESIS_PROMPT_VERSION).toBe("7");
   });
 
   it("selects role-relevant product evidence without Product re-fetch", () => {
@@ -134,6 +170,7 @@ describe("architecture boundaries", () => {
     );
     expect(synth).toContain("getPersonaAiProvider");
     expect(synth).toContain("selectProductEvidenceForPersona");
+    expect(synth).toContain("existingApprovedPersonas");
     expect(synth).not.toContain("acquireProductEvidence");
     expect(synth).not.toContain("runProgressiveProductWebSearch");
     expect(synth).not.toContain("scoreContact");

@@ -280,7 +280,7 @@ describe("company research use in email prompts", () => {
     expect(system).not.toMatch(/dealership|F&I|\bCRM\b|\bforecast\b/i);
     expect(user).toContain("auto dealer groups");
     expect(user).toContain(stoneEagleProductProblems[0]!);
-    expect(user).toContain("reasonTowardProductProblems");
+    expect(user).toContain("reasonTowardPersonaPains");
     expect(user).toContain("doNotOpenWith");
   });
 });
@@ -481,8 +481,8 @@ describe("anti-title overlap (B1)", () => {
   });
 });
 
-describe("messagingNotes elevation (B2)", () => {
-  it("elevates messagingNotes into paragraph1ProblemFraming ahead of product capabilities", () => {
+describe("paragraph1 painPoints lead (persona convergence)", () => {
+  it("puts painPoints ahead of messagingNotes in paragraph1ProblemFraming", () => {
     const messages = promptMessages(
       baseContext({
         persona: {
@@ -503,18 +503,14 @@ describe("messagingNotes elevation (B2)", () => {
     const user = messages[1]?.content ?? "";
 
     expect(system).toContain("paragraph1ProblemFraming");
-    expect(system).toContain(
-      "before naming the product or any product capability",
-    );
+    expect(system).toContain("painPoints first");
     expect(user).toContain('"paragraph1ProblemFraming"');
-    expect(user).toContain(
-      "Lead with the cost of delayed handoffs between night and day shifts.",
-    );
+    expect(user).toContain("Decisions rest on incomplete status updates");
     expect(user).toMatch(
-      /paragraph1ProblemFraming[\s\S]*messagingNotes[\s\S]*productMessaging/,
+      /paragraph1ProblemFraming[\s\S]*painPoints[\s\S]*messagingNotes/,
     );
     expect(user).toContain(
-      "Do not open with product name, mechanism, or capability",
+      "Use messagingNotes only for tone, emphasis, and what to avoid",
     );
   });
 });

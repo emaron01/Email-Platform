@@ -1,3 +1,4 @@
+import type { PersonaDifferentiationInput } from "@/lib/persona/persona-differentiation";
 import type { AiMessage } from "@/lib/ai/types";
 import { PERSONA_SYNTHESIS_PROMPT_VERSION } from "@/lib/persona-research/contract";
 import type { SuggestedBuyerRole } from "@/lib/product-research/contract";
@@ -13,6 +14,7 @@ export function buildPersonaSynthesisMessages(input: {
   productEvidence: EvidenceExcerpt[];
   personaEvidence: PersonaResearchExcerpt[];
   icpContext: Record<string, unknown> | null;
+  existingApprovedPersonas?: PersonaDifferentiationInput[];
 }): AiMessage[] {
   const system = `You are an expert GTM Persona research analyst.
 Prompt version: ${PERSONA_SYNTHESIS_PROMPT_VERSION}
@@ -40,7 +42,8 @@ RULES:
 13. Classify each negativeRoleSignal with exclusionTestability:
     - TITLE_TESTABLE — decidable from the contact's title/department alone (e.g. "Sales representative focused primarily on individual quota").
     - EVIDENCE_TESTABLE — requires researched responsibilities or ownership (e.g. "CRM administrator … WITHOUT ownership of forecasting or revenue governance").
-14. Return JSON matching the schema only (personaDraft).`;
+14. When existingApprovedPersonas is non-empty, differentiate this role's painPoints and messaging emphasis from those personas. Emphasize what this role experiences that the others do not. Genuinely shared pains are allowed — do not invent contrast for its own sake. Use only the supplied painPoints and messagingNotes from existing personas; do not assume how roles differ beyond what those fields show.
+15. Return JSON matching the schema only (personaDraft).`;
 
   const user = JSON.stringify({
     productName: input.productName,
@@ -67,6 +70,13 @@ RULES:
       text: e.text.slice(0, 4_000),
       url: e.url ?? null,
     })),
+    existingApprovedPersonas: (input.existingApprovedPersonas ?? []).map(
+      (persona) => ({
+        name: persona.name,
+        painPoints: persona.painPoints,
+        messagingNotes: persona.messagingNotes,
+      }),
+    ),
     responseSchema: {
       personaDraft: {
         name: "string (REQUIRED)",

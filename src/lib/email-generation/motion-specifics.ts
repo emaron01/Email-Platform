@@ -533,31 +533,37 @@ export function scoreMotionSpecificUsability(
   if (candidate.text.length >= 12 && candidate.text.length <= 70) score += 3;
   if (candidate.text.length > 90) score -= 4;
 
-  const problemTokens = new Set(
-    [
-      ...input.problemSpace.problemsSolved,
-      ...input.problemSpace.painPoints,
-    ].flatMap((value) => contentTokens(value)),
+  const personaPainTokens = new Set(
+    input.problemSpace.painPoints.flatMap((value) => contentTokens(value)),
   );
-  const relevance = nonGeneric.filter((token) => problemTokens.has(token));
-  // Relevance is a gate preference: relevant candidates sort above others via large boost.
-  // Distinctive-only candidates remain eligible as fallback when nothing is relevant —
-  // except multi-offering portfolios with no meaningful problem overlap.
-  // Tokens that only appear inside named offering labels do not count as relevance
-  // (avoids false friends when an offering name shares a common business noun).
+  const productProblemTokens = new Set(
+    input.problemSpace.problemsSolved.flatMap((value) => contentTokens(value)),
+  );
+  const personaRelevance = nonGeneric.filter((token) =>
+    personaPainTokens.has(token),
+  );
+  const productRelevance = nonGeneric.filter(
+    (token) =>
+      productProblemTokens.has(token) && !personaPainTokens.has(token),
+  );
+  const isMultiOfferingPortfolio =
+    extractNamedOfferingLabels(candidate.text).length >= 2 ||
+    /\b(?:suite|portfolio|spanning)\b/i.test(candidate.text);
   const namedLabelTokens = new Set(
     extractNamedOfferingLabels(candidate.text).flatMap((label) =>
       contentTokens(label),
     ),
   );
-  const meaningfulRelevance = relevance.filter(
+  const meaningfulPersonaRelevance = personaRelevance.filter(
     (token) => !namedLabelTokens.has(token),
   );
-  const isMultiOfferingPortfolio =
-    extractNamedOfferingLabels(candidate.text).length >= 2 ||
-    /\b(?:suite|portfolio|spanning)\b/i.test(candidate.text);
-  if (meaningfulRelevance.length > 0) {
-    score += 20 + meaningfulRelevance.length * 2;
+  const meaningfulProductRelevance = productRelevance.filter(
+    (token) => !namedLabelTokens.has(token),
+  );
+  if (meaningfulPersonaRelevance.length > 0) {
+    score += 30 + meaningfulPersonaRelevance.length * 3;
+  } else if (meaningfulProductRelevance.length > 0) {
+    score += 15 + meaningfulProductRelevance.length * 2;
   } else if (
     candidate.sourceField === "whatTheySell" &&
     isMultiOfferingPortfolio
@@ -589,12 +595,18 @@ function whyItMatters(
   ) {
     return "Multi-offering portfolio — reason from the portfolio motion (several lines into overlapping accounts), not a single SKU.";
   }
-  const problemTokens = [
-    ...problemSpace.problemsSolved,
-    ...problemSpace.painPoints,
-  ];
+  const personaLines = problemSpace.painPoints;
+  const productLines = problemSpace.problemsSolved;
   const candidateSet = new Set(candidate.tokens);
-  for (const line of problemTokens) {
+  for (const line of personaLines) {
+    const overlap = contentTokens(line).filter((token) =>
+      candidateSet.has(token),
+    );
+    if (overlap.length > 0) {
+      return `Connects this company's ${candidate.sourceField} detail to persona pain: ${line}`;
+    }
+  }
+  for (const line of productLines) {
     const overlap = contentTokens(line).filter((token) =>
       candidateSet.has(token),
     );
