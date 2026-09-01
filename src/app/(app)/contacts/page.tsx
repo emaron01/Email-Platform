@@ -10,16 +10,14 @@ import {
   CONTACT_UNUSABLE_REASON,
   isContactEmailUsable,
 } from "@/lib/contact/identity";
+import { loadContactCampaignSummaries } from "@/lib/contact/contacts-campaign-data";
 import { listContactLists, listContacts } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import {
   contactMatchesSuppressionSet,
   listActiveNormalizedEmails,
 } from "@/lib/suppression/service";
-import {
-  contactDisplayName,
-  formatNumber,
-} from "@/lib/utils";
+import { contactDisplayName, formatNumber } from "@/lib/utils";
 
 type PageProps = {
   searchParams: Promise<{
@@ -70,9 +68,19 @@ export default async function ContactsPage({ searchParams }: PageProps) {
     listContacts({ listId, search, includeUnlisted }),
     listContactLists({ includeArchived }),
   ]);
-  const suppressedEmails = await listActiveNormalizedEmails(
-    organization.id,
-    contacts.map((contact) => contact.email),
+  const [suppressedEmails, campaignSummaries] = await Promise.all([
+    listActiveNormalizedEmails(
+      organization.id,
+      contacts.map((contact) => contact.email),
+    ),
+    loadContactCampaignSummaries(contacts.map((contact) => contact.id)),
+  ]);
+
+  const showIndustryColumn = contacts.some((contact) =>
+    Boolean(contact.industry?.trim()),
+  );
+  const showEmployeesColumn = contacts.some(
+    (contact) => contact.employeeCount != null,
   );
 
   return (
@@ -166,49 +174,40 @@ export default async function ContactsPage({ searchParams }: PageProps) {
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Title</th>
                 <th className="px-4 py-3 font-medium">Company</th>
-                <th className="px-4 py-3 font-medium">Industry</th>
-                <th className="px-4 py-3 font-medium">Employees</th>
+                {showIndustryColumn ? (
+                  <th className="px-4 py-3 font-medium">Industry</th>
+                ) : null}
+                {showEmployeesColumn ? (
+                  <th className="px-4 py-3 font-medium">Employees</th>
+                ) : null}
                 <th className="px-4 py-3 font-medium">List</th>
-                <th className="px-4 py-3 font-medium">Score</th>
-                <th className="px-4 py-3 font-medium">Score Label</th>
+                <th className="px-4 py-3 font-medium">Campaigns</th>
                 <th className="px-4 py-3 font-medium">Suppression</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {contacts.map((contact) => {
-                const latestScore = contact.scores[0];
                 const usable = isContactEmailUsable(contact);
                 const listNames = contact.memberships
                   .map((membership) => membership.contactList.name)
                   .filter(Boolean);
+                const campaignLines =
+                  campaignSummaries.get(contact.id) ?? [];
+                const emailTitle =
+                  usable && contact.email
+                    ? contact.email
+                    : CONTACT_UNUSABLE_REASON;
                 return (
                   <tr key={contact.id}>
-                    <td className="px-4 py-3 font-medium text-slate-900">
-                      {contactDisplayName(contact.firstName, contact.lastName)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {usable && contact.email ? (
-                        <>
-                          {contact.email}
-                          {contactMatchesSuppressionSet(
-                            contact.email,
-                            suppressedEmails,
-                          ) ? (
-                            <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800">
-                              Opted out
-                            </span>
-                          ) : null}
-                        </>
-                      ) : (
-                        <span
-                          className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700"
-                          title={CONTACT_UNUSABLE_REASON}
-                        >
-                          No email — unusable
-                        </span>
+                    <td
+                      className="px-4 py-3 font-medium text-slate-900"
+                      title={emailTitle}
+                    >
+                      {contactDisplayName(
+                        contact.firstName,
+                        contact.lastName,
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
@@ -229,22 +228,29 @@ export default async function ContactsPage({ searchParams }: PageProps) {
                     <td className="px-4 py-3 text-slate-600">
                       {contact.company ?? "—"}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {contact.industry ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {formatNumber(contact.employeeCount)}
-                    </td>
+                    {showIndustryColumn ? (
+                      <td className="px-4 py-3 text-slate-600">
+                        {contact.industry?.trim() ? contact.industry : "—"}
+                      </td>
+                    ) : null}
+                    {showEmployeesColumn ? (
+                      <td className="px-4 py-3 text-slate-600">
+                        {formatNumber(contact.employeeCount)}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3 text-slate-600">
                       {listNames.length > 0 ? listNames.join(", ") : "Unlisted"}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
-                      {latestScore?.overallScore != null
-                        ? latestScore.overallScore
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {latestScore?.scoreLabel ?? "—"}
+                      {campaignLines.length > 0 ? (
+                        <ul className="space-y-1">
+                          {campaignLines.map((entry) => (
+                            <li key={entry.campaignId}>{entry.line}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        "Not in a campaign."
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {usable ? (

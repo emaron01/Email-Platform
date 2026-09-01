@@ -654,11 +654,7 @@ export async function importContactList(input: {
 
 // --- Contacts ---
 
-export type ContactWithLatestScore = Contact & {
-  scores: Array<{
-    overallScore: number | null;
-    scoreLabel: string | null;
-  }>;
+export type ContactWithMemberships = Contact & {
   memberships: Array<{
     contactList: { id: string; name: string; archivedAt: Date | null };
   }>;
@@ -670,7 +666,7 @@ export async function listContacts(options?: {
   /** When true, include contacts with no list memberships. Default hides them. */
   includeUnlisted?: boolean;
   includeArchivedContacts?: boolean;
-}): Promise<ContactWithLatestScore[]> {
+}): Promise<ContactWithMemberships[]> {
   const organizationId = await orgId();
   const listId = options?.listId?.trim() || undefined;
   const search = options?.search?.trim() || undefined;
@@ -707,15 +703,6 @@ export async function listContacts(options?: {
         : {}),
     },
     include: {
-      scores: {
-        where: { organizationId },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: {
-          overallScore: true,
-          scoreLabel: true,
-        },
-      },
       memberships: {
         include: {
           contactList: {
