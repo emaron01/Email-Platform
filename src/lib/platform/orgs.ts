@@ -221,6 +221,7 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
         },
       },
       usagePolicy: true,
+      researchPolicy: true,
       invitations: {
         where: { status: "PENDING" },
         orderBy: { createdAt: "desc" },
@@ -342,6 +343,7 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
     },
     billingEmail: org.billingProfile?.billingEmail ?? null,
     usagePolicy: org.usagePolicy,
+    researchPolicy: org.researchPolicy,
     members: org.memberships.map((m) => ({
       membershipId: m.id,
       role: m.role,
@@ -545,6 +547,34 @@ export async function updateOrganizationUsagePolicyAsPlatform(input: {
       activeResearchedCompanyLimit,
       dailyEmailGenerationLimit,
       dailyEmailSendWarningLimit,
+    },
+  });
+}
+
+export async function updateOrganizationResearchPolicyAsPlatform(input: {
+  organizationId: string;
+  actorUserId: string;
+  contactResearchEnabled: boolean;
+}): Promise<void> {
+  await prisma.researchPolicy.upsert({
+    where: { organizationId: input.organizationId },
+    update: {
+      contactResearchEnabled: input.contactResearchEnabled,
+    },
+    create: {
+      organizationId: input.organizationId,
+      ...DEFAULT_RESEARCH_POLICY_VALUES,
+      contactResearchEnabled: input.contactResearchEnabled,
+    },
+  });
+
+  await recordAdminAuditEvent({
+    action: "PLATFORM_USAGE_POLICY_CHANGED",
+    actorUserId: input.actorUserId,
+    organizationId: input.organizationId,
+    metadata: {
+      contactResearchEnabled: input.contactResearchEnabled,
+      scope: "research_policy",
     },
   });
 }

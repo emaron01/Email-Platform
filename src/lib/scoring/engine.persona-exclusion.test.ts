@@ -25,6 +25,7 @@ vi.mock("@/lib/org/authz", () => ({
 vi.mock("@/lib/usage/events", () => ({ recordUsageEvent }));
 vi.mock("@/lib/usage/policy", () => ({
   getResearchPolicy: async () => ({
+    contactResearchEnabled: true,
     maxSearchQueriesPerContact: 2,
     maxSourcesPerContact: 6,
     contactResearchFreshnessDays: 90,

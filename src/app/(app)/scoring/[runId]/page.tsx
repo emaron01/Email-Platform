@@ -36,6 +36,7 @@ import {
   listUnconfiguredScoringRoles,
 } from "@/lib/ai/roles";
 import { AiRoleStatusList } from "@/components/AiRoleStatusList";
+import { CONTACT_RESEARCH_DISABLED_USER_MESSAGE } from "@/lib/contact-research/policy";
 import {
   getCurrentOrganization,
   TenantError,
@@ -176,15 +177,28 @@ export default async function ScoringReportPage({
       <div className="mb-6">
         <Panel
           title="AI roles for this run"
-          description="Scoring needs Contact scoring and Contact research. Company research is optional but shown so an unset role cannot hide."
+          description={
+            scoringReadiness.contactResearchEnabled
+              ? "Scoring needs Contact scoring and Contact research. Company research is optional but shown so an unset role cannot hide."
+              : "Scoring needs Contact scoring. Contact research is disabled for this workspace — email personalization uses company research only. Company research is optional but shown so an unset role cannot hide."
+          }
         >
           <AiRoleStatusList
             roles={listAiRoleStatuses().filter(
               (role) =>
                 role.requiredForScoring || role.role === "research",
             )}
+            orgDisabledNotes={
+              scoringReadiness.contactResearchEnabled
+                ? undefined
+                : {
+                    contact_research: CONTACT_RESEARCH_DISABLED_USER_MESSAGE,
+                  }
+            }
           />
-          {listUnconfiguredScoringRoles().length > 0 ? (
+          {listUnconfiguredScoringRoles({
+            contactResearchEnabled: scoringReadiness.contactResearchEnabled,
+          }).length > 0 ? (
             <p className="mt-3 text-sm text-amber-950">
               Score Contacts stays disabled until every required role is
               configured. Set the listed environment variables and restart.

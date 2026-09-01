@@ -14,6 +14,7 @@ import type {
   ProductSnapshot,
 } from "@/lib/scoring/types";
 import { prisma } from "@/lib/prisma";
+import { getResearchPolicy } from "@/lib/usage/policy-service";
 import {
   requireOrganizationId,
   TenantError,
@@ -80,6 +81,7 @@ export async function getScoringReadiness(scoringRunId: string): Promise<{
   failed: number;
   aiConfigured: boolean;
   contactResearchAiConfigured: boolean;
+  contactResearchEnabled: boolean;
   unconfiguredRoleLabels: string[];
 }> {
   const organizationId = await requireOrganizationId();
@@ -129,6 +131,12 @@ export async function getScoringReadiness(scoringRunId: string): Promise<{
     else companiesMissingResearch += 1;
   }
 
+  const researchPolicy = await getResearchPolicy(organizationId);
+  const contactResearchEnabled = researchPolicy.contactResearchEnabled;
+  const unconfiguredRoles = listUnconfiguredScoringRoles({
+    contactResearchEnabled,
+  });
+
   return {
     totalContacts: scores.length,
     companiesResearched,
@@ -143,9 +151,8 @@ export async function getScoringReadiness(scoringRunId: string): Promise<{
     failed: scores.filter((s) => s.scoringStatus === "FAILED").length,
     aiConfigured: isScoringAiConfigured(),
     contactResearchAiConfigured: isContactResearchAiConfigured(),
-    unconfiguredRoleLabels: listUnconfiguredScoringRoles().map(
-      (role) => role.label,
-    ),
+    contactResearchEnabled,
+    unconfiguredRoleLabels: unconfiguredRoles.map((role) => role.label),
   };
 }
 

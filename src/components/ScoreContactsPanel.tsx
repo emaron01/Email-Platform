@@ -14,6 +14,7 @@ export type ScoringReadinessView = {
   failed: number;
   aiConfigured: boolean;
   contactResearchAiConfigured: boolean;
+  contactResearchEnabled: boolean;
   unconfiguredRoleLabels: string[];
 };
 

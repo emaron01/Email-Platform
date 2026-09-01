@@ -161,14 +161,22 @@ export function listAiRoleStatuses(): AiRoleStatus[] {
   }));
 }
 
-export function listUnconfiguredScoringRoles(): AiRoleStatus[] {
+export function listUnconfiguredScoringRoles(options?: {
+  contactResearchEnabled?: boolean;
+}): AiRoleStatus[] {
+  const contactResearchEnabled = options?.contactResearchEnabled ?? true;
   return listAiRoleStatuses().filter(
-    (entry) => entry.requiredForScoring && !entry.configured,
+    (entry) =>
+      entry.requiredForScoring &&
+      (contactResearchEnabled || entry.role !== "contact_research") &&
+      !entry.configured,
   );
 }
 
-export function scoringAiReady(): boolean {
-  return listUnconfiguredScoringRoles().length === 0;
+export function scoringAiReady(options?: {
+  contactResearchEnabled?: boolean;
+}): boolean {
+  return listUnconfiguredScoringRoles(options).length === 0;
 }
 
 export function assertAiRolesConfigured(roles: readonly AiRole[]): void {

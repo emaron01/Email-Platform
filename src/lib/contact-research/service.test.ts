@@ -34,6 +34,7 @@ vi.mock("@/lib/usage/events", () => ({ recordUsageEvent }));
 import { researchContactRole } from "@/lib/contact-research/service";
 
 const POLICY = {
+  contactResearchEnabled: true,
   maxSearchQueriesPerContact: 2,
   maxSourcesPerContact: 6,
   contactResearchFreshnessDays: 90,
@@ -58,6 +59,29 @@ describe("contact research metering", () => {
     aiMocks.isContactResearchAiConfigured.mockReturnValue(true);
     prismaMock.contact.findFirst.mockResolvedValue(contactRow("VP Infrastructure"));
     prismaMock.contactResearch.findFirst.mockResolvedValue(null);
+  });
+
+  it("skips AI and does not write rows when contact research is disabled for the org", async () => {
+    await expect(
+      researchContactRole({
+        organizationId: "org_1",
+        contactId: "contact_1",
+        personaCriteria: [],
+        policy: { ...POLICY, contactResearchEnabled: false },
+      }),
+    ).rejects.toThrow(/account team/i);
+
+    expect(prismaMock.contactResearch.upsert).not.toHaveBeenCalled();
+    expect(generateStructured).not.toHaveBeenCalled();
+    expect(recordUsageEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: "CONTACT_RESEARCH",
+        status: "SKIPPED",
+        metadata: expect.objectContaining({
+          triggerReason: "org-disabled",
+        }),
+      }),
+    );
   });
 
   it("records SKIPPED with triggerReason fresh-reuse and does not call AI", async () => {

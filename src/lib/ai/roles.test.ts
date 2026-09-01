@@ -68,6 +68,17 @@ describe("AI role readiness", () => {
     expect(listUnconfiguredScoringRoles()).toEqual([]);
   });
 
+  it("does not require contact research env when contact research is disabled for the org", () => {
+    clearAllAiEnv();
+    setRole("SCORING_AI");
+    expect(
+      listUnconfiguredScoringRoles({ contactResearchEnabled: false }).map(
+        (row) => row.role,
+      ),
+    ).toEqual([]);
+    expect(scoringAiReady({ contactResearchEnabled: false })).toBe(true);
+  });
+
   it("throws a loud config error naming the unset scoring roles", () => {
     clearAllAiEnv();
     setRole("SCORING_AI");

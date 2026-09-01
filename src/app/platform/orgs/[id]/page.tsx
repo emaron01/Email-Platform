@@ -23,6 +23,7 @@ import {
   suspendOrganizationAction,
   unsuspendOrganizationAction,
   updatePlatformUsagePolicyAction,
+  updatePlatformResearchPolicyAction,
 } from "@/app/actions/platform-orgs";
 
 function pct(rate: number): string {
@@ -52,7 +53,7 @@ export default async function PlatformOrgDetailPage({
 
   const cost = await computeCostReport({ organizationId: id, window: "30d" });
   const canMutate = canMutatePlatform(user.platformRole);
-  const { organization: org, usage, health, usagePolicy, billing } = detail;
+  const { organization: org, usage, health, usagePolicy, researchPolicy, billing } = detail;
 
   return (
     <div className="space-y-8">
@@ -453,6 +454,39 @@ export default async function PlatformOrgDetailPage({
               className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
             >
               Save usage policy
+            </button>
+          </ActionFeedbackForm>
+
+          <ActionFeedbackForm
+            action={updatePlatformResearchPolicyAction}
+            className="max-w-md space-y-3"
+            testId="platform-research-policy-form"
+          >
+            <input type="hidden" name="organizationId" value={id} />
+            <h3 className="text-sm font-medium text-slate-900">
+              Contact research
+            </h3>
+            <p className="text-sm text-slate-600">
+              Per-contact AI research during email generation. Carries real
+              per-contact cost — platform operator only. Customers cannot enable
+              this in organization settings.
+            </p>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                name="contactResearchEnabled"
+                defaultChecked={researchPolicy?.contactResearchEnabled ?? false}
+                className="mt-1"
+              />
+              <span>
+                Enable contact research for this organization
+              </span>
+            </label>
+            <button
+              type="submit"
+              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+            >
+              Save research policy
             </button>
           </ActionFeedbackForm>
 

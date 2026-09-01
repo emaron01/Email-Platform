@@ -10,6 +10,7 @@ import {
   suspendOrganization,
   unsuspendOrganization,
   updateOrganizationUsagePolicyAsPlatform,
+  updateOrganizationResearchPolicyAsPlatform,
   createPlatformOrganization,
 } from "@/lib/platform/orgs";
 import {
@@ -117,6 +118,32 @@ export async function updatePlatformUsagePolicyAction(
     });
     revalidatePath(`/platform/orgs/${organizationId}`);
     return { ok: true, message: "Usage policy updated." };
+  } catch (error) {
+    return { ok: false, message: toSafeError(error) };
+  }
+}
+
+export async function updatePlatformResearchPolicyAction(
+  _prev: PlatformOrgActionResult | null,
+  formData: FormData,
+): Promise<PlatformOrgActionResult> {
+  try {
+    const user = await requirePlatformSuperAdmin();
+    const organizationId = requireOrgId(formData);
+    const contactResearchEnabled =
+      formData.get("contactResearchEnabled") === "on";
+    await updateOrganizationResearchPolicyAsPlatform({
+      organizationId,
+      actorUserId: user.id,
+      contactResearchEnabled,
+    });
+    revalidatePath(`/platform/orgs/${organizationId}`);
+    return {
+      ok: true,
+      message: contactResearchEnabled
+        ? "Contact research enabled for this organization."
+        : "Contact research disabled for this organization.",
+    };
   } catch (error) {
     return { ok: false, message: toSafeError(error) };
   }

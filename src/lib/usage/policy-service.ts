@@ -26,6 +26,7 @@ export type EffectiveUsagePolicy = {
 };
 
 export type ResearchPolicyResolved = {
+  contactResearchEnabled: boolean;
   maxSearchQueriesPerCompany: number;
   maxSourcesPerCompany: number;
   researchFreshnessDays: number;
@@ -167,6 +168,7 @@ export async function getResearchPolicy(
     where: { organizationId },
   });
   return {
+    contactResearchEnabled: policy.contactResearchEnabled,
     maxSearchQueriesPerCompany: policy.maxSearchQueriesPerCompany,
     maxSourcesPerCompany: policy.maxSourcesPerCompany,
     researchFreshnessDays: policy.researchFreshnessDays,

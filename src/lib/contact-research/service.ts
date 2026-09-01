@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai";
 import { structuredOutputRequest } from "@/lib/ai/structured-output-schemas";
 import type { AiMessage } from "@/lib/ai/types";
+import { CONTACT_RESEARCH_DISABLED_USER_MESSAGE } from "@/lib/contact-research/policy";
 import { contactResearchAiResultSchema } from "@/lib/contact-research/contract";
 import { CONTACT_RESEARCH_PROMPT_VERSION } from "@/lib/criteria/types";
 import type { CriterionSnapshot } from "@/lib/criteria/types";
@@ -26,10 +27,18 @@ import { shouldResearchContactRole } from "@/lib/contact-research/trigger";
 export { CONTACT_RESEARCH_PROMPT_VERSION, contactResearchAiResultSchema };
 
 export type ContactResearchPolicy = {
+  contactResearchEnabled: boolean;
   maxSearchQueriesPerContact: number;
   maxSourcesPerContact: number;
   contactResearchFreshnessDays: number;
 };
+
+export class ContactResearchDisabledError extends Error {
+  constructor(message = CONTACT_RESEARCH_DISABLED_USER_MESSAGE) {
+    super(message);
+    this.name = "ContactResearchDisabledError";
+  }
+}
 
 function buildContactResearchMessages(input: {
   contact: {
@@ -134,7 +143,8 @@ export type ContactResearchTriggerReason =
   | "fresh-reuse"
   | "researched"
   | "not_required"
-  | "unconfigured";
+  | "unconfigured"
+  | "org-disabled";
 
 async function recordContactResearchUsage(input: {
   organizationId: string;
@@ -196,19 +206,31 @@ export async function researchContactRole(input: {
     input.contactId,
   );
 
-  const trigger = shouldResearchContactRole({
-    title: contact.title,
-    personaCriteria: input.personaCriteria,
-    existingResearch: existing,
-    freshnessDays: input.policy.contactResearchFreshnessDays,
-  });
-
   const usageBase = {
     organizationId: input.organizationId,
     userId: input.userId,
     contactId: input.contactId,
     scoringRunId: input.scoringRunId,
   };
+
+  if (!input.policy.contactResearchEnabled) {
+    await recordContactResearchUsage({
+      ...usageBase,
+      status: "SKIPPED",
+      triggerReason: "org-disabled",
+      durationMs: 0,
+      metadata: { reason: "Contact research is disabled for this organization." },
+    });
+    if (existing) return existing;
+    throw new ContactResearchDisabledError();
+  }
+
+  const trigger = shouldResearchContactRole({
+    title: contact.title,
+    personaCriteria: input.personaCriteria,
+    existingResearch: existing,
+    freshnessDays: input.policy.contactResearchFreshnessDays,
+  });
 
   if (!trigger.needed) {
     if (trigger.reuseExisting && existing) {

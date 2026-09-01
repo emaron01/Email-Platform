@@ -20,6 +20,7 @@ export const DEFAULT_USAGE_POLICY_VALUES = {
 } as const;
 
 export const DEFAULT_RESEARCH_POLICY_VALUES = {
+  contactResearchEnabled: false,
   maxSearchQueriesPerCompany: 3,
   maxSourcesPerCompany: 8,
   researchFreshnessDays: 90,

@@ -15,6 +15,7 @@ import {
   isResearchFresh,
   parseStringArray,
 } from "@/lib/research/freshness";
+import { getResearchPolicy } from "@/lib/usage/policy";
 import {
   resolveEmailGenerationPersona,
   resolvePersonalization,
@@ -293,6 +294,7 @@ export async function loadEmailGenerationContext(
     approvedEvidence,
     companyResearchRow,
     matchedScore,
+    researchPolicy,
   ] = await Promise.all([
       prisma.voiceSample.findMany({
         where: { organizationId, userId },
@@ -343,10 +345,13 @@ export async function loadEmailGenerationContext(
         orderBy: [{ scoredAt: "desc" }, { createdAt: "desc" }],
         select: { matchedPersonaId: true, assessmentData: true },
       }),
-    ]);
-  const freshContactResearch = isFreshContactResearch(contactResearch)
-    ? contactResearch
-    : null;
+    getResearchPolicy(organizationId),
+  ]);
+  const contactResearchEnabled = researchPolicy.contactResearchEnabled;
+  const freshContactResearch =
+    contactResearchEnabled && isFreshContactResearch(contactResearch)
+      ? contactResearch
+      : null;
   const freshCompanyResearch =
     companyResearchRow && isResearchFresh(companyResearchRow)
       ? companyResearchRow
@@ -575,7 +580,8 @@ export async function loadEmailDraftScreenStates(input: {
     ],
   );
 
-  const [scores, contactResearchRows, companyResearchRows] = await Promise.all([
+  const [scores, contactResearchRows, companyResearchRows, researchPolicy] =
+    await Promise.all([
     contactIds.length > 0
       ? prisma.contactScore.findMany({
           where: {
@@ -615,7 +621,9 @@ export async function loadEmailDraftScreenStates(input: {
           orderBy: { updatedAt: "desc" },
         })
       : Promise.resolve([]),
+    getResearchPolicy(input.organizationId),
   ]);
+  const contactResearchEnabled = researchPolicy.contactResearchEnabled;
 
   const matchedByContact = new Map<string, string | null>();
   const skipReasonByContact = new Map<string, string | null>();
@@ -651,7 +659,9 @@ export async function loadEmailDraftScreenStates(input: {
       suggestedPersonaId: input.campaignPersonaId,
       aiSkipReason: skipReasonByContact.get(row.contactId) ?? null,
     });
-    const contactResearch = contactResearchByContact.get(row.contactId) ?? null;
+    const contactResearch = contactResearchEnabled
+      ? (contactResearchByContact.get(row.contactId) ?? null)
+      : null;
     const companyResearchRow = row.companyId
       ? companyResearchByCompany.get(row.companyId) ?? null
       : null;
@@ -723,6 +733,12 @@ export async function ensureContactResearchForEmailGeneration(
   if (context.contactResearch) return context;
   if (options?.acquireIfMissing === false) return context;
 
+  const { getResearchPolicy } = await import("@/lib/usage/policy");
+  const policy = await getResearchPolicy(context.organizationId);
+  if (!policy.contactResearchEnabled) {
+    return context;
+  }
+
   const { snapshotCriterionRow } = await import("@/lib/scoring/snapshots");
   const personaCriteria = (
     await prisma.personaCriterion.findMany({
@@ -778,17 +794,16 @@ export async function ensureContactResearchForEmailGeneration(
   }
 
   try {
-    const { getResearchPolicy } = await import("@/lib/usage/policy");
     const { researchContactRole } = await import(
       "@/lib/contact-research/service"
     );
-    const policy = await getResearchPolicy(context.organizationId);
     const researched = await researchContactRole({
       organizationId: context.organizationId,
       contactId: context.contact.id,
       userId: context.userId,
       personaCriteria,
       policy: {
+        contactResearchEnabled: policy.contactResearchEnabled,
         maxSearchQueriesPerContact: policy.maxSearchQueriesPerContact,
         maxSourcesPerContact: policy.maxSourcesPerContact,
         contactResearchFreshnessDays: policy.contactResearchFreshnessDays,

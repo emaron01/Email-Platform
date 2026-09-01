@@ -1152,6 +1152,11 @@ describe.skipIf(!hasDatabase)(
       organizationIds.push(organizationId);
       userIds.push(userAId);
 
+      await prisma.researchPolicy.update({
+        where: { organizationId },
+        data: { contactResearchEnabled: true },
+      });
+
       const userB = await prisma.user.create({
         data: {
           email: `email-gen-b-${suffix}@example.test`,
@@ -1396,6 +1401,26 @@ describe.skipIf(!hasDatabase)(
       expect(context.personaResolution.hasDecision).toBe(true);
       expect(context.personaResolution.source).toBe("chosen");
       expect(context.persona.name).toBe("CRO");
+    });
+
+    it("omits contact research from context when contact research is disabled for the org", async () => {
+      if (!ready) return;
+      await prisma.researchPolicy.update({
+        where: { organizationId },
+        data: { contactResearchEnabled: false },
+      });
+      const { loadEmailGenerationContext } = await import(
+        "@/lib/email-generation/context"
+      );
+      const context = await loadEmailGenerationContext(
+        campaignContactId,
+        userAId,
+      );
+      expect(context.contactResearch).toBeNull();
+      await prisma.researchPolicy.update({
+        where: { organizationId },
+        data: { contactResearchEnabled: true },
+      });
     });
 
     it("refuses generation context when no persona decision exists", async () => {

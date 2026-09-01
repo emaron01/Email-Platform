@@ -828,6 +828,8 @@ model ResearchPolicy {
   maxSearchQueriesPerCompany         Int
   maxSourcesPerCompany               Int
   researchFreshnessDays              Int
+  /// Platform-operator toggle only — per-contact AI cost; not exposed in org settings.
+  contactResearchEnabled             Boolean  @default(false)
   /// Progressive contact-role research limits (criteria-aware; not hard-coded forever).
   maxSearchQueriesPerContact         Int      @default(2)
   maxSourcesPerContact               Int      @default(6)
