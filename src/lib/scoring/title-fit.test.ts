@@ -31,6 +31,11 @@ describe("title canonicalization", () => {
     expect(canonicalTitle("SVP of Sales")).toBe("vp sales");
   });
 
+  it("folds dotted VP abbreviations to match VP Sales", () => {
+    expect(canonicalTitle("V.P. of Sales")).toBe("vp sales");
+    expect(titlesMatch("V.P. of Sales", "VP Sales")).toBe(true);
+  });
+
   it("folds CRO and Chief Revenue Officer together", () => {
     expect(canonicalTitle("CRO")).toBe("cro");
     expect(canonicalTitle("Chief Revenue Officer")).toBe("cro");

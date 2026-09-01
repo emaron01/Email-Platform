@@ -68,8 +68,15 @@ const LONG_TO_SHORT: Array<[RegExp, string]> = [
   [/\bdirector of\b/g, "director"],
 ];
 
+function foldDottedAbbreviations(value: string): string {
+  return value.replace(
+    /\b([A-Za-z])(?:\.([A-Za-z]))+\./g,
+    (match) => match.replace(/\./g, "").toLowerCase(),
+  );
+}
+
 function collapseWhitespace(value: string): string {
-  return value
+  return foldDottedAbbreviations(value)
     .toLowerCase()
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, " ")

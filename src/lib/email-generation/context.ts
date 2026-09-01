@@ -344,10 +344,15 @@ export async function loadEmailGenerationContext(
       ? companyResearchRow
       : null;
 
+  const latestDraftPersonaId =
+    [...campaignContact.emailDrafts]
+      .reverse()
+      .find((draft) => draft.personaId)?.personaId ?? null;
+
   const inPlayPersonaIds = campaign.personasInPlay.map((row) => row.personaId);
   const resolved = resolveEmailGenerationPersona({
     overridePersonaId: options?.personaId,
-    storedPersonaId: options?.storedPersonaId,
+    storedPersonaId: options?.storedPersonaId ?? latestDraftPersonaId,
     matchedPersonaId: matchedScore?.matchedPersonaId ?? null,
     campaignFallbackPersonaId: campaign.personaId,
     inPlayPersonaIds,

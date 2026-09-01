@@ -371,7 +371,7 @@ describe("persona resolution for generation", () => {
     });
   });
 
-  it("does not pick among multiple personas in play", () => {
+  it("uses the first persona in play when campaign.personaId is null", () => {
     expect(
       resolveEmailGenerationPersona({
         matchedPersonaId: null,
@@ -379,8 +379,8 @@ describe("persona resolution for generation", () => {
         inPlayPersonaIds: ["persona_a", "persona_b"],
       }),
     ).toEqual({
-      personaId: null,
-      source: "campaign_fallback",
+      personaId: "persona_a",
+      source: "in_play",
       usedCampaignFallback: true,
     });
   });

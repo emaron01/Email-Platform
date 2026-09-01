@@ -173,9 +173,9 @@ function baseContext(
     },
     companyResearchUpdatedAt: null,
     voiceSamples: [],
+    sequence: [],
     companyResearch: stoneEagleResearch,
     contactResearch: null,
-    evidence: [],
     ...overrides,
   };
 }

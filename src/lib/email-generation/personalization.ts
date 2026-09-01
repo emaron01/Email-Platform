@@ -285,7 +285,7 @@ export function resolveEmailGenerationPersona(input: {
     };
   }
   const inPlay = (input.inPlayPersonaIds ?? []).filter((id) => id.trim());
-  if (inPlay.length === 1 && inPlay[0]) {
+  if (inPlay.length > 0 && inPlay[0]) {
     return {
       personaId: inPlay[0],
       source: "in_play",
