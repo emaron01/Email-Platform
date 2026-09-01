@@ -77,6 +77,7 @@ const campaignDetailInclude = {
           body: true,
           status: true,
           source: true,
+          generationQuotaCommitted: true,
           kind: true,
           sentAt: true,
           sentMethod: true,

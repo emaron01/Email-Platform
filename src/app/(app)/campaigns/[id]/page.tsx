@@ -492,6 +492,8 @@ export default async function CampaignDetailPage({
                       subject: draft.subject ?? "",
                       body: draft.body ?? "",
                       status: draft.status,
+                      source: draft.source,
+                      generationQuotaCommitted: draft.generationQuotaCommitted,
                       kind: draft.kind,
                       sentAt: draft.sentAt?.toISOString() ?? null,
                       handoffAt:

@@ -46,6 +46,8 @@ import { MailboxConnectionError } from "@/lib/mailbox/microsoft-oauth";
 import { parseEmailLength } from "@/lib/campaign/save";
 import type { EmailLength } from "@prisma/client";
 import { formatDailySendAdvisory } from "@/lib/usage/send-advisory";
+import { isLookaheadEligible } from "@/lib/campaign/email-draft-lookahead";
+import { commitLookaheadDraftQuota } from "@/lib/email-generation/lookahead-quota";
 
 export type GenerateEmailDraftActionResult = {
   ok: boolean;
@@ -161,6 +163,133 @@ export async function generateEmailDraftAction(
     };
   } catch (error) {
     console.error("Email draft generation failed.", error);
+    return {
+      ok: false,
+      message: toSafeEmailGenerationError(error),
+    };
+  }
+}
+
+export type LookaheadGenerateEmailDraftResult = {
+  ok: boolean;
+  skipped?: boolean;
+  campaignContactId: string;
+  draftId?: string;
+  subject?: string;
+  body?: string;
+  sequenceNumber?: number;
+  kind?: "INITIAL" | "FOLLOW_UP" | "REPLY";
+  status?: "DRAFT";
+  source?: "AI_LOOKAHEAD" | "AI";
+  generationQuotaCommitted?: boolean;
+  personaId?: string;
+  personalizationTier?: string;
+  personalizationSources?: string;
+  claimConflicts?: import("@/lib/email-generation/claim-validation-contract").ClaimValidationViolation[];
+};
+
+export async function lookaheadGenerateEmailDraftAction(
+  campaignContactId: string,
+): Promise<LookaheadGenerateEmailDraftResult> {
+  try {
+    const user = await requireVerifiedForAiSpend();
+    const row = await prisma.campaignContact.findFirst({
+      where: { id: campaignContactId },
+      select: {
+        id: true,
+        status: true,
+        sequenceStoppedAt: true,
+        contact: { select: { email: true, organizationId: true } },
+        emailDrafts: {
+          select: { sequenceNumber: true, subject: true, body: true, status: true },
+        },
+      },
+    });
+    if (!row) {
+      return { ok: false, campaignContactId };
+    }
+    const { contactMatchesSuppressionSet, listActiveNormalizedEmails } =
+      await import("@/lib/suppression/service");
+    const suppressedEmails = await listActiveNormalizedEmails(
+      row.contact.organizationId,
+      [row.contact.email],
+    );
+    const suppressed = contactMatchesSuppressionSet(
+      row.contact.email,
+      suppressedEmails,
+    );
+    if (
+      !isLookaheadEligible({
+        campaignContactId: row.id,
+        contactStatus: row.status,
+        suppressed,
+        sequenceStopped: row.sequenceStoppedAt != null,
+        drafts: row.emailDrafts.map((draft) => ({
+          sequenceNumber: draft.sequenceNumber,
+          subject: draft.subject ?? "",
+          body: draft.body ?? "",
+          status: draft.status,
+        })),
+      })
+    ) {
+      return { ok: false, skipped: true, campaignContactId };
+    }
+
+    const context = await loadEmailGenerationContext(
+      campaignContactId,
+      user.id,
+    );
+    const prepared = await prepareEmailGenerationMessages(context);
+    const draft = await generateEmailDraft(
+      context,
+      prepared.messages,
+      generationOptionsFromPrepared(prepared, {
+        onlyIfMissing: true,
+        lookahead: true,
+        chargeGenerationQuota: false,
+        acquireContactResearchIfMissing: false,
+      }),
+    );
+    if (draft.skipped) {
+      return { ok: true, skipped: true, campaignContactId };
+    }
+    return {
+      ok: true,
+      campaignContactId,
+      draftId: draft.draftId,
+      subject: draft.subject,
+      body: draft.body,
+      sequenceNumber: draft.sequenceNumber,
+      kind: draft.kind,
+      status: "DRAFT",
+      source: "AI_LOOKAHEAD",
+      generationQuotaCommitted: false,
+      personaId: draft.personaId,
+      personalizationTier: draft.personalizationTier,
+      personalizationSources: draft.personalizationSources,
+      claimConflicts: draft.claimConflicts,
+    };
+  } catch (error) {
+    console.error("Lookahead email draft generation failed.", {
+      campaignContactId,
+      error,
+    });
+    return { ok: false, campaignContactId };
+  }
+}
+
+export async function commitLookaheadDraftQuotaAction(
+  emailDraftId: string,
+): Promise<{ ok: boolean; committed?: boolean; message?: string }> {
+  try {
+    const user = await requireVerifiedForAiSpend();
+    const result = await commitLookaheadDraftQuota({
+      emailDraftId,
+      userId: user.id,
+    });
+    return { ok: true, committed: result.committed };
+  } catch (error) {
+    console.error("Lookahead quota commit failed.", { emailDraftId, error });
     return {
       ok: false,
       message: toSafeEmailGenerationError(error),

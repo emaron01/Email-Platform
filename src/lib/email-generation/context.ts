@@ -673,8 +673,10 @@ export async function loadEmailDraftScreenStates(input: {
 
 export async function ensureContactResearchForEmailGeneration(
   context: EmailGenerationContext,
+  options?: { acquireIfMissing?: boolean },
 ): Promise<EmailGenerationContext> {
   if (context.contactResearch) return context;
+  if (options?.acquireIfMissing === false) return context;
 
   const { snapshotCriterionRow } = await import("@/lib/scoring/snapshots");
   const personaCriteria = (

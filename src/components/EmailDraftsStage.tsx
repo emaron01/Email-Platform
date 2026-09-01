@@ -1,13 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { QualificationBucket } from "@prisma/client";
 import { EmailSequenceWorkspace } from "@/components/EmailSequenceWorkspace";
 import type { OfferConflict } from "@/lib/campaign/offer-validation";
 import type { ClaimValidationViolation } from "@/lib/email-generation/claim-validation-contract";
 import type { CampaignEmailLength } from "@/lib/campaign/save";
 import { sortEmailDraftContactsForSendQueue } from "@/lib/campaign/email-draft-contact-order";
+import {
+  contactDraftListStatus,
+  pickLookaheadContacts,
+} from "@/lib/campaign/email-draft-lookahead";
 import { QUALIFICATION_BUCKET_LABELS } from "@/lib/workflow/qualification";
+import {
+  commitLookaheadDraftQuotaAction,
+  lookaheadGenerateEmailDraftAction,
+  type LookaheadGenerateEmailDraftResult,
+} from "@/app/actions/email";
 
 export type EmailDraftsStageContact = {
   campaignContactId: string;
@@ -35,6 +44,8 @@ export type EmailDraftsStageContact = {
     body: string;
     status: "DRAFT" | "APPROVED" | "SENDING" | "SENT" | "SKIPPED" | "NOT_CREATED";
     kind: "INITIAL" | "FOLLOW_UP" | "REPLY";
+    source?: "AI" | "AI_LOOKAHEAD" | "MANUAL";
+    generationQuotaCommitted?: boolean;
     sentAt: string | null;
     handoffAt: string | null;
     replyClassification:
@@ -54,6 +65,53 @@ export type EmailDraftsStageContact = {
 };
 
 type ContactListFilter = "all" | "ready_to_send";
+
+function mergeLookaheadDraft(
+  contact: EmailDraftsStageContact,
+  result: LookaheadGenerateEmailDraftResult,
+): EmailDraftsStageContact {
+  if (
+    !result.draftId ||
+    !result.subject ||
+    !result.body ||
+    !result.sequenceNumber ||
+    !result.kind
+  ) {
+    return contact;
+  }
+  const nextDraft = {
+    id: result.draftId,
+    sequenceNumber: result.sequenceNumber,
+    subject: result.subject,
+    body: result.body,
+    status: "DRAFT" as const,
+    kind: result.kind,
+    source: result.source ?? "AI_LOOKAHEAD",
+    generationQuotaCommitted: result.generationQuotaCommitted ?? false,
+    sentAt: null,
+    handoffAt: null,
+    replyClassification: null,
+    referralSuggested: false,
+    emailLength: null,
+    personaId: result.personaId ?? null,
+    personalizationTier:
+      (result.personalizationTier as "BEST" | "COMPANY" | "THIN" | null) ??
+      null,
+    personalizationSources: result.personalizationSources ?? null,
+    claimConflicts: result.claimConflicts ?? [],
+  };
+  const exists = contact.drafts.some((draft) => draft.id === nextDraft.id);
+  return {
+    ...contact,
+    drafts: exists
+      ? contact.drafts.map((draft) =>
+          draft.id === nextDraft.id ? { ...draft, ...nextDraft } : draft,
+        )
+      : [...contact.drafts, nextDraft].sort(
+          (left, right) => left.sequenceNumber - right.sequenceNumber,
+        ),
+  };
+}
 
 export function EmailDraftsStage({
   contacts,
@@ -82,22 +140,106 @@ export function EmailDraftsStage({
   const [view, setView] = useState<"write" | "compare">("write");
   const [contactFilter, setContactFilter] =
     useState<ContactListFilter>("all");
+  const [stageContacts, setStageContacts] = useState(contacts);
   const [selectedId, setSelectedId] = useState(
     contacts[0]?.campaignContactId ?? "",
   );
+  const [preparingIds, setPreparingIds] = useState<Set<string>>(new Set());
+  const triggeredReviewKeys = useRef(new Set<string>());
+  const lookaheadRunId = useRef(0);
+
+  useEffect(() => {
+    setStageContacts(contacts);
+  }, [contacts]);
 
   const visibleContacts = useMemo(() => {
     const filtered =
       contactFilter === "ready_to_send"
-        ? contacts.filter((row) => row.drafts.length > 0)
-        : contacts;
+        ? stageContacts.filter((row) => row.drafts.length > 0)
+        : stageContacts;
     return sortEmailDraftContactsForSendQueue(filtered);
-  }, [contactFilter, contacts]);
+  }, [contactFilter, stageContacts]);
 
   const selected =
     visibleContacts.find((row) => row.campaignContactId === selectedId) ??
     visibleContacts[0] ??
     null;
+
+  const runLookahead = useCallback(
+    async (fromCampaignContactId: string, fromDraftId: string) => {
+      if (readOnly || view !== "write") return;
+      const reviewKey = `${fromCampaignContactId}:${fromDraftId}`;
+      if (triggeredReviewKeys.current.has(reviewKey)) return;
+      triggeredReviewKeys.current.add(reviewKey);
+
+      const targets = pickLookaheadContacts(
+        visibleContacts,
+        fromCampaignContactId,
+      );
+      if (targets.length === 0) return;
+
+      const runId = ++lookaheadRunId.current;
+      for (const target of targets) {
+        if (runId !== lookaheadRunId.current) break;
+        setPreparingIds((current) => new Set(current).add(target.campaignContactId));
+        try {
+          const result = await lookaheadGenerateEmailDraftAction(
+            target.campaignContactId,
+          );
+          if (!result.ok || result.skipped) continue;
+          setStageContacts((current) =>
+            current.map((contact) =>
+              contact.campaignContactId === target.campaignContactId
+                ? mergeLookaheadDraft(contact, result)
+                : contact,
+            ),
+          );
+        } finally {
+          setPreparingIds((current) => {
+            const next = new Set(current);
+            next.delete(target.campaignContactId);
+            return next;
+          });
+        }
+      }
+    },
+    [readOnly, view, visibleContacts],
+  );
+
+  const handleSelectContact = useCallback(
+    async (campaignContactId: string) => {
+      setSelectedId(campaignContactId);
+      const contact = stageContacts.find(
+        (row) => row.campaignContactId === campaignContactId,
+      );
+      const uncommitted = contact?.drafts.find(
+        (draft) =>
+          draft.source === "AI_LOOKAHEAD" &&
+          draft.generationQuotaCommitted === false &&
+          draft.subject &&
+          draft.body,
+      );
+      if (!uncommitted) return;
+      const committed = await commitLookaheadDraftQuotaAction(uncommitted.id);
+      if (committed.ok && committed.committed) {
+        setStageContacts((current) =>
+          current.map((row) =>
+            row.campaignContactId === campaignContactId
+              ? {
+                  ...row,
+                  drafts: row.drafts.map((draft) =>
+                    draft.id === uncommitted.id
+                      ? { ...draft, generationQuotaCommitted: true }
+                      : draft,
+                  ),
+                }
+              : row,
+          ),
+        );
+      }
+    },
+    [stageContacts],
+  );
 
   if (contacts.length === 0) {
     return null;
@@ -151,7 +293,7 @@ export function EmailDraftsStage({
             No drafts are ready to send.
           </p>
         ) : (
-          <CampaignDraftCompare contacts={visibleContacts} />
+          <CampaignDraftCompare contacts={visibleContacts} preparingIds={preparingIds} />
         )
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)]">
@@ -174,12 +316,15 @@ export function EmailDraftsStage({
                 {visibleContacts.map((row) => {
                   const active =
                     row.campaignContactId === selected?.campaignContactId;
-                  const draftCount = row.drafts.length;
+                  const statusLabel = contactDraftListStatus({
+                    isPreparing: preparingIds.has(row.campaignContactId),
+                    drafts: row.drafts,
+                  });
                   return (
                     <li key={row.campaignContactId}>
                       <button
                         type="button"
-                        onClick={() => setSelectedId(row.campaignContactId)}
+                        onClick={() => void handleSelectContact(row.campaignContactId)}
                         className={`w-full rounded-md px-2 py-2 text-left text-sm ${
                           active
                             ? "bg-white font-medium text-slate-900 shadow-sm ring-1 ring-slate-300"
@@ -190,16 +335,23 @@ export function EmailDraftsStage({
                         <span className="mt-0.5 block truncate text-xs text-slate-500">
                           {row.contactDetails}
                         </span>
-                        <span className="mt-1 block text-xs text-slate-500">
+                        <span
+                          className={`mt-1 block text-xs ${
+                            statusLabel === "Ready to review"
+                              ? "font-medium text-emerald-700"
+                              : statusLabel === "Prepared"
+                                ? "text-sky-700"
+                                : "text-slate-500"
+                          }`}
+                          data-testid={`contact-draft-status-${row.campaignContactId}`}
+                        >
                           {row.qualificationBucket
                             ? QUALIFICATION_BUCKET_LABELS[
                                 row.qualificationBucket
                               ]
                             : "Not scored"}
                           {" · "}
-                          {draftCount === 0
-                            ? "No draft"
-                            : `${draftCount} draft${draftCount === 1 ? "" : "s"}`}
+                          {statusLabel}
                         </span>
                       </button>
                     </li>
@@ -238,6 +390,29 @@ export function EmailDraftsStage({
                 personalizationSources={selected.personalizationSources}
                 initialDrafts={selected.drafts}
                 offerWarnings={offerWarnings}
+                onDraftOpenedForReview={(draftId) => {
+                  void runLookahead(selected.campaignContactId, draftId);
+                }}
+                onDraftGenerated={(draft) => {
+                  setStageContacts((current) =>
+                    current.map((contact) =>
+                      contact.campaignContactId === selected.campaignContactId
+                        ? mergeLookaheadDraft(contact, {
+                            ok: true,
+                            campaignContactId: selected.campaignContactId,
+                            draftId: draft.id,
+                            subject: draft.subject,
+                            body: draft.body,
+                            sequenceNumber: draft.sequenceNumber,
+                            kind: draft.kind,
+                            generationQuotaCommitted: true,
+                            source: "AI",
+                          })
+                        : contact,
+                    ),
+                  );
+                  void runLookahead(selected.campaignContactId, draft.id);
+                }}
               />
             </section>
           ) : null}
@@ -249,8 +424,10 @@ export function EmailDraftsStage({
 
 function CampaignDraftCompare({
   contacts,
+  preparingIds,
 }: {
   contacts: EmailDraftsStageContact[];
+  preparingIds: Set<string>;
 }) {
   const rows = useMemo(
     () =>
@@ -278,6 +455,12 @@ function CampaignDraftCompare({
             {contact.contactName}
           </h3>
           <p className="mt-0.5 text-xs text-slate-500">{contact.contactDetails}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {contactDraftListStatus({
+              isPreparing: preparingIds.has(contact.campaignContactId),
+              drafts: contact.drafts,
+            })}
+          </p>
           {draft ? (
             <>
               <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">

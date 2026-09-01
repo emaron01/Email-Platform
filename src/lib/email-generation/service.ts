@@ -179,12 +179,17 @@ export async function generateEmailDraft(
     personalization?: PersonalizationDecision;
     factSelectionUsage?: FactSelectionUsage | null;
     factSelectionCacheKey?: string | null;
+    onlyIfMissing?: boolean;
+    lookahead?: boolean;
+    chargeGenerationQuota?: boolean;
+    acquireContactResearchIfMissing?: boolean;
   } = {},
 ): Promise<{
   draftId: string;
   subject: string;
   body: string;
   regenerated: boolean;
+  skipped?: boolean;
   sequenceNumber: number;
   kind: EmailDraftKind;
   replyClassification: ReplyClassification | null;
@@ -198,6 +203,10 @@ export async function generateEmailDraft(
   let context = inputContext;
   const sequenceNumber = options.sequenceNumber ?? 1;
   const kind = options.kind ?? (sequenceNumber === 1 ? "INITIAL" : "FOLLOW_UP");
+  const lookahead = options.lookahead === true;
+  const chargeGenerationQuota = options.chargeGenerationQuota ?? !lookahead;
+  const acquireContactResearchIfMissing =
+    options.acquireContactResearchIfMissing ?? !lookahead;
   if (!Number.isInteger(sequenceNumber) || sequenceNumber < 1) {
     throw new TenantError(
       "Email sequence position must be a positive integer.",
@@ -223,14 +232,56 @@ export async function generateEmailDraft(
         sequenceNumber,
       },
     },
-    select: { id: true, status: true, sentAt: true },
+    select: {
+      id: true,
+      status: true,
+      sentAt: true,
+      subject: true,
+      body: true,
+      source: true,
+      generationQuotaCommitted: true,
+      sequenceNumber: true,
+      kind: true,
+      replyClassification: true,
+      referralSuggested: true,
+      emailLength: true,
+      personaId: true,
+      personalizationTier: true,
+      personalizationSources: true,
+      claimConflictsJson: true,
+    },
   });
   if (existing?.status === "SENT" || existing?.sentAt) {
     throw new TenantError(
       "Sent emails are read-only and cannot be regenerated.",
     );
   }
-  const regenerated = Boolean(existing);
+  if (
+    options.onlyIfMissing &&
+    existing?.subject?.trim() &&
+    existing.body?.trim()
+  ) {
+    const { claimConflictsFromJson } = await import(
+      "@/lib/email-generation/claim-conflicts"
+    );
+    return {
+      draftId: existing.id,
+      subject: existing.subject,
+      body: existing.body,
+      regenerated: false,
+      skipped: true,
+      sequenceNumber: existing.sequenceNumber,
+      kind: existing.kind,
+      replyClassification: existing.replyClassification,
+      referralSuggested: existing.referralSuggested,
+      emailLength: existing.emailLength ?? context.emailLength ?? context.campaign.emailLength,
+      personaId: existing.personaId ?? context.persona.id,
+      personalizationTier: existing.personalizationTier ?? "THIN",
+      personalizationSources: existing.personalizationSources ?? "",
+      claimConflicts: claimConflictsFromJson(existing.claimConflictsJson),
+    };
+  }
+  const regenerated = Boolean(existing?.subject && existing.body);
   if (sequenceNumber > 1) {
     const previous = context.sequence.find(
       (draft) => draft.sequenceNumber === sequenceNumber - 1,
@@ -256,12 +307,16 @@ export async function generateEmailDraft(
   let model: string | null = null;
 
   try {
-    await assertUsageAllowed({
-      organizationId: context.organizationId,
-      userId: context.userId,
-      resource: "EMAIL_GENERATION",
+    if (chargeGenerationQuota) {
+      await assertUsageAllowed({
+        organizationId: context.organizationId,
+        userId: context.userId,
+        resource: "EMAIL_GENERATION",
+      });
+    }
+    context = await ensureContactResearchForEmailGeneration(context, {
+      acquireIfMissing: acquireContactResearchIfMissing,
     });
-    context = await ensureContactResearchForEmailGeneration(context);
     const config = getEmailAiConfig();
     provider = config.provider;
     model = config.model;
@@ -401,7 +456,8 @@ export async function generateEmailDraft(
         body,
         generatedBody: body,
         status: "DRAFT",
-        source: "AI",
+        source: lookahead ? "AI_LOOKAHEAD" : "AI",
+        generationQuotaCommitted: chargeGenerationQuota,
         kind,
         replyClassification: options.replyClassification ?? null,
         prospectReplyText: options.prospectReplyText?.trim() || null,
@@ -420,7 +476,8 @@ export async function generateEmailDraft(
         body,
         generatedBody: body,
         status: "DRAFT",
-        source: "AI",
+        source: lookahead ? "AI_LOOKAHEAD" : "AI",
+        generationQuotaCommitted: chargeGenerationQuota,
         kind,
         replyClassification: options.replyClassification ?? null,
         prospectReplyText: options.prospectReplyText?.trim() || null,
@@ -495,6 +552,8 @@ export async function generateEmailDraft(
           draftId: draft.id,
           sequenceNumber: draft.sequenceNumber,
           source: draft.source,
+          lookahead,
+          generationQuotaCommitted: chargeGenerationQuota,
           promptVersion: EMAIL_GENERATION_PROMPT_VERSION,
           personalizationTier: personalization.tier,
           companyResearchUsed: personalization.companyResearchUsable,
@@ -558,6 +617,8 @@ export async function generateEmailDraft(
         draftId: draft.id,
         sequenceNumber: draft.sequenceNumber,
         source: draft.source,
+        lookahead,
+        generationQuotaCommitted: chargeGenerationQuota,
         promptVersion: EMAIL_GENERATION_PROMPT_VERSION,
         personalizationTier: personalization.tier,
         companyResearchUsed: personalization.companyResearchUsable,

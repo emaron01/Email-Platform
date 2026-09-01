@@ -68,6 +68,7 @@ enum EmailDraftStatus {
 
 enum EmailDraftSource {
   AI
+  AI_LOOKAHEAD
   MANUAL
 }
 
@@ -1977,6 +1978,8 @@ model EmailDraft {
   generatedBody        String?
   status               EmailDraftStatus     @default(NOT_CREATED)
   source               EmailDraftSource     @default(AI)
+  /// False for AI_LOOKAHEAD drafts until the rep opens the contact (quota charged then).
+  generationQuotaCommitted Boolean            @default(true)
   kind                 EmailDraftKind       @default(INITIAL)
   replyClassification  ReplyClassification?
   prospectReplyText    String?

@@ -109,6 +109,8 @@ export function EmailSequenceWorkspace({
   campaignEmailLength = "MEDIUM",
   sequenceStopped = false,
   sequenceStoppedReason = null,
+  onDraftOpenedForReview,
+  onDraftGenerated,
 }: {
   campaignContactId: string;
   contactId: string;
@@ -141,6 +143,14 @@ export function EmailSequenceWorkspace({
   campaignEmailLength?: CampaignEmailLength;
   sequenceStopped?: boolean;
   sequenceStoppedReason?: string | null;
+  onDraftOpenedForReview?: (draftId: string) => void;
+  onDraftGenerated?: (draft: {
+    id: string;
+    subject: string;
+    body: string;
+    sequenceNumber: number;
+    kind: "INITIAL" | "FOLLOW_UP" | "REPLY";
+  }) => void;
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState(initialDrafts);
@@ -181,6 +191,21 @@ export function EmailSequenceWorkspace({
   useEffect(() => {
     setSendConfirmDismissed(false);
   }, [selected?.id, selected?.handoffAt]);
+
+  useEffect(() => {
+    if (readOnly || suppressed || !onDraftOpenedForReview) return;
+    if (!selected?.id || !selected.subject || !selected.body) return;
+    if (selected.status === "SENT") return;
+    onDraftOpenedForReview(selected.id);
+  }, [
+    onDraftOpenedForReview,
+    readOnly,
+    selected?.body,
+    selected?.id,
+    selected?.status,
+    selected?.subject,
+    suppressed,
+  ]);
 
   const [deeplinkSendDeclined, setDeeplinkSendDeclined] = useState(false);
   const clientOpenInFlight = useRef(false);
@@ -260,6 +285,13 @@ export function EmailSequenceWorkspace({
     setRegenerationGuidance("");
     setReplyText("");
     setShowReplyBox(false);
+    onDraftGenerated?.({
+      id: next.draftId,
+      subject: next.subject,
+      body: next.body,
+      sequenceNumber: next.sequenceNumber,
+      kind: next.kind,
+    });
     router.refresh();
   }
 

@@ -1073,7 +1073,7 @@ describe("email generation action and UI seams", () => {
     expect(form).not.toContain(
       'window.open(href, "_blank", "noopener,noreferrer")',
     );
-    expect(form).toContain("clientOpenInFlight");
+    expect(form).toContain("onDraftOpenedForReview");
     expect(form).toContain("Opened");
     expect(form).toContain("Sent");
     expect(campaignDetailPage).toContain("handoffAt");
@@ -1081,6 +1081,10 @@ describe("email generation action and UI seams", () => {
     expect(campaignDetailPage).toContain("EmailDraftsStage");
     const draftsStage = readFileSync("src/components/EmailDraftsStage.tsx", "utf8");
     expect(draftsStage).toContain("sortEmailDraftContactsForSendQueue");
+    expect(draftsStage).toContain("lookaheadGenerateEmailDraftAction");
+    expect(draftsStage).toContain("Prepared");
+    expect(draftsStage).toContain("Ready to review");
+    expect(draftsStage).not.toContain("1 draft");
     expect(action).toContain("parseEmailLength");
     expect(form).toContain("selectedLength");
     expect(form).toContain("regenerateEmailDraftAction");
