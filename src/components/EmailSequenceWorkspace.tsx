@@ -101,7 +101,11 @@ export function EmailSequenceWorkspace({
   personaOptions = [],
   resolvedPersonaId = null,
   resolvedPersonaName = null,
-  usedCampaignFallback = false,
+  hasPersonaDecision = true,
+  needsPersonaConfirmation = false,
+  suggestedPersonaId = null,
+  suggestedPersonaName = null,
+  personaDecisionReason = null,
   personalizationTier = "THIN",
   personalizationLabel = "Persona and product only",
   personalizationDetail = "No usable company or contact research.",
@@ -136,7 +140,11 @@ export function EmailSequenceWorkspace({
   personaOptions?: Array<{ id: string; name: string }>;
   resolvedPersonaId?: string | null;
   resolvedPersonaName?: string | null;
-  usedCampaignFallback?: boolean;
+  hasPersonaDecision?: boolean;
+  needsPersonaConfirmation?: boolean;
+  suggestedPersonaId?: string | null;
+  suggestedPersonaName?: string | null;
+  personaDecisionReason?: string | null;
   personalizationTier?: "BEST" | "COMPANY" | "THIN";
   personalizationLabel?: string;
   personalizationDetail?: string;
@@ -168,7 +176,10 @@ export function EmailSequenceWorkspace({
   const [pending, startTransition] = useTransition();
   const [sendConfirmDismissed, setSendConfirmDismissed] = useState(false);
   const [selectedPersonaId, setSelectedPersonaId] = useState(
-    resolvedPersonaId ?? personaOptions[0]?.id ?? "",
+    resolvedPersonaId ??
+      suggestedPersonaId ??
+      personaOptions[0]?.id ??
+      "",
   );
   const latest = drafts.at(-1) ?? null;
   const selected =
@@ -189,6 +200,20 @@ export function EmailSequenceWorkspace({
     () => result?.offerWarnings ?? offerWarnings,
     [result, offerWarnings],
   );
+
+  useEffect(() => {
+    setSelectedPersonaId(
+      resolvedPersonaId ??
+        suggestedPersonaId ??
+        personaOptions[0]?.id ??
+        "",
+    );
+  }, [
+    campaignContactId,
+    resolvedPersonaId,
+    suggestedPersonaId,
+    personaOptions,
+  ]);
 
   useEffect(() => {
     setSendConfirmDismissed(false);
@@ -707,18 +732,32 @@ export function EmailSequenceWorkspace({
             </div>
           </fieldset>
           <div data-testid="resolved-persona">
+            {needsPersonaConfirmation ? (
+              <div
+                className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+                data-testid="persona-confirmation-prompt"
+              >
+                <p className="font-medium">This contact needs a persona</p>
+                <p className="mt-1 text-xs text-amber-900">
+                  {personaDecisionReason ??
+                    "No persona was matched during scoring."}
+                  {suggestedPersonaName
+                    ? ` Campaign default: ${suggestedPersonaName}.`
+                    : ""}
+                </p>
+              </div>
+            ) : null}
             <label className="block text-sm">
               <span className="font-medium text-slate-700">Persona for this email</span>
-              {usedCampaignFallback ? (
-                <span className="mt-1 block text-xs text-amber-800">
-                  Using campaign persona
-                  {resolvedPersonaName ? ` (${resolvedPersonaName})` : ""} —
-                  no matched persona on this contact.
-                </span>
-              ) : resolvedPersonaName ? (
+              {resolvedPersonaName && !needsPersonaConfirmation ? (
                 <span className="mt-1 block text-xs text-slate-500">
-                  Matched persona: {resolvedPersonaName}. Change before generating
-                  if needed.
+                  {hasPersonaDecision && resolvedPersonaId
+                    ? `Resolved persona: ${resolvedPersonaName}. Change before generating if needed.`
+                    : null}
+                </span>
+              ) : needsPersonaConfirmation ? (
+                <span className="mt-1 block text-xs text-slate-500">
+                  Confirm which persona applies before generating.
                 </span>
               ) : null}
               <select
@@ -756,7 +795,11 @@ export function EmailSequenceWorkspace({
             }
             className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
           >
-            {pending ? "Generating…" : "Generate Email 1"}
+            {pending
+              ? "Generating…"
+              : needsPersonaConfirmation
+                ? "Confirm persona & generate Email 1"
+                : "Generate Email 1"}
           </button>
         ) : (
           <>

@@ -109,8 +109,11 @@ function contextFixture(
       negativeRoleSignals: [],
     },
     personaResolution: {
-      source: "campaign_fallback",
-      usedCampaignFallback: true,
+      source: "chosen",
+      hasDecision: true,
+      needsConfirmation: false,
+      suggestedPersonaId: null,
+      decisionReason: null,
     },
     voiceSamples: [
       {
@@ -1241,6 +1244,7 @@ describe.skipIf(!hasDatabase)(
           campaignId: campaign.id,
           contactId: contact.id,
           status: "SELECTED",
+          chosenPersonaId: persona.id,
         },
       });
       campaignContactId = campaignContact.id;
@@ -1389,8 +1393,34 @@ describe.skipIf(!hasDatabase)(
       );
       expect(context.companyResearch).toBeNull();
       expect(context.product.problemsSolved).toEqual([]);
-      expect(context.personaResolution.usedCampaignFallback).toBe(true);
+      expect(context.personaResolution.hasDecision).toBe(true);
+      expect(context.personaResolution.source).toBe("chosen");
       expect(context.persona.name).toBe("CRO");
+    });
+
+    it("refuses generation context when no persona decision exists", async () => {
+      if (!ready) return;
+      const undecidedContact = await seedContactOnList(prisma, {
+        organizationId,
+        contactListId,
+        firstName: "Taylor",
+        email: `taylor-${suffix}@example.test`,
+        title: "VP of Sales",
+      });
+      const undecidedCampaignContact = await prisma.campaignContact.create({
+        data: {
+          organizationId,
+          campaignId,
+          contactId: undecidedContact.id,
+          status: "SELECTED",
+        },
+      });
+      const { loadEmailGenerationContext } = await import(
+        "@/lib/email-generation/context"
+      );
+      await expect(
+        loadEmailGenerationContext(undecidedCampaignContact.id, userAId),
+      ).rejects.toThrow(/choose a persona/i);
     });
 
     it("uses ContactScore.matchedPersonaId instead of the campaign fallback when present", async () => {
@@ -1455,7 +1485,7 @@ describe.skipIf(!hasDatabase)(
       );
       expect(context.persona.id).toBe(matchedPersona.id);
       expect(context.persona.name).toBe("RevOps");
-      expect(context.personaResolution.usedCampaignFallback).toBe(false);
+      expect(context.personaResolution.hasDecision).toBe(true);
       expect(context.personaResolution.source).toBe("matched");
     });
 

@@ -18,6 +18,7 @@ describe("email draft lookahead", () => {
         contactStatus: "SELECTED",
         suppressed: false,
         sequenceStopped: false,
+        hasPersonaDecision: true,
         drafts: [{ sequenceNumber: 1, subject: "Hi", body: "Body", status: "DRAFT" }],
       },
       {
@@ -25,6 +26,7 @@ describe("email draft lookahead", () => {
         contactStatus: "SELECTED",
         suppressed: false,
         sequenceStopped: false,
+        hasPersonaDecision: true,
         drafts: [],
       },
       {
@@ -32,6 +34,7 @@ describe("email draft lookahead", () => {
         contactStatus: "EXCLUDED",
         suppressed: false,
         sequenceStopped: false,
+        hasPersonaDecision: true,
         drafts: [],
       },
       {
@@ -39,6 +42,7 @@ describe("email draft lookahead", () => {
         contactStatus: "SELECTED",
         suppressed: true,
         sequenceStopped: false,
+        hasPersonaDecision: true,
         drafts: [],
       },
       {
@@ -46,6 +50,7 @@ describe("email draft lookahead", () => {
         contactStatus: "SELECTED",
         suppressed: false,
         sequenceStopped: false,
+        hasPersonaDecision: true,
         drafts: [],
       },
       {
@@ -53,6 +58,7 @@ describe("email draft lookahead", () => {
         contactStatus: "SELECTED",
         suppressed: false,
         sequenceStopped: false,
+        hasPersonaDecision: true,
         drafts: [],
       },
     ];
@@ -70,9 +76,33 @@ describe("email draft lookahead", () => {
         contactStatus: "SELECTED",
         suppressed: false,
         sequenceStopped: false,
+        hasPersonaDecision: true,
         drafts: [{ sequenceNumber: 1, subject: "Hi", body: "Body", status: "DRAFT" }],
       }),
     ).toBe(false);
+  });
+
+  it("skips contacts without a persona decision", () => {
+    expect(
+      isLookaheadEligible({
+        campaignContactId: "x",
+        contactStatus: "SELECTED",
+        suppressed: false,
+        sequenceStopped: false,
+        hasPersonaDecision: false,
+        drafts: [],
+      }),
+    ).toBe(false);
+  });
+
+  it("labels contacts that still need a persona decision", () => {
+    expect(
+      contactDraftListStatus({
+        isPreparing: false,
+        hasPersonaDecision: false,
+        drafts: [],
+      }),
+    ).toBe("Needs persona");
   });
 
   it("labels prepared drafts without implying the rep requested them", () => {

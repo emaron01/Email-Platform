@@ -19,6 +19,7 @@ import {
   resolveEmailGenerationPersona,
   resolvePersonalization,
   contactResearchForPrompt,
+  type ContactPersonaSource,
   type PersonalizationTier,
 } from "@/lib/email-generation/personalization";
 
@@ -189,15 +190,22 @@ export type EmailGenerationContext = {
     inReplyToDraftId: string | null;
   }>;
   personaResolution: {
-    source: "override" | "stored" | "matched" | "campaign_fallback" | "in_play";
-    usedCampaignFallback: boolean;
+    source: ContactPersonaSource;
+    hasDecision: boolean;
+    needsConfirmation: boolean;
+    suggestedPersonaId: string | null;
+    decisionReason: string | null;
   };
 };
 
 export type EmailDraftScreenState = {
   resolvedPersonaId: string | null;
   resolvedPersonaName: string | null;
-  usedCampaignFallback: boolean;
+  hasPersonaDecision: boolean;
+  needsPersonaConfirmation: boolean;
+  suggestedPersonaId: string | null;
+  suggestedPersonaName: string | null;
+  personaDecisionReason: string | null;
   personaOptions: Array<{ id: string; name: string }>;
   personalizationTier: PersonalizationTier;
   personalizationLabel: string;
@@ -333,7 +341,7 @@ export async function loadEmailGenerationContext(
           },
         },
         orderBy: [{ scoredAt: "desc" }, { createdAt: "desc" }],
-        select: { matchedPersonaId: true },
+        select: { matchedPersonaId: true, assessmentData: true },
       }),
     ]);
   const freshContactResearch = isFreshContactResearch(contactResearch)
@@ -349,13 +357,17 @@ export async function loadEmailGenerationContext(
       .reverse()
       .find((draft) => draft.personaId)?.personaId ?? null;
 
-  const inPlayPersonaIds = campaign.personasInPlay.map((row) => row.personaId);
+  const assessmentData = matchedScore?.assessmentData as
+    | { aiSkipReason?: string }
+    | null
+    | undefined;
   const resolved = resolveEmailGenerationPersona({
     overridePersonaId: options?.personaId,
+    chosenPersonaId: campaignContact.chosenPersonaId,
     storedPersonaId: options?.storedPersonaId ?? latestDraftPersonaId,
     matchedPersonaId: matchedScore?.matchedPersonaId ?? null,
-    campaignFallbackPersonaId: campaign.personaId,
-    inPlayPersonaIds,
+    suggestedPersonaId: campaign.personaId,
+    aiSkipReason: assessmentData?.aiSkipReason ?? null,
   });
   const personaRow =
     resolved.personaId === campaign.persona?.id
@@ -371,7 +383,10 @@ export async function loadEmailGenerationContext(
         : null;
   if (!personaRow) {
     throw new TenantError(
-      "No persona is available for this contact. Score the contact so a persona can be matched, pick a persona for this email, or set personas in play on the campaign.",
+      resolved.needsConfirmation
+        ? resolved.decisionReason ??
+          "Choose a persona for this contact before generating an email."
+        : "No persona is available for this contact.",
     );
   }
   const emailLength = options?.emailLength ?? campaign.emailLength;
@@ -515,7 +530,10 @@ export async function loadEmailGenerationContext(
     sequence: campaignContact.emailDrafts,
     personaResolution: {
       source: resolved.source,
-      usedCampaignFallback: resolved.usedCampaignFallback,
+      hasDecision: resolved.hasDecision,
+      needsConfirmation: resolved.needsConfirmation,
+      suggestedPersonaId: resolved.suggestedPersonaId,
+      decisionReason: resolved.decisionReason,
     },
   };
 }
@@ -532,6 +550,7 @@ export async function loadEmailDraftScreenStates(input: {
     campaignContactId: string;
     contactId: string;
     companyId: string | null;
+    chosenPersonaId?: string | null;
     storedPersonaId?: string | null;
   }>;
 }): Promise<Record<string, EmailDraftScreenState>> {
@@ -571,7 +590,12 @@ export async function loadEmailDraftScreenStates(input: {
             },
           },
           orderBy: [{ scoredAt: "desc" }, { createdAt: "desc" }],
-          select: { contactId: true, matchedPersonaId: true, scoredAt: true },
+          select: {
+            contactId: true,
+            matchedPersonaId: true,
+            scoredAt: true,
+            assessmentData: true,
+          },
         })
       : Promise.resolve([]),
     contactIds.length > 0
@@ -594,9 +618,18 @@ export async function loadEmailDraftScreenStates(input: {
   ]);
 
   const matchedByContact = new Map<string, string | null>();
+  const skipReasonByContact = new Map<string, string | null>();
   for (const score of scores) {
     if (!matchedByContact.has(score.contactId)) {
       matchedByContact.set(score.contactId, score.matchedPersonaId);
+      const assessmentData = score.assessmentData as
+        | { aiSkipReason?: string }
+        | null
+        | undefined;
+      skipReasonByContact.set(
+        score.contactId,
+        assessmentData?.aiSkipReason ?? null,
+      );
     }
   }
   const contactResearchByContact = new Map(
@@ -612,10 +645,11 @@ export async function loadEmailDraftScreenStates(input: {
   const states: Record<string, EmailDraftScreenState> = {};
   for (const row of input.contacts) {
     const resolved = resolveEmailGenerationPersona({
+      chosenPersonaId: row.chosenPersonaId ?? null,
       storedPersonaId: row.storedPersonaId ?? null,
       matchedPersonaId: matchedByContact.get(row.contactId) ?? null,
-      campaignFallbackPersonaId: input.campaignPersonaId,
-      inPlayPersonaIds: input.inPlay.map((persona) => persona.personaId),
+      suggestedPersonaId: input.campaignPersonaId,
+      aiSkipReason: skipReasonByContact.get(row.contactId) ?? null,
     });
     const contactResearch = contactResearchByContact.get(row.contactId) ?? null;
     const companyResearchRow = row.companyId
@@ -665,7 +699,13 @@ export async function loadEmailDraftScreenStates(input: {
       resolvedPersonaName: resolved.personaId
         ? (personaNameById.get(resolved.personaId) ?? null)
         : null,
-      usedCampaignFallback: resolved.usedCampaignFallback,
+      hasPersonaDecision: resolved.hasDecision,
+      needsPersonaConfirmation: resolved.needsConfirmation,
+      suggestedPersonaId: resolved.suggestedPersonaId,
+      suggestedPersonaName: resolved.suggestedPersonaId
+        ? (personaNameById.get(resolved.suggestedPersonaId) ?? null)
+        : null,
+      personaDecisionReason: resolved.decisionReason,
       personaOptions: options,
       personalizationTier: personalization.tier,
       personalizationLabel: personalization.label,

@@ -245,56 +245,34 @@ export function tokenJaccard(a: Set<string>, b: Set<string>): number {
   return union === 0 ? 0 : intersection / union;
 }
 
+import {
+  resolveContactPersonaDecision,
+  type ContactPersonaSource,
+} from "@/lib/campaign/contact-persona";
+
+export type { ContactPersonaSource };
+
 export function resolveEmailGenerationPersona(input: {
   overridePersonaId?: string | null;
+  chosenPersonaId?: string | null;
   storedPersonaId?: string | null;
   matchedPersonaId: string | null;
-  campaignFallbackPersonaId: string | null;
-  inPlayPersonaIds?: string[] | null;
+  suggestedPersonaId?: string | null;
+  aiSkipReason?: string | null;
 }): {
   personaId: string | null;
-  source: "override" | "stored" | "matched" | "campaign_fallback" | "in_play";
-  usedCampaignFallback: boolean;
+  source: ContactPersonaSource;
+  hasDecision: boolean;
+  needsConfirmation: boolean;
+  suggestedPersonaId: string | null;
+  decisionReason: string | null;
 } {
-  if (input.overridePersonaId) {
-    return {
-      personaId: input.overridePersonaId,
-      source: "override",
-      usedCampaignFallback: false,
-    };
-  }
-  if (input.storedPersonaId) {
-    return {
-      personaId: input.storedPersonaId,
-      source: "stored",
-      usedCampaignFallback: false,
-    };
-  }
-  if (input.matchedPersonaId) {
-    return {
-      personaId: input.matchedPersonaId,
-      source: "matched",
-      usedCampaignFallback: false,
-    };
-  }
-  if (input.campaignFallbackPersonaId) {
-    return {
-      personaId: input.campaignFallbackPersonaId,
-      source: "campaign_fallback",
-      usedCampaignFallback: true,
-    };
-  }
-  const inPlay = (input.inPlayPersonaIds ?? []).filter((id) => id.trim());
-  if (inPlay.length > 0 && inPlay[0]) {
-    return {
-      personaId: inPlay[0],
-      source: "in_play",
-      usedCampaignFallback: true,
-    };
-  }
-  return {
-    personaId: null,
-    source: "campaign_fallback",
-    usedCampaignFallback: true,
-  };
+  return resolveContactPersonaDecision({
+    overridePersonaId: input.overridePersonaId,
+    chosenPersonaId: input.chosenPersonaId,
+    matchedPersonaId: input.matchedPersonaId,
+    draftPersonaId: input.storedPersonaId,
+    suggestedPersonaId: input.suggestedPersonaId,
+    aiSkipReason: input.aiSkipReason,
+  });
 }

@@ -8,6 +8,7 @@ export type LookaheadContact = {
   contactStatus: string;
   suppressed: boolean;
   sequenceStopped: boolean;
+  hasPersonaDecision: boolean;
   drafts: Array<{
     sequenceNumber: number;
     subject: string;
@@ -22,6 +23,7 @@ export function isLookaheadEligible(contact: LookaheadContact): boolean {
   if (contact.suppressed) return false;
   if (contact.contactStatus === "EXCLUDED") return false;
   if (contact.sequenceStopped) return false;
+  if (!contact.hasPersonaDecision) return false;
   if (!contactHasUnsentEmailWork(contact)) return false;
   if (contact.drafts.some((draft) => draft.subject && draft.body)) return false;
   return true;
@@ -67,6 +69,7 @@ export function contactHasUncommittedLookaheadDraft(contact: {
 
 export function contactDraftListStatus(input: {
   isPreparing: boolean;
+  hasPersonaDecision?: boolean;
   drafts: Array<{
     subject: string;
     body: string;
@@ -79,6 +82,9 @@ export function contactDraftListStatus(input: {
   const reviewable = input.drafts.filter(
     (draft) => draft.subject && draft.body && draft.status !== "SENT",
   );
+  if (reviewable.length === 0 && input.hasPersonaDecision === false) {
+    return "Needs persona";
+  }
   if (reviewable.length === 0) return "No draft";
   if (contactHasUncommittedLookaheadDraft({ drafts: reviewable })) {
     return "Prepared";

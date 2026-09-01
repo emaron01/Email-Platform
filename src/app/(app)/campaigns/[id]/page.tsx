@@ -148,6 +148,7 @@ export default async function CampaignDetailPage({
       campaignContactId: entry.id,
       contactId: entry.contact.id,
       companyId: entry.contact.companyId,
+      chosenPersonaId: entry.chosenPersonaId,
       storedPersonaId:
         [...entry.emailDrafts]
           .reverse()
@@ -468,8 +469,16 @@ export default async function CampaignDetailPage({
                   resolvedPersonaId: draftScreen?.resolvedPersonaId ?? null,
                   resolvedPersonaName:
                     draftScreen?.resolvedPersonaName ?? null,
-                  usedCampaignFallback:
-                    draftScreen?.usedCampaignFallback ?? false,
+                  hasPersonaDecision:
+                    draftScreen?.hasPersonaDecision ?? true,
+                  needsPersonaConfirmation:
+                    draftScreen?.needsPersonaConfirmation ?? false,
+                  suggestedPersonaId:
+                    draftScreen?.suggestedPersonaId ?? null,
+                  suggestedPersonaName:
+                    draftScreen?.suggestedPersonaName ?? null,
+                  personaDecisionReason:
+                    draftScreen?.personaDecisionReason ?? null,
                   personalizationTier:
                     draftScreen?.personalizationTier ?? "THIN",
                   personalizationLabel:

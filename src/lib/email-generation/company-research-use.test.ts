@@ -124,8 +124,11 @@ function baseContext(
       negativeRoleSignals: [],
     },
     personaResolution: {
-      source: "campaign_fallback",
-      usedCampaignFallback: true,
+      source: "chosen",
+      hasDecision: true,
+      needsConfirmation: false,
+      suggestedPersonaId: null,
+      decisionReason: null,
     },
     voiceSamples: [],
     sequence: [],

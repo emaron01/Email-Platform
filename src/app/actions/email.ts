@@ -48,6 +48,9 @@ import type { EmailLength } from "@prisma/client";
 import { formatDailySendAdvisory } from "@/lib/usage/send-advisory";
 import { isLookaheadEligible } from "@/lib/campaign/email-draft-lookahead";
 import { commitLookaheadDraftQuota } from "@/lib/email-generation/lookahead-quota";
+import { resolveEmailGenerationPersona } from "@/lib/email-generation/personalization";
+import { TenantError } from "@/lib/tenant/errors";
+import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
 
 export type GenerateEmailDraftActionResult = {
   ok: boolean;
@@ -90,6 +93,45 @@ function revalidateCampaign(campaignId: string): void {
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
+async function persistChosenPersonaForGeneration(
+  campaignContactId: string,
+  organizationId: string,
+  personaId: string,
+): Promise<void> {
+  const row = await prisma.campaignContact.findFirst({
+    where: { id: campaignContactId, organizationId },
+    select: {
+      chosenPersonaId: true,
+      campaign: { select: { productId: true } },
+    },
+  });
+  if (!row) {
+    throw new TenantError(
+      "Campaign contact was not found in the active organization.",
+    );
+  }
+  if (row.chosenPersonaId === personaId) return;
+
+  const persona = await prisma.persona.findFirst({
+    where: {
+      id: personaId,
+      organizationId,
+      productId: row.campaign.productId,
+    },
+    select: { id: true },
+  });
+  if (!persona) {
+    throw new TenantError(
+      "The selected persona is not available for this campaign.",
+    );
+  }
+
+  await prisma.campaignContact.update({
+    where: { id: campaignContactId },
+    data: { chosenPersonaId: personaId },
+  });
+}
+
 function generationOptionsFromPrepared(
   prepared: PreparedEmailGeneration,
   extra: Parameters<typeof generateEmailDraft>[2] = {},
@@ -122,10 +164,22 @@ export async function generateEmailDraftAction(
 
   try {
     const user = await requireVerifiedForAiSpend();
+    const normalizedPersonaId = personaId?.trim() || null;
+    if (normalizedPersonaId) {
+      const organizationId = await requireOrganizationId();
+      await persistChosenPersonaForGeneration(
+        campaignContactId,
+        organizationId,
+        normalizedPersonaId,
+      );
+    }
     const context = await loadEmailGenerationContext(
       campaignContactId,
       user.id,
-      { personaId, emailLength: parseEmailLength(emailLength) },
+      {
+        personaId: normalizedPersonaId,
+        emailLength: parseEmailLength(emailLength),
+      },
     );
     const prepared = await prepareEmailGenerationMessages(
       context,
@@ -198,16 +252,62 @@ export async function lookaheadGenerateEmailDraftAction(
       select: {
         id: true,
         status: true,
+        chosenPersonaId: true,
         sequenceStoppedAt: true,
-        contact: { select: { email: true, organizationId: true } },
+        contact: { select: { id: true, email: true, organizationId: true } },
+        campaign: {
+          select: {
+            personaId: true,
+            productId: true,
+            icpId: true,
+            organizationId: true,
+          },
+        },
         emailDrafts: {
-          select: { sequenceNumber: true, subject: true, body: true, status: true },
+          select: {
+            sequenceNumber: true,
+            subject: true,
+            body: true,
+            status: true,
+            personaId: true,
+          },
+          orderBy: { sequenceNumber: "asc" },
         },
       },
     });
     if (!row) {
       return { ok: false, campaignContactId };
     }
+    const latestDraftPersonaId =
+      [...row.emailDrafts]
+        .reverse()
+        .find((draft) => draft.personaId)?.personaId ?? null;
+    const matchedScore = await prisma.contactScore.findFirst({
+      where: {
+        organizationId: row.contact.organizationId,
+        contactId: row.contact.id,
+        scoringStatus: "COMPLETED",
+        scoringRun: {
+          organizationId: row.campaign.organizationId,
+          productId: row.campaign.productId,
+          icpId: row.campaign.icpId,
+          status: { in: ["COMPLETED", "PARTIAL"] },
+        },
+      },
+      orderBy: [{ scoredAt: "desc" }, { createdAt: "desc" }],
+      select: { matchedPersonaId: true, assessmentData: true },
+    });
+    const assessmentData = matchedScore?.assessmentData as
+      | { aiSkipReason?: string }
+      | null
+      | undefined;
+    const personaDecision = resolveEmailGenerationPersona({
+      chosenPersonaId: row.chosenPersonaId,
+      storedPersonaId: latestDraftPersonaId,
+      matchedPersonaId: matchedScore?.matchedPersonaId ?? null,
+      suggestedPersonaId: row.campaign.personaId,
+      aiSkipReason: assessmentData?.aiSkipReason ?? null,
+    });
     const { contactMatchesSuppressionSet, listActiveNormalizedEmails } =
       await import("@/lib/suppression/service");
     const suppressedEmails = await listActiveNormalizedEmails(
@@ -224,6 +324,7 @@ export async function lookaheadGenerateEmailDraftAction(
         contactStatus: row.status,
         suppressed,
         sequenceStopped: row.sequenceStoppedAt != null,
+        hasPersonaDecision: personaDecision.hasDecision,
         drafts: row.emailDrafts.map((draft) => ({
           sequenceNumber: draft.sequenceNumber,
           subject: draft.subject ?? "",

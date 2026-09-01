@@ -32,7 +32,11 @@ export type EmailDraftsStageContact = {
   personaOptions: Array<{ id: string; name: string }>;
   resolvedPersonaId: string | null;
   resolvedPersonaName: string | null;
-  usedCampaignFallback: boolean;
+  hasPersonaDecision: boolean;
+  needsPersonaConfirmation: boolean;
+  suggestedPersonaId: string | null;
+  suggestedPersonaName: string | null;
+  personaDecisionReason: string | null;
   personalizationTier: "BEST" | "COMPANY" | "THIN";
   personalizationLabel: string;
   personalizationDetail: string;
@@ -367,6 +371,7 @@ export function EmailDraftsStage({
                     row.campaignContactId === selected?.campaignContactId;
                   const statusLabel = contactDraftListStatus({
                     isPreparing: preparingIds.has(row.campaignContactId),
+                    hasPersonaDecision: row.hasPersonaDecision,
                     drafts: row.drafts,
                   });
                   return (
@@ -390,7 +395,9 @@ export function EmailDraftsStage({
                               ? "font-medium text-emerald-700"
                               : statusLabel === "Prepared"
                                 ? "text-sky-700"
-                                : "text-slate-500"
+                                : statusLabel === "Needs persona"
+                                  ? "font-medium text-amber-800"
+                                  : "text-slate-500"
                           }`}
                           data-testid={`contact-draft-status-${row.campaignContactId}`}
                         >
@@ -441,7 +448,11 @@ export function EmailDraftsStage({
                 personaOptions={selected.personaOptions}
                 resolvedPersonaId={selected.resolvedPersonaId}
                 resolvedPersonaName={selected.resolvedPersonaName}
-                usedCampaignFallback={selected.usedCampaignFallback}
+                hasPersonaDecision={selected.hasPersonaDecision}
+                needsPersonaConfirmation={selected.needsPersonaConfirmation}
+                suggestedPersonaId={selected.suggestedPersonaId}
+                suggestedPersonaName={selected.suggestedPersonaName}
+                personaDecisionReason={selected.personaDecisionReason}
                 personalizationTier={selected.personalizationTier}
                 personalizationLabel={selected.personalizationLabel}
                 personalizationDetail={selected.personalizationDetail}

@@ -162,7 +162,10 @@ function contextFixture(
     },
     personaResolution: {
       source: "matched",
-      usedCampaignFallback: false,
+      hasDecision: true,
+      needsConfirmation: false,
+      suggestedPersonaId: null,
+      decisionReason: null,
     },
     voiceSamples: [
       {
@@ -319,83 +322,72 @@ describe("personalization tiers", () => {
 });
 
 describe("persona resolution for generation", () => {
-  it("uses matched persona, then campaign fallback", () => {
+  it("uses matched persona when present", () => {
     expect(
       resolveEmailGenerationPersona({
         matchedPersonaId: "persona_matched",
-        campaignFallbackPersonaId: "persona_campaign",
+        suggestedPersonaId: "persona_campaign",
       }),
     ).toEqual({
       personaId: "persona_matched",
       source: "matched",
-      usedCampaignFallback: false,
-    });
-    expect(
-      resolveEmailGenerationPersona({
-        matchedPersonaId: null,
-        campaignFallbackPersonaId: "persona_campaign",
-      }),
-    ).toEqual({
-      personaId: "persona_campaign",
-      source: "campaign_fallback",
-      usedCampaignFallback: true,
+      hasDecision: true,
+      needsConfirmation: false,
+      suggestedPersonaId: "persona_campaign",
+      decisionReason: null,
     });
   });
 
-  it("uses the persona stored on the draft when match and campaign fallback are absent", () => {
+  it("requires confirmation instead of silently using the campaign persona", () => {
+    expect(
+      resolveEmailGenerationPersona({
+        matchedPersonaId: null,
+        suggestedPersonaId: "persona_campaign",
+        aiSkipReason: "MULTI_PERSONA_MATCH",
+      }),
+    ).toEqual({
+      personaId: null,
+      source: "none",
+      hasDecision: false,
+      needsConfirmation: true,
+      suggestedPersonaId: "persona_campaign",
+      decisionReason:
+        "Title matched more than one persona — choose which applies.",
+    });
+  });
+
+  it("uses the persona stored on the draft when match is absent", () => {
     expect(
       resolveEmailGenerationPersona({
         storedPersonaId: "persona_stored",
         matchedPersonaId: null,
-        campaignFallbackPersonaId: null,
-        inPlayPersonaIds: ["persona_a", "persona_b"],
+        suggestedPersonaId: "persona_campaign",
       }),
     ).toEqual({
       personaId: "persona_stored",
-      source: "stored",
-      usedCampaignFallback: false,
+      source: "draft",
+      hasDecision: true,
+      needsConfirmation: false,
+      suggestedPersonaId: "persona_campaign",
+      decisionReason: null,
     });
   });
 
-  it("uses the sole persona in play when campaign.personaId is null", () => {
+  it("uses an explicit rep choice over later matches", () => {
     expect(
       resolveEmailGenerationPersona({
-        matchedPersonaId: null,
-        campaignFallbackPersonaId: null,
-        inPlayPersonaIds: ["persona_only"],
-      }),
-    ).toEqual({
-      personaId: "persona_only",
-      source: "in_play",
-      usedCampaignFallback: true,
-    });
-  });
-
-  it("uses the first persona in play when campaign.personaId is null", () => {
-    expect(
-      resolveEmailGenerationPersona({
-        matchedPersonaId: null,
-        campaignFallbackPersonaId: null,
-        inPlayPersonaIds: ["persona_a", "persona_b"],
-      }),
-    ).toEqual({
-      personaId: "persona_a",
-      source: "in_play",
-      usedCampaignFallback: true,
-    });
-  });
-
-  it("prefers the stored draft persona over a later matched persona", () => {
-    expect(
-      resolveEmailGenerationPersona({
-        storedPersonaId: "persona_used_on_draft",
+        chosenPersonaId: "persona_chosen",
+        storedPersonaId: "persona_stored",
         matchedPersonaId: "persona_matched",
-        campaignFallbackPersonaId: "persona_campaign",
+        suggestedPersonaId: "persona_campaign",
       }),
     ).toEqual({
-      personaId: "persona_used_on_draft",
-      source: "stored",
-      usedCampaignFallback: false,
+      personaId: "persona_chosen",
+      source: "chosen",
+      hasDecision: true,
+      needsConfirmation: false,
+      suggestedPersonaId: "persona_campaign",
+      decisionReason: null,
     });
   });
 });
@@ -582,14 +574,14 @@ describe("generation constraints", () => {
     expect(user).not.toContain("excludedCopySignals");
   });
 
-  it("draft screen surfaces fallback persona and personalization tier", () => {
+  it("draft screen surfaces persona confirmation and personalization tier", () => {
     const workspace = readFileSync(
       "src/components/EmailSequenceWorkspace.tsx",
       "utf8",
     );
-    expect(workspace).toContain("usedCampaignFallback");
+    expect(workspace).toContain("needsPersonaConfirmation");
     expect(workspace).toContain("personalizationTier");
-    expect(workspace).toContain("Using campaign persona");
+    expect(workspace).toContain("persona-confirmation-prompt");
     expect(workspace).toContain("data-testid=\"personalization-tier\"");
     expect(workspace).toContain("data-testid=\"resolved-persona\"");
     expect(workspace).toContain("data-testid=\"email-length\"");
@@ -599,6 +591,7 @@ describe("generation constraints", () => {
     expect(workspace).toContain("selectedLength");
     const stage = readFileSync("src/components/EmailDraftsStage.tsx", "utf8");
     expect(stage).toContain("Compare drafts");
+    expect(stage).toContain("Needs persona");
     expect(stage).toContain("data-testid=\"campaign-draft-compare\"");
     expect(stage).toContain("Campaign contacts");
     expect(stage).toContain('data-testid="email-contacts-filter"');
@@ -609,6 +602,7 @@ describe("generation constraints", () => {
     expect(page).toContain("Generate, edit, and send drafts for every contact");
     const context = readFileSync("src/lib/email-generation/context.ts", "utf8");
     expect(context).toContain("storedPersonaId: row.personaId");
-    expect(context).toContain("inPlayPersonaIds");
+    expect(context).toContain("chosenPersonaId");
+    expect(context).toContain("needsPersonaConfirmation");
   });
 });

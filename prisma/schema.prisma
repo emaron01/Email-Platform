@@ -1157,6 +1157,7 @@ model Persona {
   campaignPersonas CampaignPersona[]
   scoringRuns   ScoringRun[]
   matchedScores ContactScore[] @relation("ContactScoreMatchedPersona")
+  campaignContactsChosen CampaignContact[] @relation("CampaignContactChosenPersona")
   setupRuns     PersonaSetupRun[]
   sources      PersonaSource[]
 
@@ -1949,12 +1950,15 @@ model CampaignContact {
   sequenceStoppedByUserId String?
   /// Materialized next follow-up due date. Null when cadence inactive or no prior send.
   nextDueAt               DateTime?
+  /// Rep-confirmed persona for this contact in this campaign (explicit decision).
+  chosenPersonaId         String?
   createdAt               DateTime              @default(now())
   updatedAt               DateTime              @updatedAt
 
   organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campaign            Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   contact             Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  chosenPersona       Persona?          @relation("CampaignContactChosenPersona", fields: [chosenPersonaId], references: [id], onDelete: SetNull)
   sequenceStoppedBy   User?             @relation("SequenceStoppedBy", fields: [sequenceStoppedByUserId], references: [id], onDelete: SetNull)
   emailDrafts         EmailDraft[]
   sendRecords         EmailSendRecord[]
@@ -1966,6 +1970,7 @@ model CampaignContact {
   @@index([contactId])
   @@index([organizationId, nextDueAt])
   @@index([nextDueAt])
+  @@index([chosenPersonaId])
 }
 
 model EmailDraft {

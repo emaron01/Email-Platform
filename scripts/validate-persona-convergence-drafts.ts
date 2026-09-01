@@ -164,7 +164,10 @@ function baseContext(
     },
     personaResolution: {
       source: "override",
-      usedCampaignFallback: false,
+      hasDecision: true,
+      needsConfirmation: false,
+      suggestedPersonaId: null,
+      decisionReason: null,
     },
     excludedCopySignals: {
       riskSignals: [],
