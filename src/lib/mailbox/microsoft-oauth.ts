@@ -299,9 +299,8 @@ export async function beginMicrosoftMailboxConnection(input: {
   url.searchParams.set("nonce", nonce);
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("code_challenge_method", "S256");
-  // Force re-consent so reconnect after a permission/app change does not reuse a stale grant.
-  // Keep select_account so the user can pick the correct work mailbox.
-  url.searchParams.set("prompt", "select_account consent");
+  // Single prompt value only (AADSTS90023 if space-separated). consent forces a fresh grant.
+  url.searchParams.set("prompt", "consent");
   return url.toString();
 }
 

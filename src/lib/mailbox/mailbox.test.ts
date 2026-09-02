@@ -48,10 +48,15 @@ describe("connected-send production language", () => {
     expect(callback).toContain("mailboxCallbackErrorParam");
   });
 
-  it("authorize URL forces consent on reconnect and send path logs failures", () => {
+  it("authorize URL carries exactly one prompt value (consent)", () => {
     const oauth = readFileSync("src/lib/mailbox/microsoft-oauth.ts", "utf8");
     const graph = readFileSync("src/lib/mailbox/microsoft-graph.ts", "utf8");
-    expect(oauth).toContain('prompt", "select_account consent"');
+    const promptSets = [
+      ...oauth.matchAll(/searchParams\.set\(\s*"prompt",\s*"([^"]*)"\s*\)/g),
+    ];
+    expect(promptSets).toHaveLength(1);
+    expect(promptSets[0]?.[1]).toBe("consent");
+    expect(promptSets[0]?.[1]?.includes(" ")).toBe(false);
     expect(graph).toContain("mailbox_microsoft_send_failed");
     expect(graph).toContain("logSendFailure");
   });
