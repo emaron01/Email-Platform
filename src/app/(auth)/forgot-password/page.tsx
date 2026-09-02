@@ -3,29 +3,56 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 
+/**
+ * Password reset request. Must hit Better Auth's `/request-password-reset`
+ * (not the legacy/misnamed `/forget-password`, which is not registered).
+ */
 export default function ForgotPasswordPage() {
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
-    const email = String(new FormData(e.currentTarget).get("email") || "");
+    setMessage(null);
+    setError(null);
+    const email = String(new FormData(e.currentTarget).get("email") || "").trim();
     try {
-      await fetch("/api/auth/forget-password", {
+      const res = await fetch("/api/auth/request-password-reset", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Origin: window.location.origin,
+        },
         body: JSON.stringify({
           email,
           redirectTo: `${window.location.origin}/reset-password`,
         }),
       });
-    } catch {
-      // still neutral
+
+      if (!res.ok) {
+        const bodyText = await res.text().catch(() => "");
+        console.error("[auth] password-reset request failed", {
+          status: res.status,
+          body: bodyText.slice(0, 300),
+        });
+        setError(
+          "We could not send a reset email right now. Please try again in a few minutes.",
+        );
+        setLoading(false);
+        return;
+      }
+
+      setMessage(
+        "If an account exists for that email, we've sent password reset instructions.",
+      );
+    } catch (err) {
+      console.error("[auth] password-reset request network error", err);
+      setError(
+        "We could not reach the server to send a reset email. Please try again.",
+      );
     }
-    setMessage(
-      "If an account exists for that email, we've sent password reset instructions.",
-    );
     setLoading(false);
   }
 
@@ -49,7 +76,14 @@ export default function ForgotPasswordPage() {
           />
         </label>
         {message ? (
-          <p className="text-sm text-emerald-700">{message}</p>
+          <p className="text-sm text-emerald-700" role="status">
+            {message}
+          </p>
+        ) : null}
+        {error ? (
+          <p className="text-sm text-red-600" role="alert">
+            {error}
+          </p>
         ) : null}
         <button
           type="submit"

@@ -65,6 +65,17 @@ export const auth = betterAuth({
     maxPasswordLength: 128,
     sendResetPassword: async ({ user, url }) => {
       // Never throw: forgot-password must stay neutral regardless of SMTP outcome.
+      console.info("[auth] password-reset sendResetPassword invoked", {
+        authUserId: user.id,
+        email: user.email,
+        resetUrlHost: (() => {
+          try {
+            return new URL(url).host;
+          } catch {
+            return "(invalid-url)";
+          }
+        })(),
+      });
       try {
         const appUser = await prisma.user.findUnique({
           where: { authUserId: user.id },
@@ -83,8 +94,15 @@ export const auth = betterAuth({
             expirationTime: "1 hour",
           },
         });
+        console.info("[auth] password-reset email queued/sent", {
+          authUserId: user.id,
+          email: user.email,
+          appUserId: appUser?.id ?? null,
+        });
       } catch (error) {
         console.error("[auth] password-reset email failed", {
+          authUserId: user.id,
+          email: user.email,
           failureCategory:
             error instanceof Error ? error.name : "PROVIDER_ERROR",
           message: error instanceof Error ? error.message.slice(0, 300) : "unknown",
