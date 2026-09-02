@@ -8,10 +8,15 @@ export const MICROSOFT_MAIL_SCOPES = [
   "https://graph.microsoft.com/Mail.Send",
 ] as const;
 
+/** Default matches multi-tenant + personal Microsoft account app registrations. */
+export const MICROSOFT_AUTHORITY_TENANT_DEFAULT = "common";
+
 export type MicrosoftMailboxConfig = {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
+  /** Authority tenant segment: common | organizations | consumers | {tenant-guid}. */
+  authorityTenant: string;
   authorizeUrl: string;
   tokenUrl: string;
   graphBaseUrl: string;
@@ -48,6 +53,43 @@ export function appAbsoluteUrl(path: string): string {
   return new URL(path, `${base}/`).toString();
 }
 
+const GUID_TENANT =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Microsoft identity platform authority tenant segment.
+ * Env: MICROSOFT_AUTHORITY_TENANT (default: common).
+ * Allowed: common | organizations | consumers | a tenant GUID.
+ */
+export function resolveMicrosoftAuthorityTenant(
+  raw: string | undefined | null = process.env.MICROSOFT_AUTHORITY_TENANT,
+): string {
+  const trimmed = (raw ?? "").trim().toLowerCase();
+  const value = trimmed || MICROSOFT_AUTHORITY_TENANT_DEFAULT;
+  if (
+    value === "common" ||
+    value === "organizations" ||
+    value === "consumers" ||
+    GUID_TENANT.test(value)
+  ) {
+    return value;
+  }
+  throw new Error(
+    "MICROSOFT_AUTHORITY_TENANT must be common, organizations, consumers, or a tenant GUID.",
+  );
+}
+
+export function microsoftAuthorityUrls(authorityTenant: string): {
+  authorizeUrl: string;
+  tokenUrl: string;
+} {
+  const base = `https://login.microsoftonline.com/${authorityTenant}/oauth2/v2.0`;
+  return {
+    authorizeUrl: `${base}/authorize`,
+    tokenUrl: `${base}/token`,
+  };
+}
+
 export function getMicrosoftMailboxConfig(): MicrosoftMailboxConfig {
   const appUrl = (
     process.env.APP_URL ??
@@ -60,14 +102,15 @@ export function getMicrosoftMailboxConfig(): MicrosoftMailboxConfig {
   if (!redirectUri) {
     throw new Error("MICROSOFT_REDIRECT_URI or APP_URL is required.");
   }
+  const authorityTenant = resolveMicrosoftAuthorityTenant();
+  const { authorizeUrl, tokenUrl } = microsoftAuthorityUrls(authorityTenant);
   return {
     clientId: required("MICROSOFT_CLIENT_ID"),
     clientSecret: required("MICROSOFT_CLIENT_SECRET"),
     redirectUri,
-    authorizeUrl:
-      "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize",
-    tokenUrl:
-      "https://login.microsoftonline.com/organizations/oauth2/v2.0/token",
+    authorityTenant,
+    authorizeUrl,
+    tokenUrl,
     graphBaseUrl: "https://graph.microsoft.com/v1.0",
   };
 }

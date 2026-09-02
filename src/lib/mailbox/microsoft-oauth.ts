@@ -33,7 +33,9 @@ export type MailboxOAuthStage =
   | "token_exchange"
   | "id_token_verify"
   | "db_upsert"
-  | "begin_authorize";
+  | "begin_authorize"
+  | "get_access_token"
+  | "graph_sendMail";
 
 const tokenResponseSchema = z.object({
   access_token: z.string().min(1),
@@ -74,7 +76,9 @@ export class MailboxConnectionError extends Error {
 }
 
 export type MailboxConnectionLogEvent = {
-  event: "mailbox_microsoft_connection_failed";
+  event:
+    | "mailbox_microsoft_connection_failed"
+    | "mailbox_microsoft_send_failed";
   stage: MailboxOAuthStage | "unknown";
   code: string;
   recovery: MailboxRecovery | "UNKNOWN";
@@ -295,7 +299,9 @@ export async function beginMicrosoftMailboxConnection(input: {
   url.searchParams.set("nonce", nonce);
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("code_challenge_method", "S256");
-  url.searchParams.set("prompt", "select_account");
+  // Force re-consent so reconnect after a permission/app change does not reuse a stale grant.
+  // Keep select_account so the user can pick the correct work mailbox.
+  url.searchParams.set("prompt", "select_account consent");
   return url.toString();
 }
 
@@ -312,7 +318,7 @@ async function verifiedIdentity(
   if (!tenantId) {
     throw new MailboxConnectionError(
       "INVALID_IDENTITY",
-      "Microsoft did not return an organization tenant identity.",
+      "Microsoft did not return a tenant identity for this account.",
       "RECONNECT",
       null,
       "id_token_verify",

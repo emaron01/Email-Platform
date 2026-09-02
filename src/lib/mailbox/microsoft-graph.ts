@@ -5,8 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { toEmailTransportBody } from "@/lib/email-generation/email-body";
 import { getMicrosoftMailboxConfig } from "@/lib/mailbox/microsoft-config";
 import {
+  classifyMailboxConnectionFailure,
   getMicrosoftAccessToken,
+  logMailboxConnectionFailure,
   MailboxConnectionError,
+  type MailboxOAuthStage,
 } from "@/lib/mailbox/microsoft-oauth";
 import type {
   ConnectedEmailProvider,
@@ -50,6 +53,7 @@ function graphFailure(
   status: number,
   error: GraphError,
   retryAfter: string | null,
+  stage: MailboxOAuthStage,
 ): MailboxConnectionError {
   const combined = `${error.code ?? ""} ${error.message ?? ""}`;
   if (
@@ -62,7 +66,8 @@ function graphFailure(
       "RECONNECT_REQUIRED",
       "Microsoft rejected the mailbox connection. Reconnect and try again.",
       "RECONNECT",
-      error.message,
+      error.message ?? error.code,
+      stage,
     );
   }
   if (/admin.*consent|Authorization_RequestDenied|AADSTS65001/i.test(combined)) {
@@ -70,7 +75,8 @@ function graphFailure(
       "ADMIN_CONSENT_REQUIRED",
       "Your Microsoft tenant administrator must approve the Mail.Send permission.",
       "ASK_ADMIN",
-      error.message,
+      error.message ?? error.code,
+      stage,
     );
   }
   if (status === 429) {
@@ -80,7 +86,8 @@ function graphFailure(
         ? `Microsoft is throttling sends. Wait ${retryAfter} seconds and try again.`
         : "Microsoft is throttling sends. Wait briefly and try again.",
       "WAIT_RETRY",
-      error.message,
+      error.message ?? error.code,
+      stage,
     );
   }
   if (status === 400 || /InvalidRecipient|ErrorInvalidRecipients/i.test(combined)) {
@@ -90,7 +97,8 @@ function graphFailure(
         ? `Microsoft rejected the message: ${error.message}`
         : "Microsoft rejected the recipient or message. Review the draft and try again.",
       "EDIT_DRAFT",
-      error.message,
+      error.message ?? error.code,
+      stage,
     );
   }
   return new MailboxConnectionError(
@@ -99,69 +107,126 @@ function graphFailure(
       ? `Microsoft rejected the send: ${error.message}`
       : "Microsoft could not accept the message. The draft was kept unchanged.",
     status >= 500 ? "RETRY" : "EDIT_DRAFT",
+    error.message ?? error.code,
+    stage,
+  );
+}
+
+function logSendFailure(error: unknown, fallbackStage: MailboxOAuthStage) {
+  const classified = classifyMailboxConnectionFailure(error);
+  logMailboxConnectionFailure({
+    event: "mailbox_microsoft_send_failed",
+    stage: classified.stage !== "unknown" ? classified.stage : fallbackStage,
+    code: classified.code,
+    recovery: classified.recovery,
+    providerReasonSafe: classified.providerReasonSafe,
+    messageSafe: classified.messageSafe,
+  });
+}
+
+function withStage(
+  error: MailboxConnectionError,
+  stage: MailboxOAuthStage,
+): MailboxConnectionError {
+  if (error.stage) return error;
+  return new MailboxConnectionError(
+    error.code,
     error.message,
+    error.recovery,
+    error.providerReason,
+    stage,
   );
 }
 
 async function sendMicrosoftGraph(
   input: ConnectedEmailSendInput,
 ): Promise<ConnectedEmailSendResult> {
-  const auth = await getMicrosoftAccessToken(input);
-  const config = getMicrosoftMailboxConfig();
-  const clientRequestId = randomUUID();
-  const response = await fetch(`${config.graphBaseUrl}/me/sendMail`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${auth.accessToken}`,
-      "content-type": "application/json",
-      "client-request-id": clientRequestId,
-      "return-client-request-id": "true",
-    },
-    body: JSON.stringify({
-      message: {
-        subject: input.subject,
-        body: {
-          contentType: "Text",
-          content: toEmailTransportBody(input.body),
-        },
-        toRecipients: [
-          { emailAddress: { address: input.to } },
-        ],
+  let stage: MailboxOAuthStage = "get_access_token";
+  try {
+    const auth = await getMicrosoftAccessToken(input);
+    stage = "graph_sendMail";
+    const config = getMicrosoftMailboxConfig();
+    const clientRequestId = randomUUID();
+    const response = await fetch(`${config.graphBaseUrl}/me/sendMail`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${auth.accessToken}`,
+        "content-type": "application/json",
+        "client-request-id": clientRequestId,
+        "return-client-request-id": "true",
       },
-      saveToSentItems: true,
-    }),
-    cache: "no-store",
-  });
-  if (response.status !== 202) {
-    const raw: unknown = await response.json().catch(() => null);
-    const error = graphFailure(
-      response.status,
-      graphError(raw),
-      response.headers.get("retry-after"),
-    );
-    if (error.recovery === "RECONNECT") {
-      await requireReconnect(input, error.code);
+      body: JSON.stringify({
+        message: {
+          subject: input.subject,
+          body: {
+            contentType: "Text",
+            content: toEmailTransportBody(input.body),
+          },
+          toRecipients: [
+            { emailAddress: { address: input.to } },
+          ],
+        },
+        saveToSentItems: true,
+      }),
+      cache: "no-store",
+    });
+    if (response.status !== 202) {
+      const raw: unknown = await response.json().catch(() => null);
+      const error = graphFailure(
+        response.status,
+        graphError(raw),
+        response.headers.get("retry-after"),
+        "graph_sendMail",
+      );
+      if (error.recovery === "RECONNECT") {
+        await requireReconnect(input, error.code);
+      }
+      logSendFailure(error, "graph_sendMail");
+      throw error;
     }
-    throw error;
+    const dateHeader = response.headers.get("date");
+    const acceptedAt = dateHeader ? new Date(dateHeader) : null;
+    if (!acceptedAt || Number.isNaN(acceptedAt.getTime())) {
+      const error = new MailboxConnectionError(
+        "MISSING_PROVIDER_TIMESTAMP",
+        "Microsoft accepted the message but did not return a valid response timestamp. Contact support before retrying.",
+        "CONTACT_SUPPORT",
+        null,
+        "graph_sendMail",
+      );
+      logSendFailure(error, "graph_sendMail");
+      throw error;
+    }
+    return {
+      provider: "MICROSOFT_365",
+      acceptedAt,
+      providerMessageId: null,
+      providerRequestId:
+        response.headers.get("request-id") ??
+        response.headers.get("client-request-id") ??
+        clientRequestId,
+    };
+  } catch (error) {
+    if (
+      error instanceof MailboxConnectionError &&
+      error.stage === "graph_sendMail"
+    ) {
+      // Already logged for Graph response / timestamp failures.
+      throw error;
+    }
+    const tagged =
+      error instanceof MailboxConnectionError
+        ? withStage(error, stage)
+        : error;
+    if (
+      tagged instanceof MailboxConnectionError &&
+      tagged.recovery === "RECONNECT"
+    ) {
+      await requireReconnect(input, tagged.code);
+    }
+    logSendFailure(tagged, stage);
+    throw tagged;
   }
-  const dateHeader = response.headers.get("date");
-  const acceptedAt = dateHeader ? new Date(dateHeader) : null;
-  if (!acceptedAt || Number.isNaN(acceptedAt.getTime())) {
-    throw new MailboxConnectionError(
-      "MISSING_PROVIDER_TIMESTAMP",
-      "Microsoft accepted the message but did not return a valid response timestamp. Contact support before retrying.",
-      "CONTACT_SUPPORT",
-    );
-  }
-  return {
-    provider: "MICROSOFT_365",
-    acceptedAt,
-    providerMessageId: null,
-    providerRequestId:
-      response.headers.get("request-id") ??
-      response.headers.get("client-request-id") ??
-      clientRequestId,
-  };
 }
 
 export const microsoftGraphEmailProvider: ConnectedEmailProvider = {

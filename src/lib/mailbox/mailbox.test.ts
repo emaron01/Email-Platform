@@ -47,6 +47,14 @@ describe("connected-send production language", () => {
     expect(callback).toContain("logMailboxConnectionFailure");
     expect(callback).toContain("mailboxCallbackErrorParam");
   });
+
+  it("authorize URL forces consent on reconnect and send path logs failures", () => {
+    const oauth = readFileSync("src/lib/mailbox/microsoft-oauth.ts", "utf8");
+    const graph = readFileSync("src/lib/mailbox/microsoft-graph.ts", "utf8");
+    expect(oauth).toContain('prompt", "select_account consent"');
+    expect(graph).toContain("mailbox_microsoft_send_failed");
+    expect(graph).toContain("logSendFailure");
+  });
 });
 
 describe("mailbox secret encryption", () => {
