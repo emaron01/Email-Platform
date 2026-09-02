@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  ProductResynthesisReview,
-  productBeforeProfileFromJson,
-} from "@/components/ProductResynthesisReview";
+import { ProductResynthesisReview } from "@/components/ProductResynthesisReview";
 import { PageHeader, TenantMissing } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import type { ProductDraft } from "@/lib/product-research/contract";
 import { PRODUCT_RESYNTHESIS_USER_CONTEXT_FLAG } from "@/lib/product-research/resynthesize-approved";
+import { productDraftFromApprovedProfile } from "@/lib/product-research/resynthesize-approved-plan";
 import { getProduct } from "@/lib/tenant/data";
 import {
   getCurrentOrganization,
@@ -88,7 +86,7 @@ export default async function ProductResynthesisReviewPage({ params }: PageProps
           draft={draft}
           failed={failed}
           errorSafe={run.errorSafe}
-          beforeProfile={productBeforeProfileFromJson(product.profileJson)}
+          beforeProfile={productDraftFromApprovedProfile(product.profileJson)}
           manuallyEditedFields={product.manuallyEditedFields}
         />
       </section>

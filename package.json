@@ -26,6 +26,7 @@
     "platform:bootstrap-admin": "dotenv -e .env.local -e .env -- tsx scripts/platform-bootstrap-admin.ts",
     "platform:provision-super-admin": "dotenv -e .env.local -e .env -- tsx scripts/platform-provision-super-admin.ts",
     "test": "vitest run",
+    "test:smoke": "tsx scripts/smoke-routes.ts",
     "typecheck:scripts": "tsc -p scripts/ad-hoc/tsconfig.json --noEmit"
   },
   "dependencies": {

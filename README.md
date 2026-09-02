@@ -92,3 +92,4 @@ npm run dev
 | `npm run db:test:up` | Start local Postgres for tests (docker compose, port 5433) |
 | `npm run db:test:migrate` | Apply Prisma migrations to the test database only |
 | `npm test` | Full suite against TEST_DATABASE_URL (never `.env.local`) |
+| `npm run test:smoke` | Production build + `next start` against TEST_DATABASE_URL; GET every app page route (run after `npm run build`) |

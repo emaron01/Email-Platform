@@ -8,7 +8,7 @@ import {
   computeCostReport,
   getLatestSpendDrift,
 } from "@/lib/platform/cost";
-import { PLATFORM_ROUTE_AUDIT } from "@/components/PlatformConsoleNav";
+import { PLATFORM_ROUTE_AUDIT } from "@/lib/platform/route-audit";
 
 function formatUsd(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";

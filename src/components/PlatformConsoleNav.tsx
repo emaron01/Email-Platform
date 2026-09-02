@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { PlatformRole } from "@prisma/client";
+import { PLATFORM_ROUTE_AUDIT } from "@/lib/platform/route-audit";
+
+export { PLATFORM_ROUTE_AUDIT };
 
 const PLATFORM_NAV_ITEMS = [
   { href: "/platform", label: "Home", match: "exact" as const },
@@ -23,17 +26,6 @@ function itemsForRole(platformRole: PlatformRole) {
       platformRole === "SUPER_ADMIN",
   );
 }
-
-/** Every /platform route that must be reachable from console nav (directly or via Orgs). */
-export const PLATFORM_ROUTE_AUDIT = [
-  "/platform",
-  "/platform/orgs",
-  "/platform/orgs/new",
-  "/platform/orgs/[id]",
-  "/platform/orgs/[id]/view",
-  "/platform/costs",
-  "/platform/email-templates",
-] as const;
 
 export function PlatformConsoleNav({
   platformRole,

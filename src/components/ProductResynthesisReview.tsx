@@ -345,7 +345,3 @@ export function ProductResynthesisReview({
     </div>
   );
 }
-
-export function productBeforeProfileFromJson(profileJson: unknown): ProductDraft {
-  return productDraftFromApprovedProfile(profileJson);
-}
