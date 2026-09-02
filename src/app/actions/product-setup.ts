@@ -12,6 +12,11 @@ import {
   approveProductFromDraft,
 } from "@/lib/product-research/approve";
 import { resynthesizeFromBundle } from "@/lib/product-research/synthesize";
+import {
+  addProductSourcesAndResynthesize,
+  applyApprovedProductResynthesis,
+  finalizeApprovedProductResynthesisRun,
+} from "@/lib/product-research/resynthesize-approved";
 import { productUrlResearchIsStale } from "@/lib/product-research/acquire";
 import type { IngestSourceInput } from "@/lib/product-research/acquire";
 import type {
@@ -37,8 +42,10 @@ export type ProductSetupActionResult = {
 
 function revalidateProduct(productId?: string) {
   revalidatePath("/setup");
+  revalidatePath("/products");
   if (productId) revalidatePath(`/setup/${productId}`);
   if (productId) revalidatePath(`/setup/${productId}/research`);
+  if (productId) revalidatePath(`/setup/${productId}/research/resynthesis`);
 }
 
 function safeError(error: unknown): string {
@@ -211,6 +218,203 @@ export async function retryProductSynthesisAction(
       setupRunId: result.setupRunId,
       evidenceBundleId,
       status: result.status,
+    };
+  } catch (error) {
+    return { ok: false, message: safeError(error) };
+  }
+}
+
+/** Retry synthesis for an in-place approved-product resynthesis draft. */
+export async function retryApprovedProductResynthesisAction(
+  _prev: ProductSetupActionResult | null,
+  formData: FormData,
+): Promise<ProductSetupActionResult> {
+  try {
+    const user = await requireCurrentUser();
+    const organizationId = await requireOrganizationId();
+    const productId = String(formData.get("productId") || "").trim();
+    const setupRunId = String(formData.get("setupRunId") || "").trim();
+    const evidenceBundleId = String(formData.get("evidenceBundleId") || "").trim();
+    if (!productId || !setupRunId || !evidenceBundleId) {
+      return {
+        ok: false,
+        message: "Product, setup run, and evidence bundle are required.",
+      };
+    }
+
+    const priorRun = await prisma.productSetupRun.findFirst({
+      where: { id: setupRunId, organizationId, productId },
+    });
+    if (!priorRun?.userContextJson) {
+      return { ok: false, message: "Re-synthesis run not found." };
+    }
+
+    const result = await resynthesizeFromBundle({
+      organizationId,
+      productId,
+      userId: user.id,
+      evidenceBundleId,
+    });
+
+    await prisma.productSetupRun.update({
+      where: { id: result.setupRunId },
+      data: { userContextJson: priorRun.userContextJson },
+    });
+    await finalizeApprovedProductResynthesisRun({
+      organizationId,
+      productId,
+      setupRunId: result.setupRunId,
+    });
+
+    revalidateProduct(productId);
+    return {
+      ok: result.status !== "FAILED",
+      message:
+        result.status === "FAILED"
+          ? result.errorSafe ||
+            "Re-synthesis could not be completed. Your approved product was not changed."
+          : "Re-synthesis draft ready for review.",
+      productId,
+      setupRunId: result.setupRunId,
+      evidenceBundleId,
+      status: result.status,
+    };
+  } catch (error) {
+    return { ok: false, message: safeError(error) };
+  }
+}
+
+/**
+ * Append new paste/notes/uploads to an approved product, re-synthesize in place.
+ */
+export async function addProductSourcesAction(
+  _prev: ProductSetupActionResult | null,
+  formData: FormData,
+): Promise<ProductSetupActionResult> {
+  try {
+    const user = await requireCurrentUser();
+    const organizationId = await requireOrganizationId();
+    const productId = String(formData.get("productId") || "").trim();
+    if (!productId) {
+      return { ok: false, message: "Product is required." };
+    }
+
+    const notes = String(formData.get("notes") || "").trim();
+    const pasted = String(formData.get("pastedContent") || "").trim();
+    const sources: IngestSourceInput[] = [];
+    if (notes) {
+      sources.push({ type: "USER_NOTE", text: notes, displayName: "Product notes" });
+    }
+    if (pasted) {
+      sources.push({
+        type: "PASTED_TEXT",
+        text: pasted,
+        displayName: "Pasted product content",
+      });
+    }
+
+    const files = formData.getAll("files");
+    for (const file of files) {
+      if (!(file instanceof File) || file.size === 0) continue;
+      const buf = new Uint8Array(await file.arrayBuffer());
+      sources.push({
+        type: "UPLOADED_DOCUMENT",
+        filename: file.name,
+        mimeType: file.type || "application/octet-stream",
+        bytes: buf,
+      });
+    }
+
+    if (sources.length === 0) {
+      return {
+        ok: false,
+        message: "Add at least one note, paste, or upload.",
+        productId,
+      };
+    }
+
+    const result = await addProductSourcesAndResynthesize({
+      organizationId,
+      productId,
+      userId: user.id,
+      sources,
+    });
+
+    revalidateProduct(productId);
+    return {
+      ok: result.status !== "FAILED",
+      message: result.message,
+      productId,
+      setupRunId: result.setupRunId,
+      evidenceBundleId: result.evidenceBundleId,
+      status: result.status,
+    };
+  } catch (error) {
+    return { ok: false, message: safeError(error) };
+  }
+}
+
+export async function applyProductResynthesisAction(
+  _prev: ProductSetupActionResult | null,
+  formData: FormData,
+): Promise<ProductSetupActionResult> {
+  try {
+    const user = await requireCurrentUser();
+    const organizationId = await requireOrganizationId();
+    const productId = String(formData.get("productId") || "").trim();
+    const setupRunId = String(formData.get("setupRunId") || "").trim();
+    const name = String(formData.get("name") || "").trim();
+    if (!productId || !setupRunId || !name) {
+      return {
+        ok: false,
+        message: "Product, setup run, and name are required.",
+      };
+    }
+
+    const run = await prisma.productSetupRun.findFirst({
+      where: { id: setupRunId, organizationId, productId },
+    });
+    if (!run) {
+      return { ok: false, message: "Setup run not found." };
+    }
+
+    const existingProduct = await prisma.product.findFirst({
+      where: { id: productId, organizationId },
+      select: { name: true, websiteUrl: true },
+    });
+    const originalDraft = (run.productDraftJson as ProductDraft | null) ?? null;
+    const profile = productDraftFromFormData(formData);
+    const websiteUrl = String(formData.get("websiteUrl") || "").trim() || null;
+    const editedFields = diffProductDraftFields(originalDraft, profile);
+    if (existingProduct && name !== existingProduct.name) {
+      editedFields.push("name");
+    }
+    if (existingProduct && websiteUrl !== (existingProduct.websiteUrl ?? null)) {
+      editedFields.push("websiteUrl");
+    }
+
+    await applyApprovedProductResynthesis({
+      organizationId,
+      productId,
+      userId: user.id,
+      setupRunId,
+      fields: {
+        name,
+        websiteUrl,
+        averageOrderValue: toOptionalFloat(formData.get("averageOrderValue")),
+      },
+      profile,
+      editedFields,
+    });
+
+    revalidateProduct(productId);
+    return {
+      ok: true,
+      message:
+        "Product profile updated. Personas, ICPs, campaigns, and scoring still use this product.",
+      productId,
+      setupRunId,
+      status: "APPROVED",
     };
   } catch (error) {
     return { ok: false, message: safeError(error) };

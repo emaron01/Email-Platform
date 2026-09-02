@@ -365,7 +365,7 @@ export default async function SetupProductPage({ params }: PageProps) {
                 </ul>
               )}
               <div className="mt-3">
-                <ActionLink href={`/setup/${product.id}/personas/manage/new`}>
+                <ActionLink href={`/setup/${product.id}/personas/new`}>
                   Add custom persona
                 </ActionLink>
               </div>

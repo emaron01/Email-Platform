@@ -21,7 +21,7 @@ export default async function NewProductAssistedPage() {
         description="Provide a name and optional sources. Research builds Product and Persona drafts for your review."
         actions={
           <Link
-            href="/setup"
+            href="/products"
             className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
           >
             All products

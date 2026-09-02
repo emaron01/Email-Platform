@@ -1267,6 +1267,8 @@ model ProductSetupRun {
   aiProvider             String?
   aiModel                String?
   errorSafe              String?
+  /// Flags in-place approved-product resynthesis (e.g. approvedProductResynthesis).
+  userContextJson        Json?
   createdByUserId        String?
   createdAt              DateTime           @default(now())
   completedAt            DateTime?

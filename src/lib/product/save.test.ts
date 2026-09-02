@@ -92,7 +92,8 @@ describe("Product save UI seam", () => {
     expect(formSrc).toContain('data-testid="product-action-status"');
     expect(formSrc).toContain("state.values");
 
-    expect(setupSrc).toContain("AddProductForm");
+    expect(setupSrc).toContain("AssistedProductIntake");
+    expect(setupSrc).not.toContain("AddProductForm");
     expect(setupSrc).not.toContain("action={upsertProductAction}");
   });
 });

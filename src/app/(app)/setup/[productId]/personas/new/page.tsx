@@ -71,8 +71,12 @@ export default async function NewPersonaPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Build Persona: ${product.name}`}
-        description="Reuses Product evidence. Runs Persona research only when the role is ambiguous or thin."
+        title={role ? `Build Persona: ${product.name}` : `New persona: ${product.name}`}
+        description={
+          role
+            ? "Reuses Product evidence. Runs Persona research only when the role is ambiguous or thin."
+            : "Name the buyer role and add any context you have. Synthesis builds the persona from product evidence and peer differentiation — then you review and edit."
+        }
         actions={
           <Link
             href={`/setup/${product.id}/research`}

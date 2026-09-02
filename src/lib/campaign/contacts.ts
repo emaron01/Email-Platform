@@ -19,12 +19,13 @@ const campaignDetailInclude = {
     select: {
       id: true,
       name: true,
+      updatedAt: true,
       description: true,
       valueProposition: true,
       messagingJson: true,
       personas: {
         where: { archivedAt: null },
-        select: { id: true, name: true },
+        select: { id: true, name: true, updatedAt: true },
       },
     },
   },
@@ -33,12 +34,15 @@ const campaignDetailInclude = {
     select: {
       id: true,
       name: true,
+      updatedAt: true,
       messagingNotes: true,
       personaMessagingJson: true,
     },
   },
   personasInPlay: {
-    include: { persona: { select: { id: true, name: true } } },
+    include: {
+      persona: { select: { id: true, name: true, updatedAt: true } },
+    },
   },
   offer: {
     select: {

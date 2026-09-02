@@ -4,6 +4,7 @@ import {
   AssistedProductIntake,
   SuggestedBuyerRolesPanel,
 } from "@/components/AssistedProductSetup";
+import { AddProductMaterialPanel } from "@/components/AddProductMaterialPanel";
 import { ProductDraftReview } from "@/components/ProductDraftReview";
 import { PageHeader, TenantMissing } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
@@ -20,6 +21,7 @@ import type {
   ProductMessagingDraft,
 } from "@/lib/product-research/contract";
 import { normalizeSuggestedBuyerRoles } from "@/lib/setup/product-overview";
+import { PRODUCT_RESYNTHESIS_USER_CONTEXT_FLAG } from "@/lib/product-research/resynthesize-approved";
 
 type PageProps = {
   params: Promise<{ productId: string }>;
@@ -52,6 +54,7 @@ export default async function ProductResearchPage({ params }: PageProps) {
     latestBundle,
     urlStale,
     sources,
+    pendingResynthesisRun,
   ] = await Promise.all([
       prisma.productSetupRun.findFirst({
         where: {
@@ -94,6 +97,16 @@ export default async function ProductResearchPage({ params }: PageProps) {
         },
         orderBy: { createdAt: "asc" },
       }),
+      product.approvalStatus === "APPROVED"
+        ? prisma.productSetupRun.findFirst({
+            where: {
+              organizationId: organization.id,
+              productId: product.id,
+              status: "NEEDS_REVIEW",
+            },
+            orderBy: { createdAt: "desc" },
+          })
+        : Promise.resolve(null),
     ]);
 
   const draft = (latestRun?.productDraftJson as ProductDraft | null) ?? null;
@@ -123,6 +136,14 @@ export default async function ProductResearchPage({ params }: PageProps) {
     (product.setupStatus === "FAILED" || Boolean(latestFailedRun));
 
   const productApproved = product.approvalStatus === "APPROVED";
+  const pendingResynthesisContext =
+    (pendingResynthesisRun?.userContextJson as Record<string, unknown> | null) ??
+    null;
+  const showPendingResynthesisBanner =
+    productApproved &&
+    pendingResynthesisRun &&
+    pendingResynthesisContext?.[PRODUCT_RESYNTHESIS_USER_CONTEXT_FLAG] ===
+      true;
   const failedUrlErrors = sourcesForReview
     .filter((s) => s.status === "FAILED" && s.sourceType === "URL")
     .map((s) => s.errorSafe)
@@ -178,7 +199,7 @@ export default async function ProductResearchPage({ params }: PageProps) {
         </div>
       ) : null}
 
-      {latestRun && draft && !isNearEmptyProductDraft(draft) ? (
+      {latestRun && draft && !isNearEmptyProductDraft(draft) && !productApproved ? (
         <section className="rounded-lg border border-slate-200 bg-white p-5 sm:p-8">
           <ProductDraftReview
             productId={product.id}
@@ -192,19 +213,50 @@ export default async function ProductResearchPage({ params }: PageProps) {
         </section>
       ) : null}
 
-      <section
-        id="product-materials"
-        className="rounded-lg border border-slate-200 bg-white p-5"
-        data-print-hide
-      >
-        <AssistedProductIntake
-          productId={product.id}
-          defaultName={product.name}
-          defaultUrl={product.websiteUrl ?? undefined}
-          urlResearchStale={urlStale}
-          latestEvidenceBundleId={latestBundle?.id}
-        />
-      </section>
+      {showPendingResynthesisBanner ? (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950"
+          data-testid="product-pending-resynthesis"
+          data-print-hide
+        >
+          <p className="font-medium">Re-synthesis draft ready for review</p>
+          <p className="mt-1">
+            New material was synthesized. Your approved profile is unchanged
+            until you confirm the diff.
+          </p>
+          <Link
+            href={`/setup/${product.id}/research/resynthesis/${pendingResynthesisRun!.id}`}
+            className="mt-3 inline-flex items-center justify-center rounded-md border border-amber-300 bg-white px-3.5 py-2 text-sm font-medium text-amber-950"
+          >
+            Review changes
+          </Link>
+        </div>
+      ) : null}
+
+      {productApproved ? (
+        <section
+          id="product-materials"
+          className="rounded-lg border border-slate-200 bg-white p-5"
+          data-print-hide
+        >
+          <AddProductMaterialPanel productId={product.id} />
+        </section>
+      ) : (
+        <section
+          id="product-materials"
+          className="rounded-lg border border-slate-200 bg-white p-5"
+          data-print-hide
+        >
+          <AssistedProductIntake
+            productId={product.id}
+            defaultName={product.name}
+            defaultUrl={product.websiteUrl ?? undefined}
+            urlResearchStale={urlStale}
+            latestEvidenceBundleId={latestBundle?.id}
+          />
+        </section>
+      )}
 
       {latestRun || productApproved ? (
         <section

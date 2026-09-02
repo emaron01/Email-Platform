@@ -30,6 +30,7 @@ import {
   openEmailClientHref,
   type EmailClient,
 } from "@/lib/email-generation/email-body";
+import { formatDraftStalenessMessage } from "@/lib/email-generation/draft-staleness";
 import { SuppressContactForm } from "@/components/SuppressContactForm";
 import {
   deeplinkSendDeclinedStorageKey,
@@ -58,6 +59,7 @@ type SequenceDraft = {
   personalizationTier: "BEST" | "COMPANY" | "THIN" | null;
   personalizationSources: string | null;
   claimConflicts: ClaimValidationViolation[];
+  staleReasons?: string[];
 };
 
 const EMAIL_CLIENT_OPTIONS: Array<{
@@ -640,6 +642,17 @@ export function EmailSequenceWorkspace({
                 </li>
               ))}
             </ul>
+          </div>
+        ) : null}
+
+        {selected?.staleReasons && selected.staleReasons.length > 0 ? (
+          <div
+            className="rounded-md border border-amber-300 bg-amber-50 p-3"
+            data-testid="email-draft-stale-marker"
+          >
+            <p className="text-sm text-amber-950">
+              {formatDraftStalenessMessage(selected.staleReasons)}
+            </p>
           </div>
         ) : null}
 

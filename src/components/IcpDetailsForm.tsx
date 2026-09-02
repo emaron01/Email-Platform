@@ -119,6 +119,7 @@ function NewIcpForm({
             name="definition"
             defaultValue={defaults.definition}
             as="textarea"
+            required
             placeholder={definitionPlaceholder}
             hint={fieldHint("definition")}
           />
@@ -334,6 +335,7 @@ export function IcpDetailsForm({
                 name="definition"
                 defaultValue={defaults.definition}
                 as="textarea"
+                required
                 placeholder={definitionPlaceholder}
                 hint={fieldHint("definition")}
               />

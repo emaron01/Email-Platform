@@ -63,6 +63,18 @@ describe("parseIcpFormData", () => {
     );
     expect(parsed.fieldErrors.minEmployees).toMatch(/whole number/i);
   });
+
+  it("requires a natural-language definition", () => {
+    const parsed = parseIcpFormData(
+      formFrom({
+        productId: "prod_1",
+        name: "Mid-market",
+        definition: "   ",
+        targetIndustries: "SaaS",
+      }),
+    );
+    expect(parsed.fieldErrors.definition).toMatch(/describe your ideal customer/i);
+  });
 });
 
 describe("toSafeIcpActionError", () => {

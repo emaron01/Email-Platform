@@ -38,6 +38,8 @@ import {
 import { parseEmailLength } from "@/lib/campaign/save";
 import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
 import { loadEmailDraftScreenStates } from "@/lib/email-generation/context";
+import { emailDraftStaleness } from "@/lib/email-generation/draft-staleness";
+import { prisma } from "@/lib/prisma";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -155,6 +157,51 @@ export default async function CampaignDetailPage({
           .find((draft) => draft.personaId)?.personaId ?? null,
     })),
   });
+
+  const companyIds = [
+    ...new Set(
+      campaign.contacts
+        .map((entry) => entry.contact.companyId)
+        .filter((companyId): companyId is string => Boolean(companyId)),
+    ),
+  ];
+  const companyResearchRows =
+    companyIds.length > 0
+      ? await prisma.companyResearch.findMany({
+          where: {
+            organizationId: organization.id,
+            companyId: { in: companyIds },
+            researchedAt: { not: null },
+          },
+          orderBy: { researchedAt: "desc" },
+          select: { companyId: true, researchedAt: true },
+        })
+      : [];
+  const companyResearchUpdatedAtByCompanyId = new Map<string, string>();
+  for (const row of companyResearchRows) {
+    if (!row.companyId || !row.researchedAt) continue;
+    if (!companyResearchUpdatedAtByCompanyId.has(row.companyId)) {
+      companyResearchUpdatedAtByCompanyId.set(
+        row.companyId,
+        row.researchedAt.toISOString(),
+      );
+    }
+  }
+
+  const personaUpdatedAtById = new Map<string, string>();
+  for (const persona of campaign.product.personas) {
+    personaUpdatedAtById.set(persona.id, persona.updatedAt.toISOString());
+  }
+  for (const row of campaign.personasInPlay) {
+    personaUpdatedAtById.set(row.persona.id, row.persona.updatedAt.toISOString());
+  }
+  if (campaign.persona) {
+    personaUpdatedAtById.set(
+      campaign.persona.id,
+      campaign.persona.updatedAt.toISOString(),
+    );
+  }
+  const productUpdatedAt = campaign.product.updatedAt.toISOString();
 
   const offerName = campaign.offerName ?? campaign.offer?.name ?? null;
   const offerDescription =
@@ -520,6 +567,26 @@ export default async function CampaignDetailPage({
                       claimConflicts: claimConflictsFromJson(
                         draft.claimConflictsJson,
                       ),
+                      staleReasons: emailDraftStaleness({
+                        draftCreatedAt: draft.createdAt.toISOString(),
+                        draftStatus: draft.status,
+                        productUpdatedAt,
+                        personaUpdatedAt:
+                          (draft.personaId
+                            ? personaUpdatedAtById.get(draft.personaId)
+                            : null) ??
+                          (draftScreen?.resolvedPersonaId
+                            ? personaUpdatedAtById.get(
+                                draftScreen.resolvedPersonaId,
+                              )
+                            : null) ??
+                          null,
+                        companyResearchUpdatedAt: contact.companyId
+                          ? companyResearchUpdatedAtByCompanyId.get(
+                              contact.companyId,
+                            ) ?? null
+                          : null,
+                      }).reasons,
                     })),
                 };
               })}

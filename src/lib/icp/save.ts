@@ -272,6 +272,10 @@ export function parseIcpFormData(formData: FormData): {
   if (!values.name) {
     fieldErrors.name = "ICP name is required.";
   }
+  if (!values.definition.trim()) {
+    fieldErrors.definition =
+      "Describe your ideal customer before saving. Interpretation uses this definition.";
+  }
 
   const minEmployees = toOptionalInt(values.minEmployees);
   const maxEmployees = toOptionalInt(values.maxEmployees);

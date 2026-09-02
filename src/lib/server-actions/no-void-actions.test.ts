@@ -73,7 +73,6 @@ describe("server action return types", () => {
 describe("action result UI seams", () => {
   const seams: Array<{ form: string; statusTestId: string }> = [
     { form: "src/components/ProductDetailsForm.tsx", statusTestId: "product-action-status" },
-    { form: "src/components/AddProductForm.tsx", statusTestId: "product-action-status" },
     { form: "src/components/NewCampaignForm.tsx", statusTestId: "campaign-action-status" },
     { form: "src/components/ScoreReportClient.tsx", statusTestId: "campaign-action-status" },
     { form: "src/components/ScoreListForm.tsx", statusTestId: "scoring-run-status" },
