@@ -26,6 +26,15 @@ const microsoftJwks = createRemoteJWKSet(
   new URL("https://login.microsoftonline.com/common/discovery/v2.0/keys"),
 );
 
+export type MailboxOAuthStage =
+  | "auth_session"
+  | "state_lookup"
+  | "pkce_decrypt"
+  | "token_exchange"
+  | "id_token_verify"
+  | "db_upsert"
+  | "begin_authorize";
+
 const tokenResponseSchema = z.object({
   access_token: z.string().min(1),
   refresh_token: z.string().min(1).optional(),
@@ -46,19 +55,98 @@ export class MailboxConnectionError extends Error {
   readonly code: string;
   readonly recovery: MailboxRecovery;
   readonly providerReason: string | null;
+  readonly stage: MailboxOAuthStage | null;
 
   constructor(
     code: string,
     message: string,
     recovery: MailboxRecovery,
     providerReason?: string | null,
+    stage?: MailboxOAuthStage | null,
   ) {
     super(message);
     this.name = "MailboxConnectionError";
     this.code = code;
     this.recovery = recovery;
     this.providerReason = providerReason ?? null;
+    this.stage = stage ?? null;
   }
+}
+
+export type MailboxConnectionLogEvent = {
+  event: "mailbox_microsoft_connection_failed";
+  stage: MailboxOAuthStage | "unknown";
+  code: string;
+  recovery: MailboxRecovery | "UNKNOWN";
+  providerReasonSafe: string | null;
+  messageSafe: string;
+};
+
+/** Structured failure log for Render/log drains — no tokens or secrets. */
+export function logMailboxConnectionFailure(
+  event: MailboxConnectionLogEvent,
+): void {
+  console.error("[mailbox-microsoft-oauth]", JSON.stringify(event));
+}
+
+export function mailboxCallbackErrorParam(error: unknown): string {
+  if (error instanceof MailboxConnectionError) {
+    if (error.recovery === "ASK_ADMIN") return "admin_consent_required";
+    if (error.recovery === "RECONNECT") return "reconnect_required";
+    if (error.recovery === "RETRY" || error.recovery === "WAIT_RETRY") {
+      return "connection_retry";
+    }
+  }
+  return "connection_failed";
+}
+
+export function classifyMailboxConnectionFailure(error: unknown): {
+  stage: MailboxOAuthStage | "unknown";
+  code: string;
+  recovery: MailboxRecovery | "UNKNOWN";
+  providerReasonSafe: string | null;
+  messageSafe: string;
+} {
+  if (error instanceof MailboxConnectionError) {
+    return {
+      stage: error.stage ?? "unknown",
+      code: error.code,
+      recovery: error.recovery,
+      providerReasonSafe: error.providerReason
+        ? error.providerReason.slice(0, 400)
+        : null,
+      messageSafe: error.message.slice(0, 400),
+    };
+  }
+  if (error instanceof TenantError) {
+    return {
+      stage: "auth_session",
+      code: "AUTH_OR_TENANT",
+      recovery: "UNKNOWN",
+      providerReasonSafe: null,
+      messageSafe: error.message.slice(0, 400),
+    };
+  }
+  if (error instanceof Error) {
+    const authLike =
+      /Authentication required|organization|Verify your email|capability/i.test(
+        error.message,
+      );
+    return {
+      stage: authLike ? "auth_session" : "unknown",
+      code: authLike ? "AUTH_OR_TENANT" : "UNEXPECTED",
+      recovery: "UNKNOWN",
+      providerReasonSafe: null,
+      messageSafe: error.message.slice(0, 400),
+    };
+  }
+  return {
+    stage: "unknown",
+    code: "UNEXPECTED",
+    recovery: "UNKNOWN",
+    providerReasonSafe: null,
+    messageSafe: "Unknown mailbox connection failure.",
+  };
 }
 
 function sha256(value: string): string {
@@ -90,7 +178,10 @@ function tokenError(value: unknown): {
   };
 }
 
-function oauthFailure(error: ReturnType<typeof tokenError>): MailboxConnectionError {
+function oauthFailure(
+  error: ReturnType<typeof tokenError>,
+  stage: MailboxOAuthStage,
+): MailboxConnectionError {
   const combined = `${error.error ?? ""} ${error.description ?? ""} ${error.suberror ?? ""}`;
   if (/admin|consent_required|aadsts65001|aadsts90094/i.test(combined)) {
     return new MailboxConnectionError(
@@ -98,6 +189,7 @@ function oauthFailure(error: ReturnType<typeof tokenError>): MailboxConnectionEr
       "Your Microsoft tenant requires administrator consent for this connection.",
       "ASK_ADMIN",
       error.description,
+      stage,
     );
   }
   if (/invalid_grant|interaction_required|consent|revoked/i.test(combined)) {
@@ -106,6 +198,7 @@ function oauthFailure(error: ReturnType<typeof tokenError>): MailboxConnectionEr
       "Your Microsoft connection is no longer valid. Reconnect your mailbox.",
       "RECONNECT",
       error.description,
+      stage,
     );
   }
   return new MailboxConnectionError(
@@ -113,11 +206,13 @@ function oauthFailure(error: ReturnType<typeof tokenError>): MailboxConnectionEr
     "Microsoft could not complete the mailbox connection. Try again.",
     "RETRY",
     error.description,
+    stage,
   );
 }
 
 async function postToken(
   body: URLSearchParams,
+  stage: MailboxOAuthStage = "token_exchange",
 ): Promise<z.infer<typeof tokenResponseSchema>> {
   const config = getMicrosoftMailboxConfig();
   const response = await fetch(config.tokenUrl, {
@@ -127,8 +222,18 @@ async function postToken(
     cache: "no-store",
   });
   const raw: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw oauthFailure(tokenError(raw));
-  return tokenResponseSchema.parse(raw);
+  if (!response.ok) throw oauthFailure(tokenError(raw), stage);
+  try {
+    return tokenResponseSchema.parse(raw);
+  } catch (error) {
+    throw new MailboxConnectionError(
+      "INVALID_TOKEN_RESPONSE",
+      "Microsoft returned an unexpected token response.",
+      "RETRY",
+      error instanceof Error ? error.message : null,
+      stage,
+    );
+  }
 }
 
 function pkceAad(organizationId: string, userId: string): string {
@@ -209,6 +314,8 @@ async function verifiedIdentity(
       "INVALID_IDENTITY",
       "Microsoft did not return an organization tenant identity.",
       "RECONNECT",
+      null,
+      "id_token_verify",
     );
   }
   const config = getMicrosoftMailboxConfig();
@@ -224,6 +331,8 @@ async function verifiedIdentity(
       "INVALID_OAUTH_NONCE",
       "Microsoft connection validation failed. Start the connection again.",
       "RECONNECT",
+      null,
+      "id_token_verify",
     );
   }
   const accountId =
@@ -236,6 +345,8 @@ async function verifiedIdentity(
       "MISSING_MAILBOX_IDENTITY",
       "Microsoft did not return a mailbox address for this account.",
       "RECONNECT",
+      null,
+      "id_token_verify",
     );
   }
   return { tenantId, accountId, mailboxAddress };
@@ -267,15 +378,29 @@ export async function completeMicrosoftMailboxConnection(input: {
       "INVALID_OAUTH_STATE",
       "The Microsoft connection request expired or does not match this user.",
       "RECONNECT",
+      null,
+      "state_lookup",
     );
   }
   await prisma.mailboxOAuthState.delete({ where: { id: stored.id } });
 
   const config = getMicrosoftMailboxConfig();
-  const verifier = decryptMailboxSecret(
-    stored.encryptedCodeVerifier,
-    pkceAad(input.organizationId, input.userId),
-  );
+  let verifier: string;
+  try {
+    verifier = decryptMailboxSecret(
+      stored.encryptedCodeVerifier,
+      pkceAad(input.organizationId, input.userId),
+    );
+  } catch (error) {
+    throw new MailboxConnectionError(
+      "PKCE_DECRYPT_FAILED",
+      "Could not restore the Microsoft connection challenge. Start the connection again.",
+      "RECONNECT",
+      error instanceof Error ? error.message : null,
+      "pkce_decrypt",
+    );
+  }
+
   const token = await postToken(
     new URLSearchParams({
       client_id: config.clientId,
@@ -286,15 +411,32 @@ export async function completeMicrosoftMailboxConnection(input: {
       code_verifier: verifier,
       scope: MICROSOFT_MAIL_SCOPES.join(" "),
     }),
+    "token_exchange",
   );
   if (!token.id_token || !token.refresh_token) {
     throw new MailboxConnectionError(
       "MISSING_OAUTH_TOKEN",
       "Microsoft did not return the tokens required for a durable connection.",
       "RECONNECT",
+      null,
+      "token_exchange",
     );
   }
-  const identity = await verifiedIdentity(token.id_token, stored.nonceHash);
+
+  let identity: Awaited<ReturnType<typeof verifiedIdentity>>;
+  try {
+    identity = await verifiedIdentity(token.id_token, stored.nonceHash);
+  } catch (error) {
+    if (error instanceof MailboxConnectionError) throw error;
+    throw new MailboxConnectionError(
+      "ID_TOKEN_VERIFY_FAILED",
+      "Microsoft identity verification failed. Start the connection again.",
+      "RECONNECT",
+      error instanceof Error ? error.message : null,
+      "id_token_verify",
+    );
+  }
+
   const accessAad = mailboxSecretAad({
     organizationId: input.organizationId,
     userId: input.userId,
@@ -307,54 +449,64 @@ export async function completeMicrosoftMailboxConnection(input: {
     provider: "MICROSOFT_365",
     purpose: "refresh",
   });
-  await prisma.mailboxConnection.upsert({
-    where: {
-      organizationId_userId_provider: {
+  try {
+    await prisma.mailboxConnection.upsert({
+      where: {
+        organizationId_userId_provider: {
+          organizationId: input.organizationId,
+          userId: input.userId,
+          provider: "MICROSOFT_365",
+        },
+      },
+      create: {
         organizationId: input.organizationId,
         userId: input.userId,
         provider: "MICROSOFT_365",
+        mailboxAddress: identity.mailboxAddress,
+        providerTenantId: identity.tenantId,
+        providerAccountId: identity.accountId,
+        encryptedAccessToken: encryptMailboxSecret(
+          token.access_token,
+          accessAad,
+        ),
+        encryptedRefreshToken: encryptMailboxSecret(
+          token.refresh_token,
+          refreshAad,
+        ),
+        accessTokenExpiresAt: new Date(Date.now() + token.expires_in * 1000),
+        grantedScopesJson: token.scope.split(/\s+/).filter(Boolean),
+        status: "CONNECTED",
+        lastErrorCode: null,
       },
-    },
-    create: {
-      organizationId: input.organizationId,
-      userId: input.userId,
-      provider: "MICROSOFT_365",
-      mailboxAddress: identity.mailboxAddress,
-      providerTenantId: identity.tenantId,
-      providerAccountId: identity.accountId,
-      encryptedAccessToken: encryptMailboxSecret(
-        token.access_token,
-        accessAad,
-      ),
-      encryptedRefreshToken: encryptMailboxSecret(
-        token.refresh_token,
-        refreshAad,
-      ),
-      accessTokenExpiresAt: new Date(Date.now() + token.expires_in * 1000),
-      grantedScopesJson: token.scope.split(/\s+/).filter(Boolean),
-      status: "CONNECTED",
-      lastErrorCode: null,
-    },
-    update: {
-      mailboxAddress: identity.mailboxAddress,
-      providerTenantId: identity.tenantId,
-      providerAccountId: identity.accountId,
-      encryptedAccessToken: encryptMailboxSecret(
-        token.access_token,
-        accessAad,
-      ),
-      encryptedRefreshToken: encryptMailboxSecret(
-        token.refresh_token,
-        refreshAad,
-      ),
-      accessTokenExpiresAt: new Date(Date.now() + token.expires_in * 1000),
-      grantedScopesJson: token.scope.split(/\s+/).filter(Boolean),
-      status: "CONNECTED",
-      lastErrorCode: null,
-      connectedAt: new Date(),
-      refreshedAt: null,
-    },
-  });
+      update: {
+        mailboxAddress: identity.mailboxAddress,
+        providerTenantId: identity.tenantId,
+        providerAccountId: identity.accountId,
+        encryptedAccessToken: encryptMailboxSecret(
+          token.access_token,
+          accessAad,
+        ),
+        encryptedRefreshToken: encryptMailboxSecret(
+          token.refresh_token,
+          refreshAad,
+        ),
+        accessTokenExpiresAt: new Date(Date.now() + token.expires_in * 1000),
+        grantedScopesJson: token.scope.split(/\s+/).filter(Boolean),
+        status: "CONNECTED",
+        lastErrorCode: null,
+        connectedAt: new Date(),
+        refreshedAt: null,
+      },
+    });
+  } catch (error) {
+    throw new MailboxConnectionError(
+      "MAILBOX_UPSERT_FAILED",
+      "Microsoft tokens were received but the connection could not be saved.",
+      "RETRY",
+      error instanceof Error ? error.message : null,
+      "db_upsert",
+    );
+  }
   return {
     mailboxAddress: identity.mailboxAddress,
     returnPath: safeReturnPath(stored.returnPath),

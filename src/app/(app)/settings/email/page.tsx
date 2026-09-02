@@ -20,6 +20,15 @@ function noticeFor(query: { mailbox?: string; error?: string }): string | null {
   if (query.error === "reconnect_required") {
     return "The connection request expired or was invalid. Start the connection again.";
   }
+  if (query.error === "connection_retry") {
+    return "Microsoft could not finish connecting right now. Wait a moment and try Connect Microsoft 365 again.";
+  }
+  if (query.error === "connection_unavailable") {
+    return "Mailbox connection is unavailable. Check Microsoft app settings and try again.";
+  }
+  if (query.error === "invalid_callback") {
+    return "Microsoft returned an incomplete connection response. Start the connection again.";
+  }
   if (query.error) {
     return "Microsoft 365 could not be connected. Check the app registration and try again.";
   }

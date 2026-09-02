@@ -28,6 +28,25 @@ describe("connected-send production language", () => {
       /SalesForecaster|forecast audit|forecast accuracy|revenue intelligence/i,
     );
   });
+
+  it("mailbox OAuth redirects use APP_URL, not request.url as redirect base", () => {
+    const callback = readFileSync(
+      "src/app/api/mailbox/microsoft/callback/route.ts",
+      "utf8",
+    );
+    const connect = readFileSync(
+      "src/app/api/mailbox/microsoft/connect/route.ts",
+      "utf8",
+    );
+    expect(callback).toContain("appAbsoluteUrl");
+    expect(connect).toContain("appAbsoluteUrl");
+    expect(callback).not.toMatch(/NextResponse\.redirect\(\s*\n?\s*new URL\([^)]*request\.url/);
+    expect(connect).not.toMatch(
+      /NextResponse\.redirect\(\s*\n?\s*new URL\([^)]*request\.url/,
+    );
+    expect(callback).toContain("logMailboxConnectionFailure");
+    expect(callback).toContain("mailboxCallbackErrorParam");
+  });
 });
 
 describe("mailbox secret encryption", () => {

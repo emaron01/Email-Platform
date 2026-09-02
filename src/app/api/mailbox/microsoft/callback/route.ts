@@ -1,18 +1,21 @@
 import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { assertAccountCapability } from "@/lib/auth/account-policy";
+import { appAbsoluteUrl } from "@/lib/mailbox/microsoft-config";
 import {
+  classifyMailboxConnectionFailure,
   completeMicrosoftMailboxConnection,
-  MailboxConnectionError,
+  logMailboxConnectionFailure,
+  mailboxCallbackErrorParam,
 } from "@/lib/mailbox/microsoft-oauth";
 import { requireOrganization } from "@/lib/tenant/getCurrentOrganization";
 
-function errorCode(error: unknown): string {
-  if (error instanceof MailboxConnectionError) {
-    if (error.recovery === "ASK_ADMIN") return "admin_consent_required";
-    if (error.recovery === "RECONNECT") return "reconnect_required";
+function redirectToEmailSettings(query: Record<string, string>): NextResponse {
+  const url = new URL(appAbsoluteUrl("/settings/email"));
+  for (const [key, value] of Object.entries(query)) {
+    url.searchParams.set(key, value);
   }
-  return "connection_failed";
+  return NextResponse.redirect(url);
 }
 
 export async function GET(request: Request) {
@@ -23,19 +26,14 @@ export async function GET(request: Request) {
       requestUrl.searchParams.get("error_description") ?? providerError;
     const adminConsent =
       /admin|consent_required|aadsts65001|aadsts90094/i.test(description);
-    return NextResponse.redirect(
-      new URL(
-        `/settings/email?error=${adminConsent ? "admin_consent_required" : "connection_declined"}`,
-        request.url,
-      ),
-    );
+    return redirectToEmailSettings({
+      error: adminConsent ? "admin_consent_required" : "connection_declined",
+    });
   }
   const state = requestUrl.searchParams.get("state");
   const code = requestUrl.searchParams.get("code");
   if (!state || !code) {
-    return NextResponse.redirect(
-      new URL("/settings/email?error=invalid_callback", request.url),
-    );
+    return redirectToEmailSettings({ error: "invalid_callback" });
   }
   try {
     const [user, organization] = await Promise.all([
@@ -49,13 +47,19 @@ export async function GET(request: Request) {
       state,
       code,
     });
-    const destination = new URL(connected.returnPath, request.url);
+    const destination = new URL(
+      appAbsoluteUrl(connected.returnPath || "/settings/email"),
+    );
     destination.searchParams.set("mailbox", "connected");
     return NextResponse.redirect(destination);
   } catch (error) {
-    console.error("Failed to complete Microsoft mailbox connection.", error);
-    return NextResponse.redirect(
-      new URL(`/settings/email?error=${errorCode(error)}`, request.url),
-    );
+    const classified = classifyMailboxConnectionFailure(error);
+    logMailboxConnectionFailure({
+      event: "mailbox_microsoft_connection_failed",
+      ...classified,
+    });
+    return redirectToEmailSettings({
+      error: mailboxCallbackErrorParam(error),
+    });
   }
 }

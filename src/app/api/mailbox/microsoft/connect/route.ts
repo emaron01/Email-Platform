@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { assertAccountCapability } from "@/lib/auth/account-policy";
-import { beginMicrosoftMailboxConnection } from "@/lib/mailbox/microsoft-oauth";
+import { appAbsoluteUrl } from "@/lib/mailbox/microsoft-config";
+import {
+  beginMicrosoftMailboxConnection,
+  classifyMailboxConnectionFailure,
+  logMailboxConnectionFailure,
+  MailboxConnectionError,
+} from "@/lib/mailbox/microsoft-oauth";
 import { requireOrganization } from "@/lib/tenant/getCurrentOrganization";
 
 export async function GET(request: Request) {
@@ -19,9 +25,21 @@ export async function GET(request: Request) {
     });
     return NextResponse.redirect(authorizationUrl);
   } catch (error) {
-    console.error("Failed to start Microsoft mailbox connection.", error);
+    const classified = classifyMailboxConnectionFailure(error);
+    logMailboxConnectionFailure({
+      event: "mailbox_microsoft_connection_failed",
+      stage:
+        classified.stage === "unknown" ? "begin_authorize" : classified.stage,
+      code:
+        error instanceof MailboxConnectionError
+          ? classified.code
+          : "CONNECTION_UNAVAILABLE",
+      recovery: classified.recovery,
+      providerReasonSafe: classified.providerReasonSafe,
+      messageSafe: classified.messageSafe,
+    });
     return NextResponse.redirect(
-      new URL("/settings/email?error=connection_unavailable", request.url),
+      appAbsoluteUrl("/settings/email?error=connection_unavailable"),
     );
   }
 }
