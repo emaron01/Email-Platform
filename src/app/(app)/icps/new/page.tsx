@@ -65,7 +65,7 @@ export default async function NewIcpPage({
               name: product.name,
             }))}
             initialProductId={initialProductId}
-            continueHref={(productId) => `/setup/${productId}/icps/new`}
+            continuePathTemplate="/setup/{productId}/icps/new"
             continueLabel="Continue to ICP setup"
           />
         )}

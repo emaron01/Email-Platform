@@ -65,7 +65,7 @@ export default async function NewPersonaPage({
               name: product.name,
             }))}
             initialProductId={initialProductId}
-            continueHref={(productId) => `/setup/${productId}#personas`}
+            continuePathTemplate="/setup/{productId}#personas"
             continueLabel="Continue to persona setup"
           />
         )}
