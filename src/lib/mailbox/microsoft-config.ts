@@ -8,6 +8,22 @@ export const MICROSOFT_MAIL_SCOPES = [
   "https://graph.microsoft.com/Mail.Send",
 ] as const;
 
+export const MICROSOFT_MAIL_SEND_SCOPE =
+  "https://graph.microsoft.com/Mail.Send" as const;
+
+/** True when stored OAuth scopes include Graph Mail.Send (short or resource form). */
+export function grantedScopesIncludeMailSend(granted: unknown): boolean {
+  if (!Array.isArray(granted)) return false;
+  return granted.some((entry) => {
+    const scope = String(entry).trim();
+    if (!scope) return false;
+    if (scope === MICROSOFT_MAIL_SEND_SCOPE) return true;
+    if (scope === "Mail.Send") return true;
+    if (scope.endsWith("/Mail.Send")) return true;
+    return false;
+  });
+}
+
 /** Default matches multi-tenant + personal Microsoft account app registrations. */
 export const MICROSOFT_AUTHORITY_TENANT_DEFAULT = "common";
 

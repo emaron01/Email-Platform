@@ -84,6 +84,13 @@ export type MailboxConnectionLogEvent = {
   recovery: MailboxRecovery | "UNKNOWN";
   providerReasonSafe: string | null;
   messageSafe: string;
+  /** Present on send failures: whether the stored AT was used or a refresh was performed. */
+  tokenSource?: "stored" | "refreshed";
+  /** Present on send failures: ms until token expiry at the moment of the send attempt.
+   *  Positive = still valid, negative = expired before send. */
+  tokenAgeMs?: number;
+  /** Graph request-id header, for correlation with Microsoft support. */
+  graphRequestId?: string;
 };
 
 /** Structured failure log for Render/log drains — no tokens or secrets. */
@@ -521,7 +528,14 @@ export async function completeMicrosoftMailboxConnection(input: {
 export async function getMicrosoftAccessToken(input: {
   organizationId: string;
   userId: string;
-}): Promise<{ accessToken: string; mailboxAddress: string }> {
+}): Promise<{
+  accessToken: string;
+  mailboxAddress: string;
+  /** Whether the stored token was used directly or a refresh grant was performed. */
+  tokenSource: "stored" | "refreshed";
+  /** Absolute expiry time of the access token that will be sent. */
+  tokenExpiresAt: Date;
+}> {
   const connection = await prisma.mailboxConnection.findUnique({
     where: {
       organizationId_userId_provider: {
@@ -554,6 +568,8 @@ export async function getMicrosoftAccessToken(input: {
         accessAad,
       ),
       mailboxAddress: connection.mailboxAddress,
+      tokenSource: "stored",
+      tokenExpiresAt: connection.accessTokenExpiresAt,
     };
   }
 
@@ -615,6 +631,8 @@ export async function getMicrosoftAccessToken(input: {
   return {
     accessToken: token.access_token,
     mailboxAddress: connection.mailboxAddress,
+    tokenSource: "refreshed",
+    tokenExpiresAt: new Date(Date.now() + token.expires_in * 1000),
   };
 }
 
