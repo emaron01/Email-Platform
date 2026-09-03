@@ -693,7 +693,7 @@ export default async function CampaignDetailPage({
       {currentStage === "report" ? (
         <Panel
           title="9 Report"
-          description="Activity recorded directly by this application."
+          description="Activity across this whole campaign — companies, contacts, and emails."
         >
           <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[

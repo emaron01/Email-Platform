@@ -153,34 +153,12 @@ export async function getCampaignQualificationView(
   if (attachedContactIds.length === 0) {
     return { scoringRunId: null, companyRows: [], contactRows: [] };
   }
+
+  // Only runs matching this campaign's product/ICP/persona config. Different
+  // product/ICP/persona combinations are ignored by compatibleScoringRunWhere.
   const compatibleRuns = await prisma.scoringRun.findMany({
     where: await compatibleScoringRunWhere(campaign, organizationId),
     orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      _count: {
-        select: {
-          scores: {
-            where: {
-              contactId: { in: attachedContactIds },
-              scoringStatus: { in: ["COMPLETED", "SUPPRESSED"] },
-            },
-          },
-        },
-      },
-    },
-  });
-  const selectedRun = compatibleRuns
-    .filter((candidate) => candidate._count.scores > 0)
-    .sort((left, right) => right._count.scores - left._count.scores)[0];
-  if (!selectedRun) {
-    return { scoringRunId: null, companyRows: [], contactRows: [] };
-  }
-  const run = await prisma.scoringRun.findFirst({
-    where: {
-      id: selectedRun.id,
-      organizationId,
-    },
     include: {
       icp: {
         include: {
@@ -213,27 +191,66 @@ export async function getCampaignQualificationView(
       qualificationOverrides: true,
     },
   });
-  if (!run) {
+
+  const runsWithScores = compatibleRuns.filter((run) => run.scores.length > 0);
+  if (runsWithScores.length === 0) {
     return { scoringRunId: null, companyRows: [], contactRows: [] };
   }
-  const guidance = new Map<string, string | null>();
-  for (const criterion of [
-    ...run.icp.criteria,
-    ...(run.persona?.criteria ?? []),
-  ]) {
-    guidance.set(criterion.id, criterion.researchGuidance);
-    guidance.set(
-      criterion.name.trim().toLowerCase(),
-      criterion.researchGuidance,
-    );
+
+  // Per contact: most recent compatible run that scored them (runs already desc).
+  type SelectedScore = {
+    run: (typeof runsWithScores)[number];
+    score: (typeof runsWithScores)[number]["scores"][number];
+  };
+  const selectedByContactId = new Map<string, SelectedScore>();
+  for (const run of runsWithScores) {
+    for (const score of run.scores) {
+      if (!selectedByContactId.has(score.contactId)) {
+        selectedByContactId.set(score.contactId, { run, score });
+      }
+    }
   }
-  const override = new Map(
-    run.qualificationOverrides.map((row) => [
-      `${row.targetType}:${row.targetId}`,
-      row.bucket,
-    ]),
-  );
-  const contactRows: QualificationBucketRow[] = run.scores.map((score) => {
+
+  const guidance = new Map<string, string | null>();
+  for (const run of runsWithScores) {
+    for (const criterion of [
+      ...run.icp.criteria,
+      ...(run.persona?.criteria ?? []),
+    ]) {
+      if (!guidance.has(criterion.id)) {
+        guidance.set(criterion.id, criterion.researchGuidance);
+      }
+      const nameKey = criterion.name.trim().toLowerCase();
+      if (!guidance.has(nameKey)) {
+        guidance.set(nameKey, criterion.researchGuidance);
+      }
+    }
+  }
+
+  // Overrides: contact from the run that owns the selected score; company from
+  // the newest contributing compatible run that has an override.
+  const contactOverride = new Map<string, QualificationBucket>();
+  const companyOverride = new Map<string, QualificationBucket>();
+  for (const run of runsWithScores) {
+    for (const row of run.qualificationOverrides) {
+      if (row.targetType === "COMPANY" && !companyOverride.has(row.targetId)) {
+        companyOverride.set(row.targetId, row.bucket);
+      }
+    }
+  }
+  for (const { run, score } of selectedByContactId.values()) {
+    const contactRow = run.qualificationOverrides.find(
+      (row) =>
+        row.targetType === "CONTACT" && row.targetId === score.contactId,
+    );
+    if (contactRow) {
+      contactOverride.set(score.contactId, contactRow.bucket);
+    }
+  }
+
+  const contactRows: QualificationBucketRow[] = [
+    ...selectedByContactId.values(),
+  ].map(({ run, score }) => {
     const suppressed = score.scoringStatus === "SUPPRESSED";
     const unresolved = suppressed
       ? null
@@ -242,7 +259,7 @@ export async function getCampaignQualificationView(
     const inferred = suppressed
       ? "EXCLUDED"
       : scoreLabelToBucket(score.scoreLabel, score.assessmentData);
-    const bucket = override.get(`CONTACT:${score.contactId}`) ?? inferred;
+    const bucket = contactOverride.get(score.contactId) ?? inferred;
     const name =
       [score.contact.firstName, score.contact.lastName]
         .filter(Boolean)
@@ -253,7 +270,8 @@ export async function getCampaignQualificationView(
     return {
       id: score.contactId,
       companyId: score.contact.companyId,
-      targetType: "CONTACT",
+      scoringRunId: run.id,
+      targetType: "CONTACT" as const,
       name,
       title: score.contact.title,
       company:
@@ -263,9 +281,9 @@ export async function getCampaignQualificationView(
         ? "Opted out — organization-wide suppression. Cannot be scored or emailed."
         : unresolved
           ? `${unresolved.reasoning.replace(/[.]+$/, "")} · Research this contact`
-        : bucket === "NEEDS_REVIEW"
-          ? "Qualification is incomplete · Review this contact"
-          : null,
+          : bucket === "NEEDS_REVIEW"
+            ? "Qualification is incomplete · Review this contact"
+            : null,
       researchGuidance: unresolved?.criterionId
         ? (guidance.get(unresolved.criterionId) ?? null)
         : unresolved
@@ -290,12 +308,13 @@ export async function getCampaignQualificationView(
       id: string;
       name: string;
       canOverride: boolean;
+      scoringRunId: string;
       buckets: QualificationBucket[];
       unresolved: ReturnType<typeof firstUnresolvedCriterion>;
       secondaryFlags: string[];
     }
   >();
-  for (const score of run.scores) {
+  for (const { run, score } of selectedByContactId.values()) {
     const companyId = score.contact.companyRecord?.id ?? null;
     const name =
       score.contact.companyRecord?.name ??
@@ -306,6 +325,7 @@ export async function getCampaignQualificationView(
       id: companyId ?? key,
       name,
       canOverride: Boolean(companyId),
+      scoringRunId: run.id,
       buckets: [],
       unresolved: null,
       secondaryFlags: [],
@@ -321,6 +341,7 @@ export async function getCampaignQualificationView(
     entry.unresolved ??=
       firstUnresolvedCriterion(score.criterionAssessments) ??
       firstUnresolvedDimension(score.assessmentData);
+    // Keep newest contributing run id (first write wins because runs are desc).
     grouped.set(key, entry);
   }
   const companyRows: QualificationBucketRow[] = [...grouped.values()].map(
@@ -333,11 +354,12 @@ export async function getCampaignQualificationView(
           ? "NEEDS_REVIEW"
           : "GOOD";
       const bucket =
-        (entry.canOverride ? override.get(`COMPANY:${entry.id}`) : undefined) ??
+        (entry.canOverride ? companyOverride.get(entry.id) : undefined) ??
         inferred;
       return {
         id: entry.id,
-        targetType: "COMPANY",
+        scoringRunId: entry.scoringRunId,
+        targetType: "COMPANY" as const,
         name: entry.name,
         bucket,
         unresolvedCriterion: entry.unresolved
@@ -352,7 +374,7 @@ export async function getCampaignQualificationView(
             : null,
         researchHref: entry.canOverride
           ? `/companies/${entry.id}`
-          : `/scoring/${run.id}`,
+          : `/scoring/${entry.scoringRunId}`,
         canOverride: entry.canOverride,
         secondaryFlags: entry.secondaryFlags,
       };
@@ -374,7 +396,12 @@ export async function getCampaignQualificationView(
     if (bucketDelta !== 0) return bucketDelta;
     return (b.secondaryFlags?.length ?? 0) - (a.secondaryFlags?.length ?? 0);
   });
-  return { scoringRunId: run.id, companyRows, contactRows };
+  return {
+    // Newest compatible run that contributed any selected score (UI fallback).
+    scoringRunId: runsWithScores[0]!.id,
+    companyRows,
+    contactRows,
+  };
 }
 
 async function requireCampaignForOrganization(

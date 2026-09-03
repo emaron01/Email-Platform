@@ -48,6 +48,23 @@ describe("campaign contact management seams", () => {
     expect(contactsLib).not.toMatch(
       /personaId:\s*campaign\.personaId/,
     );
+    // Multi-list campaigns: merge every compatible run; never pick one by score count.
+    expect(contactsLib).toContain("getCampaignQualificationView");
+    expect(contactsLib).toContain("selectedByContactId");
+    expect(contactsLib).not.toMatch(
+      /right\._count\.scores\s*-\s*left\._count\.scores/,
+    );
+    expect(contactsLib).toContain(
+      "Only runs matching this campaign's product/ICP/persona config",
+    );
+    const campaignSummaries = readFileSync(
+      "src/lib/contact/contacts-campaign-data.ts",
+      "utf8",
+    );
+    expect(campaignSummaries).not.toMatch(
+      /right\._count\.scores\s*-\s*left\._count\.scores/,
+    );
+    expect(campaignSummaries).toContain("selectedByContactId");
   });
 
   it("validates offer against product materials at save time without acknowledgment gates", () => {

@@ -148,29 +148,6 @@ async function qualifyContactsForCampaign(
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
-      _count: {
-        select: {
-          scores: {
-            where: {
-              contactId: { in: contactIds },
-              scoringStatus: { in: ["COMPLETED", "SUPPRESSED"] },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  const selectedRun = compatibleRuns
-    .filter((candidate) => candidate._count.scores > 0)
-    .sort((left, right) => right._count.scores - left._count.scores)[0];
-  if (!selectedRun) {
-    return result;
-  }
-
-  const run = await prisma.scoringRun.findFirst({
-    where: { id: selectedRun.id, organizationId },
-    select: {
       scores: {
         where: {
           contactId: { in: contactIds },
@@ -197,22 +174,37 @@ async function qualifyContactsForCampaign(
       },
     },
   });
-  if (!run) {
+
+  const runsWithScores = compatibleRuns.filter((run) => run.scores.length > 0);
+  if (runsWithScores.length === 0) {
     return result;
   }
 
-  const overrides = new Map(
-    run.qualificationOverrides.map((row) => [row.targetId, row.bucket]),
-  );
+  // Most recent compatible run per contact (runs ordered createdAt desc).
+  type Selected = {
+    run: (typeof runsWithScores)[number];
+    score: (typeof runsWithScores)[number]["scores"][number];
+  };
+  const selectedByContactId = new Map<string, Selected>();
+  for (const run of runsWithScores) {
+    for (const score of run.scores) {
+      if (!selectedByContactId.has(score.contactId)) {
+        selectedByContactId.set(score.contactId, { run, score });
+      }
+    }
+  }
 
-  for (const score of run.scores) {
+  for (const { run, score } of selectedByContactId.values()) {
+    const overrideBucket =
+      run.qualificationOverrides.find((row) => row.targetId === score.contactId)
+        ?.bucket ?? null;
     const qualification = resolveContactCampaignQualification({
       scoringStatus: score.scoringStatus,
       scoreLabel: score.scoreLabel,
       assessmentData: score.assessmentData,
       criterionAssessments: score.criterionAssessments,
       matchedPersonaName: score.matchedPersona?.name ?? null,
-      overrideBucket: overrides.get(score.contactId) ?? null,
+      overrideBucket,
     });
     result.set(score.contactId, qualification);
   }

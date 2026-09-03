@@ -1,11 +1,28 @@
 /**
  * Organization-level email suppression: generation, send, import, tenancy.
  */
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TenantError } from "@/lib/tenant/errors";
 import { buildEmailPrompt, emailPromptOptionsForContext } from "@/lib/email-generation/prompt";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import { seedContactOnList } from "@/test/contact-seed";
+
+describe("suppression action revalidation", () => {
+  it("revalidates campaign detail and list detail surfaces after suppress/release", () => {
+    const src = readFileSync("src/app/actions/suppression.ts", "utf8");
+    expect(src).toContain('revalidatePath("/campaigns", "layout")');
+    expect(src).toContain('revalidatePath("/lists", "layout")');
+    expect(src).toContain('revalidatePath("/contacts", "layout")');
+    expect(src).toContain('revalidatePath("/scoring", "layout")');
+    expect(src).toContain("revalidatePath(`/campaigns/${row.campaignId}`)");
+    expect(src).toContain("revalidatePath(`/lists/${row.contactListId}`)");
+    // Must not only hit the campaigns index (stale /campaigns/[id] suppression flag).
+    expect(src).toMatch(
+      /revalidatePath\("\/campaigns",\s*"layout"\)/,
+    );
+  });
+});
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 

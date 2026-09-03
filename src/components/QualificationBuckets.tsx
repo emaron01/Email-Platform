@@ -21,6 +21,8 @@ import {
 export type QualificationBucketRow = {
   id: string;
   companyId?: string | null;
+  /** Run that owns this row's score (needed when campaign merges multiple runs). */
+  scoringRunId?: string | null;
   targetType: QualificationOverrideTarget;
   name: string;
   title?: string | null;
@@ -63,12 +65,25 @@ export function QualificationBuckets({
   );
   const [pending, startTransition] = useTransition();
 
+  function runIdForRow(row: QualificationBucketRow): string | null {
+    return row.scoringRunId ?? scoringRunId;
+  }
+
+  function canActOnRow(row: QualificationBucketRow): boolean {
+    return Boolean(runIdForRow(row));
+  }
+
+  function canActOnRows(targetRows: QualificationBucketRow[]): boolean {
+    return targetRows.some((row) => canActOnRow(row));
+  }
+
   function restore(row: QualificationBucketRow, bucket: QualificationBucket) {
-    if (!scoringRunId) return;
+    const runId = runIdForRow(row);
+    if (!runId) return;
     startTransition(async () => {
       const result = await overrideQualificationBucketAction({
         campaignId,
-        scoringRunId,
+        scoringRunId: runId,
         targetType: row.targetType,
         targetId: row.id,
         bucket,
@@ -90,22 +105,43 @@ export function QualificationBuckets({
     targetRows: QualificationBucketRow[],
     bucket: QualificationBucket,
   ) {
-    if (!scoringRunId || targetRows.length === 0) return;
+    if (targetRows.length === 0) return;
+    const byRun = new Map<string, QualificationBucketRow[]>();
+    for (const row of targetRows) {
+      const runId = runIdForRow(row);
+      if (!runId) continue;
+      const group = byRun.get(runId) ?? [];
+      group.push(row);
+      byRun.set(runId, group);
+    }
+    if (byRun.size === 0) return;
     startTransition(async () => {
-      const result = await bulkRestoreQualificationAction({
-        campaignId,
-        scoringRunId,
-        targetType: targetRows[0]!.targetType,
-        targetIds: targetRows.map((row) => row.id),
-        bucket,
-      });
-      setMessage(result.message);
-      if (result.ok && result.bucket) {
-        const ids = new Set(targetRows.map((row) => `${row.targetType}:${row.id}`));
+      let restoredBucket: QualificationBucket | undefined;
+      const messages: string[] = [];
+      let anyOk = false;
+      for (const [runId, group] of byRun) {
+        const result = await bulkRestoreQualificationAction({
+          campaignId,
+          scoringRunId: runId,
+          targetType: group[0]!.targetType,
+          targetIds: group.map((row) => row.id),
+          bucket,
+        });
+        messages.push(result.message);
+        if (result.ok && result.bucket) {
+          anyOk = true;
+          restoredBucket = result.bucket;
+        }
+      }
+      setMessage(messages[messages.length - 1] ?? null);
+      if (anyOk && restoredBucket) {
+        const ids = new Set(
+          targetRows.map((row) => `${row.targetType}:${row.id}`),
+        );
         setRows((current) =>
           current.map((entry) =>
             ids.has(`${entry.targetType}:${entry.id}`)
-              ? { ...entry, bucket: result.bucket! }
+              ? { ...entry, bucket: restoredBucket! }
               : entry,
           ),
         );
@@ -204,7 +240,7 @@ export function QualificationBuckets({
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    disabled={pending || !scoringRunId}
+                    disabled={pending || !canActOnRows(group.rows)}
                     onClick={() =>
                       keepExcludedMany(
                         group.rows.map((row) => `${row.targetType}:${row.id}`),
@@ -216,7 +252,7 @@ export function QualificationBuckets({
                   </button>
                   <button
                     type="button"
-                    disabled={pending || !scoringRunId}
+                    disabled={pending || !canActOnRows(group.rows)}
                     onClick={() => restoreMany(group.rows, "GOOD")}
                     className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
                   >
@@ -241,7 +277,7 @@ export function QualificationBuckets({
                       <div className="flex flex-wrap gap-1">
                         <button
                           type="button"
-                          disabled={pending || !scoringRunId}
+                          disabled={pending || !canActOnRow(row)}
                           onClick={() =>
                             keepExcluded(`${row.targetType}:${row.id}`)
                           }
@@ -251,7 +287,7 @@ export function QualificationBuckets({
                         </button>
                         <button
                           type="button"
-                          disabled={pending || !scoringRunId}
+                          disabled={pending || !canActOnRow(row)}
                           onClick={() => restore(row, "GOOD")}
                           className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
                         >
@@ -303,7 +339,7 @@ export function QualificationBuckets({
                   {row.bucket === "EXCLUDED" && row.canOverride ? (
                     <button
                       type="button"
-                      disabled={pending || !scoringRunId}
+                      disabled={pending || !canActOnRow(row)}
                       onClick={() => restore(row, "GOOD")}
                       className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-900"
                       data-testid={`restore-${row.targetType}-${row.id}`}
@@ -318,7 +354,7 @@ export function QualificationBuckets({
                         <button
                           key={bucket}
                           type="button"
-                          disabled={pending || !scoringRunId}
+                          disabled={pending || !canActOnRow(row)}
                           onClick={() => restore(row, bucket)}
                           className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-800"
                         >
