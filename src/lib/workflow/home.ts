@@ -7,9 +7,16 @@ import {
   normalizeEvidenceClass,
 } from "@/lib/criteria/evidence-class";
 import { getDueContactsForUser, type CampaignDueSummary } from "@/lib/cadence/dashboard";
+import { getMailboxConnectionView } from "@/lib/mailbox/data";
 import { normalizeSuggestedBuyerRoles } from "@/lib/setup/product-overview";
 import { voiceReadiness } from "@/lib/voice/types";
 import { buildHomeSetupLine } from "@/lib/workflow/home-setup-line";
+import {
+  buildHomeSetupRail,
+  resolveHomeSetupFocus,
+  type HomeSetupStep,
+  type HomeSetupStepKey,
+} from "@/lib/workflow/home-setup-rail";
 import { getProductCampaignReadiness } from "@/lib/workflow/product-campaign-readiness";
 
 export type SetupCardState = {
@@ -23,6 +30,8 @@ export type SetupCardState = {
 export type HomeWorkflow = {
   setupComplete: boolean;
   setupLine: { text: string; href: string | null };
+  setupRail: HomeSetupStep[];
+  setupFocus: HomeSetupStepKey;
   voice: ReturnType<typeof voiceReadiness>;
   completeProductIds: string[];
   campaignProducts: Array<{
@@ -70,69 +79,82 @@ export async function getHomeWorkflow(
   organizationId: string,
   options?: { includeArchived?: boolean; userId?: string },
 ): Promise<HomeWorkflow> {
-  const [products, campaigns, dueByCampaign] = await Promise.all([
-    prisma.product.findMany({
-      where: { organizationId, archivedAt: null },
-      orderBy: { createdAt: "asc" },
-      include: {
-        icps: {
-          where: { archivedAt: null },
-          orderBy: { createdAt: "asc" },
-          include: {
-            criteria: {
-              select: {
-                evidenceClass: true,
-                targetedSearchDecision: true,
-                tier: true,
+  const [products, campaigns, dueByCampaign, listCount, contactCount, mailbox] =
+    await Promise.all([
+      prisma.product.findMany({
+        where: { organizationId, archivedAt: null },
+        orderBy: { createdAt: "asc" },
+        include: {
+          icps: {
+            where: { archivedAt: null },
+            orderBy: { createdAt: "asc" },
+            include: {
+              criteria: {
+                select: {
+                  evidenceClass: true,
+                  targetedSearchDecision: true,
+                  tier: true,
+                },
               },
             },
           },
-        },
-        personas: {
-          where: { archivedAt: null },
-          orderBy: { createdAt: "asc" },
-          select: { id: true, name: true },
-        },
-        setupRuns: {
-          where: { status: { in: ["NEEDS_REVIEW", "PARTIAL", "APPROVED"] } },
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          select: { suggestedPersonasJson: true },
-        },
-      },
-    }),
-    prisma.campaign.findMany({
-      where: {
-        organizationId,
-        ...(options?.includeArchived ? {} : { archivedAt: null }),
-      },
-      orderBy: { updatedAt: "desc" },
-      include: {
-        icp: { select: { name: true } },
-        persona: { select: { name: true } },
-        personasInPlay: {
-          include: { persona: { select: { name: true } } },
-        },
-        offer: { select: { name: true } },
-        contacts: {
-          select: {
-            status: true,
-            contact: {
-              select: { companyId: true, company: true },
-            },
-            emailDrafts: { select: { id: true } },
+          personas: {
+            where: { archivedAt: null },
+            orderBy: { createdAt: "asc" },
+            select: { id: true, name: true },
+          },
+          setupRuns: {
+            where: { status: { in: ["NEEDS_REVIEW", "PARTIAL", "APPROVED"] } },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { suggestedPersonasJson: true },
           },
         },
-      },
-    }),
-    options?.userId
-      ? getDueContactsForUser({
+      }),
+      prisma.campaign.findMany({
+        where: {
           organizationId,
-          userId: options.userId,
-          includeArchived: options.includeArchived,
-        })
-      : Promise.resolve([] as CampaignDueSummary[]),
-  ]);
+          ...(options?.includeArchived ? {} : { archivedAt: null }),
+        },
+        orderBy: { updatedAt: "desc" },
+        include: {
+          icp: { select: { name: true } },
+          persona: { select: { name: true } },
+          personasInPlay: {
+            include: { persona: { select: { name: true } } },
+          },
+          offer: { select: { name: true } },
+          contacts: {
+            select: {
+              status: true,
+              contact: {
+                select: { companyId: true, company: true },
+              },
+              emailDrafts: { select: { id: true } },
+            },
+          },
+        },
+      }),
+      options?.userId
+        ? getDueContactsForUser({
+            organizationId,
+            userId: options.userId,
+            includeArchived: options.includeArchived,
+          })
+        : Promise.resolve([] as CampaignDueSummary[]),
+      prisma.contactList.count({
+        where: { organizationId, archivedAt: null },
+      }),
+      prisma.contact.count({
+        where: { organizationId, archivedAt: null },
+      }),
+      options?.userId
+        ? getMailboxConnectionView({
+            organizationId,
+            userId: options.userId,
+          })
+        : Promise.resolve(null),
+    ]);
 
   const voiceSampleCount =
     options?.userId != null
@@ -188,10 +210,29 @@ export async function getHomeWorkflow(
     totalPersonas,
   });
 
+  // Same rule as New campaign / setupComplete: approved + ICP with criteria + persona.
+  const productIncompleteForRail = products
+    .filter((product) => !isCampaignReadyProduct(product))
+    .map((product) => getProductCampaignReadiness(product));
+
+  const voice = voiceReadiness(voiceSampleCount);
+  const setupRail = buildHomeSetupRail({
+    voice,
+    productTotal: products.length,
+    productReadyCount: completeProducts.length,
+    productIncomplete: productIncompleteForRail,
+    listCount,
+    contactCount,
+    emailConnected: mailbox?.status === "CONNECTED",
+    emailReconnectRequired: mailbox?.status === "RECONNECT_REQUIRED",
+  });
+
   return {
     setupComplete: Boolean(completeProduct),
     setupLine,
-    voice: voiceReadiness(voiceSampleCount),
+    setupRail,
+    setupFocus: resolveHomeSetupFocus(setupRail),
+    voice,
     completeProductIds: completeProducts.map((product) => product.id),
     campaignProducts,
     product: {

@@ -16,10 +16,18 @@ const prismaMock = vi.hoisted(() => ({
   product: { findMany: vi.fn() },
   campaign: { findMany: vi.fn() },
   voiceSample: { count: vi.fn() },
+  contactList: { count: vi.fn() },
+  contact: { count: vi.fn() },
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+vi.mock("@/lib/mailbox/data", () => ({
+  getMailboxConnectionView: vi.fn(async () => null),
+}));
+vi.mock("@/lib/cadence/dashboard", () => ({
+  getDueContactsForUser: vi.fn(async () => []),
+}));
 
 import { getHomeWorkflow } from "@/lib/workflow/home";
 
@@ -58,6 +66,8 @@ describe("home workflow", () => {
     vi.clearAllMocks();
     prismaMock.campaign.findMany.mockResolvedValue([]);
     prismaMock.voiceSample.count.mockResolvedValue(3);
+    prismaMock.contactList.count.mockResolvedValue(0);
+    prismaMock.contact.count.mockResolvedValue(0);
   });
 
   it.each([
@@ -373,8 +383,9 @@ describe("workflow view contracts", () => {
     expect(page).toContain('href="/campaigns"');
     expect(page).toContain("workflow.campaigns.map");
     expect(page).toContain("href={`/campaigns/${campaign.id}`}");
-    expect(page).toContain("Finish setup first");
+    expect(page).toContain("Finish product setup first");
     expect(page).toContain("campaigns stay available");
+    expect(page).toContain("HomeSetupRail");
     expect(page).toContain("{workflow.campaigns.length === 0 ? (");
   });
 

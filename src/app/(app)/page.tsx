@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HomeSetupRail } from "@/components/HomeSetupRail";
 import { PageHeader, TenantMissing } from "@/components/ui";
 import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
@@ -71,25 +72,10 @@ export default async function DashboardPage({
         }
       />
 
-      <div className="mb-6 space-y-3">
-        <p className="text-sm text-slate-700">
-          {workflow.setupLine.href ? (
-            <Link href={workflow.setupLine.href} className="underline">
-              {workflow.setupLine.text}
-            </Link>
-          ) : (
-            workflow.setupLine.text
-          )}
-        </p>
-        {!workflow.voice.ready ? (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            {workflow.voice.message}{" "}
-            <Link href="/settings/voice" className="font-medium underline">
-              Add voice samples
-            </Link>
-          </p>
-        ) : null}
-      </div>
+      <HomeSetupRail
+        steps={workflow.setupRail}
+        focusKey={workflow.setupFocus}
+      />
 
       {workflow.dueByCampaign.length > 0 ? (
         <DueContactsPanel dueByCampaign={workflow.dueByCampaign} />
@@ -108,7 +94,7 @@ export default async function DashboardPage({
           <button
             type="button"
             disabled
-            title="Finish setup first"
+            title="Finish product setup first"
             className="cursor-not-allowed rounded-md bg-slate-300 px-3 py-2 text-sm font-medium text-slate-500"
           >
             New campaign
@@ -118,7 +104,8 @@ export default async function DashboardPage({
       {!workflow.setupComplete ? (
         <p className="mb-4 text-sm text-slate-500">
           Campaign creation unlocks after at least one product is approved with an
-          ICP that has criteria and a saved persona. Existing campaigns stay available.
+          ICP that has criteria and a saved persona. Voice and email connection are
+          optional. Existing campaigns stay available.
         </p>
       ) : null}
       {workflow.campaigns.length === 0 ? (
