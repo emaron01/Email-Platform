@@ -1,0 +1,135 @@
+"use client";
+
+import { useActionState, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  saveEmailSignatureAction,
+  type SignatureActionResult,
+} from "@/app/actions/signature";
+import {
+  EMAIL_SIGNATURE_HTML_MAX_CHARS,
+  EMAIL_SIGNATURE_MAX_CHARS,
+  type EmailSignatureView,
+} from "@/lib/signature/types";
+
+const initial: SignatureActionResult | null = null;
+
+export function EmailSignatureForm({
+  signature,
+}: {
+  signature: EmailSignatureView | null;
+}) {
+  const router = useRouter();
+  const [state, formAction, pending] = useActionState(
+    saveEmailSignatureAction,
+    initial,
+  );
+  const [body, setBody] = useState(signature?.body ?? "");
+  const [htmlBody, setHtmlBody] = useState(signature?.htmlBody ?? "");
+
+  useEffect(() => {
+    if (state?.ok) {
+      if (state.signature) {
+        setBody(state.signature.body);
+        setHtmlBody(state.signature.htmlBody ?? "");
+      }
+      router.refresh();
+    }
+  }, [state, router]);
+
+  return (
+    <section className="space-y-4" data-testid="email-signature">
+      <div>
+        <h2 className="text-lg font-medium text-slate-900">Email signature</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Appended when you send with Microsoft 365 or open a draft in Outlook
+          or Gmail. The draft editor stays unsigned so you do not edit the
+          signature by accident.
+        </p>
+      </div>
+
+      <form action={formAction} className="space-y-4">
+        {state ? (
+          <p
+            role="status"
+            data-testid="signature-action-status"
+            className={
+              state.ok ? "text-sm text-emerald-700" : "text-sm text-red-600"
+            }
+          >
+            {state.message}
+          </p>
+        ) : null}
+        <label className="block text-sm">
+          <span className="font-medium text-slate-700">
+            Plain text (required for Outlook / Gmail open)
+          </span>
+          <textarea
+            name="body"
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            maxLength={EMAIL_SIGNATURE_MAX_CHARS}
+            rows={5}
+            placeholder={"Best,\nAlex Rivera\nhttps://example.com/meet"}
+            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2"
+          />
+          <span className="mt-1 block text-xs text-slate-500">
+            {body.trim().length} / {EMAIL_SIGNATURE_MAX_CHARS} — mailto and
+            desktop compose cannot carry HTML.
+          </span>
+        </label>
+        <label className="block text-sm">
+          <span className="font-medium text-slate-700">
+            HTML (Connected Send only, optional)
+          </span>
+          <textarea
+            name="htmlBody"
+            value={htmlBody}
+            onChange={(event) => setHtmlBody(event.target.value)}
+            maxLength={EMAIL_SIGNATURE_HTML_MAX_CHARS}
+            rows={8}
+            placeholder={
+              '<p>Best,<br>Alex Rivera</p>\n<p><img src="https://example.com/logo.png" alt="Logo" width="120"></p>'
+            }
+            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs outline-none ring-slate-400 focus:ring-2"
+          />
+          <span className="mt-1 block text-xs text-slate-500">
+            {htmlBody.trim().length} / {EMAIL_SIGNATURE_HTML_MAX_CHARS} — logos
+            and styled blocks go here. Used only for Microsoft 365 Connected
+            Send.
+          </span>
+        </label>
+        <div>
+          <p className="text-sm font-medium text-slate-700">Plain preview</p>
+          <pre
+            data-testid="email-signature-preview"
+            className="mt-1 whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 px-3 py-2 font-sans text-sm text-slate-800"
+          >
+            {body.trim() ||
+              "Nothing will be appended to Outlook/Gmail opens until you save plain text."}
+          </pre>
+        </div>
+        {htmlBody.trim() ? (
+          <div>
+            <p className="text-sm font-medium text-slate-700">
+              HTML preview (Connected Send)
+            </p>
+            <div
+              data-testid="email-signature-html-preview"
+              className="mt-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
+              // Preview only — saved HTML is sanitized on the server before send.
+              dangerouslySetInnerHTML={{ __html: htmlBody }}
+            />
+          </div>
+        ) : null}
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+        >
+          {pending ? "Saving…" : "Save signature"}
+        </button>
+      </form>
+    </section>
+  );
+}

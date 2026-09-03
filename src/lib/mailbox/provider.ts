@@ -7,7 +7,10 @@ export type ConnectedEmailSendInput = {
   userId: string;
   to: string;
   subject: string;
+  /** Plain draft body without signature. */
   body: string;
+  signatureText?: string | null;
+  signatureHtml?: string | null;
 };
 
 export type ConnectedEmailSendResult = {

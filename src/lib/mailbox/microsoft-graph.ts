@@ -1,8 +1,8 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { buildMicrosoftGraphSendMailPayload } from "@/lib/email-generation/email-body";
 import { prisma } from "@/lib/prisma";
-import { toEmailTransportBody } from "@/lib/email-generation/email-body";
 import {
   getMicrosoftMailboxConfig,
   grantedScopesIncludeMailSend,
@@ -267,19 +267,15 @@ async function sendMicrosoftGraph(
         "client-request-id": clientRequestId,
         "return-client-request-id": "true",
       },
-      body: JSON.stringify({
-        message: {
+      body: JSON.stringify(
+        buildMicrosoftGraphSendMailPayload({
+          to: input.to,
           subject: input.subject,
-          body: {
-            contentType: "Text",
-            content: toEmailTransportBody(input.body),
-          },
-          toRecipients: [
-            { emailAddress: { address: input.to } },
-          ],
-        },
-        saveToSentItems: true,
-      }),
+          body: input.body,
+          signatureText: input.signatureText,
+          signatureHtml: input.signatureHtml,
+        }),
+      ),
       cache: "no-store",
     });
     const graphRequestId =

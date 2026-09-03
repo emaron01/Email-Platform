@@ -514,6 +514,7 @@ model Organization {
   personaEvidenceBundles   PersonaEvidenceBundle[]
   personaSetupRuns         PersonaSetupRun[]
   voiceSamples             VoiceSample[]
+  emailSignatures          EmailSignature[]
   mailboxConnections       MailboxConnection[]
   mailboxOAuthStates       MailboxOAuthState[]
   emailSendRecords         EmailSendRecord[]
@@ -596,6 +597,7 @@ model User {
   adminAuditEvents         AdminAuditEvent[]
   transactionalEmailEvents TransactionalEmailEvent[]
   voiceSamples             VoiceSample[]
+  emailSignatures          EmailSignature[]
   sentEmailDrafts          EmailDraft[]                  @relation("EmailDraftSentBy")
   mailboxConnections       MailboxConnection[]
   mailboxOAuthStates       MailboxOAuthState[]
@@ -641,6 +643,27 @@ model VoiceSample {
   @@index([userId])
   @@index([organizationId, userId])
   @@index([organizationId, userId, createdAt])
+}
+
+/// One plain-text email signature per user per organization. Appended at send, never generated.
+model EmailSignature {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  /// Plain text for deeplink handoff (mailto cannot carry HTML).
+  body           String
+  /// Optional HTML for Connected Send (logos, styled blocks). Null = text-only Graph send.
+  htmlBody       String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
 }
 
 model MailboxConnection {

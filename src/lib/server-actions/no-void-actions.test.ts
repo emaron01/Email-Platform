@@ -81,6 +81,7 @@ describe("action result UI seams", () => {
     { form: "src/components/ManualCompanyResearchForm.tsx", statusTestId: "manual-research-status" },
     { form: "src/components/ActionFeedbackForm.tsx", statusTestId: "action-feedback-status" },
     { form: "src/components/VoiceSamplesForm.tsx", statusTestId: "voice-action-status" },
+    { form: "src/components/EmailSignatureForm.tsx", statusTestId: "signature-action-status" },
     { form: "src/components/CampaignContactsManager.tsx", statusTestId: "campaign-contacts-status" },
     { form: "src/components/CampaignEmailSettingsForm.tsx", statusTestId: "campaign-email-settings-status" },
   ];

@@ -5,12 +5,14 @@ import { prisma } from "@/lib/prisma";
 import {
   EMAIL_BODY_MAX_CHARS,
   EMAIL_SUBJECT_MAX_CHARS,
+  appendEmailSignature,
   normalizeEmailBody,
 } from "@/lib/email-generation/email-body";
 import {
   getConnectedEmailProvider,
   type ConnectedEmailProvider,
 } from "@/lib/mailbox/provider";
+import { getEmailSignatureForSend } from "@/lib/signature/signature";
 import { resolveActiveOrganization } from "@/lib/auth/session";
 import { assertAccountCapability } from "@/lib/auth/account-policy";
 import { TenantError } from "@/lib/tenant/errors";
@@ -66,6 +68,16 @@ export async function sendEmailDraftWithConnectedMailbox(input: {
     throw new TenantError("No active organization membership was found.");
   }
   const organizationId = membership.organization.id;
+  const signature = await getEmailSignatureForSend({
+    organizationId,
+    userId: input.userId,
+  });
+  const finalBodyForRecord = appendEmailSignature(body, signature.text);
+  if (finalBodyForRecord.length > EMAIL_BODY_MAX_CHARS) {
+    throw new TenantError(
+      `Email body plus signature must be ${EMAIL_BODY_MAX_CHARS} characters or fewer.`,
+    );
+  }
   const draft = await prisma.emailDraft.findFirst({
     where: { id: input.draftId, organizationId },
     select: {
@@ -155,6 +167,8 @@ export async function sendEmailDraftWithConnectedMailbox(input: {
       to: recipient,
       subject,
       body,
+      signatureText: signature.text,
+      signatureHtml: signature.html,
     });
     await prisma.$transaction(async (tx) => {
       const completed = await tx.emailDraft.updateMany({
@@ -184,7 +198,7 @@ export async function sendEmailDraftWithConnectedMailbox(input: {
           recipient,
           subject,
           generatedBody: draft.generatedBody ?? draft.body ?? body,
-          finalBody: body,
+          finalBody: finalBodyForRecord,
           sentByUserId: input.userId,
           method: "MICROSOFT_GRAPH",
           occurredAt: sent.acceptedAt,

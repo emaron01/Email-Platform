@@ -516,6 +516,70 @@ describe.skipIf(!hasDatabase)(
       });
     });
 
+    it("appends the user signature to Graph send but not to the stored draft", async () => {
+      const emailDraft = await draft();
+      await connect(userAId, new Date(Date.now() + 60 * 60 * 1000));
+      await prisma.emailSignature.upsert({
+        where: {
+          organizationId_userId: {
+            organizationId,
+            userId: userAId,
+          },
+        },
+        create: {
+          organizationId,
+          userId: userAId,
+          body: "Alex Rivera\nhttps://example.com/meet",
+          active: true,
+        },
+        update: {
+          body: "Alex Rivera\nhttps://example.com/meet",
+          active: true,
+        },
+      });
+      const provider = {
+        id: "MICROSOFT_365" as const,
+        send: vi.fn().mockResolvedValue({
+          provider: "MICROSOFT_365" as const,
+          acceptedAt: new Date("2026-08-24T21:00:00.000Z"),
+          providerMessageId: "provider-message-sig",
+          providerRequestId: "graph-request-sig",
+        }),
+      };
+      const { sendEmailDraftWithConnectedMailbox } = await import(
+        "@/lib/mailbox/send"
+      );
+      await sendEmailDraftWithConnectedMailbox({
+        draftId: emailDraft.id,
+        userId: userAId,
+        subject: "Signed subject",
+        body: "Would this be useful?",
+        provider,
+      });
+      expect(provider.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: "Would this be useful?",
+          signatureText: "Alex Rivera\nhttps://example.com/meet",
+          signatureHtml: null,
+        }),
+      );
+      expect(
+        await prisma.emailDraft.findUniqueOrThrow({
+          where: { id: emailDraft.id },
+          select: { body: true },
+        }),
+      ).toEqual({ body: "Would this be useful?" });
+      expect(
+        await prisma.emailSendRecord.findFirstOrThrow({
+          where: { emailDraftId: emailDraft.id },
+          select: { finalBody: true },
+        }),
+      ).toEqual({
+        finalBody:
+          "Would this be useful?\n\nAlex Rivera\nhttps://example.com/meet",
+      });
+    });
+
     it("warns at the advisory threshold but never hard-blocks a send", async () => {
       const emailDraft = await draft();
       await connect(userAId, new Date(Date.now() + 60 * 60 * 1000));

@@ -126,6 +126,7 @@ export function EmailDraftsStage({
   mailboxConnection,
   dailySendUsage,
   readOnly = false,
+  emailSignature = null,
 }: {
   contacts: EmailDraftsStageContact[];
   campaignEmailLength: CampaignEmailLength;
@@ -141,6 +142,7 @@ export function EmailDraftsStage({
     limit: number;
   };
   readOnly?: boolean;
+  emailSignature?: string | null;
 }) {
   const [view, setView] = useState<"write" | "compare">("write");
   const [contactFilter, setContactFilter] =
@@ -446,6 +448,7 @@ export function EmailDraftsStage({
                 mailboxConnection={mailboxConnection}
                 dailySendUsage={dailySendUsage}
                 campaignEmailLength={campaignEmailLength}
+                emailSignature={emailSignature}
                 personaOptions={selected.personaOptions}
                 resolvedPersonaId={selected.resolvedPersonaId}
                 resolvedPersonaName={selected.resolvedPersonaName}

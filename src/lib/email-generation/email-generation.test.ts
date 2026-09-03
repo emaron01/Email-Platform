@@ -449,6 +449,47 @@ describe("generated email output", () => {
     expect(launch.bodyToCopy?.endsWith("Closing paragraph?")).toBe(true);
   });
 
+  it("appends plain signatures for text Graph sends and HTML only when provided", async () => {
+    const {
+      appendEmailSignature,
+      buildMicrosoftGraphSendMailPayload,
+      plainTextBodyToHtmlFragments,
+    } = await import("@/lib/email-generation/email-body");
+    const body = "First paragraph.\n\nWould this be useful?";
+    const signature = "Alex Rivera\nhttps://example.com/meet";
+    const withSig = appendEmailSignature(body, signature);
+    expect(withSig).toBe(
+      "First paragraph.\n\nWould this be useful?\n\nAlex Rivera\nhttps://example.com/meet",
+    );
+    expect(appendEmailSignature(withSig, signature)).toBe(withSig);
+
+    const textPayload = buildMicrosoftGraphSendMailPayload({
+      to: "alex@example.com",
+      subject: "Hello",
+      body,
+      signatureText: signature,
+    });
+    expect(textPayload.saveToSentItems).toBe(true);
+    expect(textPayload.message.body.contentType).toBe("Text");
+    expect(textPayload.message.body.content).toContain("Alex Rivera");
+    expect(textPayload.message).not.toHaveProperty("from");
+
+    const htmlSig = "<p><strong>Alex Rivera</strong></p>";
+    const htmlPayload = buildMicrosoftGraphSendMailPayload({
+      to: "alex@example.com",
+      subject: "Hello",
+      body,
+      signatureText: signature,
+      signatureHtml: htmlSig,
+    });
+    expect(htmlPayload.message.body.contentType).toBe("HTML");
+    expect(htmlPayload.message.body.content).toContain(
+      plainTextBodyToHtmlFragments(body),
+    );
+    expect(htmlPayload.message.body.content).toContain(htmlSig);
+    expect(htmlPayload.message.body.content).not.toContain("font-family:Calibri");
+  });
+
   it("opens each handoff href exactly once (no noopener null-fallback double fire)", async () => {
     const { openEmailClientHref } = await import(
       "@/lib/email-generation/email-body"
@@ -1071,6 +1112,8 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("Outlook desktop");
     expect(form).toContain("Gmail");
     expect(form).toContain("buildEmailClientLaunch");
+    expect(form).toContain("appendEmailSignature");
+    expect(form).toContain("emailSignature");
     expect(form).toContain("openEmailClientHref");
     expect(form).toContain("recordEmailClientIntentAction");
     expect(form).not.toContain(

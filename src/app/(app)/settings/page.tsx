@@ -68,7 +68,7 @@ export default async function SettingsIndexPage() {
             Your Voice
           </Link>
           <p className="text-slate-600">
-            Writing samples used to style generated outbound emails.
+            Writing samples and the signature appended when you send.
           </p>
         </li>
         <li>
@@ -90,7 +90,8 @@ export default async function SettingsIndexPage() {
             Email connection
           </Link>
           <p className="text-slate-600">
-            Connect your own Microsoft 365 mailbox for direct sending.
+            Connect your Microsoft 365 mailbox and set the signature appended
+            on Connected Send.
           </p>
         </li>
         {isAdmin ? (

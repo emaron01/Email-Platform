@@ -24,6 +24,7 @@ import {
   type CampaignEmailLength,
 } from "@/lib/campaign/save";
 import {
+  appendEmailSignature,
   buildEmailClientLaunch,
   EMAIL_BODY_MAX_CHARS,
   EMAIL_SUBJECT_MAX_CHARS,
@@ -115,6 +116,7 @@ export function EmailSequenceWorkspace({
   campaignEmailLength = "MEDIUM",
   sequenceStopped = false,
   sequenceStoppedReason = null,
+  emailSignature = null,
   onDraftOpenedForReview,
   onDraftGenerated,
   onSendComplete,
@@ -154,6 +156,7 @@ export function EmailSequenceWorkspace({
   campaignEmailLength?: CampaignEmailLength;
   sequenceStopped?: boolean;
   sequenceStoppedReason?: string | null;
+  emailSignature?: string | null;
   onDraftOpenedForReview?: (draftId: string) => void;
   onDraftGenerated?: (draft: {
     id: string;
@@ -387,7 +390,7 @@ export function EmailSequenceWorkspace({
       client,
       to: contactEmail,
       subject: selected.subject,
-      body: selected.body,
+      body: appendEmailSignature(selected.body, emailSignature),
       maxUrlLength: emailDeeplinkMaxUrlLength,
     });
     if (!launch.href) {
@@ -1013,6 +1016,15 @@ export function EmailSequenceWorkspace({
                       : "Connect Microsoft 365 to send directly"}
                   </a>
                 ) : null}
+                {!emailSignature ? (
+                  <a
+                    href="/settings/voice"
+                    className="text-xs font-medium text-slate-700 underline"
+                  >
+                    Add a signature — it is appended on send and when you open
+                    Outlook or Gmail
+                  </a>
+                ) : null}
                 {dailySendUsage.used >= dailySendUsage.warningLimit ? (
                   <p className="text-xs font-medium text-amber-700">
                     {formatDailySendAdvisory(dailySendUsage.used)}
@@ -1130,7 +1142,8 @@ export function EmailSequenceWorkspace({
             {selected.kind === "REPLY" && selected.status !== "SENT" ? (
               <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
                 Copy this reply into your inbox and send it yourself. This app
-                does not send reply emails and does not append a signature.
+                does not send reply emails. Opening in Outlook or Gmail still
+                appends your saved signature.
               </p>
             ) : null}
           </>

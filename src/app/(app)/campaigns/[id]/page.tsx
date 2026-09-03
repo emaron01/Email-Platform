@@ -30,6 +30,7 @@ import { requireCurrentUser } from "@/lib/auth/session";
 import { getEffectiveUsagePolicy } from "@/lib/usage/policy";
 import { getMailboxConnectionView } from "@/lib/mailbox/data";
 import { getDailyEmailSendUsage } from "@/lib/usage/quota";
+import { getActiveEmailSignatureBody } from "@/lib/signature/signature";
 import { listVoiceSamplesForUser } from "@/lib/voice/samples";
 import {
   buildCampaignStages,
@@ -92,6 +93,7 @@ export default async function CampaignDetailPage({
   let dailySendUsage;
   let qualification;
   let voiceSamples;
+  let emailSignature;
   try {
     [
       campaign,
@@ -102,6 +104,7 @@ export default async function CampaignDetailPage({
       dailySendUsage,
       qualification,
       voiceSamples,
+      emailSignature,
     ] = await Promise.all([
       getCampaignDetail(id),
       searchAvailableCampaignContacts(id, query.q),
@@ -120,6 +123,10 @@ export default async function CampaignDetailPage({
       }),
       getCampaignQualificationView(id),
       listVoiceSamplesForUser({
+        organizationId: organization.id,
+        userId: user.id,
+      }),
+      getActiveEmailSignatureBody({
         organizationId: organization.id,
         userId: user.id,
       }),
@@ -473,6 +480,7 @@ export default async function CampaignDetailPage({
               emailDeeplinkMaxUrlLength={
                 usagePolicy.emailDeeplinkMaxUrlLength
               }
+              emailSignature={emailSignature}
               mailboxConnection={
                 mailboxConnection
                   ? {
