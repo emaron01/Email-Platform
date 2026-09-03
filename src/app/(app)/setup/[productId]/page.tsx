@@ -4,6 +4,7 @@ import type { Product } from "@prisma/client";
 import type { ReactNode } from "react";
 import { deleteProductAction } from "@/app/actions";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
+import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
 import { PageHeader, Panel, TenantMissing } from "@/components/ui";
 import { listIcpCriteria } from "@/lib/interpretation/icp";
 import { listPersonaCriteria } from "@/lib/interpretation/persona";
@@ -209,6 +210,8 @@ export default async function SetupProductPage({ params }: PageProps) {
           </div>
         }
       />
+
+      <DeleteSuccessNotice />
 
       <div className="space-y-5">
         {/* 1. Product */}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
 import { EmptyState, PageHeader, TenantMissing } from "@/components/ui";
 import { ProductCatalogPanel } from "@/components/ProductCatalogPanel";
 import { listProductsWithCounts } from "@/lib/tenant/data";
@@ -35,6 +36,8 @@ export default async function ProductsPage() {
           </Link>
         }
       />
+
+      <DeleteSuccessNotice />
 
       {products.length === 0 ? (
         <EmptyState

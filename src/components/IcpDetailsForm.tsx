@@ -457,6 +457,7 @@ export function IcpDetailsForm({
           confirmTitle={`Delete ICP "${icp.name}"?`}
           confirmBody={`This will remove this ICP and its current generated criteria.\nHistorical scoring snapshots will not be changed.\nIf scoring runs reference this ICP, it will be archived instead of permanently deleted.`}
           confirmButtonLabel="Delete ICP"
+          onSuccessNavigate={`/setup/${productId}`}
         />
       </div>
     </div>

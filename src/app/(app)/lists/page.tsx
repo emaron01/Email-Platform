@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AddContactsWizard } from "@/components/AddContactsWizard";
 import { CompanyResearchAllowanceBanner } from "@/components/CompanyResearchAllowanceBanner";
+import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
 import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import {
   EmptyState,
@@ -59,6 +60,8 @@ export default async function ListsPage({
           </div>
         }
       />
+
+      <DeleteSuccessNotice />
 
       <div className="mb-6">
         <CompanyResearchAllowanceBanner usage={researchAllowance} />

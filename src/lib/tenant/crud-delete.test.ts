@@ -64,6 +64,53 @@ describe("setup delete authorization policy", () => {
     expect(tenant).toMatch(/export async function deleteContactListGraph/);
     expect(tenant).toMatch(/export async function deleteOrArchiveContactList/);
   });
+
+  it("post-delete navigation never refreshes the deleted record URL", async () => {
+    const fs = await import("node:fs");
+    const form = fs.readFileSync("src/components/ConfirmDeleteForm.tsx", "utf8");
+    expect(form).toContain("onSuccessNavigate");
+    expect(form).toContain("router.replace(onSuccessNavigate)");
+    expect(form).toContain("DELETE_SUCCESS_NOTICE_KEY");
+    // Race that caused 404: push then refresh while still on deleted URL.
+    expect(form).not.toMatch(
+      /router\.replace\(onSuccessNavigate\);\s*router\.refresh\(\)/,
+    );
+    expect(form).not.toMatch(
+      /router\.push\(onSuccessNavigate\);\s*router\.refresh\(\)/,
+    );
+
+    const campaign = fs.readFileSync(
+      "src/app/(app)/campaigns/[id]/page.tsx",
+      "utf8",
+    );
+    expect(campaign).toContain('onSuccessNavigate="/campaigns"');
+    expect(
+      fs.readFileSync("src/app/(app)/campaigns/page.tsx", "utf8"),
+    ).toContain("DeleteSuccessNotice");
+
+    const list = fs.readFileSync("src/app/(app)/lists/[id]/page.tsx", "utf8");
+    expect(list).toContain('onSuccessNavigate="/lists"');
+    expect(fs.readFileSync("src/app/(app)/lists/page.tsx", "utf8")).toContain(
+      "DeleteSuccessNotice",
+    );
+
+    const productSetup = fs.readFileSync(
+      "src/app/(app)/setup/[productId]/page.tsx",
+      "utf8",
+    );
+    expect(productSetup).toContain('onSuccessNavigate="/products"');
+    expect(productSetup).toContain("DeleteSuccessNotice");
+    expect(
+      fs.readFileSync("src/app/(app)/products/page.tsx", "utf8"),
+    ).toContain("DeleteSuccessNotice");
+
+    const icp = fs.readFileSync("src/components/IcpDetailsForm.tsx", "utf8");
+    expect(icp).toMatch(/onSuccessNavigate=\{`\/setup\/\$\{productId\}`\}/);
+    const persona = fs.readFileSync("src/components/PersonaForm.tsx", "utf8");
+    expect(persona).toMatch(
+      /onSuccessNavigate=\{`\/setup\/\$\{productId\}`\}/,
+    );
+  });
 });
 
 describe.skipIf(!hasDatabase)(

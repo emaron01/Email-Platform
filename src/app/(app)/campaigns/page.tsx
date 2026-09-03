@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
 import { EmptyState, PageHeader, TenantMissing } from "@/components/ui";
 import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import { listCampaigns } from "@/lib/tenant/data";
@@ -64,6 +65,8 @@ export default async function CampaignsPage({
           </>
         }
       />
+
+      <DeleteSuccessNotice />
 
       {campaigns.length === 0 ? (
         <EmptyState

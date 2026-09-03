@@ -1,13 +1,22 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  DELETE_SUCCESS_NOTICE_EVENT,
+  DELETE_SUCCESS_NOTICE_KEY,
+} from "@/components/DeleteSuccessNotice";
 import type { CrudDeleteResult } from "@/lib/tenant/crud-delete";
 
 type DeleteAction = (
   prev: CrudDeleteResult | null,
   formData: FormData,
 ) => Promise<CrudDeleteResult>;
+
+function pathOnly(href: string): string {
+  const q = href.indexOf("?");
+  return q === -1 ? href : href.slice(0, q);
+}
 
 /**
  * Destructive delete with explicit confirmation copy (not browser confirm()).
@@ -36,16 +45,34 @@ export function ConfirmDeleteForm({
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(action, null);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    if (state?.ok) {
-      setOpen(false);
-      if (onSuccessNavigate) {
-        router.push(onSuccessNavigate);
+    if (!state?.ok) return;
+    setOpen(false);
+    if (onSuccessNavigate) {
+      const message = state.message || "Deleted.";
+      // Never refresh the deleted record URL — that 404s before navigation.
+      try {
+        sessionStorage.setItem(DELETE_SUCCESS_NOTICE_KEY, message);
+      } catch {
+        // ignore
       }
-      router.refresh();
+      if (pathname === pathOnly(onSuccessNavigate)) {
+        // Already on the destination (e.g. product delete from /products).
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent(DELETE_SUCCESS_NOTICE_EVENT, { detail: message }),
+          );
+        }
+        router.refresh();
+      } else {
+        router.replace(onSuccessNavigate);
+      }
+      return;
     }
-  }, [state, router, onSuccessNavigate]);
+    router.refresh();
+  }, [state, router, pathname, onSuccessNavigate]);
 
   return (
     <div data-testid="confirm-delete">
@@ -103,11 +130,6 @@ export function ConfirmDeleteForm({
       )}
       {state && !state.ok ? (
         <p className="mt-2 text-sm text-red-600" role="alert" data-testid="delete-error">
-          {state.message}
-        </p>
-      ) : null}
-      {state?.ok ? (
-        <p className="mt-2 text-sm text-emerald-700" role="status" data-testid="delete-success">
           {state.message}
         </p>
       ) : null}
