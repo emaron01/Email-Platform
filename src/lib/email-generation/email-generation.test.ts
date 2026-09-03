@@ -1114,6 +1114,7 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("buildEmailClientLaunch");
     expect(form).toContain("appendEmailSignature");
     expect(form).toContain("emailSignature");
+    expect(form).toContain('window.open("about:blank", "_blank")');
     expect(form).toContain("openEmailClientHref");
     expect(form).toContain("recordEmailClientIntentAction");
     expect(form).not.toContain(
@@ -1127,6 +1128,9 @@ describe("email generation action and UI seams", () => {
     expect(campaignDetailPage).toContain("EmailDraftsStage");
     const draftsStage = readFileSync("src/components/EmailDraftsStage.tsx", "utf8");
     expect(draftsStage).toContain("sortEmailDraftContactsForSendQueue");
+    expect(draftsStage).toContain("!row.suppressed");
+    expect(draftsStage).toContain('row.contactStatus !== "EXCLUDED"');
+    expect(draftsStage).toContain("formatEmailDraftContactListLine");
     expect(draftsStage).toContain("lookaheadGenerateEmailDraftAction");
     expect(draftsStage).toContain("pickNextContactAfterSend");
     expect(draftsStage).toContain("onSendComplete");

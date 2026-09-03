@@ -414,17 +414,33 @@ export function EmailSequenceWorkspace({
       }
       copyPromise = navigator.clipboard.writeText(launch.bodyToCopy);
     }
+
+    // https clients (Gmail, Outlook Web) must open under the user gesture.
+    // Opening only after await persist/record is often blocked; a blocked popup
+    // can fall through to same-tab navigation and tear down the confirm modal
+    // before paint. mailto (Outlook desktop) stays same-tab by design.
+    const preOpenedTab =
+      client === "OUTLOOK_DESKTOP"
+        ? null
+        : typeof window !== "undefined"
+          ? window.open("about:blank", "_blank")
+          : null;
+
     clientOpenInFlight.current = true;
     startTransition(async () => {
       try {
         if (selected.status !== "SENT") {
           const saved = await persistDraft(selected);
-          if (!saved.ok || !saved.subject || !saved.body) return;
+          if (!saved.ok || !saved.subject || !saved.body) {
+            preOpenedTab?.close();
+            return;
+          }
         }
         if (copyPromise) {
           try {
             await copyPromise;
           } catch {
+            preOpenedTab?.close();
             setResult({
               ok: false,
               message:
@@ -439,12 +455,21 @@ export function EmailSequenceWorkspace({
           bodyHandling: launch.bodyHandling,
         });
         setResult(recorded);
-        if (!recorded.ok) return;
+        if (!recorded.ok) {
+          preOpenedTab?.close();
+          return;
+        }
         if (recorded.handoffAt) {
           updateSelectedDraft({ handoffAt: recorded.handoffAt });
           setSendConfirmDismissed(false);
+          setDeeplinkSendDeclined(false);
         }
-        openEmailClientHref(href);
+        if (preOpenedTab && !preOpenedTab.closed) {
+          preOpenedTab.location.href = href;
+          preOpenedTab.opener = null;
+        } else {
+          openEmailClientHref(href);
+        }
       } finally {
         clientOpenInFlight.current = false;
       }

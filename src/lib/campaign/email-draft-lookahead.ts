@@ -74,6 +74,8 @@ export function contactDraftListStatus(input: {
     subject: string;
     body: string;
     status: string;
+    sequenceNumber?: number;
+    sentAt?: string | null;
     source?: string;
     generationQuotaCommitted?: boolean;
   }>;
@@ -82,12 +84,44 @@ export function contactDraftListStatus(input: {
   const reviewable = input.drafts.filter(
     (draft) => draft.subject && draft.body && draft.status !== "SENT",
   );
-  if (reviewable.length === 0 && input.hasPersonaDecision === false) {
+  if (reviewable.length > 0) {
+    if (contactHasUncommittedLookaheadDraft({ drafts: reviewable })) {
+      return "Prepared";
+    }
+    return "Ready to review";
+  }
+  if (input.hasPersonaDecision === false) {
     return "Needs persona";
   }
-  if (reviewable.length === 0) return "No draft";
-  if (contactHasUncommittedLookaheadDraft({ drafts: reviewable })) {
-    return "Prepared";
+
+  const sent = input.drafts
+    .filter((draft) => draft.status === "SENT")
+    .sort((a, b) => (b.sequenceNumber ?? 0) - (a.sequenceNumber ?? 0));
+  const latestSent = sent[0];
+  if (latestSent) {
+    const sequence = latestSent.sequenceNumber ?? sent.length;
+    if (latestSent.sentAt) {
+      const sentDate = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+      }).format(new Date(latestSent.sentAt));
+      return `Email ${sequence} sent ${sentDate}`;
+    }
+    return `Email ${sequence} sent`;
   }
-  return "Ready to review";
+
+  return "No draft";
+}
+
+/** Contact list line: qualification · optional persona · draft/send status. */
+export function formatEmailDraftContactListLine(input: {
+  qualificationLabel: string;
+  personaName?: string | null;
+  statusLabel: string;
+}): string {
+  const parts = [input.qualificationLabel];
+  const persona = input.personaName?.trim();
+  if (persona) parts.push(persona);
+  parts.push(input.statusLabel);
+  return parts.join(" · ");
 }

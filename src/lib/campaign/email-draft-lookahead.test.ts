@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   contactDraftListStatus,
+  formatEmailDraftContactListLine,
   isLookaheadEligible,
   LOOKAHEAD_DRAFT_COUNT,
   pickLookaheadContacts,
@@ -134,5 +135,31 @@ describe("email draft lookahead", () => {
         ],
       }),
     ).toBe("Ready to review");
+  });
+
+  it("keeps sent history in the list instead of collapsing to No draft", () => {
+    expect(
+      contactDraftListStatus({
+        isPreparing: false,
+        hasPersonaDecision: true,
+        drafts: [
+          {
+            subject: "Hi",
+            body: "Body",
+            status: "SENT",
+            sequenceNumber: 1,
+            sentAt: "2026-09-02T15:00:00.000Z",
+          },
+        ],
+      }),
+    ).toMatch(/^Email 1 sent /);
+
+    expect(
+      formatEmailDraftContactListLine({
+        qualificationLabel: "Ready to include",
+        personaName: "CRO",
+        statusLabel: "Email 1 sent Sep 2",
+      }),
+    ).toBe("Ready to include · CRO · Email 1 sent Sep 2");
   });
 });

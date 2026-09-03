@@ -9,6 +9,7 @@ import type { CampaignEmailLength } from "@/lib/campaign/save";
 import { sortEmailDraftContactsForSendQueue, pickNextContactAfterSend, CAMPAIGN_QUEUE_COMPLETE_MESSAGE } from "@/lib/campaign/email-draft-contact-order";
 import {
   contactDraftListStatus,
+  formatEmailDraftContactListLine,
   pickLookaheadContacts,
 } from "@/lib/campaign/email-draft-lookahead";
 import { QUALIFICATION_BUCKET_LABELS } from "@/lib/workflow/qualification";
@@ -161,10 +162,15 @@ export function EmailDraftsStage({
   }, [contacts]);
 
   const visibleContacts = useMemo(() => {
+    // Opted-out and excluded contacts cannot be emailed — keep them out of the
+    // working list (all filters), not only "Ready to send".
+    const working = stageContacts.filter(
+      (row) => !row.suppressed && row.contactStatus !== "EXCLUDED",
+    );
     const filtered =
       contactFilter === "ready_to_send"
-        ? stageContacts.filter((row) => row.drafts.length > 0)
-        : stageContacts;
+        ? working.filter((row) => row.drafts.length > 0)
+        : working;
     return sortEmailDraftContactsForSendQueue(filtered);
   }, [contactFilter, stageContacts]);
 
@@ -377,6 +383,13 @@ export function EmailDraftsStage({
                     hasPersonaDecision: row.hasPersonaDecision,
                     drafts: row.drafts,
                   });
+                  const listLine = formatEmailDraftContactListLine({
+                    qualificationLabel: row.qualificationBucket
+                      ? QUALIFICATION_BUCKET_LABELS[row.qualificationBucket]
+                      : "Not scored",
+                    personaName: row.resolvedPersonaName,
+                    statusLabel,
+                  });
                   return (
                     <li key={row.campaignContactId}>
                       <button
@@ -400,17 +413,14 @@ export function EmailDraftsStage({
                                 ? "text-sky-700"
                                 : statusLabel === "Needs persona"
                                   ? "font-medium text-amber-800"
-                                  : "text-slate-500"
+                                  : statusLabel.startsWith("Email ") &&
+                                      statusLabel.includes(" sent")
+                                    ? "font-medium text-slate-700"
+                                    : "text-slate-500"
                           }`}
                           data-testid={`contact-draft-status-${row.campaignContactId}`}
                         >
-                          {row.qualificationBucket
-                            ? QUALIFICATION_BUCKET_LABELS[
-                                row.qualificationBucket
-                              ]
-                            : "Not scored"}
-                          {" · "}
-                          {statusLabel}
+                          {listLine}
                         </span>
                       </button>
                     </li>
