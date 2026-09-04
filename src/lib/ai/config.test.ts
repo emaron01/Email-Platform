@@ -196,6 +196,18 @@ describe("role-specific AI configuration", () => {
     expect(getResearchAiConfig().model).not.toBe(getScoringAiConfig().model);
   });
 
+  it("allows openai-responses for Email Facts AI (same host as other roles)", () => {
+    clearAllAiEnv();
+    process.env.EMAIL_FACTS_AI_PROVIDER = "openai-responses";
+    process.env.EMAIL_FACTS_AI_MODEL = "email-facts-responses";
+    process.env.EMAIL_FACTS_AI_MODEL_URL =
+      "https://api.openai.com/v1/responses";
+    process.env.EMAIL_FACTS_AI_API_KEY = "email-facts-key";
+
+    expect(isEmailFactsAiConfigured()).toBe(true);
+    expect(getEmailFactsAiConfig().provider).toBe("openai-responses");
+  });
+
   it("never includes API key in sanitized URL identifier", () => {
     const id = sanitizeModelUrlIdentifier(
       "https://user:secret@example.test/v1/chat/completions?api_key=abc",

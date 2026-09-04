@@ -5,16 +5,12 @@ import {
   canManageOrganizationPolicy,
 } from "@/lib/org/authz";
 import { ensureOrganizationPolicies } from "@/lib/usage/policy";
-import { listAiRoleStatuses } from "@/lib/ai/roles";
-import { AiRoleStatusList } from "@/components/AiRoleStatusList";
 
 export default async function SettingsIndexPage() {
   const organization = await requireOrganization();
   await ensureOrganizationPolicies(organization.id);
   const { membership } = await getMembershipForCurrentUser(organization.id);
   const isAdmin = canManageOrganizationPolicy(membership.role);
-  const aiRoles = listAiRoleStatuses();
-  const unconfigured = aiRoles.filter((role) => !role.configured);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -26,27 +22,6 @@ export default async function SettingsIndexPage() {
           Workspace configuration for {organization.name}.
         </p>
       </div>
-
-      <section className="space-y-3 rounded-lg border border-slate-200 bg-white px-5 py-4">
-        <h2 className="text-base font-semibold text-slate-900">
-          AI configuration
-        </h2>
-        <p className="text-sm text-slate-600">
-          Each role has its own environment variables. An unset role no longer
-          fails silently — scoring and other operations that need it will stop
-          and say so.
-        </p>
-        {unconfigured.length > 0 ? (
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-            {unconfigured.length} role
-            {unconfigured.length === 1 ? " is" : "s are"} not configured:{" "}
-            {unconfigured.map((role) => role.label).join(", ")}.
-          </p>
-        ) : (
-          <p className="text-sm text-slate-700">All AI roles are configured.</p>
-        )}
-        <AiRoleStatusList roles={aiRoles} />
-      </section>
 
       <ul className="space-y-3 text-sm">
         <li>

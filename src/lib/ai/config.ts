@@ -238,7 +238,8 @@ function parseProvider(
       role === "contact_research" ||
       role === "product" ||
       role === "persona" ||
-      role === "email"
+      role === "email" ||
+      role === "email_facts"
     ) {
       return "openai-responses";
     }

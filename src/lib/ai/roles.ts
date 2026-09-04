@@ -1,13 +1,13 @@
 import type { AiRole } from "@/lib/ai/config";
 import {
-  isContactResearchAiConfigured,
-  isEmailAiConfigured,
-  isEmailFactsAiConfigured,
-  isInterpretationAiConfigured,
-  isPersonaAiConfigured,
-  isProductAiConfigured,
-  isResearchAiConfigured,
-  isScoringAiConfigured,
+  getContactResearchAiConfig,
+  getEmailAiConfig,
+  getEmailFactsAiConfig,
+  getInterpretationAiConfig,
+  getPersonaAiConfig,
+  getProductAiConfig,
+  getResearchAiConfig,
+  getScoringAiConfig,
 } from "@/lib/ai/config";
 import { AiConfigError } from "@/lib/ai/errors";
 
@@ -133,20 +133,23 @@ export const AI_ROLE_CATALOG: readonly AiRoleCatalogEntry[] = [
   },
 ] as const;
 
-const CONFIGURED: Record<AiRole, () => boolean> = {
-  research: isResearchAiConfigured,
-  scoring: isScoringAiConfigured,
-  contact_research: isContactResearchAiConfigured,
-  interpretation: isInterpretationAiConfigured,
-  product: isProductAiConfigured,
-  persona: isPersonaAiConfigured,
-  email: isEmailAiConfigured,
-  email_facts: isEmailFactsAiConfigured,
+/** Same loaders the runtime uses — panel status matches call-time config. */
+const LOADERS: Record<AiRole, () => unknown> = {
+  research: getResearchAiConfig,
+  scoring: getScoringAiConfig,
+  contact_research: getContactResearchAiConfig,
+  interpretation: getInterpretationAiConfig,
+  product: getProductAiConfig,
+  persona: getPersonaAiConfig,
+  email: getEmailAiConfig,
+  email_facts: getEmailFactsAiConfig,
 };
 
 export type AiRoleStatus = AiRoleCatalogEntry & {
   configured: boolean;
   missingEnv: string[];
+  /** When required vars are set but config still fails (e.g. unsupported provider). */
+  configError: string | null;
 };
 
 function missingRequiredEnv(keys: readonly string[]): string[] {
@@ -154,11 +157,30 @@ function missingRequiredEnv(keys: readonly string[]): string[] {
 }
 
 export function listAiRoleStatuses(): AiRoleStatus[] {
-  return AI_ROLE_CATALOG.map((entry) => ({
-    ...entry,
-    configured: CONFIGURED[entry.role](),
-    missingEnv: missingRequiredEnv(entry.requiredEnv),
-  }));
+  return AI_ROLE_CATALOG.map((entry) => {
+    const missingEnv = missingRequiredEnv(entry.requiredEnv);
+    try {
+      LOADERS[entry.role]();
+      return {
+        ...entry,
+        configured: true,
+        missingEnv: [],
+        configError: null,
+      };
+    } catch (error) {
+      return {
+        ...entry,
+        configured: false,
+        missingEnv,
+        configError:
+          missingEnv.length > 0
+            ? null
+            : error instanceof Error
+              ? error.message
+              : "Configuration failed.",
+      };
+    }
+  });
 }
 
 export function listUnconfiguredScoringRoles(options?: {
@@ -186,10 +208,12 @@ export function assertAiRolesConfigured(roles: readonly AiRole[]): void {
     .filter((entry): entry is AiRoleStatus => Boolean(entry && !entry.configured));
   if (missing.length === 0) return;
   const detail = missing
-    .map(
-      (entry) =>
-        `${entry.label} is not configured. Set ${entry.missingEnv.join(", ") || entry.requiredEnv.join(", ")}.`,
-    )
+    .map((entry) => {
+      if (entry.configError) {
+        return `${entry.label}: ${entry.configError}`;
+      }
+      return `${entry.label} is not configured. Set ${entry.missingEnv.join(", ") || entry.requiredEnv.join(", ")}.`;
+    })
     .join(" ");
   throw new AiConfigError(detail);
 }

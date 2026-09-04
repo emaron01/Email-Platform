@@ -22,7 +22,8 @@ function clearAllAiEnv() {
       key.startsWith("CONTACT_RESEARCH_AI_") ||
       key.startsWith("PRODUCT_AI_") ||
       key.startsWith("PERSONA_AI_") ||
-      key.startsWith("EMAIL_AI_")
+      key.startsWith("EMAIL_AI_") ||
+      key.startsWith("EMAIL_FACTS_AI_")
     ) {
       delete process.env[key];
     }
@@ -86,5 +87,26 @@ describe("AI role readiness", () => {
     expect(() => assertScoringAiRolesConfigured()).toThrow(
       /CONTACT_RESEARCH_AI_PROVIDER/,
     );
+  });
+
+  it("surfaces config errors when EMAIL_FACTS vars are set but provider is rejected", () => {
+    clearAllAiEnv();
+    setRole("EMAIL_FACTS_AI");
+    process.env.EMAIL_FACTS_AI_PROVIDER = "not-a-real-provider";
+    const facts = listAiRoleStatuses().find((row) => row.role === "email_facts");
+    expect(facts?.configured).toBe(false);
+    expect(facts?.missingEnv).toEqual([]);
+    expect(facts?.configError).toMatch(/Unsupported EMAIL_FACTS_AI_PROVIDER/);
+  });
+
+  it("marks email_facts configured when openai-responses is set", () => {
+    clearAllAiEnv();
+    process.env.EMAIL_FACTS_AI_PROVIDER = "openai-responses";
+    process.env.EMAIL_FACTS_AI_MODEL = "facts-model";
+    process.env.EMAIL_FACTS_AI_MODEL_URL = "https://api.openai.com/v1/responses";
+    process.env.EMAIL_FACTS_AI_API_KEY = "facts-key";
+    const facts = listAiRoleStatuses().find((row) => row.role === "email_facts");
+    expect(facts?.configured).toBe(true);
+    expect(facts?.configError).toBeNull();
   });
 });

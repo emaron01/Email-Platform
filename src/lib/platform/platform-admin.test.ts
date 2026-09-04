@@ -168,8 +168,29 @@ describe("platform console navigation and account creation", () => {
     expect(home).toContain("/platform/orgs");
     expect(home).toContain("/platform/orgs/new");
     expect(home).toContain("/platform/costs");
+    expect(home).toContain("/platform/ai");
     expect(home).toContain("/platform/email-templates");
     expect(home).toContain("PLATFORM_ROUTE_AUDIT");
+  });
+
+  it("platform console hosts AI configuration; workspace Settings does not", () => {
+    const settings = readFileSync(
+      resolve("src/app/(app)/settings/page.tsx"),
+      "utf8",
+    );
+    const platformAi = readFileSync(
+      resolve("src/app/platform/ai/page.tsx"),
+      "utf8",
+    );
+    const nav = readFileSync(
+      resolve("src/components/PlatformConsoleNav.tsx"),
+      "utf8",
+    );
+    expect(settings).not.toContain("AiRoleStatusList");
+    expect(settings).not.toContain("listAiRoleStatuses");
+    expect(platformAi).toContain("AiRoleStatusList");
+    expect(platformAi).toContain("listAiRoleStatuses");
+    expect(nav).toContain("/platform/ai");
   });
 
   it("create account page invites first OWNER", () => {

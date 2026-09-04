@@ -11,6 +11,7 @@ const PLATFORM_NAV_ITEMS = [
   { href: "/platform", label: "Home", match: "exact" as const },
   { href: "/platform/orgs", label: "Organizations", match: "prefix" as const },
   { href: "/platform/costs", label: "Costs & margin", match: "exact" as const },
+  { href: "/platform/ai", label: "AI configuration", match: "exact" as const },
   {
     href: "/platform/email-templates",
     label: "Email templates",

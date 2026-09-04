@@ -1,6 +1,5 @@
 import type { AiRole } from "@/lib/ai/config";
 import type { AiRoleStatus } from "@/lib/ai/roles";
-import { CONTACT_RESEARCH_DISABLED_USER_MESSAGE } from "@/lib/contact-research/policy";
 
 export function AiRoleStatusList({
   roles,
@@ -44,9 +43,16 @@ export function AiRoleStatusList({
               </p>
               {orgDisabled ? (
                 <p className="mt-1 text-xs">{orgDisabled}</p>
-              ) : role.configured ? null : (
+              ) : role.configured ? null : role.missingEnv.length > 0 ? (
                 <p className="mt-1 text-xs">
                   Set {role.missingEnv.join(", ")} in the environment and
+                  restart.
+                </p>
+              ) : role.configError ? (
+                <p className="mt-1 text-xs">{role.configError}</p>
+              ) : (
+                <p className="mt-1 text-xs">
+                  Set {role.requiredEnv.join(", ")} in the environment and
                   restart.
                 </p>
               )}

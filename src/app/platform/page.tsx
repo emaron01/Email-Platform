@@ -50,6 +50,11 @@ export default async function PlatformHomePage() {
       body: "Cost per company, contacts ratio, projections, model rates, spend reconciliation.",
     },
     {
+      href: "/platform/ai",
+      title: "AI configuration",
+      body: "Which AI roles are configured in the environment (operators only).",
+    },
+    {
       href: "/platform/email-templates",
       title: "Email templates",
       body: "Edit and test transactional email templates.",
