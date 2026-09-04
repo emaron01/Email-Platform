@@ -1,16 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { HomeSetupRail } from "@/components/HomeSetupRail";
 import {
   buildCampaignStages,
   resolveCampaignStage,
 } from "@/lib/workflow/campaign-stages";
+import {
+  buildHomeSetupRail,
+  resolveHomeSetupFocus,
+} from "@/lib/workflow/home-setup-rail";
 import {
   firstUnresolvedCriterion,
   QUALIFICATION_BUCKET_LABELS,
   QUALIFICATION_BUCKETS,
   scoreLabelToBucket,
 } from "@/lib/workflow/qualification";
+import { voiceReadiness } from "@/lib/voice/types";
 
 const prismaMock = vi.hoisted(() => ({
   product: { findMany: vi.fn() },
@@ -377,17 +385,41 @@ describe("workflow view contracts", () => {
     expect(stages.map((stage) => stage.key)).not.toContain("send");
   });
 
-  it("lists campaigns on home even when setup is incomplete, and links Lists", () => {
+  it("renders Lists on the Home setup rail; campaigns stay listed when setup is incomplete", () => {
+    // Incomplete-setup campaign data: "still returns existing campaigns…" above.
+    // Smoke `/` only asserts the sidebar shell — not Home→Lists. Prove the link
+    // in rendered markup (setup rail owns Lists; header also keeps a Lists nav).
+    const steps = buildHomeSetupRail({
+      voice: voiceReadiness(0),
+      productTotal: 0,
+      productReadyCount: 0,
+      productIncomplete: [],
+      listCount: 0,
+      contactCount: 0,
+      emailConnected: false,
+      emailReconnectRequired: false,
+    });
+    expect(steps.find((step) => step.key === "lists")).toMatchObject({
+      label: "Lists",
+      href: "/lists",
+    });
+
+    const railHtml = renderToStaticMarkup(
+      createElement(HomeSetupRail, {
+        steps,
+        focusKey: resolveHomeSetupFocus(steps),
+      }),
+    );
+    expect(railHtml).toContain('href="/lists"');
+    expect(railHtml).toContain(">Lists<");
+    expect(railHtml).toContain('aria-label="Setup"');
+
     const page = readFileSync("src/app/(app)/page.tsx", "utf8");
-    expect(page).toContain('href="/lists"');
-    expect(page).toContain('href="/campaigns"');
+    expect(page).toContain("HomeSetupRail");
     expect(page).toContain("workflow.campaigns.map");
-    expect(page).toContain("href={`/campaigns/${campaign.id}`}");
+    expect(page).toContain('HomeNavLink href="/lists"');
     expect(page).toContain("Finish product setup first");
     expect(page).toContain("campaigns stay available");
-    expect(page).toContain("HomeSetupRail");
-    expect(page).toContain(">Setup</");
-    expect(page).toContain("{workflow.campaigns.length === 0 ? (");
   });
 
   it("does not render unsupported engagement metrics", () => {
