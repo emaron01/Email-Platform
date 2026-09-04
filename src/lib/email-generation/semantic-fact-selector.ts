@@ -27,6 +27,7 @@ import { isUsableCompanyResearch } from "@/lib/email-generation/personalization"
 
 export type FactSelectionSkipReason =
   | "EMAIL_FACTS_AI not configured"
+  | "selector failed"
   | "no usable company research"
   | "no structural candidates";
 
@@ -323,11 +324,25 @@ export async function selectRelevantCompanyFacts(
         candidateCount: candidates.length,
       });
     }
-    throw error;
+    // Never fail email generation because fact selection misbehaved.
+    console.warn("[email-fact-selection]", {
+      message: "fact selection config read failed; degrading",
+      organizationId: input.organizationId,
+      companyId: input.companyId,
+      draftId: input.draftId ?? null,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return skippedResult({
+      organizationId: input.organizationId,
+      companyId: input.companyId,
+      draftId: input.draftId,
+      skipReason: "selector failed",
+      cacheKey,
+      candidateCount: candidates.length,
+    });
   }
 
   const started = Date.now();
-  const ai = getEmailFactsAiProvider();
   const messages = buildFactSelectionMessages({
     product: input.product,
     persona: input.persona,
@@ -335,72 +350,94 @@ export async function selectRelevantCompanyFacts(
     candidates,
   });
 
-  let attempt = 0;
-  let response;
-  while (true) {
-    try {
-      response = await ai.generateStructured({
-        ...structuredOutputRequest("emailCompanyFactSelection"),
-        messages,
-      });
-      break;
-    } catch (error) {
-      if (
-        error instanceof AiValidationError ||
-        error instanceof AiConfigError
-      ) {
-        throw error;
+  try {
+    // Provider construction can throw (e.g. adapter rejects role) before any
+    // generateStructured call — that path used to escape and kill generation.
+    const ai = getEmailFactsAiProvider();
+    let attempt = 0;
+    let response;
+    while (true) {
+      try {
+        response = await ai.generateStructured({
+          ...structuredOutputRequest("emailCompanyFactSelection"),
+          messages,
+        });
+        break;
+      } catch (error) {
+        if (
+          error instanceof AiValidationError ||
+          error instanceof AiConfigError ||
+          !isRetryable(error) ||
+          attempt >= config.maxRetries
+        ) {
+          throw error;
+        }
+        await sleep(Math.min(2000 * 2 ** attempt, 8000));
+        attempt += 1;
       }
-      if (!isRetryable(error) || attempt >= config.maxRetries) throw error;
-      await sleep(Math.min(2000 * 2 ** attempt, 8000));
-      attempt += 1;
     }
-  }
 
-  const selection = response.data;
-  const normalized: EmailFactSelectionResult =
-    selection.noneRelevant || selection.selected.length === 0
-      ? { noneRelevant: true, selected: [] }
-      : {
-          noneRelevant: false,
-          selected: selection.selected,
-        };
+    const selection = response.data;
+    const normalized: EmailFactSelectionResult =
+      selection.noneRelevant || selection.selected.length === 0
+        ? { noneRelevant: true, selected: [] }
+        : {
+            noneRelevant: false,
+            selected: selection.selected,
+          };
 
-  const specifics = normalized.noneRelevant
-    ? []
-    : mapSelectionToSpecifics(candidates, normalized);
+    const specifics = normalized.noneRelevant
+      ? []
+      : mapSelectionToSpecifics(candidates, normalized);
 
-  const entry = {
-    specifics,
-    noneRelevant: specifics.length === 0,
-  };
-  setCachedFactSelection(cacheKey, entry);
+    const entry = {
+      specifics,
+      noneRelevant: specifics.length === 0,
+    };
+    setCachedFactSelection(cacheKey, entry);
 
-  logFactSelection({
-    organizationId: input.organizationId,
-    companyId: input.companyId,
-    draftId: input.draftId,
-    message: `fact selection ran: ${candidates.length} candidates, ${specifics.length} selected`,
-    candidateCount: candidates.length,
-    selectedCount: specifics.length,
-  });
+    logFactSelection({
+      organizationId: input.organizationId,
+      companyId: input.companyId,
+      draftId: input.draftId,
+      message: `fact selection ran: ${candidates.length} candidates, ${specifics.length} selected`,
+      candidateCount: candidates.length,
+      selectedCount: specifics.length,
+    });
 
-  return {
-    specifics,
-    noneRelevant: entry.noneRelevant,
-    usage: {
-      provider: response.provider,
-      model: response.model,
-      inputTokens: response.usage?.inputTokens ?? null,
-      outputTokens: response.usage?.outputTokens ?? null,
-      cached: false,
-      durationMs: Date.now() - started,
+    return {
+      specifics,
+      noneRelevant: entry.noneRelevant,
+      usage: {
+        provider: response.provider,
+        model: response.model,
+        inputTokens: response.usage?.inputTokens ?? null,
+        outputTokens: response.usage?.outputTokens ?? null,
+        cached: false,
+        durationMs: Date.now() - started,
+        skipReason: null,
+      },
+      cacheKey,
       skipReason: null,
-    },
-    cacheKey,
-    skipReason: null,
-    candidateCount: candidates.length,
-  };
+      candidateCount: candidates.length,
+    };
+  } catch (error) {
+    console.warn("[email-fact-selection]", {
+      message: "fact selection failed; degrading to skip",
+      organizationId: input.organizationId,
+      companyId: input.companyId,
+      draftId: input.draftId ?? null,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return skippedResult({
+      organizationId: input.organizationId,
+      companyId: input.companyId,
+      draftId: input.draftId,
+      skipReason: "selector failed",
+      cacheKey,
+      candidateCount: candidates.length,
+    });
+  }
 }
 
 /** Rough marginal cost estimate for one fact-selection call (USD). */

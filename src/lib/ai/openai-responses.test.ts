@@ -396,6 +396,63 @@ describe("openai-responses scoring adapter", () => {
   });
 });
 
+describe("openai-responses email_facts adapter", () => {
+  function setEmailFactsResponsesEnv(model = "email-facts-luna") {
+    process.env.EMAIL_FACTS_AI_PROVIDER = "openai-responses";
+    process.env.EMAIL_FACTS_AI_MODEL = model;
+    process.env.EMAIL_FACTS_AI_MODEL_URL =
+      "https://api.openai.com/v1/responses";
+    process.env.EMAIL_FACTS_AI_API_KEY = "email-facts-responses-secret";
+  }
+
+  it("creates a structured_only provider for email_facts (no web_search)", async () => {
+    setEmailFactsResponsesEnv();
+    const { getEmailFactsAiConfig } = await import("@/lib/ai/config");
+    const { getEmailFactsAiProvider } = await import("@/lib/ai/provider");
+    const config = getEmailFactsAiConfig();
+    expect(config.role).toBe("email_facts");
+    expect(config.provider).toBe("openai-responses");
+
+    // Must not throw "does not support role email_facts" at construction.
+    expect(() => createOpenAiResponsesProvider(config)).not.toThrow();
+
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      expect(responsesRequestEnablesWebSearch(body)).toBe(false);
+      expect(body.tools).toBeUndefined();
+      expect(body.text.format.type).toBe("json_schema");
+      return new Response(
+        JSON.stringify({
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({ noneRelevant: true, selected: [] }),
+                },
+              ],
+            },
+          ],
+          usage: { input_tokens: 2, output_tokens: 2 },
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = getEmailFactsAiProvider();
+    const result = await provider.generateStructured({
+      messages: [{ role: "user", content: "pick" }],
+      schema: z.object({
+        noneRelevant: z.boolean(),
+        selected: z.array(z.unknown()),
+      }),
+    });
+    expect(result.data.noneRelevant).toBe(true);
+  });
+});
+
 describe("evidence merge", () => {
   it("merges website evidence with search evidence and removes duplicate URLs", () => {
     const merged = mergeEvidenceBundles(

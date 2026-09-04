@@ -7,13 +7,16 @@ const generateStructured = vi.hoisted(() => vi.fn());
 const getEmailFactsAiConfig = vi.hoisted(() =>
   vi.fn(() => ({ maxRetries: 0 })),
 );
+const getEmailFactsAiProvider = vi.hoisted(() =>
+  vi.fn(() => ({ generateStructured })),
+);
 
 vi.mock("@/lib/ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/ai")>();
   return {
     ...actual,
     getEmailFactsAiConfig,
-    getEmailFactsAiProvider: vi.fn(() => ({ generateStructured })),
+    getEmailFactsAiProvider,
   };
 });
 
@@ -158,6 +161,9 @@ describe("selectRelevantCompanyFacts", () => {
     clearFactSelectionCache();
     generateStructured.mockReset();
     getEmailFactsAiConfig.mockClear();
+    getEmailFactsAiConfig.mockImplementation(() => ({ maxRetries: 0 }));
+    getEmailFactsAiProvider.mockReset();
+    getEmailFactsAiProvider.mockImplementation(() => ({ generateStructured }));
   });
 
   afterEach(() => {
@@ -224,6 +230,35 @@ describe("selectRelevantCompanyFacts", () => {
     expect(result.candidateCount).toBeGreaterThan(0);
     expect(result.usage.provider).toBe("skipped");
     expect(generateStructured).not.toHaveBeenCalled();
+  });
+
+  it("degrades to skip when the provider rejects the role at construction", async () => {
+    const { AiProviderError } = await import("@/lib/ai");
+    getEmailFactsAiProvider.mockImplementationOnce(() => {
+      throw new AiProviderError(
+        'openai-responses adapter does not support role "email_facts"',
+        { retryable: false },
+      );
+    });
+
+    const result = await selectRelevantCompanyFacts(baseInput());
+    expect(result.skipReason).toBe("selector failed");
+    expect(result.specifics).toEqual([]);
+    expect(result.candidateCount).toBeGreaterThan(0);
+    expect(result.usage.provider).toBe("skipped");
+    expect(generateStructured).not.toHaveBeenCalled();
+  });
+
+  it("degrades to skip when generateStructured throws a non-retryable error", async () => {
+    const { AiProviderError } = await import("@/lib/ai");
+    generateStructured.mockRejectedValueOnce(
+      new AiProviderError("upstream failed", { retryable: false }),
+    );
+
+    const result = await selectRelevantCompanyFacts(baseInput());
+    expect(result.skipReason).toBe("selector failed");
+    expect(result.specifics).toEqual([]);
+    expect(result.candidateCount).toBeGreaterThan(0);
   });
 
   it("returns none for a sales-leader product when only infrastructure evidence exists", async () => {

@@ -28,10 +28,11 @@ export type PreparedEmailGeneration = {
 };
 
 /**
- * Semantic selection first. When the semantic path is skipped (config / no
- * research / no candidates), fall back to the prior lexical selector so
- * company-specific emails are not wiped to THIN by an unconfigured role.
+ * Semantic selection first. When the semantic path is skipped (config missing,
+ * selector failure, no research / no candidates), fall back to the prior
+ * lexical selector so company-specific emails are not wiped to THIN.
  * When semantic runs and returns none, keep THIN — that is an intentional gate.
+ * Fact selection must never break email generation.
  */
 export async function prepareEmailGenerationMessages(
   context: EmailGenerationContext,
@@ -42,29 +43,57 @@ export async function prepareEmailGenerationMessages(
   personalization: PersonalizationDecision;
   factSelection: FactSelectionResult;
 }> {
-  const factSelection = await selectRelevantCompanyFacts({
-    organizationId: context.organizationId,
-    companyId: context.contact.companyId ?? "none",
-    productId: context.product.id,
-    personaId: context.persona.id,
-    contactTitle: context.contact.title,
-    product: {
-      problemsSolved: context.product.problemsSolved,
-    },
-    persona: {
-      name: context.persona.name,
-      painPoints: context.persona.painPoints,
-      desiredOutcomes: context.persona.desiredOutcomes,
-    },
-    research: context.companyResearch,
-    researchUpdatedAt: context.companyResearchUpdatedAt,
-  });
+  let factSelection: FactSelectionResult;
+  try {
+    factSelection = await selectRelevantCompanyFacts({
+      organizationId: context.organizationId,
+      companyId: context.contact.companyId ?? "none",
+      productId: context.product.id,
+      personaId: context.persona.id,
+      contactTitle: context.contact.title,
+      product: {
+        problemsSolved: context.product.problemsSolved,
+      },
+      persona: {
+        name: context.persona.name,
+        painPoints: context.persona.painPoints,
+        desiredOutcomes: context.persona.desiredOutcomes,
+      },
+      research: context.companyResearch,
+      researchUpdatedAt: context.companyResearchUpdatedAt,
+    });
+  } catch (error) {
+    // Belt-and-suspenders: selector is supposed to degrade internally; if it
+    // still throws, generation continues with lexical fallback below.
+    console.warn("[email-fact-selection]", {
+      message: "fact selection threw; continuing with lexical fallback",
+      organizationId: context.organizationId,
+      companyId: context.contact.companyId ?? "none",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    factSelection = {
+      specifics: [],
+      noneRelevant: true,
+      usage: {
+        provider: "skipped",
+        model: "skipped",
+        inputTokens: 0,
+        outputTokens: 0,
+        cached: false,
+        durationMs: 0,
+        skipReason: "selector failed",
+      },
+      cacheKey: null,
+      skipReason: "selector failed",
+      // Force lexical path below even if research had no prior candidate count.
+      candidateCount: 1,
+    };
+  }
 
   let requiredMotionSpecifics = factSelection.specifics;
-  if (
-    factSelection.skipReason === "EMAIL_FACTS_AI not configured" &&
-    factSelection.candidateCount > 0
-  ) {
+  // Any skip with candidates (config missing or selector failure) → lexical.
+  // Intentional semantic "none" has skipReason null and must stay THIN.
+  if (factSelection.skipReason && factSelection.candidateCount > 0) {
     requiredMotionSpecifics = selectRequiredMotionSpecifics({
       research: context.companyResearch,
       problemSpace: {
@@ -74,7 +103,7 @@ export async function prepareEmailGenerationMessages(
       contactTitle: context.contact.title,
     });
     console.info("[email-fact-selection]", {
-      message: `lexical fallback after semantic skip: ${requiredMotionSpecifics.length} selected`,
+      message: `lexical fallback after semantic skip (${factSelection.skipReason}): ${requiredMotionSpecifics.length} selected`,
       organizationId: context.organizationId,
       companyId: context.contact.companyId ?? "none",
       draftId: null,
