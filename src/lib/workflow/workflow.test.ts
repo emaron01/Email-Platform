@@ -386,6 +386,7 @@ describe("workflow view contracts", () => {
     expect(page).toContain("Finish product setup first");
     expect(page).toContain("campaigns stay available");
     expect(page).toContain("HomeSetupRail");
+    expect(page).toContain(">Setup</");
     expect(page).toContain("{workflow.campaigns.length === 0 ? (");
   });
 

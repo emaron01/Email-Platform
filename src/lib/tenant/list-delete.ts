@@ -10,6 +10,9 @@ import "server-only";
  * Contacts are org-scoped and shared across lists via membership.
  * Hard-deleting a list removes memberships + list-scoped scoring history only.
  * It does NOT delete Contact rows, CampaignContact, EmailDraft, or EmailSendRecord.
+ * Archiving a list may soft-archive contacts that only belong to archived lists and
+ * have no active campaign (archiveReason=LIST_CASCADE, archivedByListId set).
+ * Unarchiving restores only that cascade, and only when an active list membership remains.
  *
  * Via ScoringRun (list-scoped):
  * - ContactScore.scoringRunId → ScoringRun ON DELETE CASCADE
@@ -72,7 +75,8 @@ export function listDeleteConfirmBody(decision: ListDeleteDecision): string {
       `${impact.contactCount} contact membership(s)`,
       `${impact.scoringRunCount} scoring run(s)`,
       "",
-      "Archiving is reversible. Contacts stay in the organization; only this list membership is hidden with the list.",
+      "Archiving is reversible. Contacts with another active list or an active campaign stay active;",
+      "contacts that only belong to archived lists and have no active campaign are archived with this list.",
     ].join("\n");
   }
   return [
@@ -89,7 +93,9 @@ export function listDeleteConfirmBody(decision: ListDeleteDecision): string {
 export function listArchiveConfirmBody(): string {
   return [
     "This archives the list. It will be hidden from campaign setup, scoring, and list selectors by default.",
-    "The list is read-only until unarchived. Contacts and scoring history stay intact.",
+    "The list is read-only until unarchived. Scoring history stays intact.",
+    "Contacts that only belong to archived lists and are not on an active campaign are archived with the list (and restored if you unarchive it).",
+    "Contacts on another active list or an active campaign stay active.",
     "Archiving is reversible.",
   ].join("\n");
 }
@@ -177,6 +183,7 @@ export function decideListDelete(impact: ListLifecycleImpact): ListDeleteDecisio
 export async function archiveContactList(id: string): Promise<{
   mode: "archived";
   message: string;
+  cascadedContactCount: number;
 }> {
   const organizationId = await requireOrganizationId();
   const existing = await prisma.contactList.findFirst({
@@ -189,22 +196,35 @@ export async function archiveContactList(id: string): Promise<{
     );
   }
   if (existing.archivedAt) {
-    return { mode: "archived", message: "List is already archived." };
+    return {
+      mode: "archived",
+      message: "List is already archived.",
+      cascadedContactCount: 0,
+    };
   }
-  await prisma.contactList.update({
-    where: { id: existing.id },
-    data: { archivedAt: new Date() },
+
+  const cascadedContactCount = await prisma.$transaction(async (tx) => {
+    await tx.contactList.update({
+      where: { id: existing.id },
+      data: { archivedAt: new Date() },
+    });
+    return cascadeArchiveContactsForList(tx, organizationId, existing.id);
   });
+
   return {
     mode: "archived",
     message:
-      "List archived. It is hidden from campaign and scoring selectors until you unarchive it.",
+      cascadedContactCount > 0
+        ? `List archived. ${cascadedContactCount} contact${cascadedContactCount === 1 ? "" : "s"} archived with it (only those with no other active list or active campaign).`
+        : "List archived. It is hidden from campaign and scoring selectors until you unarchive it.",
+    cascadedContactCount,
   };
 }
 
 export async function unarchiveContactList(id: string): Promise<{
   mode: "unarchived";
   message: string;
+  restoredContactCount: number;
 }> {
   const organizationId = await requireOrganizationId();
   const existing = await prisma.contactList.findFirst({
@@ -217,16 +237,141 @@ export async function unarchiveContactList(id: string): Promise<{
     );
   }
   if (!existing.archivedAt) {
-    return { mode: "unarchived", message: "List is not archived." };
+    return {
+      mode: "unarchived",
+      message: "List is not archived.",
+      restoredContactCount: 0,
+    };
   }
-  await prisma.contactList.update({
-    where: { id: existing.id },
-    data: { archivedAt: null },
+
+  const restoredContactCount = await prisma.$transaction(async (tx) => {
+    await tx.contactList.update({
+      where: { id: existing.id },
+      data: { archivedAt: null },
+    });
+    return restoreCascadeArchivedContactsForList(
+      tx,
+      organizationId,
+      existing.id,
+    );
   });
+
   return {
     mode: "unarchived",
-    message: "List unarchived. It appears in campaign and scoring selectors again.",
+    message:
+      restoredContactCount > 0
+        ? `List unarchived. ${restoredContactCount} contact${restoredContactCount === 1 ? "" : "s"} restored from this list’s archive cascade.`
+        : "List unarchived. It appears in campaign and scoring selectors again.",
+    restoredContactCount,
   };
+}
+
+/**
+ * After the list is archived: soft-archive members that now have only archived-list
+ * memberships and no non-archived campaign membership. Records LIST_CASCADE + list id.
+ */
+export async function cascadeArchiveContactsForList(
+  db: Tx,
+  organizationId: string,
+  contactListId: string,
+): Promise<number> {
+  const memberships = await db.contactListMembership.findMany({
+    where: { organizationId, contactListId },
+    select: { contactId: true },
+  });
+  const contactIds = [...new Set(memberships.map((row) => row.contactId))];
+  if (contactIds.length === 0) return 0;
+
+  const candidates = await db.contact.findMany({
+    where: {
+      organizationId,
+      id: { in: contactIds },
+      archivedAt: null,
+    },
+    select: {
+      id: true,
+      memberships: {
+        select: {
+          contactList: { select: { id: true, archivedAt: true } },
+        },
+      },
+      campaignContacts: {
+        where: { campaign: { archivedAt: null } },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+
+  const now = new Date();
+  let archived = 0;
+  for (const contact of candidates) {
+    if (contact.campaignContacts.length > 0) continue;
+    if (contact.memberships.length === 0) continue;
+    const allListsArchived = contact.memberships.every(
+      (membership) => membership.contactList.archivedAt != null,
+    );
+    if (!allListsArchived) continue;
+
+    await db.contact.update({
+      where: { id: contact.id },
+      data: {
+        archivedAt: now,
+        archiveReason: "LIST_CASCADE",
+        archivedByListId: contactListId,
+      },
+    });
+    archived += 1;
+  }
+  return archived;
+}
+
+/**
+ * After the list is unarchived: restore contacts archived by THIS list's cascade,
+ * only when they now have at least one non-archived list membership (they will,
+ * via this list, unless membership was removed). Never restores DIRECT archives.
+ */
+export async function restoreCascadeArchivedContactsForList(
+  db: Tx,
+  organizationId: string,
+  contactListId: string,
+): Promise<number> {
+  const cascaded = await db.contact.findMany({
+    where: {
+      organizationId,
+      archiveReason: "LIST_CASCADE",
+      archivedByListId: contactListId,
+      archivedAt: { not: null },
+    },
+    select: {
+      id: true,
+      memberships: {
+        select: {
+          contactList: { select: { id: true, archivedAt: true } },
+        },
+      },
+    },
+  });
+
+  let restored = 0;
+  for (const contact of cascaded) {
+    const hasActiveList = contact.memberships.some(
+      (membership) => membership.contactList.archivedAt == null,
+    );
+    // Still only on archived lists (e.g. removed from this list) — leave archived.
+    if (!hasActiveList) continue;
+
+    await db.contact.update({
+      where: { id: contact.id },
+      data: {
+        archivedAt: null,
+        archiveReason: null,
+        archivedByListId: null,
+      },
+    });
+    restored += 1;
+  }
+  return restored;
 }
 
 export async function deleteContactListGraph(
@@ -311,9 +456,12 @@ export async function deleteOrArchiveContactList(id: string): Promise<{
 
   if (decision.mode === "archive") {
     if (!existing.archivedAt) {
-      await prisma.contactList.update({
-        where: { id: existing.id },
-        data: { archivedAt: new Date() },
+      await prisma.$transaction(async (tx) => {
+        await tx.contactList.update({
+          where: { id: existing.id },
+          data: { archivedAt: new Date() },
+        });
+        await cascadeArchiveContactsForList(tx, organizationId, existing.id);
       });
     }
     return {

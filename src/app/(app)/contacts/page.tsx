@@ -65,7 +65,13 @@ export default async function ContactsPage({ searchParams }: PageProps) {
   const includeUnlisted = query.unlisted === "1";
 
   const [contacts, lists] = await Promise.all([
-    listContacts({ listId, search, includeUnlisted }),
+    listContacts({
+      listId,
+      search,
+      includeUnlisted,
+      // Same toggle that reveals archived lists also reveals cascade-archived contacts.
+      includeArchivedContacts: includeArchived,
+    }),
     listContactLists({ includeArchived }),
   ]);
   const [suppressedEmails, campaignSummaries] = await Promise.all([
@@ -87,7 +93,7 @@ export default async function ContactsPage({ searchParams }: PageProps) {
     <div>
       <PageHeader
         title="Contacts"
-        description="All contacts for this organization. Filter by list or search name, email, company, or title."
+        description="Contacts on active lists. Use Show archived to include archived lists and cascade-archived contacts."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <a
@@ -117,7 +123,7 @@ export default async function ContactsPage({ searchParams }: PageProps) {
                     })}`
               }
               includeArchived={includeArchived}
-              label="lists"
+              label="lists and contacts"
             />
           </div>
         }
@@ -135,6 +141,7 @@ export default async function ContactsPage({ searchParams }: PageProps) {
             {lists.map((list) => (
               <option key={list.id} value={list.id}>
                 {list.name}
+                {list.archivedAt ? " (archived)" : ""}
               </option>
             ))}
           </select>
@@ -191,7 +198,11 @@ export default async function ContactsPage({ searchParams }: PageProps) {
               {contacts.map((contact) => {
                 const usable = isContactEmailUsable(contact);
                 const listNames = contact.memberships
-                  .map((membership) => membership.contactList.name)
+                  .map((membership) =>
+                    membership.contactList.archivedAt
+                      ? `${membership.contactList.name} (archived)`
+                      : membership.contactList.name,
+                  )
                   .filter(Boolean);
                 const campaignLines =
                   campaignSummaries.get(contact.id) ?? [];
@@ -209,6 +220,11 @@ export default async function ContactsPage({ searchParams }: PageProps) {
                         contact.firstName,
                         contact.lastName,
                       )}
+                      {contact.archivedAt ? (
+                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                          Archived
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {contact.title ?? "—"}

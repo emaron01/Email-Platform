@@ -72,10 +72,15 @@ export default async function DashboardPage({
         }
       />
 
-      <HomeSetupRail
-        steps={workflow.setupRail}
-        focusKey={workflow.setupFocus}
-      />
+      <div className="mb-6">
+        <h2 className="mb-3 text-center text-lg font-semibold text-slate-900">
+          Setup
+        </h2>
+        <HomeSetupRail
+          steps={workflow.setupRail}
+          focusKey={workflow.setupFocus}
+        />
+      </div>
 
       {workflow.dueByCampaign.length > 0 ? (
         <DueContactsPanel dueByCampaign={workflow.dueByCampaign} />

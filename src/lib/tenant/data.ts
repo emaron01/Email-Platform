@@ -681,26 +681,48 @@ export async function listContacts(options?: {
     if (!list) notFound("Contact list");
   }
 
+  const membershipFilter: Prisma.ContactWhereInput = listId
+    ? { memberships: { some: { contactListId: listId } } }
+    : includeArchivedContacts
+      ? includeUnlisted
+        ? {}
+        : { memberships: { some: {} } }
+      : includeUnlisted
+        ? {
+            // Unlisted OR on an active list — hide archived-list-only contacts.
+            OR: [
+              { memberships: { none: {} } },
+              {
+                memberships: {
+                  some: { contactList: { archivedAt: null } },
+                },
+              },
+            ],
+          }
+        : {
+            // Default: only contacts with at least one non-archived list.
+            memberships: {
+              some: { contactList: { archivedAt: null } },
+            },
+          };
+
+  const searchFilter: Prisma.ContactWhereInput | null = search
+    ? {
+        OR: [
+          { firstName: { contains: search, mode: "insensitive" } },
+          { lastName: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+          { company: { contains: search, mode: "insensitive" } },
+          { title: { contains: search, mode: "insensitive" } },
+        ],
+      }
+    : null;
+
   return prisma.contact.findMany({
     where: {
       organizationId,
       ...(includeArchivedContacts ? {} : { archivedAt: null }),
-      ...(listId
-        ? { memberships: { some: { contactListId: listId } } }
-        : includeUnlisted
-          ? {}
-          : { memberships: { some: {} } }),
-      ...(search
-        ? {
-            OR: [
-              { firstName: { contains: search, mode: "insensitive" } },
-              { lastName: { contains: search, mode: "insensitive" } },
-              { email: { contains: search, mode: "insensitive" } },
-              { company: { contains: search, mode: "insensitive" } },
-              { title: { contains: search, mode: "insensitive" } },
-            ],
-          }
-        : {}),
+      AND: [membershipFilter, ...(searchFilter ? [searchFilter] : [])],
     },
     include: {
       memberships: {

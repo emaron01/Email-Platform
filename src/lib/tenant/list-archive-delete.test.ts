@@ -26,8 +26,14 @@ describe("list archive/delete contracts", () => {
     expect(list).toContain("memberships");
     expect(list).toContain("scoringRuns");
     expect(list).toContain("archivedAt");
+    expect(list).toContain("contactsArchivedByThis");
     expect(contact).not.toMatch(/contactListId\s+String/);
     expect(contact).toContain("memberships");
+    expect(contact).toContain("archiveReason");
+    expect(contact).toContain("archivedByListId");
+    expect(schema).toContain("enum ContactArchiveReason");
+    expect(schema).toContain("LIST_CASCADE");
+    expect(schema).toContain("DIRECT");
     expect(membership).toMatch(/contactListId\s+String/);
     expect(membership).toMatch(/onDelete: Cascade/);
     expect(scoringRun).toMatch(/contactListId\s+String/);
@@ -44,6 +50,9 @@ describe("list archive/delete contracts", () => {
     expect(src).toContain("ContactScore");
     expect(src).toContain("TitleSuggestion");
     expect(src).toContain("QualificationBucketOverride");
+    expect(src).toContain("cascadeArchiveContactsForList");
+    expect(src).toContain("restoreCascadeArchivedContactsForList");
+    expect(src).toContain("LIST_CASCADE");
   });
 
   it("delete confirmation names memberships, scoring runs, and campaigns", () => {
@@ -250,6 +259,110 @@ describe.skipIf(!hasDatabase)(
           personaId: persona.id,
         }),
       ).rejects.toThrow(/archived/i);
+
+      // Not yet on the campaign — cascade-archives with the list.
+      const cascaded = await prisma.contact.findUniqueOrThrow({
+        where: { id: contact.id },
+      });
+      expect(cascaded.archivedAt).not.toBeNull();
+      expect(cascaded.archiveReason).toBe("LIST_CASCADE");
+      expect(cascaded.archivedByListId).toBe(list.id);
+    });
+
+    it("archives contacts only when every list is archived and no active campaign", async () => {
+      if (!ready) return;
+      const listA = await prisma.contactList.create({
+        data: { organizationId: orgA, name: `Cascade A ${suffix}` },
+      });
+      const listB = await prisma.contactList.create({
+        data: { organizationId: orgA, name: `Cascade B ${suffix}` },
+      });
+      const onlyA = await seedContactOnList(prisma, {
+        organizationId: orgA,
+        contactListId: listA.id,
+        email: `only-a-${suffix}@example.test`,
+      });
+      const onBoth = await seedContactOnList(prisma, {
+        organizationId: orgA,
+        contactListId: listA.id,
+        email: `both-${suffix}@example.test`,
+      });
+      await prisma.contactListMembership.create({
+        data: {
+          organizationId: orgA,
+          contactListId: listB.id,
+          contactId: onBoth.id,
+        },
+      });
+      const { product, icp, persona } = await seedProduct();
+      const campaignContact = await seedContactOnList(prisma, {
+        organizationId: orgA,
+        contactListId: listA.id,
+        email: `camp-a-${suffix}@example.test`,
+      });
+      await prisma.campaign.create({
+        data: {
+          organizationId: orgA,
+          name: `Keep active ${suffix}`,
+          productId: product.id,
+          icpId: icp.id,
+          personaId: persona.id,
+          contacts: {
+            create: {
+              organizationId: orgA,
+              contactId: campaignContact.id,
+            },
+          },
+        },
+      });
+
+      const { archiveContactList, unarchiveContactList } = await import(
+        "@/lib/tenant/list-delete"
+      );
+      const archived = await archiveContactList(listA.id);
+      expect(archived.cascadedContactCount).toBe(1);
+
+      const onlyARow = await prisma.contact.findUniqueOrThrow({
+        where: { id: onlyA.id },
+      });
+      expect(onlyARow.archivedAt).not.toBeNull();
+      expect(onlyARow.archiveReason).toBe("LIST_CASCADE");
+      expect(onlyARow.archivedByListId).toBe(listA.id);
+
+      const bothRow = await prisma.contact.findUniqueOrThrow({
+        where: { id: onBoth.id },
+      });
+      expect(bothRow.archivedAt).toBeNull();
+
+      const campRow = await prisma.contact.findUniqueOrThrow({
+        where: { id: campaignContact.id },
+      });
+      expect(campRow.archivedAt).toBeNull();
+
+      // Direct-archived contact must not restore on list unarchive.
+      await prisma.contact.update({
+        where: { id: onBoth.id },
+        data: {
+          archivedAt: new Date(),
+          archiveReason: "DIRECT",
+          archivedByListId: null,
+        },
+      });
+
+      const restored = await unarchiveContactList(listA.id);
+      expect(restored.restoredContactCount).toBe(1);
+      const onlyARestored = await prisma.contact.findUniqueOrThrow({
+        where: { id: onlyA.id },
+      });
+      expect(onlyARestored.archivedAt).toBeNull();
+      expect(onlyARestored.archiveReason).toBeNull();
+      expect(onlyARestored.archivedByListId).toBeNull();
+
+      const bothStillDirect = await prisma.contact.findUniqueOrThrow({
+        where: { id: onBoth.id },
+      });
+      expect(bothStillDirect.archivedAt).not.toBeNull();
+      expect(bothStillDirect.archiveReason).toBe("DIRECT");
     });
 
     it("a list with scoring history archives rather than hard-deletes", async () => {
@@ -283,9 +396,13 @@ describe.skipIf(!hasDatabase)(
       expect(result.mode).toBe("archived");
       const kept = await prisma.contactList.findUnique({ where: { id: list.id } });
       expect(kept?.archivedAt).not.toBeNull();
-      expect(
-        await prisma.contact.findUnique({ where: { id: contact.id } }),
-      ).not.toBeNull();
+      const contactRow = await prisma.contact.findUnique({
+        where: { id: contact.id },
+      });
+      expect(contactRow).not.toBeNull();
+      expect(contactRow?.archivedAt).not.toBeNull();
+      expect(contactRow?.archiveReason).toBe("LIST_CASCADE");
+      expect(contactRow?.archivedByListId).toBe(list.id);
     });
 
     it("a list attached to an active campaign deletes; campaign contacts survive", async () => {

@@ -41,8 +41,13 @@ export default async function VoiceSettingsPage() {
           Your Voice
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Writing samples for generation, and the signature appended when you
-          send.
+          Writing samples are used for email generation. The more samples you
+          provide, the more the application incorporates your voice into emails
+          so they feel genuine while staying professionally written. The
+          signature is used for every send method except Outlook Desktop —
+          Outlook Desktop uses your Outlook signature. Gmail, Outlook on the
+          web, and Outlook Auto Connect do not insert your native signature, so
+          use the signature appended here when you send through those paths.
         </p>
       </div>
 

@@ -110,6 +110,14 @@ enum ContactListSource {
   UPLOAD
 }
 
+/// Why Contact.archivedAt was set. Used so list unarchive can restore cascade only.
+enum ContactArchiveReason {
+  /// Soft-archive from the contact delete path (campaign/send history).
+  DIRECT
+  /// Cascaded when archiving a list that was the contact's last active list.
+  LIST_CASCADE
+}
+
 enum ScoringRunStatus {
   PENDING
   IN_PROGRESS
@@ -1458,6 +1466,8 @@ model ContactList {
   memberships  ContactListMembership[]
   scoringRuns  ScoringRun[]
   researchRuns ResearchRun[]
+  /// Contacts soft-archived because this list was their last active list (cascade).
+  contactsArchivedByThis Contact[] @relation("ContactArchivedByList")
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
@@ -1492,14 +1502,20 @@ model Contact {
   linkedinUrl     String?
   phone           String?
   rawData         Json?
-  /// Soft-archive: used when campaign/send history blocks hard delete.
+  /// Soft-archive: used when campaign/send history blocks hard delete,
+  /// or when cascaded from archiving a list that was the contact's last active list.
   archivedAt      DateTime?
+  /// Null when not archived. DIRECT = contact archive/delete path; LIST_CASCADE = list archive.
+  archiveReason   ContactArchiveReason?
+  /// When archiveReason is LIST_CASCADE, the list that triggered the cascade (for precise restore).
+  archivedByListId String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   organization     Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy        User?                   @relation("ContactCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   companyRecord    Company?                @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  archivedByList   ContactList?            @relation("ContactArchivedByList", fields: [archivedByListId], references: [id], onDelete: SetNull)
   memberships      ContactListMembership[]
   scores           ContactScore[]
   campaignContacts CampaignContact[]
@@ -1510,9 +1526,11 @@ model Contact {
   @@index([organizationId, createdAt])
   @@index([organizationId, email])
   @@index([organizationId, archivedAt])
+  @@index([organizationId, archiveReason, archivedByListId])
   @@index([companyId])
   @@index([organizationId, companyId])
   @@index([createdByUserId])
+  @@index([archivedByListId])
 }
 
 model ContactListMembership {

@@ -67,7 +67,11 @@ export async function deleteOrArchiveContact(contactId: string): Promise<{
     if (!existing.archivedAt) {
       await prisma.contact.update({
         where: { id: existing.id },
-        data: { archivedAt: new Date() },
+        data: {
+          archivedAt: new Date(),
+          archiveReason: "DIRECT",
+          archivedByListId: null,
+        },
       });
     }
     return { mode: "archived", message: decision.message };

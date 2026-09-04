@@ -14,7 +14,7 @@ export function HomeSetupRail({
   return (
     <nav
       aria-label="Setup"
-      className="mb-6 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2"
+      className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-2"
     >
       <ol className="flex min-w-max items-center gap-1">
         {steps.map((step) => {
