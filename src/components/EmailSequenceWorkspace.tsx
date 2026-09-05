@@ -584,14 +584,14 @@ export function EmailSequenceWorkspace({
         <div className="mt-5 border-t border-slate-200 pt-4">
           {drafts.some((draft) => draft.status === "SENT") ? (
             <p
-              className="mb-3 flex gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+              className="mb-3 flex gap-2 rounded-md border border-slate-400 bg-slate-200 px-3 py-2 text-xs text-slate-800"
               data-testid="sequence-reply-guidance"
             >
               <svg
                 aria-hidden="true"
                 viewBox="0 0 20 20"
                 fill="currentColor"
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500"
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-600"
               >
                 <path
                   fillRule="evenodd"
