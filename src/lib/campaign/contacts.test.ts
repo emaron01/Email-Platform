@@ -25,6 +25,7 @@ describe("campaign contact management seams", () => {
     expect(detailPage).toContain("EmailDraftsStage");
     expect(detailPage).toContain("CampaignContactsManager");
     expect(detailPage).toContain("Compare drafts");
+    expect(detailPage).toContain("Campaign email settings");
     expect(detailPage).not.toContain(
       'mode={currentStage === "emails" ? "EMAILS" : "SEND"}',
     );

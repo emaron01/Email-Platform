@@ -460,6 +460,36 @@ export default async function CampaignDetailPage({
           title={`Emails (${stageContacts.length} contacts)`}
           description="Generate, edit, and send drafts for every contact in this campaign. Use Compare drafts to review several at once."
         >
+          <div className="mb-4 space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-900">
+                  Campaign email settings
+                </p>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  Default length and campaign-specific guidance. Length can be
+                  overridden on each draft.
+                </p>
+              </div>
+              <Link
+                href={`/campaigns/${campaign.id}?stage=setup`}
+                className="text-xs font-medium text-slate-700 underline underline-offset-2"
+              >
+                Also on Setup
+              </Link>
+            </div>
+            {campaignArchived ? (
+              <p className="text-sm text-slate-600">
+                Email settings are read-only while this campaign is archived.
+              </p>
+            ) : (
+              <CampaignEmailSettingsForm
+                campaignId={campaign.id}
+                emailLength={campaign.emailLength}
+                emailGuidance={campaign.emailGuidance}
+              />
+            )}
+          </div>
           {voiceSamples.length === 0 ? (
             <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-4">
               <p className="text-sm font-medium text-amber-950">

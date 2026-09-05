@@ -52,7 +52,7 @@ const ROUTE_EXPECTATIONS: Record<string, SmokeExpectation> = {
   "/settings/email": { mustInclude: "email-signature" },
   "/settings/organization": { mustInclude: "Organization" },
   "/settings/usage": { mustInclude: "Usage" },
-  "/settings/voice": { mustInclude: "email-signature" },
+  "/settings/voice": { mustInclude: "Your Voice" },
   "/setup": { mustInclude: "Products" },
   "/setup/new": { mustInclude: "New Product" },
   "/no-workspace": { mustInclude: "data-testid=\"app-sidebar\"" },

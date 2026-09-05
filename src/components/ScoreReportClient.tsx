@@ -676,12 +676,17 @@ export function ScoreReportClient({
                       ) : (
                         <button
                           type="button"
-                          className="line-clamp-2 max-h-10 w-full text-left leading-5 hover:text-slate-900 hover:underline"
+                          className="w-full cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1.5 text-left text-sm text-slate-700 shadow-sm hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900"
                           title={resolvedQualification.reason ?? "Pending"}
                           aria-expanded={open}
                           onClick={() => setExpandedId(open ? null : row.id)}
                         >
-                          {resolvedQualification.reason ?? "Pending"}
+                          <span className="line-clamp-2 leading-5">
+                            {resolvedQualification.reason ?? "Pending"}
+                          </span>
+                          <span className="mt-0.5 block text-xs font-medium text-slate-500">
+                            {open ? "Hide details" : "Show details"}
+                          </span>
                         </button>
                       )}
                       {personaMatch?.matchedPersonaId ? (

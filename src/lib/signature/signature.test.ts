@@ -4,12 +4,13 @@ import { TenantError } from "@/lib/tenant/errors";
 import { EMAIL_SIGNATURE_MAX_CHARS } from "@/lib/signature/types";
 
 describe("email signature seams", () => {
-  it("lives on email + voice settings and is appended on both send paths", () => {
+  it("lives on Email connection settings and is appended on both send paths", () => {
     const voice = readFileSync("src/app/(app)/settings/voice/page.tsx", "utf8");
     const emailPage = readFileSync(
       "src/app/(app)/settings/email/page.tsx",
       "utf8",
     );
+    const settings = readFileSync("src/app/(app)/settings/page.tsx", "utf8");
     const form = readFileSync("src/components/EmailSignatureForm.tsx", "utf8");
     const graph = readFileSync("src/lib/mailbox/microsoft-graph.ts", "utf8");
     const send = readFileSync("src/lib/mailbox/send.ts", "utf8");
@@ -18,8 +19,12 @@ describe("email signature seams", () => {
       "utf8",
     );
 
-    expect(voice).toContain("EmailSignatureForm");
     expect(emailPage).toContain("EmailSignatureForm");
+    expect(voice).not.toContain("EmailSignatureForm");
+    expect(voice).toContain('href="/settings/email"');
+    expect(settings).toMatch(/Email connection[\s\S]*signature appended/);
+    expect(workspace).toContain('href="/settings/email"');
+    expect(workspace).not.toContain('href="/settings/voice"');
     expect(form).toContain("saveEmailSignatureAction");
     expect(form).toContain("email-signature-preview");
     expect(form).toContain("EMAIL_SIGNATURE_HTML_MAX_CHARS");

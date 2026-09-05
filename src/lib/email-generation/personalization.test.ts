@@ -592,6 +592,8 @@ describe("generation constraints", () => {
     const stage = readFileSync("src/components/EmailDraftsStage.tsx", "utf8");
     expect(stage).toContain("Compare drafts");
     expect(stage).toContain("Needs persona");
+    expect(stage).toContain("Open in Write");
+    expect(stage).toContain("onOpenInWrite");
     expect(stage).toContain("data-testid=\"campaign-draft-compare\"");
     expect(stage).toContain("Campaign contacts");
     expect(stage).toContain('data-testid="email-contacts-filter"');

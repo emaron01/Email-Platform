@@ -1093,7 +1093,13 @@ describe("email generation action and UI seams", () => {
     expect(form).not.toContain("Daily send warning:");
     expect(form).toContain("not a delivery confirmation");
     expect(form).toContain("Draft reply");
+    expect(form).toContain("sequence-reply-guidance");
+    expect(form).toContain(
+      "When this prospect replies, click the email they replied to",
+    );
+    expect(form).toContain("cursor-pointer");
     expect(form).toContain("What should change?");
+    expect(form).toContain("Applied only when you regenerate this draft.");
     expect(form).toContain("Regenerate");
     expect(form).toContain("maxLength={ADDITIONAL_GUIDANCE_MAX_CHARS}");
     expect(form).toContain("email-sequence-status");
@@ -1102,6 +1108,10 @@ describe("email generation action and UI seams", () => {
     );
     expect(form).toContain("Open in");
     expect(form).toContain("selected.subject");
+    expect(form).toContain('href="/settings/email"');
+    expect(form).not.toMatch(
+      /Add a signature[\s\S]*href="\/settings\/voice"/,
+    );
     expect(form).toContain("selected.body");
     expect(form).toContain("Save draft");
     const sequence = readFileSync("src/lib/email-generation/sequence.ts", "utf8");

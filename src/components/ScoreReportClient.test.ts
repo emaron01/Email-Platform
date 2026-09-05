@@ -36,8 +36,10 @@ describe("ScoreReportClient table layout", () => {
     expect(source).toContain("`restore-contact-${row.contactId}`");
   });
 
-  it("caps non-excluded reasons at two lines and keeps the full text available", () => {
-    expect(source).toContain("line-clamp-2 max-h-10");
+  it("caps non-excluded reasons at two lines and keeps details expandable", () => {
+    expect(source).toContain("line-clamp-2");
+    expect(source).toContain("Show details");
     expect(source).toContain("resolvedQualification.reason");
+    expect(source).toContain("cursor-pointer");
   });
 });

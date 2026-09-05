@@ -355,7 +355,14 @@ export function EmailDraftsStage({
             No drafts are ready to send.
           </p>
         ) : (
-          <CampaignDraftCompare contacts={visibleContacts} preparingIds={preparingIds} />
+          <CampaignDraftCompare
+            contacts={visibleContacts}
+            preparingIds={preparingIds}
+            onOpenInWrite={(campaignContactId) => {
+              void handleSelectContact(campaignContactId);
+              setView("write");
+            }}
+          />
         )
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)]">
@@ -511,9 +518,11 @@ export function EmailDraftsStage({
 function CampaignDraftCompare({
   contacts,
   preparingIds,
+  onOpenInWrite,
 }: {
   contacts: EmailDraftsStageContact[];
   preparingIds: Set<string>;
+  onOpenInWrite: (campaignContactId: string) => void;
 }) {
   const rows = useMemo(
     () =>
@@ -537,16 +546,29 @@ function CampaignDraftCompare({
           key={contact.campaignContactId}
           className="rounded-md border border-slate-200 bg-white p-4"
         >
-          <h3 className="text-sm font-medium text-slate-900">
-            {contact.contactName}
-          </h3>
-          <p className="mt-0.5 text-xs text-slate-500">{contact.contactDetails}</p>
-          <p className="mt-1 text-xs text-slate-500">
-            {contactDraftListStatus({
-              isPreparing: preparingIds.has(contact.campaignContactId),
-              drafts: contact.drafts,
-            })}
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-medium text-slate-900">
+                {contact.contactName}
+              </h3>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {contact.contactDetails}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {contactDraftListStatus({
+                  isPreparing: preparingIds.has(contact.campaignContactId),
+                  drafts: contact.drafts,
+                })}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenInWrite(contact.campaignContactId)}
+              className="cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 shadow-sm hover:border-slate-400 hover:bg-slate-50"
+            >
+              Open in Write
+            </button>
+          </div>
           {draft ? (
             <>
               <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">

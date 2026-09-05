@@ -356,9 +356,9 @@ export function QualificationBuckets({
                           type="button"
                           disabled={pending || !canActOnRow(row)}
                           onClick={() => restore(row, bucket)}
-                          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-800"
+                          className="cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 shadow-sm hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {QUALIFICATION_BUCKET_LABELS[bucket]}
+                          Move to {QUALIFICATION_BUCKET_LABELS[bucket]}
                         </button>
                       ))
                     : null}

@@ -70,7 +70,10 @@ export default async function EmailSettingsPage({ searchParams }: PageProps) {
         </h1>
         <p className="mt-1 text-sm text-slate-600">
           Connect a personal mailbox for direct sending. Connections belong to
-          you within this workspace and cannot be used by another member.
+          you within this workspace and cannot be used by another member. The
+          signature below is appended on Connected Send and when you open
+          Gmail or Outlook on the web. Outlook Desktop uses your Outlook
+          signature instead.
         </p>
       </div>
       <MailboxConnectionPanel

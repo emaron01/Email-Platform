@@ -582,6 +582,30 @@ export function EmailSequenceWorkspace({
         </dl>
 
         <div className="mt-5 border-t border-slate-200 pt-4">
+          {drafts.some((draft) => draft.status === "SENT") ? (
+            <p
+              className="mb-3 flex gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+              data-testid="sequence-reply-guidance"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <span>
+                When this prospect replies, click the email they replied to,
+                choose Draft reply, and paste what they wrote — we will draft a
+                response you can send.
+              </span>
+            </p>
+          ) : null}
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Sequence
           </p>
@@ -600,10 +624,10 @@ export function EmailSequenceWorkspace({
                     setResult(null);
                     if (draft.emailLength) setSelectedLength(draft.emailLength);
                   }}
-                  className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-xs ${
+                  className={`group flex w-full cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-left text-xs transition ${
                     isSelected
-                      ? "border-slate-900 bg-slate-100"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
+                      ? "border-slate-900 bg-slate-100 shadow-sm"
+                      : "border-slate-200 bg-white hover:border-slate-400 hover:bg-slate-50 hover:shadow-sm"
                   }`}
                 >
                   <span>
@@ -622,12 +646,18 @@ export function EmailSequenceWorkspace({
                     {draft.claimConflicts.length > 0 ? " · claims" : ""}
                     {activity ? ` · ${activity}` : ""}
                   </span>
-                  <span className="text-slate-500">
+                  <span
+                    className={
+                      isSelected
+                        ? "font-medium text-slate-700"
+                        : "font-medium text-slate-600 underline decoration-slate-300 underline-offset-2 group-hover:decoration-slate-600"
+                    }
+                  >
                     {isSelected
                       ? draft.status === "SENT"
-                        ? "viewing"
-                        : "editing"
-                      : "view"}
+                        ? "Open"
+                        : "Editing"
+                      : "Open"}
                     {isCurrent ? " · current" : ""}
                   </span>
                 </button>
@@ -647,7 +677,7 @@ export function EmailSequenceWorkspace({
                 ),
               )
             }
-            className="mt-3 text-sm font-medium text-slate-900 disabled:cursor-not-allowed disabled:text-slate-400"
+            className="mt-3 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
           >
             + Add to sequence
           </button>
@@ -950,30 +980,25 @@ export function EmailSequenceWorkspace({
               </p>
             ) : selected.status !== "SENT" ? (
               <div className="space-y-3">
-                <label className="block text-sm">
-                  <span className="font-medium text-slate-700">
-                    What should change?
-                  </span>
-                  <input
-                    type="text"
-                    value={regenerationGuidance}
-                    onChange={(event) =>
-                      setRegenerationGuidance(event.target.value)
-                    }
-                    maxLength={ADDITIONAL_GUIDANCE_MAX_CHARS}
-                    disabled={pending}
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={pending}
-                    onClick={saveDraft}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium"
-                  >
-                    {pending ? "Saving…" : "Save draft"}
-                  </button>
+                <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <label className="block text-sm">
+                    <span className="font-medium text-slate-700">
+                      What should change?
+                    </span>
+                    <span className="mt-0.5 block text-xs text-slate-500">
+                      Applied only when you regenerate this draft.
+                    </span>
+                    <input
+                      type="text"
+                      value={regenerationGuidance}
+                      onChange={(event) =>
+                        setRegenerationGuidance(event.target.value)
+                      }
+                      maxLength={ADDITIONAL_GUIDANCE_MAX_CHARS}
+                      disabled={pending}
+                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                    />
+                  </label>
                   <button
                     type="button"
                     disabled={pending || !selectedPersonaId}
@@ -987,9 +1012,19 @@ export function EmailSequenceWorkspace({
                         ),
                       )
                     }
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium"
+                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
                   >
                     {pending ? "Regenerating…" : "Regenerate"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={saveDraft}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium"
+                  >
+                    {pending ? "Saving…" : "Save draft"}
                   </button>
                   {EMAIL_CLIENT_OPTIONS.map((option) => (
                     <button
@@ -1043,7 +1078,7 @@ export function EmailSequenceWorkspace({
                 ) : null}
                 {!emailSignature ? (
                   <a
-                    href="/settings/voice"
+                    href="/settings/email"
                     className="text-xs font-medium text-slate-700 underline"
                   >
                     Add a signature — it is appended on send and when you open
