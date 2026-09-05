@@ -592,12 +592,20 @@ describe("generation constraints", () => {
     const stage = readFileSync("src/components/EmailDraftsStage.tsx", "utf8");
     expect(stage).toContain("Compare drafts");
     expect(stage).toContain("Needs persona");
+    expect(stage).toContain("initialCampaignContactId");
     expect(stage).toContain("Open in Write");
     expect(stage).toContain("onOpenInWrite");
     expect(stage).toContain("data-testid=\"campaign-draft-compare\"");
     expect(stage).toContain("Campaign contacts");
     expect(stage).toContain('data-testid="email-contacts-filter"');
     expect(stage).toContain("Ready to send");
+
+    const duePanel = readFileSync("src/components/DueContactsPanel.tsx", "utf8");
+    expect(duePanel).toContain("Review draft");
+    expect(duePanel).toContain("?stage=emails&contact=");
+    expect(duePanel).not.toMatch(
+      /Review draft[\s\S]{0,200}href=\{`\/campaigns\/\$\{campaign\.campaignId\}`\}/,
+    );
     const page = readFileSync("src/app/(app)/campaigns/[id]/page.tsx", "utf8");
     expect(page).toContain("campaign.contacts");
     expect(page).not.toContain("qualifiedCampaignContacts");

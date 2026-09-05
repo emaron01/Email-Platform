@@ -44,7 +44,7 @@ import { prisma } from "@/lib/prisma";
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ q?: string; stage?: string }>;
+  searchParams: Promise<{ q?: string; stage?: string; contact?: string }>;
 };
 
 function asPersonalizationTier(
@@ -525,6 +525,7 @@ export default async function CampaignDetailPage({
                 limit: dailySendUsage.limit,
               }}
               readOnly={campaignArchived}
+              initialCampaignContactId={query.contact}
               contacts={stageContacts.map((campaignContact) => {
                 const contact = campaignContact.contact;
                 const draftScreen = draftScreens[campaignContact.id];

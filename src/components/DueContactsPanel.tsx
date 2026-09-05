@@ -129,7 +129,7 @@ export function DueContactsPanel({
                     </span>
                     {contact.hasDraft ? (
                       <Link
-                        href={`/campaigns/${campaign.campaignId}`}
+                        href={`/campaigns/${campaign.campaignId}?stage=emails&contact=${contact.campaignContactId}`}
                         className="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700"
                       >
                         Review draft

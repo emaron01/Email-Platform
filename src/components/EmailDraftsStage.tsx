@@ -128,6 +128,7 @@ export function EmailDraftsStage({
   dailySendUsage,
   readOnly = false,
   emailSignature = null,
+  initialCampaignContactId = null,
 }: {
   contacts: EmailDraftsStageContact[];
   campaignEmailLength: CampaignEmailLength;
@@ -144,14 +145,22 @@ export function EmailDraftsStage({
   };
   readOnly?: boolean;
   emailSignature?: string | null;
+  /** Deep-link from Home "Review draft" / due list. */
+  initialCampaignContactId?: string | null;
 }) {
   const [view, setView] = useState<"write" | "compare">("write");
   const [contactFilter, setContactFilter] =
     useState<ContactListFilter>("all");
   const [stageContacts, setStageContacts] = useState(contacts);
-  const [selectedId, setSelectedId] = useState(
-    contacts[0]?.campaignContactId ?? "",
-  );
+  const [selectedId, setSelectedId] = useState(() => {
+    if (
+      initialCampaignContactId &&
+      contacts.some((row) => row.campaignContactId === initialCampaignContactId)
+    ) {
+      return initialCampaignContactId;
+    }
+    return contacts[0]?.campaignContactId ?? "";
+  });
   const [preparingIds, setPreparingIds] = useState<Set<string>>(new Set());
   const [queueComplete, setQueueComplete] = useState(false);
   const triggeredReviewKeys = useRef(new Set<string>());
