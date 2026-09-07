@@ -179,7 +179,8 @@ export function EmailSequenceWorkspace({
   const [replyText, setReplyText] = useState("");
   const [showReplyBox, setShowReplyBox] = useState(false);
   const [pending, startTransition] = useTransition();
-  const [sendConfirmDismissed, setSendConfirmDismissed] = useState(false);
+  /** True only after a successful Open in Outlook/Gmail click in this session. */
+  const [awaitingSendConfirm, setAwaitingSendConfirm] = useState(false);
   const [selectedPersonaId, setSelectedPersonaId] = useState(
     resolvedPersonaId ??
       suggestedPersonaId ??
@@ -197,6 +198,9 @@ export function EmailSequenceWorkspace({
       !suppressed &&
       latest?.status === "SENT" &&
       latest.sentAt,
+  );
+  const canDraftReply = Boolean(
+    !readOnly && !suppressed && selected?.status === "SENT",
   );
   const addDisabledReason = latest
     ? `Email ${latest.sequenceNumber} must be marked as sent first.`
@@ -220,9 +224,10 @@ export function EmailSequenceWorkspace({
     personaOptions,
   ]);
 
+  // Leaving a draft clears an unanswered prompt — do not re-open from stored handoffAt.
   useEffect(() => {
-    setSendConfirmDismissed(false);
-  }, [selected?.id, selected?.handoffAt]);
+    setAwaitingSendConfirm(false);
+  }, [selected?.id]);
 
   useEffect(() => {
     if (readOnly || suppressed || !onDraftOpenedForReview) return;
@@ -239,27 +244,13 @@ export function EmailSequenceWorkspace({
     suppressed,
   ]);
 
-  const [deeplinkSendDeclined, setDeeplinkSendDeclined] = useState(false);
   const clientOpenInFlight = useRef(false);
-  useEffect(() => {
-    if (!selected?.id || !selected.handoffAt) {
-      setDeeplinkSendDeclined(false);
-      return;
-    }
-    setDeeplinkSendDeclined(
-      sessionStorage.getItem(
-        deeplinkSendDeclinedStorageKey(selected.id, selected.handoffAt),
-      ) === "1",
-    );
-  }, [selected?.id, selected?.handoffAt]);
 
   const showSendConfirm = Boolean(
     !readOnly &&
       selected &&
       selected.status !== "SENT" &&
-      selected.handoffAt &&
-      !sendConfirmDismissed &&
-      !deeplinkSendDeclined,
+      awaitingSendConfirm,
   );
 
   function applyGenerated(next: GenerateEmailDraftActionResult) {
@@ -461,8 +452,7 @@ export function EmailSequenceWorkspace({
         }
         if (recorded.handoffAt) {
           updateSelectedDraft({ handoffAt: recorded.handoffAt });
-          setSendConfirmDismissed(false);
-          setDeeplinkSendDeclined(false);
+          setAwaitingSendConfirm(true);
         }
         if (preOpenedTab && !preOpenedTab.closed) {
           preOpenedTab.location.href = href;
@@ -479,7 +469,7 @@ export function EmailSequenceWorkspace({
   function answerSendConfirm(answer: "yes" | "no" | "not_yet") {
     if (!selected?.handoffAt) return;
     if (answer === "not_yet") {
-      setSendConfirmDismissed(true);
+      setAwaitingSendConfirm(false);
       return;
     }
     if (answer === "no") {
@@ -487,8 +477,7 @@ export function EmailSequenceWorkspace({
         deeplinkSendDeclinedStorageKey(selected.id, selected.handoffAt),
         "1",
       );
-      setDeeplinkSendDeclined(true);
-      setSendConfirmDismissed(true);
+      setAwaitingSendConfirm(false);
       setResult({
         ok: true,
         message:
@@ -496,6 +485,7 @@ export function EmailSequenceWorkspace({
       });
       return;
     }
+    setAwaitingSendConfirm(false);
     markSent();
   }
 
@@ -1120,11 +1110,11 @@ export function EmailSequenceWorkspace({
                   ))}
                   <button
                     type="button"
-                    disabled={!canAdd || pending}
+                    disabled={!canDraftReply || pending}
                     title={
-                      canAdd
+                      canDraftReply
                         ? "Paste the prospect reply."
-                        : "Mark the current draft as sent before adding a reply."
+                        : "Open a sent email in this sequence to draft a reply."
                     }
                     onClick={() => setShowReplyBox((value) => !value)}
                     className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:text-slate-400"
