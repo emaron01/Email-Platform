@@ -71,7 +71,7 @@ describe.skipIf(!hasDatabase)(
     );
 
     // Defaults are stored in DB — enforcement reads these rows, not scattered constants.
-    expect(usage.activeResearchedCompanyLimit).toBe(100);
+    expect(usage.activeResearchedCompanyLimit).toBe(50);
     expect(usage.dailyEmailGenerationLimit).toBe(
       DEFAULT_USAGE_POLICY_VALUES.dailyEmailGenerationLimit,
     );
@@ -102,7 +102,7 @@ describe.skipIf(!hasDatabase)(
       organizationId: organization.id,
       userId: user.id,
     });
-    expect(base.activeResearchedCompanyLimit).toBe(100);
+    expect(base.activeResearchedCompanyLimit).toBe(50);
     expect(base.sources.activeResearchedCompanyLimit).toBe("ORGANIZATION");
 
     await prisma.userUsageOverride.create({

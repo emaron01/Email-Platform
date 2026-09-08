@@ -53,7 +53,7 @@ describe.skipIf(!hasDatabase)(
       expect(org.billingProfile?.planCode).toBe(FREE_BILLING_DEFAULTS.planCode);
       expect(org.billingProfile?.billingStatus).toBe("FREE");
       expect(org.billingProfile?.stripeCustomerId).toBeNull();
-      expect(org.usagePolicy?.activeResearchedCompanyLimit).toBe(100);
+      expect(org.usagePolicy?.activeResearchedCompanyLimit).toBe(50);
       expect(org.invitations).toHaveLength(1);
       expect(org.invitations[0]?.email).toBe(ownerEmail);
       expect(org.invitations[0]?.role).toBe("OWNER");

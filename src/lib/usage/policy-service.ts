@@ -15,12 +15,14 @@ export type EffectiveUsagePolicy = {
   dailyEmailGenerationLimit: number;
   dailyEmailSendWarningLimit: number;
   dailyEmailSendLimit: number;
+  monthlyEmailSendLimit: number | null;
   emailDeeplinkMaxUrlLength: number;
   sources: {
     activeResearchedCompanyLimit: PolicySource;
     dailyEmailGenerationLimit: PolicySource;
     dailyEmailSendWarningLimit: PolicySource;
     dailyEmailSendLimit: PolicySource;
+    monthlyEmailSendLimit: PolicySource;
     emailDeeplinkMaxUrlLength: PolicySource;
   };
 };
@@ -92,6 +94,7 @@ export async function ensureUsageAndResearchPolicies(
       dailyEmailSendWarningLimit:
         DEFAULT_USAGE_POLICY_VALUES.dailyEmailSendWarningLimit,
       dailyEmailSendLimit: DEFAULT_USAGE_POLICY_VALUES.dailyEmailSendLimit,
+      monthlyEmailSendLimit: DEFAULT_USAGE_POLICY_VALUES.monthlyEmailSendLimit,
       emailDeeplinkMaxUrlLength:
         DEFAULT_USAGE_POLICY_VALUES.emailDeeplinkMaxUrlLength,
     },
@@ -131,12 +134,14 @@ export async function getEffectiveUsagePolicy(input: {
     orgPolicy.dailyEmailSendWarningLimit;
   const dailyEmailSendLimit =
     override?.dailyEmailSendLimit ?? orgPolicy.dailyEmailSendLimit;
+  const monthlyEmailSendLimit = orgPolicy.monthlyEmailSendLimit ?? null;
 
   return {
     activeResearchedCompanyLimit,
     dailyEmailGenerationLimit,
     dailyEmailSendWarningLimit,
     dailyEmailSendLimit,
+    monthlyEmailSendLimit,
     emailDeeplinkMaxUrlLength: orgPolicy.emailDeeplinkMaxUrlLength,
     sources: {
       activeResearchedCompanyLimit:
@@ -155,6 +160,7 @@ export async function getEffectiveUsagePolicy(input: {
         override?.dailyEmailSendLimit != null
           ? "USER_OVERRIDE"
           : "ORGANIZATION",
+      monthlyEmailSendLimit: "ORGANIZATION",
       emailDeeplinkMaxUrlLength: "ORGANIZATION",
     },
   };

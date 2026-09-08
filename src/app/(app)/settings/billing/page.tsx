@@ -4,7 +4,16 @@ import { prisma } from "@/lib/prisma";
 import {
   billingPlanLabel,
   billingStatusLabel,
+  formatCustomerPayingAmount,
+  formatDiscountSummary,
 } from "@/lib/billing/billing-state";
+import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
+import {
+  BILLING_PLAN_STANDARD,
+  planIsCheckoutReady,
+} from "@/lib/billing/plans";
+import { stripeConfigured } from "@/lib/billing/stripe";
+import { StartStandardCheckoutButton } from "@/components/billing/StartStandardCheckoutButton";
 import { countActiveResearchedCompanies } from "@/lib/usage/active-companies";
 import {
   ensureOrganizationPolicies,
@@ -12,12 +21,19 @@ import {
 } from "@/lib/usage/policy";
 
 /**
- * Org billing settings — plan/status visible now; Stripe portal/checkout in Phase C.
+ * Org billing settings — plan/status + Stripe Checkout for STANDARD.
  * OWNER/ADMIN only (requireOrgAdmin). MEMBER cannot open this page.
  */
-export default async function OrganizationBillingSettingsPage() {
+export default async function OrganizationBillingSettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { organization, user } = await requireOrgAdmin();
   await ensureOrganizationPolicies(organization.id);
+  const params = searchParams ? await searchParams : {};
+  const checkoutState =
+    typeof params.checkout === "string" ? params.checkout : null;
 
   const [billing, policy, activeCompanies] = await Promise.all([
     prisma.organizationBillingProfile.findUnique({
@@ -37,6 +53,30 @@ export default async function OrganizationBillingSettingsPage() {
     policy.activeResearchedCompanyLimit - activeCompanies,
   );
 
+  const hasLiveSubscription =
+    Boolean(billing?.stripeSubscriptionId) &&
+    (billingStatus === "ACTIVE" ||
+      billingStatus === "TRIALING" ||
+      billingStatus === "PAST_DUE");
+
+  let checkoutDisabled: string | null = null;
+  if (!stripeConfigured() || !planIsCheckoutReady(BILLING_PLAN_STANDARD)) {
+    checkoutDisabled =
+      "Stripe Checkout is not configured yet (set STRIPE_SECRET_KEY and STRIPE_PRICE_STANDARD_MONTHLY).";
+  } else if (hasLiveSubscription) {
+    checkoutDisabled =
+      "Subscription is active. Customer Portal for self-serve billing changes is next.";
+  }
+
+  const discountActive = billing
+    ? hasActiveDiscount({
+        stripeDiscountPercentOff: billing.stripeDiscountPercentOff,
+        stripeDiscountAmountOffCents: billing.stripeDiscountAmountOffCents,
+        stripeEffectiveUnitAmountCents: billing.stripeEffectiveUnitAmountCents,
+        stripePriceUnitAmountCents: billing.stripePriceUnitAmountCents,
+      })
+    : false;
+
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
@@ -53,6 +93,18 @@ export default async function OrganizationBillingSettingsPage() {
           Plan and status for {organization.name}. Signed in as {user.email}.
         </p>
       </div>
+
+      {checkoutState === "success" ? (
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          Checkout completed. Subscription status updates when Stripe confirms
+          the webhook.
+        </p>
+      ) : null}
+      {checkoutState === "canceled" ? (
+        <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          Checkout canceled — no charge was made.
+        </p>
+      ) : null}
 
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-5">
         <h2 className="text-lg font-medium text-slate-900">Current plan</h2>
@@ -89,20 +141,45 @@ export default async function OrganizationBillingSettingsPage() {
               {billing?.billingEmail ?? "—"}
             </dd>
           </div>
+          {billing?.stripePriceId ? (
+            <>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-slate-500">
+                  Paying
+                </dt>
+                <dd className="mt-1 font-medium text-slate-900">
+                  {formatCustomerPayingAmount({
+                    effectiveUnitAmountCents:
+                      billing.stripeEffectiveUnitAmountCents,
+                    listUnitAmountCents: billing.stripePriceUnitAmountCents,
+                    currency: billing.stripePriceCurrency,
+                    interval: billing.stripePriceInterval,
+                  })}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-slate-500">
+                  Discount
+                </dt>
+                <dd className="mt-1 font-medium text-slate-900">
+                  {discountActive
+                    ? formatDiscountSummary({
+                        percentOff: billing.stripeDiscountPercentOff,
+                        amountOffCents: billing.stripeDiscountAmountOffCents,
+                        currency: billing.stripePriceCurrency,
+                        couponId: billing.stripeCouponId,
+                      })
+                    : "None"}
+                </dd>
+              </div>
+            </>
+          ) : null}
         </dl>
         <p className="text-sm text-slate-600">
-          This account is free. Payment management will appear here when Stripe
-          is connected — no card data is stored in this app.
+          No card numbers, billing addresses, or tax IDs are stored in this app
+          — Stripe hosts payment collection.
         </p>
-        {/* Phase C: Stripe Customer Portal / Checkout buttons mount here. */}
-        <div
-          data-testid="billing-stripe-hook"
-          className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-xs text-slate-500"
-        >
-          Stripe portal and checkout hooks reserved for Phase C (
-          <code className="text-[11px]">/api/billing/portal</code>,{" "}
-          <code className="text-[11px]">/api/billing/checkout</code>).
-        </div>
+        <StartStandardCheckoutButton disabledReason={checkoutDisabled} />
       </section>
 
       <section
@@ -126,8 +203,8 @@ export default async function OrganizationBillingSettingsPage() {
         <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-600">
           <p className="font-medium text-slate-800">Add capacity</p>
           <p className="mt-1">
-            Purchasing additional company research slots will appear here when
-            Stripe is connected. Until then, ask a platform admin to raise the
+            Purchasing additional company research credits will appear here in a
+            later billing phase. Until then, ask a platform admin to raise the
             organization limit in the platform console.
           </p>
         </div>

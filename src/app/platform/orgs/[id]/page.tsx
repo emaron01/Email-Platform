@@ -12,7 +12,18 @@ import { computeCostReport } from "@/lib/platform/cost";
 import {
   billingPlanLabel,
   billingStatusLabel,
+  formatCustomerPayingAmount,
+  formatDiscountSummary,
+  formatStripeMoney,
+  formatPriceInterval,
+  isOnCurrentCatalogPrice,
 } from "@/lib/billing/billing-state";
+import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
+import {
+  BILLING_PLAN_STANDARD,
+  getPlanDefinition,
+  resolveStripePriceId,
+} from "@/lib/billing/plans";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import {
   grantOrganizationCreditAction,
@@ -88,6 +99,9 @@ export default async function PlatformOrgDetailPage({
         <ul className="grid gap-2 text-sm sm:grid-cols-2">
           <li className="rounded-md border border-slate-200 bg-white p-3">
             Plan: {billingPlanLabel(billing.planCode)}
+            <span className="mt-1 block font-mono text-xs text-slate-500">
+              {billing.planCode}
+            </span>
           </li>
           <li className="rounded-md border border-slate-200 bg-white p-3">
             Status: {billingStatusLabel(billing.billingStatus)}
@@ -96,9 +110,95 @@ export default async function PlatformOrgDetailPage({
             Ops contact:{" "}
             {billing.billingEmail ?? "— (no address/tax stored)"}
           </li>
+          <li className="rounded-md border border-slate-200 bg-white p-3">
+            <span className="text-xs uppercase tracking-wide text-slate-500">
+              Price ID
+            </span>
+            <p className="mt-1 break-all font-mono text-xs text-slate-800">
+              {billing.stripePriceId ?? "—"}
+            </p>
+            {(() => {
+              const standard = getPlanDefinition(BILLING_PLAN_STANDARD);
+              const base = standard?.components.find(
+                (c) => c.kind === "recurring_base",
+              );
+              const catalogPriceId =
+                base && base.kind === "recurring_base"
+                  ? resolveStripePriceId(base.stripePriceIdEnv)
+                  : null;
+              const onCatalog = isOnCurrentCatalogPrice(
+                billing.stripePriceId,
+                catalogPriceId,
+              );
+              if (onCatalog == null) return null;
+              return (
+                <p className="mt-1 text-xs text-slate-500">
+                  {onCatalog
+                    ? "Matches current catalog price"
+                    : "Grandfathered — differs from current catalog price"}
+                </p>
+              );
+            })()}
+          </li>
+          <li className="rounded-md border border-slate-200 bg-white p-3">
+            <span className="text-xs uppercase tracking-wide text-slate-500">
+              Amount / interval
+            </span>
+            <p className="mt-1 font-medium text-slate-900">
+              {formatCustomerPayingAmount({
+                effectiveUnitAmountCents:
+                  billing.stripeEffectiveUnitAmountCents,
+                listUnitAmountCents: billing.stripePriceUnitAmountCents,
+                currency: billing.stripePriceCurrency,
+                interval: billing.stripePriceInterval,
+              })}
+            </p>
+            {billing.stripePriceUnitAmountCents != null &&
+            billing.stripeEffectiveUnitAmountCents != null &&
+            billing.stripeEffectiveUnitAmountCents <
+              billing.stripePriceUnitAmountCents ? (
+              <p className="mt-1 text-xs text-slate-500">
+                List:{" "}
+                {formatStripeMoney(
+                  billing.stripePriceUnitAmountCents,
+                  billing.stripePriceCurrency,
+                )}{" "}
+                / {formatPriceInterval(billing.stripePriceInterval)}
+              </p>
+            ) : null}
+          </li>
+          <li className="rounded-md border border-slate-200 bg-white p-3 sm:col-span-2">
+            <span className="text-xs uppercase tracking-wide text-slate-500">
+              Discount
+            </span>
+            <p className="mt-1 font-medium text-slate-900">
+              {hasActiveDiscount({
+                stripeDiscountPercentOff: billing.stripeDiscountPercentOff,
+                stripeDiscountAmountOffCents:
+                  billing.stripeDiscountAmountOffCents,
+                stripeEffectiveUnitAmountCents:
+                  billing.stripeEffectiveUnitAmountCents,
+                stripePriceUnitAmountCents: billing.stripePriceUnitAmountCents,
+              })
+                ? formatDiscountSummary({
+                    percentOff: billing.stripeDiscountPercentOff,
+                    amountOffCents: billing.stripeDiscountAmountOffCents,
+                    currency: billing.stripePriceCurrency,
+                    couponId: billing.stripeCouponId,
+                  })
+                : "None"}
+            </p>
+          </li>
           <li className="rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-500 sm:col-span-2">
             Stripe customer: {billing.stripeCustomerId ?? "—"} · subscription:{" "}
-            {billing.stripeSubscriptionId ?? "—"} (Phase C)
+            {billing.stripeSubscriptionId ?? "—"}
+            {billing.currentPeriodEnd
+              ? ` · period ends ${billing.currentPeriodEnd.toISOString().slice(0, 10)}`
+              : ""}
+            {billing.trialEndsAt
+              ? ` · trial ends ${billing.trialEndsAt.toISOString().slice(0, 10)}`
+              : ""}
+            {billing.cancelAtPeriodEnd ? " · cancels at period end" : ""}
           </li>
         </ul>
       </section>
@@ -424,7 +524,7 @@ export default async function PlatformOrgDetailPage({
                 type="number"
                 min={0}
                 defaultValue={
-                  usagePolicy?.activeResearchedCompanyLimit ?? 100
+                  usagePolicy?.activeResearchedCompanyLimit ?? 50
                 }
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
               />

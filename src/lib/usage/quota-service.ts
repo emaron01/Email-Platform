@@ -44,7 +44,14 @@ export async function assertUsageAllowed(input: {
     const { countActiveResearchedCompanies } = await import(
       "@/lib/usage/active-companies-service"
     );
-    const limit = policy.activeResearchedCompanyLimit;
+    const { getEffectiveCompanyResearchAllowance } = await import(
+      "@/lib/billing/company-research-credits"
+    );
+    const baseLimit = policy.activeResearchedCompanyLimit;
+    const { effectiveLimit: limit } = await getEffectiveCompanyResearchAllowance({
+      organizationId: input.organizationId,
+      baseLimit,
+    });
     const lockKey = `active-research-slot:${input.organizationId}`;
 
     const used = await prisma.$transaction(async (tx) => {

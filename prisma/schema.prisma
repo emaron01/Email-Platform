@@ -31,6 +31,13 @@ enum BillingStatus {
   UNPAID
 }
 
+/// Why an org is payment-locked (distinct trial end vs failed renewal messaging).
+enum BillingLockReason {
+  TRIAL_ENDED
+  PAYMENT_FAILED
+  CANCELED
+}
+
 enum MembershipRole {
   OWNER
   ADMIN
@@ -509,6 +516,7 @@ model Organization {
   usageQuotaLedgers        UsageQuotaLedger[]
   usageAlertLedgers        UsageAlertLedger[]
   creditGrants             OrganizationCreditGrant[]
+  companyResearchCredits   CompanyResearchCredit[]
   qualificationOverrides   QualificationBucketOverride[]
   invitations              OrganizationInvitation[]
   billingProfile           OrganizationBillingProfile?
@@ -742,28 +750,87 @@ model OrganizationMembership {
 /// Billing state + ops contact. Never store card data, address, or tax PII.
 /// Phase C attaches Stripe by filling stripe* fields and flipping planCode/status — no reshape.
 model OrganizationBillingProfile {
-  id                   String        @id @default(cuid())
-  organizationId       String        @unique
+  id                   String             @id @default(cuid())
+  organizationId       String             @unique
   billingEmail         String?
-  /// Product plan code. "FREE" until Stripe; Phase C adds paid codes (e.g. PRO) without enum migration.
-  planCode             String        @default("FREE")
-  billingStatus        BillingStatus @default(FREE)
+  /// Product plan code. "FREE" | "STANDARD" | future PREMIUM/ENTERPRISE — string, not enum.
+  planCode             String             @default("FREE")
+  billingStatus        BillingStatus      @default(FREE)
   /// Stripe Customer id (cus_…) — null while free / pre-Stripe.
   stripeCustomerId     String?
   /// Stripe Subscription id (sub_…) — null while free / pre-Stripe.
   stripeSubscriptionId String?
+  /// Base subscription Price id (price_…) — identifiers only. Grandfathered: may differ from env catalog.
+  stripePriceId        String?
+  /// Base subscription Product id (prod_…) — identifiers only.
+  stripeProductId      String?
+  /// List unit_amount from the Price they are on (cents). Not the env catalog price.
+  stripePriceUnitAmountCents Int?
+  /// ISO currency from the Price (e.g. usd).
+  stripePriceCurrency  String?
+  /// Recurring interval from the Price (month | year | week | day).
+  stripePriceInterval  String?
+  /// Sum of percent_off coupons on the subscription (display). Null = no %-off.
+  stripeDiscountPercentOff Float?
+  /// Sum of amount_off coupons on the subscription (cents). Null = none.
+  stripeDiscountAmountOffCents Int?
+  /// First coupon id applied (coupon_…) — identifier only.
+  stripeCouponId       String?
+  /// Unit amount after mirrored discounts (cents) — what they effectively pay per interval.
+  stripeEffectiveUnitAmountCents Int?
   currentPeriodEnd     DateTime?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  trialEndsAt          DateTime?
+  /// After payment failure: lock when now >= gracePeriodEndsAt (7-day grace).
+  gracePeriodEndsAt    DateTime?
+  lockReason           BillingLockReason?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  canceledAt           DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([billingStatus])
   @@index([planCode])
   @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
 }
 
-/// Manual credit grants by platform SUPER_ADMIN (Phase A ops; Stripe is Phase C).
+/// One-time company research capacity packs ($30 / 100). Expire 12 months after grant.
+/// Never store card/PII — Stripe payment/checkout ids only for idempotent grant.
+model CompanyResearchCredit {
+  id                       String    @id @default(cuid())
+  organizationId           String
+  /// Companies added to the effective research allowance while unexpired.
+  quantity                 Int
+  grantedAt                DateTime  @default(now())
+  /// grantedAt + 12 months. Unexpired rows sum into effective allowance.
+  expiresAt                DateTime
+  /// Stripe Checkout Session id (cs_…) when purchased via one-time Checkout.
+  stripeCheckoutSessionId  String?   @unique
+  /// Stripe PaymentIntent id (pi_…) when available — idempotency backup.
+  stripePaymentIntentId    String?   @unique
+  createdAt                DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, expiresAt])
+}
+
+/// Webhook idempotency ledger. Store event id + type only — never the raw payload.
+model StripeWebhookEvent {
+  id            String   @id @default(cuid())
+  /// Stripe event id (evt_…) — unique so double delivery is a no-op.
+  stripeEventId String   @unique
+  type          String
+  processedAt   DateTime @default(now())
+
+  @@index([type])
+  @@index([processedAt])
+}
+
+/// Manual USD credit grants by platform SUPER_ADMIN (ops ledger; not Stripe company packs).
 model OrganizationCreditGrant {
   id              String   @id @default(cuid())
   organizationId  String
@@ -845,6 +912,8 @@ model OrganizationUsagePolicy {
   dailyEmailGenerationLimit    Int
   dailyEmailSendWarningLimit   Int      @default(150)
   dailyEmailSendLimit          Int      @default(250)
+  /// Hard monthly send cap (STANDARD = 1000). Null = no monthly hard block (e.g. FREE comps).
+  monthlyEmailSendLimit        Int?
   emailDeeplinkMaxUrlLength    Int      @default(1800)
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
