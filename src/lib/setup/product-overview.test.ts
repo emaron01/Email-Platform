@@ -176,5 +176,8 @@ describe("write paths unchanged", () => {
     expect(overview).not.toContain("IcpDetailsForm");
     expect(overview).not.toContain("upsertProductAction");
     expect(overview).not.toContain("upsertIcpAction");
+    expect(overview).toContain("ExportPdfButton");
+    expect(overview).toContain("data-print-document");
+    expect(overview).toContain("Delete product");
   });
 });

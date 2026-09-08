@@ -5,9 +5,11 @@ import type { ReactNode } from "react";
 import { deleteProductAction } from "@/app/actions";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
+import { ExportPdfButton } from "@/components/ExportPdfButton";
 import { PageHeader, Panel, TenantMissing } from "@/components/ui";
 import { listIcpCriteria } from "@/lib/interpretation/icp";
 import { listPersonaCriteria } from "@/lib/interpretation/persona";
+import { productDraftFromApprovedProfile } from "@/lib/product-research/resynthesize-approved-plan";
 import { getProduct, listIcps, listPersonas } from "@/lib/tenant/data";
 import {
   getCurrentOrganization,
@@ -33,6 +35,34 @@ import {
 type PageProps = {
   params: Promise<{ productId: string }>;
 };
+
+function PrintList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <section className="space-y-1">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        {title}
+      </h3>
+      <ul className="list-disc space-y-1 pl-5 text-sm text-slate-800">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function PrintProse({ title, text }: { title: string; text: string | null | undefined }) {
+  if (!text?.trim()) return null;
+  return (
+    <section className="space-y-1">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        {title}
+      </h3>
+      <p className="whitespace-pre-wrap text-sm text-slate-800">{text}</p>
+    </section>
+  );
+}
 
 function statusBadgeClass(state: ReturnType<typeof productCompletionState>) {
   if (state === "approved") {
@@ -183,6 +213,7 @@ export default async function SetupProductPage({ params }: PageProps) {
     product.description || product.valueProposition,
     140,
   );
+  const profile = productDraftFromApprovedProfile(product.profileJson);
   const primaryIcp = icps[0] ?? null;
   const primaryIcpCriteria = primaryIcp
     ? (icpCriteriaMap.get(primaryIcp.id) ?? [])
@@ -190,26 +221,28 @@ export default async function SetupProductPage({ params }: PageProps) {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader
-        title={product.name}
-        description="Track setup progress. Edit details only when you choose to."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={`/setup/${product.id}/research`}
-              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-            >
-              Research & Build
-            </Link>
-            <Link
-              href="/setup"
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              All products
-            </Link>
-          </div>
-        }
-      />
+      <div data-print-hide>
+        <PageHeader
+          title={product.name}
+          description="Track setup progress. Edit details only when you choose to."
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={`/setup/${product.id}/research`}
+                className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+              >
+                Research & Build
+              </Link>
+              <Link
+                href="/setup"
+                className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                All products
+              </Link>
+            </div>
+          }
+        />
+      </div>
 
       <DeleteSuccessNotice />
 
@@ -219,44 +252,104 @@ export default async function SetupProductPage({ params }: PageProps) {
           title="1. Product"
           description="Core product record used by research and scoring."
         >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-base font-semibold text-slate-900">
-                  {product.name}
-                </p>
-                <span
-                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${statusBadgeClass(completion)}`}
-                >
-                  {productCompletionLabel(completion)}
-                </span>
+          <div data-print-document>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-base font-semibold text-slate-900 print:text-2xl">
+                    {product.name}
+                  </p>
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset print:hidden ${statusBadgeClass(completion)}`}
+                  >
+                    {productCompletionLabel(completion)}
+                  </span>
+                </div>
+                {productBlurb ? (
+                  <p className="mt-2 text-sm text-slate-600 print:hidden">
+                    {productBlurb}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500 print:hidden">
+                    No description yet.
+                  </p>
+                )}
               </div>
-              {productBlurb ? (
-                <p className="mt-2 text-sm text-slate-600">{productBlurb}</p>
-              ) : (
-                <p className="mt-2 text-sm text-slate-500">
-                  No description yet.
-                </p>
-              )}
+              <div data-print-hide>
+                <ActionLink href={`/setup/${product.id}/edit`}>
+                  Edit product
+                </ActionLink>
+              </div>
             </div>
-            <ActionLink href={`/setup/${product.id}/edit`}>
-              Edit product
-            </ActionLink>
-          </div>
-          <div className="mt-4 border-t border-slate-100 pt-3">
-            <ConfirmDeleteForm
-              action={deleteProductAction}
-              hiddenFields={{ id: product.id }}
-              triggerLabel="Delete product"
-              confirmTitle={`Delete Product "${product.name}"?`}
-              confirmBody={productDeleteBody}
-              confirmButtonLabel="Delete Product"
-              onSuccessNavigate="/products"
-            />
+
+            <div className="mt-6 hidden space-y-5 print:block">
+              <PrintProse
+                title="Description"
+                text={profile.description || product.description}
+              />
+              <PrintProse
+                title="Value proposition"
+                text={profile.valueProposition || product.valueProposition}
+              />
+              <PrintProse title="Website" text={product.websiteUrl} />
+              <PrintList title="Problems solved" items={profile.problemsSolved} />
+              <PrintList title="Capabilities" items={profile.capabilities} />
+              <PrintList
+                title="Differentiators"
+                items={profile.differentiators}
+              />
+              <PrintList
+                title="Primary use cases"
+                items={profile.primaryUseCases}
+              />
+              <PrintList
+                title="Relevant buyer functions"
+                items={profile.relevantBuyerFunctions}
+              />
+              <PrintList
+                title="Relevant industries"
+                items={profile.relevantIndustries}
+              />
+              <PrintList
+                title="Business outcomes"
+                items={profile.businessOutcomes}
+              />
+              <PrintProse
+                title="Pricing / AOV context"
+                text={profile.pricingAovContext}
+              />
+              <PrintProse
+                title="Deployment context"
+                text={profile.deploymentContext}
+              />
+              <PrintList title="Proof points" items={profile.proofPoints} />
+              <PrintList
+                title="Customer evidence"
+                items={profile.customerEvidence}
+              />
+              <PrintList title="Terminology" items={profile.terminology} />
+            </div>
+
+            <div
+              className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3"
+              data-print-hide
+            >
+              <ExportPdfButton />
+              <ConfirmDeleteForm
+                action={deleteProductAction}
+                hiddenFields={{ id: product.id }}
+                triggerLabel="Delete product"
+                confirmTitle={`Delete Product "${product.name}"?`}
+                confirmBody={productDeleteBody}
+                confirmButtonLabel="Delete Product"
+                onSuccessNavigate="/products"
+              />
+            </div>
           </div>
         </Panel>
 
         {/* 2. Personas */}
+        <div data-print-hide>
         <Panel
           title="2. Personas"
           description="Saved buyers and suggested roles still available to build."
@@ -428,6 +521,7 @@ export default async function SetupProductPage({ params }: PageProps) {
             </div>
           )}
         </Panel>
+        </div>
       </div>
     </div>
   );
