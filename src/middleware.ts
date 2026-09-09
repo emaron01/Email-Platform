@@ -13,8 +13,24 @@ const PUBLIC_PATHS = [
   "/api/auth",
 ];
 
+/**
+ * Session-less routes that authenticate with a signature or shared secret.
+ * Must bypass the cookie gate — Stripe/cron never send a session cookie.
+ * Stripe does not follow redirects; a 307 to /login drops every webhook.
+ */
+const MACHINE_AUTH_PATHS = [
+  "/api/billing/webhooks/stripe",
+  "/api/jobs/cadence-digest",
+];
+
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
+}
+
+function isMachineAuth(pathname: string): boolean {
+  return MACHINE_AUTH_PATHS.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
 }
@@ -45,7 +61,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (isPublic(pathname)) {
+  if (isPublic(pathname) || isMachineAuth(pathname)) {
     return NextResponse.next();
   }
 

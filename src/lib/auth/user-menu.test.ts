@@ -225,6 +225,8 @@ describe("middleware destination preservation", () => {
     );
     expect(src).toContain('"/login"');
     expect(src).toContain('"/signup"');
+    expect(src).toContain('"/api/billing/webhooks/stripe"');
+    expect(src).toContain('"/api/jobs/cadence-digest"');
     expect(src).toContain('login.searchParams.set("next", pathname)');
     expect(src).toContain("better-auth.session_token");
     void middleware;
