@@ -64,8 +64,16 @@ export async function assertUsageAllowed(input: {
     }
 
     if (used >= limit) {
+      const billing = await prisma.organizationBillingProfile.findUnique({
+        where: { organizationId: input.organizationId },
+        select: { billingStatus: true },
+      });
       throw new UsageQuotaError(
-        formatResearchQuotaBlockedMessage({ used, limit }),
+        formatResearchQuotaBlockedMessage({
+          used,
+          limit,
+          billingStatus: billing?.billingStatus,
+        }),
         "ACTIVE_RESEARCHED_COMPANY",
         used,
         limit,

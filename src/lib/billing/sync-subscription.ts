@@ -190,7 +190,11 @@ export async function syncOrganizationFromStripeSubscription(input: {
     billingStatus === "ACTIVE" ||
     billingStatus === "PAST_DUE"
   ) {
-    await applyPlanEntitlements({ organizationId, planCode });
+    await applyPlanEntitlements({
+      organizationId,
+      planCode,
+      billingStatus,
+    });
   }
 }
 

@@ -184,11 +184,41 @@ export async function createPlatformOrganizationAction(
     const accountType =
       accountTypeRaw === "ENTERPRISE" ? "ENTERPRISE" : "INDIVIDUAL";
     const ownerEmail = String(formData.get("ownerEmail") || "").trim();
+    const billingModeRaw = String(formData.get("billingMode") || "").trim();
+    const billingMode =
+      billingModeRaw === "BILLED" ? "BILLED" : "COMPED";
+    const companyLimit = Number(
+      formData.get("activeResearchedCompanyLimit") ||
+        (billingMode === "BILLED" ? 100 : 50),
+    );
+    const dailyWarn = Number(
+      formData.get("dailyEmailSendWarningLimit") || 50,
+    );
+    const monthlyRaw = String(
+      formData.get("monthlyEmailSendLimit") || "",
+    ).trim();
+    const monthlyEmailSendLimit =
+      monthlyRaw === "" || monthlyRaw.toLowerCase() === "none"
+        ? null
+        : Number(monthlyRaw);
+    if (
+      monthlyEmailSendLimit != null &&
+      (!Number.isFinite(monthlyEmailSendLimit) || monthlyEmailSendLimit < 0)
+    ) {
+      return { ok: false, message: "Monthly email limit must be empty or ≥ 0." };
+    }
     const created = await createPlatformOrganization({
       actorUserId: user.id,
       name,
       accountType,
       ownerEmail,
+      billingMode,
+      activeResearchedCompanyLimit: companyLimit,
+      dailyEmailSendWarningLimit: dailyWarn,
+      monthlyEmailSendLimit:
+        billingMode === "BILLED" && monthlyEmailSendLimit == null
+          ? 1000
+          : monthlyEmailSendLimit,
     });
     revalidatePath("/platform/orgs");
     revalidatePath(`/platform/orgs/${created.organizationId}`);

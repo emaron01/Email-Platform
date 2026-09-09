@@ -753,7 +753,8 @@ model OrganizationBillingProfile {
   id                   String             @id @default(cuid())
   organizationId       String             @unique
   billingEmail         String?
-  /// Product plan code. "FREE" | "STANDARD" | future PREMIUM/ENTERPRISE — string, not enum.
+  /// Product plan code. "COMPED" | "STANDARD" | future PREMIUM/ENTERPRISE — string, not enum.
+  /// COMPED = durable platform grant (billingStatus FREE). Self-serve uses STANDARD.
   planCode             String             @default("FREE")
   billingStatus        BillingStatus      @default(FREE)
   /// Stripe Customer id (cus_…) — null while free / pre-Stripe.

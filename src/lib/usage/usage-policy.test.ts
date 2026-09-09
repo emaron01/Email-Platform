@@ -29,8 +29,11 @@ describe.skipIf(!hasDatabase)(
   it("new organization receives default usage + research policies from DB defaults", async () => {
     if (!ready) return;
     const { createIndividualWorkspace } = await import("@/lib/org/signup");
-    const { DEFAULT_USAGE_POLICY_VALUES, DEFAULT_RESEARCH_POLICY_VALUES } =
-      await import("@/lib/usage/defaults");
+    const {
+      DEFAULT_USAGE_POLICY_VALUES,
+      DEFAULT_RESEARCH_POLICY_VALUES,
+      SELF_SERVE_USAGE_POLICY_VALUES,
+    } = await import("@/lib/usage/defaults");
 
     const { organization, user, membershipRole } =
       await createIndividualWorkspace({
@@ -55,7 +58,7 @@ describe.skipIf(!hasDatabase)(
     expect(billing.organizationId).toBe(organization.id);
 
     expect(usage.activeResearchedCompanyLimit).toBe(
-      DEFAULT_USAGE_POLICY_VALUES.activeResearchedCompanyLimit,
+      SELF_SERVE_USAGE_POLICY_VALUES.activeResearchedCompanyLimit,
     );
     expect(usage.dailyEmailGenerationLimit).toBe(
       DEFAULT_USAGE_POLICY_VALUES.dailyEmailGenerationLimit,
@@ -71,7 +74,7 @@ describe.skipIf(!hasDatabase)(
     );
 
     // Defaults are stored in DB — enforcement reads these rows, not scattered constants.
-    expect(usage.activeResearchedCompanyLimit).toBe(50);
+    expect(usage.activeResearchedCompanyLimit).toBe(0);
     expect(usage.dailyEmailGenerationLimit).toBe(
       DEFAULT_USAGE_POLICY_VALUES.dailyEmailGenerationLimit,
     );
@@ -102,7 +105,7 @@ describe.skipIf(!hasDatabase)(
       organizationId: organization.id,
       userId: user.id,
     });
-    expect(base.activeResearchedCompanyLimit).toBe(50);
+    expect(base.activeResearchedCompanyLimit).toBe(0);
     expect(base.sources.activeResearchedCompanyLimit).toBe("ORGANIZATION");
 
     await prisma.userUsageOverride.create({

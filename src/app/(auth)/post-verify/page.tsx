@@ -26,6 +26,21 @@ export default async function PostVerifyPage({
 
   const organization = await getCurrentOrganization();
   if (organization) {
+    const { prisma } = await import("@/lib/prisma");
+    const { requiresStripeCheckout } = await import(
+      "@/lib/billing/billing-state"
+    );
+    const billing = await prisma.organizationBillingProfile.findUnique({
+      where: { organizationId: organization.id },
+      select: {
+        planCode: true,
+        billingStatus: true,
+        stripeSubscriptionId: true,
+      },
+    });
+    if (billing && requiresStripeCheckout(billing)) {
+      redirect("/settings/billing?checkout=required");
+    }
     redirect("/");
   }
 

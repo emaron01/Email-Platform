@@ -1,27 +1,26 @@
 /**
  * Initial Organization policy defaults.
  *
- * These values are inserted into the database when an Organization is created.
- * Enforcement MUST read limits from OrganizationUsagePolicy / ResearchPolicy
- * (or effective resolver), never from these constants.
+ * Self-serve provision uses SELF_SERVE_USAGE_POLICY_VALUES (0 companies until trial).
+ * Platform create passes explicit limits. Enforcement reads DB rows, not these constants.
  */
 export const DEFAULT_USAGE_POLICY_VALUES = {
-  /** FREE / pre-Stripe default; STANDARD entitlement writer raises to 100 on checkout. */
+  /** Platform COMPED form default when operator does not override. */
   activeResearchedCompanyLimit: 50,
-  /** Platform AI cost ceiling — far above normal sending volume; not a send cap. */
   dailyEmailGenerationLimit: 500,
-  /**
-   * Soft domain-reputation advisory for confirmed sends (never a hard block).
-   * STANDARD marketing limit is 50/day — set here as the free/default advisory too.
-   */
   dailyEmailSendWarningLimit: 50,
-  /**
-   * Legacy hard-block field retained in the DB for existing orgs. Enforcement no
-   * longer blocks sends; advisory uses dailyEmailSendWarningLimit only.
-   */
   dailyEmailSendLimit: 250,
-  /** Null = no monthly hard block (FREE comps). STANDARD sets 1000 on activate. */
   monthlyEmailSendLimit: null as number | null,
+  emailDeeplinkMaxUrlLength: 1800,
+} as const;
+
+/** Self-serve before/during Checkout — no research until Stripe trial grants 25. */
+export const SELF_SERVE_USAGE_POLICY_VALUES = {
+  activeResearchedCompanyLimit: 0,
+  dailyEmailGenerationLimit: 500,
+  dailyEmailSendWarningLimit: 50,
+  dailyEmailSendLimit: 250,
+  monthlyEmailSendLimit: 1000,
   emailDeeplinkMaxUrlLength: 1800,
 } as const;
 
@@ -42,5 +41,4 @@ export const DEFAULT_RESEARCH_POLICY_VALUES = {
   maxTargetedSearchCriteriaPerIcp: 3,
 } as const;
 
-/** Default IANA timezone for new Organizations when none is provided. */
 export const DEFAULT_ORGANIZATION_TIMEZONE = "UTC";

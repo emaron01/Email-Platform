@@ -6,6 +6,7 @@ import "server-only";
 
 import type Stripe from "stripe";
 import { claimStripeWebhookEvent } from "@/lib/billing/stripe-webhook-idempotency";
+import { revalidateBillingUi } from "@/lib/billing/revalidate-billing-ui";
 import {
   findOrganizationIdForSubscription,
   markSubscriptionCanceled,
@@ -23,6 +24,8 @@ export async function handleStripeWebhookEvent(
     return { duplicate: true, handled: true };
   }
 
+  let synced = false;
+
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -32,29 +35,31 @@ export async function handleStripeWebhookEvent(
           ? session.subscription
           : session.subscription?.id;
       if (!subscriptionId) break;
-      await syncSubscriptionById({
+      const result = await syncSubscriptionById({
         subscriptionId,
         organizationId: session.metadata?.organizationId ?? null,
         checkoutSession: session,
       });
+      synced = Boolean(result);
       break;
     }
     case "customer.subscription.created":
     case "customer.subscription.updated": {
       const subscription = event.data.object as Stripe.Subscription;
-      await syncSubscriptionById({
+      const result = await syncSubscriptionById({
         subscriptionId: subscription.id,
         organizationId: subscription.metadata?.organizationId ?? null,
       });
+      synced = Boolean(result);
       break;
     }
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
-      const synced = await syncSubscriptionById({
+      const result = await syncSubscriptionById({
         subscriptionId: subscription.id,
         organizationId: subscription.metadata?.organizationId ?? null,
       });
-      if (!synced) {
+      if (!result) {
         const organizationId = await findOrganizationIdForSubscription({
           subscription,
         });
@@ -63,13 +68,19 @@ export async function handleStripeWebhookEvent(
             organizationId,
             subscriptionId: subscription.id,
           });
+          synced = true;
         }
+      } else {
+        synced = true;
       }
       break;
     }
     default:
-      // Claimed for idempotency; no local side effects yet.
       break;
+  }
+
+  if (synced) {
+    revalidateBillingUi();
   }
 
   return { duplicate: false, handled: true };

@@ -34,8 +34,8 @@ export default async function PlatformCreateOrgPage() {
           Create account
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Creates a free organization and invites the first user as OWNER via
-          the existing invitation email. No payment collection.
+          Choose billed or comped, set limits, and invite the first OWNER.
+          Comped accounts never touch Stripe and do not expire.
         </p>
       </div>
 
@@ -65,8 +65,7 @@ export default async function PlatformCreateOrgPage() {
             />
             <span>
               <span className="font-medium">Individual</span> — one organization,
-              first user is OWNER (starts as a single seat; may invite others
-              later).
+              first user is OWNER.
             </span>
           </label>
           <label className="flex items-start gap-2">
@@ -78,11 +77,80 @@ export default async function PlatformCreateOrgPage() {
             />
             <span>
               <span className="font-medium">Enterprise</span> — multi-user org;
-              first user is OWNER and can invite teammates. Product / ICP /
-              Personas are shared; voice and signature stay per user.
+              first user is OWNER and can invite teammates.
             </span>
           </label>
         </fieldset>
+        <fieldset className="space-y-2 text-sm">
+          <legend className="font-medium text-slate-800">Billing</legend>
+          <label className="flex items-start gap-2">
+            <input
+              type="radio"
+              name="billingMode"
+              value="COMPED"
+              defaultChecked
+              className="mt-1"
+            />
+            <span>
+              <span className="font-medium">Comped</span> — durable free access,
+              no Stripe, no billing email, no expiry. Limits you set below.
+            </span>
+          </label>
+          <label className="flex items-start gap-2">
+            <input
+              type="radio"
+              name="billingMode"
+              value="BILLED"
+              className="mt-1"
+            />
+            <span>
+              <span className="font-medium">Billed</span> — Standard path;
+              owner completes Checkout from Settings → Billing (coupon optional).
+            </span>
+          </label>
+        </fieldset>
+        <label className="block text-sm">
+          <span className="font-medium text-slate-800">
+            Active researched company limit
+          </span>
+          <input
+            name="activeResearchedCompanyLimit"
+            type="number"
+            min={0}
+            defaultValue={50}
+            required
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="font-medium text-slate-800">
+            Daily send advisory threshold
+          </span>
+          <input
+            name="dailyEmailSendWarningLimit"
+            type="number"
+            min={0}
+            defaultValue={50}
+            required
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="font-medium text-slate-800">
+            Monthly email send hard limit
+          </span>
+          <input
+            name="monthlyEmailSendLimit"
+            type="number"
+            min={0}
+            placeholder="Empty = none (typical for comps); 1000 for billed"
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+          />
+          <span className="mt-1 block text-xs text-slate-500">
+            Leave blank for no monthly hard block. Billed defaults to 1000 when
+            blank.
+          </span>
+        </label>
         <label className="block text-sm">
           <span className="font-medium text-slate-800">
             First user email (OWNER)

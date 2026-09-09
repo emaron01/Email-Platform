@@ -9,7 +9,7 @@ import {
   createIndividualWorkspace,
   removeOrganizationMember,
 } from "@/lib/org/signup";
-import { FREE_BILLING_DEFAULTS } from "@/lib/billing/billing-state";
+import { COMPED_BILLING_DEFAULTS } from "@/lib/billing/billing-state";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -17,7 +17,7 @@ describe.skipIf(!hasDatabase)(
   "createPlatformOrganization",
   { timeout: 60_000 },
   () => {
-    it("creates a free ENTERPRISE org and OWNER invite", async () => {
+    it("creates a comped ENTERPRISE org and OWNER invite", async () => {
       const stamp = Date.now().toString(36);
       const admin = await createIndividualWorkspace({
         email: `sa-create-${stamp}@example.com`,
@@ -35,6 +35,10 @@ describe.skipIf(!hasDatabase)(
         name: `Friends Co ${stamp}`,
         accountType: "ENTERPRISE",
         ownerEmail,
+        billingMode: "COMPED",
+        activeResearchedCompanyLimit: 50,
+        dailyEmailSendWarningLimit: 50,
+        monthlyEmailSendLimit: null,
       });
 
       const org = await prisma.organization.findUniqueOrThrow({
@@ -50,7 +54,7 @@ describe.skipIf(!hasDatabase)(
       expect(org.accountType).toBe("ENTERPRISE");
       expect(org.status).toBe("ACTIVE");
       expect(org.memberships).toHaveLength(0);
-      expect(org.billingProfile?.planCode).toBe(FREE_BILLING_DEFAULTS.planCode);
+      expect(org.billingProfile?.planCode).toBe(COMPED_BILLING_DEFAULTS.planCode);
       expect(org.billingProfile?.billingStatus).toBe("FREE");
       expect(org.billingProfile?.stripeCustomerId).toBeNull();
       expect(org.usagePolicy?.activeResearchedCompanyLimit).toBe(50);

@@ -1,15 +1,19 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 /**
  * Starts STANDARD Checkout (allow_promotion_codes enabled server-side).
  */
 export function StartStandardCheckoutButton({
   disabledReason,
+  buttonLabel = "Start Standard trial",
 }: {
   disabledReason?: string | null;
+  buttonLabel?: string;
 }) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -38,9 +42,14 @@ export function StartStandardCheckoutButton({
               const body = (await res.json().catch(() => ({}))) as {
                 url?: string;
                 error?: string;
+                code?: string;
               };
               if (!res.ok || !body.url) {
                 setError(body.error ?? "Could not start Checkout");
+                // Stale RSC often shows Free while DB already has a sub — refresh.
+                if (body.code === "ALREADY_SUBSCRIBED" || res.status === 409) {
+                  router.refresh();
+                }
                 return;
               }
               window.location.assign(body.url);
@@ -50,11 +59,12 @@ export function StartStandardCheckoutButton({
           });
         }}
       >
-        {pending ? "Redirecting…" : "Start Standard trial"}
+        {pending ? "Redirecting…" : buttonLabel}
       </button>
       <p className="text-xs text-slate-500">
-        Card required for a 7-day trial. You can enter a promotion code on the
-        Stripe Checkout page. Card details stay in Stripe.
+        Card required for a 7-day trial (full product access, 25 companies). You
+        can enter a promotion code on the Stripe Checkout page. Card details
+        stay in Stripe.
       </p>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
     </div>

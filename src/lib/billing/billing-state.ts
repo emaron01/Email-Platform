@@ -1,25 +1,46 @@
 /**
  * Billing state shape.
  *
- * Organization.accountType — INDIVIDUAL | ENTERPRISE
- * OrganizationBillingProfile:
- *   planCode ("FREE" | "STANDARD" | future codes as strings)
- *   billingStatus (FREE | TRIALING | ACTIVE | PAST_DUE | CANCELED | UNPAID)
- *   stripeCustomerId / stripeSubscriptionId / stripePriceId / stripeProductId
- *   trialEndsAt / gracePeriodEndsAt / lockReason / cancelAtPeriodEnd / canceledAt
+ * planCode: COMPED | STANDARD | …
+ * billingStatus: FREE (durable comp) | UNPAID | TRIALING | ACTIVE | PAST_DUE | CANCELED | UNPAID
  *
- * Company research capacity = plan base (UsagePolicy) + unexpired CompanyResearchCredit packs.
+ * Self-serve never uses COMPED/FREE. Platform comps are COMPED + FREE forever until Checkout.
  */
 
-import { BILLING_PLAN_FREE, BILLING_PLAN_STANDARD } from "@/lib/billing/plans";
+import {
+  BILLING_PLAN_COMPED,
+  BILLING_PLAN_STANDARD,
+} from "@/lib/billing/plans";
 
-export { BILLING_PLAN_FREE, BILLING_PLAN_STANDARD };
+export { BILLING_PLAN_COMPED, BILLING_PLAN_STANDARD };
+/** @deprecated */
+export { BILLING_PLAN_COMPED as BILLING_PLAN_FREE };
 
-export type BillingPlanCode = typeof BILLING_PLAN_FREE | (string & {});
+export type BillingPlanCode = typeof BILLING_PLAN_COMPED | (string & {});
 
-export const FREE_BILLING_DEFAULTS = {
-  planCode: BILLING_PLAN_FREE,
+/** Durable platform comps — no Stripe, no trial, no expiry. */
+export const COMPED_BILLING_DEFAULTS = {
+  planCode: BILLING_PLAN_COMPED,
   billingStatus: "FREE" as const,
+  stripeCustomerId: null,
+  stripeSubscriptionId: null,
+  stripePriceId: null,
+  stripeProductId: null,
+  currentPeriodEnd: null,
+  trialEndsAt: null,
+  gracePeriodEndsAt: null,
+  lockReason: null,
+  cancelAtPeriodEnd: false,
+  canceledAt: null,
+};
+
+/** @deprecated Use COMPED_BILLING_DEFAULTS */
+export const FREE_BILLING_DEFAULTS = COMPED_BILLING_DEFAULTS;
+
+/** Self-serve / platform-billed before Checkout. */
+export const SELF_SERVE_BILLING_DEFAULTS = {
+  planCode: BILLING_PLAN_STANDARD,
+  billingStatus: "UNPAID" as const,
   stripeCustomerId: null,
   stripeSubscriptionId: null,
   stripePriceId: null,
@@ -34,8 +55,9 @@ export const FREE_BILLING_DEFAULTS = {
 
 export function billingPlanLabel(planCode: string): string {
   switch (planCode) {
-    case BILLING_PLAN_FREE:
-      return "Free";
+    case BILLING_PLAN_COMPED:
+    case "FREE":
+      return "Comped";
     case BILLING_PLAN_STANDARD:
       return "Standard";
     case "PREMIUM":
@@ -50,7 +72,9 @@ export function billingPlanLabel(planCode: string): string {
 export function billingStatusLabel(status: string): string {
   switch (status) {
     case "FREE":
-      return "Free (no payment required)";
+      return "Comped (no payment)";
+    case "UNPAID":
+      return "Awaiting checkout";
     case "TRIALING":
       return "Trialing";
     case "ACTIVE":
@@ -59,8 +83,6 @@ export function billingStatusLabel(status: string): string {
       return "Past due";
     case "CANCELED":
       return "Canceled";
-    case "UNPAID":
-      return "Unpaid";
     default:
       return status;
   }
@@ -69,6 +91,7 @@ export function billingStatusLabel(status: string): string {
 export function billingLockReasonLabel(reason: string | null | undefined): string {
   switch (reason) {
     case "TRIAL_ENDED":
+      // Reserved; trial decline uses PAST_DUE + PAYMENT_FAILED — not a separate expiry path.
       return "Trial ended";
     case "PAYMENT_FAILED":
       return "Payment failed";
@@ -110,7 +133,6 @@ export function formatPriceInterval(interval: string | null | undefined): string
   }
 }
 
-/** Ops-facing line: effective amount (after discount) / interval. */
 export function formatCustomerPayingAmount(input: {
   effectiveUnitAmountCents: number | null;
   listUnitAmountCents: number | null;
@@ -141,11 +163,50 @@ export function formatDiscountSummary(input: {
   return input.couponId ? `${base} (${input.couponId})` : base;
 }
 
-/** Compare stored price to current env catalog price for STANDARD (ops flag). */
 export function isOnCurrentCatalogPrice(
   stripePriceId: string | null | undefined,
   catalogPriceId: string | null | undefined,
 ): boolean | null {
   if (!stripePriceId || !catalogPriceId) return null;
   return stripePriceId === catalogPriceId;
+}
+
+/**
+ * Billing / trial / dunning mail — never for durable comps.
+ * Phase 8 templates must call this before send.
+ */
+export function shouldSendBillingTransactionalEmail(profile: {
+  planCode: string;
+  billingStatus: string;
+  stripeCustomerId?: string | null;
+}): boolean {
+  if (
+    profile.planCode === BILLING_PLAN_COMPED ||
+    profile.planCode === "FREE"
+  ) {
+    return false;
+  }
+  if (profile.billingStatus === "FREE") {
+    return false;
+  }
+  return true;
+}
+
+/** Self-serve (or platform-billed) org that still needs Checkout. */
+export function requiresStripeCheckout(profile: {
+  planCode: string;
+  billingStatus: string;
+  stripeSubscriptionId?: string | null;
+}): boolean {
+  if (
+    profile.planCode === BILLING_PLAN_COMPED ||
+    profile.planCode === "FREE" ||
+    profile.billingStatus === "FREE"
+  ) {
+    return false;
+  }
+  if (profile.stripeSubscriptionId) {
+    return false;
+  }
+  return profile.billingStatus === "UNPAID";
 }

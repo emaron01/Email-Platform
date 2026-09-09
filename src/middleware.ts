@@ -42,6 +42,12 @@ function isMachineAuth(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const withPath = () => {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-pathname", pathname);
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  };
+
   // Fail closed if production accidentally enables dev bypass.
   if (
     process.env.NODE_ENV === "production" &&
@@ -58,11 +64,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/favicon") ||
     pathname.match(/\.(.*)$/)
   ) {
-    return NextResponse.next();
+    return withPath();
   }
 
   if (isPublic(pathname) || isMachineAuth(pathname)) {
-    return NextResponse.next();
+    return withPath();
   }
 
   // Legacy verification failures redirected to /?error=INVALID_TOKEN — never
@@ -86,7 +92,7 @@ export async function middleware(request: NextRequest) {
     env.allowDevTenantBypass &&
     env.devOrganizationId
   ) {
-    return NextResponse.next();
+    return withPath();
   }
 
   const sessionCookie =
@@ -99,12 +105,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  if (pathname.startsWith("/platform")) {
-    // Platform authorization enforced in page/server — cookie alone is insufficient.
-    return NextResponse.next();
-  }
-
-  return NextResponse.next();
+  return withPath();
 }
 
 export const config = {

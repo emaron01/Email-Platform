@@ -1,15 +1,23 @@
 /**
  * Billing plan configuration — component kinds mapped to Stripe Price/Product IDs via env.
  * Dollar amounts live in Stripe; this module never hard-codes list prices.
+ *
+ * Paths:
+ * - Self-serve → STANDARD (UNPAID → Checkout → TRIALING → ACTIVE)
+ * - Platform COMPED → durable, no Stripe
+ * - Platform billed → STANDARD UNPAID until Checkout
  */
 
-export const BILLING_PLAN_FREE = "FREE" as const;
+export const BILLING_PLAN_COMPED = "COMPED" as const;
 export const BILLING_PLAN_STANDARD = "STANDARD" as const;
 export const BILLING_PLAN_PREMIUM = "PREMIUM" as const;
 export const BILLING_PLAN_ENTERPRISE = "ENTERPRISE" as const;
 
+/** @deprecated Use BILLING_PLAN_COMPED — kept for reading legacy rows during migration. */
+export const BILLING_PLAN_FREE = BILLING_PLAN_COMPED;
+
 export type KnownBillingPlanCode =
-  | typeof BILLING_PLAN_FREE
+  | typeof BILLING_PLAN_COMPED
   | typeof BILLING_PLAN_STANDARD
   | typeof BILLING_PLAN_PREMIUM
   | typeof BILLING_PLAN_ENTERPRISE;
@@ -17,37 +25,30 @@ export type KnownBillingPlanCode =
 export type PlanComponent =
   | {
       kind: "recurring_base";
-      /** Env var name holding Stripe Price id (price_…). */
       stripePriceIdEnv: string;
-      /** Env var name holding Stripe Product id (prod_…). */
       stripeProductIdEnv: string;
     }
   | {
       kind: "company_credit_block";
-      /** One-time Price id env — never a recurring/annual subscription item. */
       stripePriceIdEnv: string;
       units: number;
-      /** Months until purchased credits expire (from grant date). */
       expiryMonths: number;
     };
 
 export type PlanEntitlements = {
-  /** Base active researched company slots (credits add on top). */
   activeResearchedCompanyLimit: number;
-  /** Soft daily send advisory threshold — never a hard block. */
   dailyEmailSendWarningLimit: number;
-  /** Hard monthly send cap; null = no monthly hard block. */
   monthlyEmailSendLimit: number | null;
   researchFreshnessDays: number;
 };
 
 export type PlanDefinition = {
   planCode: KnownBillingPlanCode | string;
-  /** False until Stripe Product/Price exist (PREMIUM/ENTERPRISE stubs). */
   sellable: boolean;
-  /** False for FREE — platform console only, no Checkout. */
   requiresStripe: boolean;
   trialDays: number | null;
+  /** Applied while billingStatus === TRIALING (company volume only differs today). */
+  trialEntitlements: PlanEntitlements | null;
   components: PlanComponent[];
   entitlements: PlanEntitlements;
 };
@@ -57,18 +58,16 @@ function envId(name: string): string | null {
   return value || null;
 }
 
-/**
- * Catalog. STANDARD is the only self-serve paid plan until PREMIUM/ENTERPRISE
- * Stripe objects exist. Credit packs are one-time payments, not subscription items.
- */
 export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
   {
-    planCode: BILLING_PLAN_FREE,
+    planCode: BILLING_PLAN_COMPED,
     sellable: false,
     requiresStripe: false,
     trialDays: null,
+    trialEntitlements: null,
     components: [],
     entitlements: {
+      // Defaults only — platform sets real limits at create/edit time.
       activeResearchedCompanyLimit: 50,
       dailyEmailSendWarningLimit: 50,
       monthlyEmailSendLimit: null,
@@ -80,6 +79,12 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
     sellable: true,
     requiresStripe: true,
     trialDays: 7,
+    trialEntitlements: {
+      activeResearchedCompanyLimit: 25,
+      dailyEmailSendWarningLimit: 50,
+      monthlyEmailSendLimit: 1000,
+      researchFreshnessDays: 90,
+    },
     components: [
       {
         kind: "recurring_base",
@@ -99,6 +104,12 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
     sellable: false,
     requiresStripe: true,
     trialDays: 7,
+    trialEntitlements: {
+      activeResearchedCompanyLimit: 25,
+      dailyEmailSendWarningLimit: 50,
+      monthlyEmailSendLimit: 1000,
+      researchFreshnessDays: 90,
+    },
     components: [
       {
         kind: "recurring_base",
@@ -107,7 +118,6 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
       },
     ],
     entitlements: {
-      // Placeholder until product is defined — not sellable.
       activeResearchedCompanyLimit: 100,
       dailyEmailSendWarningLimit: 50,
       monthlyEmailSendLimit: 1000,
@@ -119,6 +129,7 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
     sellable: false,
     requiresStripe: true,
     trialDays: null,
+    trialEntitlements: null,
     components: [
       {
         kind: "recurring_base",
@@ -135,7 +146,6 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
   },
 ] as const;
 
-/** One-time company research credit pack — not attached to the subscription. */
 export const COMPANY_CREDIT_BLOCK: Extract<
   PlanComponent,
   { kind: "company_credit_block" }
@@ -147,9 +157,31 @@ export const COMPANY_CREDIT_BLOCK: Extract<
 };
 
 export function getPlanDefinition(planCode: string): PlanDefinition | null {
+  if (planCode === "FREE") {
+    return (
+      BILLING_PLAN_CATALOG.find((p) => p.planCode === BILLING_PLAN_COMPED) ??
+      null
+    );
+  }
   return (
     BILLING_PLAN_CATALOG.find((plan) => plan.planCode === planCode) ?? null
   );
+}
+
+/** Entitlements for the current Stripe lifecycle (trial overlay vs paid floor). */
+export function resolveEntitlementsForStatus(input: {
+  planCode: string;
+  billingStatus: string;
+}): PlanEntitlements | null {
+  const plan = getPlanDefinition(input.planCode);
+  if (!plan) return null;
+  if (
+    input.billingStatus === "TRIALING" &&
+    plan.trialEntitlements
+  ) {
+    return plan.trialEntitlements;
+  }
+  return plan.entitlements;
 }
 
 export function resolveStripePriceId(envName: string): string | null {

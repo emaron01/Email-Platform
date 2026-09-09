@@ -2,10 +2,12 @@ import Link from "next/link";
 import { requireOrgAdmin } from "@/lib/org/authz";
 import { prisma } from "@/lib/prisma";
 import {
+  BILLING_PLAN_COMPED,
   billingPlanLabel,
   billingStatusLabel,
   formatCustomerPayingAmount,
   formatDiscountSummary,
+  requiresStripeCheckout,
 } from "@/lib/billing/billing-state";
 import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
 import {
@@ -13,6 +15,7 @@ import {
   planIsCheckoutReady,
 } from "@/lib/billing/plans";
 import { stripeConfigured } from "@/lib/billing/stripe";
+import { BillingCheckoutRefresh } from "@/components/billing/BillingCheckoutRefresh";
 import { StartStandardCheckoutButton } from "@/components/billing/StartStandardCheckoutButton";
 import { countActiveResearchedCompanies } from "@/lib/usage/active-companies";
 import {
@@ -20,9 +23,12 @@ import {
   getEffectiveUsagePolicy,
 } from "@/lib/usage/policy";
 
+/** Always read live billing state — never serve a pre-checkout RSC snapshot. */
+export const dynamic = "force-dynamic";
+
 /**
- * Org billing settings — plan/status + Stripe Checkout for STANDARD.
- * OWNER/ADMIN only (requireOrgAdmin). MEMBER cannot open this page.
+ * Org billing settings — Checkout for UNPAID / optional subscribe for COMPED.
+ * OWNER/ADMIN only.
  */
 export default async function OrganizationBillingSettingsPage({
   searchParams,
@@ -46,12 +52,18 @@ export default async function OrganizationBillingSettingsPage({
     countActiveResearchedCompanies(organization.id),
   ]);
 
-  const planCode = billing?.planCode ?? "FREE";
+  const planCode = billing?.planCode ?? BILLING_PLAN_COMPED;
   const billingStatus = billing?.billingStatus ?? "FREE";
   const remaining = Math.max(
     0,
     policy.activeResearchedCompanyLimit - activeCompanies,
   );
+
+  const isComped =
+    planCode === BILLING_PLAN_COMPED ||
+    planCode === "FREE" ||
+    (billingStatus === "FREE" && !billing?.stripeSubscriptionId);
+  const needsCheckout = billing ? requiresStripeCheckout(billing) : false;
 
   const hasLiveSubscription =
     Boolean(billing?.stripeSubscriptionId) &&
@@ -77,8 +89,15 @@ export default async function OrganizationBillingSettingsPage({
       })
     : false;
 
+  const checkoutButtonLabel = isComped
+    ? "Subscribe to Standard"
+    : needsCheckout
+      ? "Start Standard trial"
+      : "Start Standard trial";
+
   return (
     <div className="mx-auto max-w-3xl space-y-8">
+      <BillingCheckoutRefresh checkoutState={checkoutState} />
       <div>
         <Link
           href="/settings"
@@ -90,19 +109,33 @@ export default async function OrganizationBillingSettingsPage({
           Billing
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Plan and status for {organization.name}. Signed in as {user.email}.
+          Plan and status for{" "}
+          <span className="font-medium text-slate-900">{organization.name}</span>
+          . Signed in as {user.email}.
+        </p>
+        <p className="mt-1 font-mono text-xs text-slate-500">
+          {planCode} / {billingStatus}
+          {billing?.stripeSubscriptionId
+            ? ` · ${billing.stripeSubscriptionId}`
+            : " · no subscription id"}
         </p>
       </div>
 
+      {checkoutState === "required" ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          Start your 7-day Standard trial to use the product. Card required —
+          you can enter a promotion code on the next screen.
+        </p>
+      ) : null}
       {checkoutState === "success" ? (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          Checkout completed. Subscription status updates when Stripe confirms
-          the webhook.
+          Checkout completed. Refreshing subscription status from Stripe…
         </p>
       ) : null}
       {checkoutState === "canceled" ? (
         <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          Checkout canceled — no charge was made.
+          Checkout canceled — no charge was made. You can resume anytime from
+          this page.
         </p>
       ) : null}
 
@@ -176,10 +209,14 @@ export default async function OrganizationBillingSettingsPage({
           ) : null}
         </dl>
         <p className="text-sm text-slate-600">
-          No card numbers, billing addresses, or tax IDs are stored in this app
-          — Stripe hosts payment collection.
+          {isComped
+            ? "This account is comped — no payment required. You can optionally subscribe to Standard below; raised company limits you already have are kept."
+            : "No card numbers, billing addresses, or tax IDs are stored in this app — Stripe hosts payment collection."}
         </p>
-        <StartStandardCheckoutButton disabledReason={checkoutDisabled} />
+        <StartStandardCheckoutButton
+          disabledReason={checkoutDisabled}
+          buttonLabel={checkoutButtonLabel}
+        />
       </section>
 
       <section
@@ -197,17 +234,9 @@ export default async function OrganizationBillingSettingsPage({
             : " — allowance used."}
         </p>
         <p className="text-sm text-slate-600">
-          One slot per distinct company with fresh research. Refreshing a
-          company you already researched does not use another slot.
+          Trial includes 25 companies; Standard includes 100 after conversion.
+          One slot per distinct company with fresh research.
         </p>
-        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-          <p className="font-medium text-slate-800">Add capacity</p>
-          <p className="mt-1">
-            Purchasing additional company research credits will appear here in a
-            later billing phase. Until then, ask a platform admin to raise the
-            organization limit in the platform console.
-          </p>
-        </div>
       </section>
     </div>
   );

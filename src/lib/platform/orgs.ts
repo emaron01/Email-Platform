@@ -14,8 +14,13 @@ import {
   DEFAULT_RESEARCH_POLICY_VALUES,
   DEFAULT_USAGE_POLICY_VALUES,
 } from "@/lib/usage/defaults";
-import { FREE_BILLING_DEFAULTS } from "@/lib/billing/billing-state";
+import {
+  COMPED_BILLING_DEFAULTS,
+  SELF_SERVE_BILLING_DEFAULTS,
+} from "@/lib/billing/billing-state";
 import { createOrganizationInvitationAsPlatform } from "@/lib/org/signup";
+
+export type PlatformBillingMode = "COMPED" | "BILLED";
 
 export type PlatformOrgListItem = {
   id: string;
@@ -198,7 +203,7 @@ export async function listOrganizationsForPlatform(input?: {
       researchedCompaniesLimit:
         org.usagePolicy?.activeResearchedCompanyLimit ?? null,
       suspendedAt: org.suspendedAt,
-      planCode: org.billingProfile?.planCode ?? "FREE",
+      planCode: org.billingProfile?.planCode ?? "COMPED",
       billingStatus: org.billingProfile?.billingStatus ?? "FREE",
     });
   }
@@ -346,7 +351,7 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
     },
     billing: {
       billingEmail: org.billingProfile?.billingEmail ?? null,
-      planCode: org.billingProfile?.planCode ?? "FREE",
+      planCode: org.billingProfile?.planCode ?? "COMPED",
       billingStatus: org.billingProfile?.billingStatus ?? "FREE",
       stripeCustomerId: org.billingProfile?.stripeCustomerId ?? null,
       stripeSubscriptionId: org.billingProfile?.stripeSubscriptionId ?? null,
@@ -661,18 +666,23 @@ async function uniqueOrganizationSlug(base: string): Promise<string> {
 
 /**
  * SUPER_ADMIN creates an org (INDIVIDUAL or ENTERPRISE) and invites the first
- * user as OWNER via the existing invitation email/accept flow.
+ * user as OWNER. Billing mode: COMPED (durable, no Stripe) or BILLED (Checkout).
  */
 export async function createPlatformOrganization(input: {
   actorUserId: string;
   name: string;
   accountType: OrganizationAccountType;
   ownerEmail: string;
+  billingMode: PlatformBillingMode;
+  activeResearchedCompanyLimit: number;
+  dailyEmailSendWarningLimit: number;
+  monthlyEmailSendLimit: number | null;
   timezone?: string;
 }): Promise<{
   organizationId: string;
   invitationId: string;
   accountType: OrganizationAccountType;
+  billingMode: PlatformBillingMode;
 }> {
   const name = input.name.trim();
   if (!name) throw new Error("Organization name is required.");
@@ -686,6 +696,26 @@ export async function createPlatformOrganization(input: {
   ) {
     throw new Error("Account type must be INDIVIDUAL or ENTERPRISE.");
   }
+  if (input.billingMode !== "COMPED" && input.billingMode !== "BILLED") {
+    throw new Error("Billing mode must be COMPED or BILLED.");
+  }
+  if (
+    !Number.isFinite(input.activeResearchedCompanyLimit) ||
+    input.activeResearchedCompanyLimit < 0
+  ) {
+    throw new Error("Company research limit must be a non-negative number.");
+  }
+  if (
+    !Number.isFinite(input.dailyEmailSendWarningLimit) ||
+    input.dailyEmailSendWarningLimit < 0
+  ) {
+    throw new Error("Daily send advisory must be a non-negative number.");
+  }
+
+  const billingDefaults =
+    input.billingMode === "COMPED"
+      ? COMPED_BILLING_DEFAULTS
+      : SELF_SERVE_BILLING_DEFAULTS;
 
   const slug = await uniqueOrganizationSlug(slugifyOrgName(name));
   const organization = await prisma.$transaction(async (tx) => {
@@ -701,7 +731,14 @@ export async function createPlatformOrganization(input: {
     await tx.organizationUsagePolicy.create({
       data: {
         organizationId: org.id,
-        ...DEFAULT_USAGE_POLICY_VALUES,
+        activeResearchedCompanyLimit: input.activeResearchedCompanyLimit,
+        dailyEmailGenerationLimit:
+          DEFAULT_USAGE_POLICY_VALUES.dailyEmailGenerationLimit,
+        dailyEmailSendWarningLimit: input.dailyEmailSendWarningLimit,
+        dailyEmailSendLimit: DEFAULT_USAGE_POLICY_VALUES.dailyEmailSendLimit,
+        monthlyEmailSendLimit: input.monthlyEmailSendLimit,
+        emailDeeplinkMaxUrlLength:
+          DEFAULT_USAGE_POLICY_VALUES.emailDeeplinkMaxUrlLength,
       },
     });
     await tx.researchPolicy.create({
@@ -714,7 +751,7 @@ export async function createPlatformOrganization(input: {
       data: {
         organizationId: org.id,
         billingEmail: ownerEmail,
-        ...FREE_BILLING_DEFAULTS,
+        ...billingDefaults,
       },
     });
     return org;
@@ -727,8 +764,10 @@ export async function createPlatformOrganization(input: {
     metadata: {
       accountType: input.accountType,
       ownerEmail,
-      planCode: FREE_BILLING_DEFAULTS.planCode,
-      billingStatus: FREE_BILLING_DEFAULTS.billingStatus,
+      billingMode: input.billingMode,
+      planCode: billingDefaults.planCode,
+      billingStatus: billingDefaults.billingStatus,
+      activeResearchedCompanyLimit: input.activeResearchedCompanyLimit,
     },
   });
 
@@ -743,5 +782,6 @@ export async function createPlatformOrganization(input: {
     organizationId: organization.id,
     invitationId: invitation.invitationId,
     accountType: input.accountType,
+    billingMode: input.billingMode,
   };
 }

@@ -6,13 +6,14 @@
 /** Heads-up when this many (or fewer) new-company slots remain. Does not block. */
 export const ACTIVE_RESEARCHED_COMPANY_WARN_REMAINING = 10;
 
+/** Paid Standard company floor (catalog). Used in trial-exhaustion conversion copy. */
+export const STANDARD_ACTIVE_COMPANY_LIMIT = 100;
+
 export type ActiveResearchedCompanyUsageView = {
   used: number;
   limit: number;
   remaining: number;
-  /** True when 1..WARN_REMAINING slots left — show Continue / Buy more. */
   warning: boolean;
-  /** True when no new-company slots left — hard stop for new research. */
   exhausted: boolean;
 };
 
@@ -57,10 +58,25 @@ export function formatResearchAllowanceExhausted(limit: number): string {
   return `You've used your company research allowance (${limit} companies). Add capacity in Billing to research new companies. Scoring, email generation, and sending still work for companies you've already researched.`;
 }
 
+/**
+ * Mid-trial hit of the 25-company cap — conversion copy, not a bare quota error.
+ */
+export function formatTrialResearchExhausted(input: {
+  trialLimit: number;
+  paidLimit?: number;
+}): string {
+  const paid = input.paidLimit ?? STANDARD_ACTIVE_COMPANY_LIMIT;
+  return `You've used your trial company research (${input.trialLimit} companies). Convert to Standard to research up to ${paid} companies. Scoring, email generation, and sending still work for companies you've already researched.`;
+}
+
 export function formatResearchQuotaBlockedMessage(input: {
   used: number;
   limit: number;
+  billingStatus?: string | null;
 }): string {
+  if (input.billingStatus === "TRIALING") {
+    return formatTrialResearchExhausted({ trialLimit: input.limit });
+  }
   return formatResearchAllowanceExhausted(input.limit);
 }
 
