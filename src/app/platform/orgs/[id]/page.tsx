@@ -25,6 +25,7 @@ import {
   resolveStripePriceId,
 } from "@/lib/billing/plans";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
+import { DeleteOrganizationPanel } from "@/components/platform/DeleteOrganizationPanel";
 import {
   grantOrganizationCreditAction,
   platformChangeMemberRoleAction,
@@ -667,6 +668,11 @@ export default async function PlatformOrgDetailPage({
               Grant credit
             </button>
           </ActionFeedbackForm>
+
+          <DeleteOrganizationPanel
+            organizationId={id}
+            organizationName={org.name}
+          />
         </section>
       ) : (
         <p className="text-sm text-slate-500">

@@ -530,6 +530,41 @@ export async function unsuspendOrganization(input: {
   });
 }
 
+/**
+ * Hard-delete an organization and all cascading tenant data.
+ * Audit is written first so the event retains org id/name after the row is gone.
+ */
+export async function deleteOrganization(input: {
+  organizationId: string;
+  actorUserId: string;
+}): Promise<{ id: string; name: string }> {
+  const org = await prisma.organization.findUnique({
+    where: { id: input.organizationId },
+    select: { id: true, name: true, slug: true },
+  });
+  if (!org) {
+    throw new Error("Organization not found.");
+  }
+
+  await recordAdminAuditEvent({
+    action: "PLATFORM_ORGANIZATION_DELETED",
+    actorUserId: input.actorUserId,
+    organizationId: org.id,
+    metadata: {
+      organizationId: org.id,
+      organizationName: org.name,
+      organizationSlug: org.slug,
+      actorUserId: input.actorUserId,
+    },
+  });
+
+  await prisma.organization.delete({
+    where: { id: org.id },
+  });
+
+  return { id: org.id, name: org.name };
+}
+
 export async function updateOrganizationUsagePolicyAsPlatform(input: {
   organizationId: string;
   actorUserId: string;

@@ -1,0 +1,125 @@
+"use client";
+
+import { useActionState, useEffect, useId, useState } from "react";
+import { deleteOrganizationAction } from "@/app/actions/platform-orgs";
+import type { PlatformOrgActionResult } from "@/app/actions/platform-orgs";
+
+const CONFIRM_PHRASE = "Delete";
+
+/**
+ * SUPER_ADMIN-only hard delete of the organization currently viewed in
+ * /platform/orgs/[id]. Requires typing "Delete" exactly before submit.
+ */
+export function DeleteOrganizationPanel({
+  organizationId,
+  organizationName,
+}: {
+  organizationId: string;
+  organizationName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
+  const [state, formAction, pending] = useActionState<
+    PlatformOrgActionResult | null,
+    FormData
+  >(deleteOrganizationAction, null);
+  const titleId = useId();
+  const inputId = useId();
+  const matches = confirmation === CONFIRM_PHRASE;
+
+  useEffect(() => {
+    if (!open) {
+      setConfirmation("");
+    }
+  }, [open]);
+
+  return (
+    <div
+      className="max-w-md space-y-3 rounded-md border border-red-200 bg-red-50/60 p-4"
+      data-testid="platform-delete-organization"
+    >
+      <div>
+        <h3 className="text-sm font-medium text-slate-900">
+          Delete organization
+        </h3>
+        <p className="mt-1 text-sm text-slate-600">
+          Permanently remove{" "}
+          <span className="font-medium text-slate-800">{organizationName}</span>{" "}
+          and all associated data. This cannot be undone.
+        </p>
+      </div>
+
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-50"
+          data-testid="platform-delete-organization-open"
+        >
+          Delete Organization
+        </button>
+      ) : (
+        <div
+          className="space-y-3 rounded-md border border-red-300 bg-white p-3"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          data-testid="platform-delete-organization-modal"
+        >
+          <p id={titleId} className="text-sm font-semibold text-slate-900">
+            Confirm permanent deletion
+          </p>
+          <p className="text-sm text-slate-700">
+            This will permanently delete this organization and all associated
+            data. This cannot be undone.
+          </p>
+          <form action={formAction} className="space-y-3">
+            <input type="hidden" name="organizationId" value={organizationId} />
+            <label htmlFor={inputId} className="block text-sm text-slate-700">
+              Type <span className="font-mono font-semibold">{CONFIRM_PHRASE}</span>{" "}
+              to confirm
+              <input
+                id={inputId}
+                name="confirmation"
+                value={confirmation}
+                onChange={(e) => setConfirmation(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+                data-testid="platform-delete-organization-confirm-input"
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="submit"
+                disabled={!matches || pending}
+                className="rounded-md bg-red-700 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                data-testid="platform-delete-organization-submit"
+              >
+                {pending ? "Deleting…" : "Permanently Delete"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={pending}
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
+                data-testid="platform-delete-organization-cancel"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+          {state && !state.ok ? (
+            <p
+              className="text-sm text-red-600"
+              role="alert"
+              data-testid="platform-delete-organization-error"
+            >
+              {state.message}
+            </p>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}

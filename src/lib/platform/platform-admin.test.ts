@@ -54,6 +54,7 @@ describe("platform-orgs actions gate mutations to SUPER_ADMIN", () => {
     vi.doMock("@/lib/platform/orgs", () => ({
       suspendOrganization,
       unsuspendOrganization: vi.fn(),
+      deleteOrganization: vi.fn(),
       updateOrganizationUsagePolicyAsPlatform: vi.fn(),
       grantOrganizationCredit: vi.fn(),
       createPlatformOrganization: vi.fn(),
@@ -95,6 +96,7 @@ describe("platform-orgs actions gate mutations to SUPER_ADMIN", () => {
     vi.doMock("@/lib/platform/orgs", () => ({
       suspendOrganization: suspendOrganization2,
       unsuspendOrganization: vi.fn(),
+      deleteOrganization: vi.fn(),
       updateOrganizationUsagePolicyAsPlatform: vi.fn(),
       grantOrganizationCredit: vi.fn(),
       createPlatformOrganization: vi.fn(),
@@ -123,6 +125,117 @@ describe("platform-orgs actions gate mutations to SUPER_ADMIN", () => {
         reason: "abuse",
       }),
     );
+  });
+
+  it("SUPPORT cannot delete org; SUPER_ADMIN can with exact confirmation", async () => {
+    const deleteOrganization = vi.fn(async () => ({
+      id: "org_1",
+      name: "Acme",
+    }));
+
+    vi.doMock("@/lib/auth/authz", async () => {
+      const actual = await vi.importActual<typeof import("@/lib/auth/authz")>(
+        "@/lib/auth/authz",
+      );
+      return {
+        ...actual,
+        requirePlatformSuperAdmin: async () => {
+          throw new actual.AuthorizationError(
+            "Platform super admin required.",
+          );
+        },
+      };
+    });
+    vi.doMock("@/lib/platform/orgs", () => ({
+      suspendOrganization: vi.fn(),
+      unsuspendOrganization: vi.fn(),
+      deleteOrganization,
+      updateOrganizationUsagePolicyAsPlatform: vi.fn(),
+      grantOrganizationCredit: vi.fn(),
+      createPlatformOrganization: vi.fn(),
+    }));
+    vi.doMock("@/lib/org/signup", () => ({
+      changeOrganizationMemberRole: vi.fn(),
+      createOrganizationInvitationAsPlatform: vi.fn(),
+      removeOrganizationMember: vi.fn(),
+      revokeOrganizationInvitationAsPlatform: vi.fn(),
+    }));
+    vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
+    vi.doMock("next/navigation", () => ({ redirect: vi.fn() }));
+
+    const { deleteOrganizationAction } = await import(
+      "@/app/actions/platform-orgs"
+    );
+    const deniedFd = new FormData();
+    deniedFd.set("organizationId", "org_1");
+    deniedFd.set("confirmation", "Delete");
+    const denied = await deleteOrganizationAction(null, deniedFd);
+    expect(denied.ok).toBe(false);
+    expect(denied.message).toContain("Platform super admin required");
+    expect(deleteOrganization).not.toHaveBeenCalled();
+
+    vi.resetModules();
+    const deleteOrganization2 = vi.fn(async () => ({
+      id: "org_1",
+      name: "Acme",
+    }));
+    const redirect = vi.fn(() => {
+      const err = new Error("NEXT_REDIRECT");
+      (err as { digest?: string }).digest = "NEXT_REDIRECT;/platform/orgs";
+      throw err;
+    });
+    vi.doMock("@/lib/auth/authz", async () => {
+      const actual = await vi.importActual<typeof import("@/lib/auth/authz")>(
+        "@/lib/auth/authz",
+      );
+      return {
+        ...actual,
+        requirePlatformSuperAdmin: async () => ({
+          id: "sa_1",
+          platformRole: "SUPER_ADMIN",
+        }),
+      };
+    });
+    vi.doMock("@/lib/platform/orgs", () => ({
+      suspendOrganization: vi.fn(),
+      unsuspendOrganization: vi.fn(),
+      deleteOrganization: deleteOrganization2,
+      updateOrganizationUsagePolicyAsPlatform: vi.fn(),
+      grantOrganizationCredit: vi.fn(),
+      createPlatformOrganization: vi.fn(),
+    }));
+    vi.doMock("@/lib/org/signup", () => ({
+      changeOrganizationMemberRole: vi.fn(),
+      createOrganizationInvitationAsPlatform: vi.fn(),
+      removeOrganizationMember: vi.fn(),
+      revokeOrganizationInvitationAsPlatform: vi.fn(),
+    }));
+    vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
+    vi.doMock("next/navigation", () => ({ redirect }));
+
+    const { deleteOrganizationAction: deleteOk } = await import(
+      "@/app/actions/platform-orgs"
+    );
+
+    const wrongConfirm = new FormData();
+    wrongConfirm.set("organizationId", "org_1");
+    wrongConfirm.set("confirmation", "delete");
+    const rejected = await deleteOk(null, wrongConfirm);
+    expect(rejected.ok).toBe(false);
+    expect(rejected.message).toContain("Delete");
+    expect(deleteOrganization2).not.toHaveBeenCalled();
+
+    const okFd = new FormData();
+    okFd.set("organizationId", "org_1");
+    okFd.set("confirmation", "Delete");
+    await expect(deleteOk(null, okFd)).rejects.toMatchObject({
+      digest: expect.stringContaining("NEXT_REDIRECT"),
+    });
+    expect(deleteOrganization2).toHaveBeenCalledWith({
+      organizationId: "org_1",
+      actorUserId: "sa_1",
+    });
+    expect(redirect).toHaveBeenCalledWith("/platform/orgs");
   });
 });
 
@@ -276,6 +389,7 @@ describe("platform org detail and scoped view", () => {
     expect(detailPage).toContain("Credit grants");
     expect(detailPage).toContain("Health (failure rates)");
     expect(detailPage).toContain("contactLists");
+    expect(detailPage).toContain("DeleteOrganizationPanel");
   });
 
   it("scoped view is read-only and audited, not impersonation", () => {
@@ -288,6 +402,7 @@ describe("platform org detail and scoped view", () => {
     expect(viewPage).toContain("recordPlatformOrgView");
     expect(viewPage).not.toContain("suspendOrganizationAction");
     expect(viewPage).not.toContain("grantOrganizationCreditAction");
+    expect(viewPage).not.toContain("DeleteOrganizationPanel");
   });
 });
 

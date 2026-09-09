@@ -9,6 +9,7 @@ import {
   grantOrganizationCredit,
   suspendOrganization,
   unsuspendOrganization,
+  deleteOrganization,
   updateOrganizationUsagePolicyAsPlatform,
   updateOrganizationResearchPolicyAsPlatform,
   createPlatformOrganization,
@@ -89,6 +90,42 @@ export async function unsuspendOrganizationAction(
     revalidatePath(`/platform/orgs/${organizationId}`);
     return { ok: true, message: "Organization unsuspended." };
   } catch (error) {
+    return { ok: false, message: toSafeError(error) };
+  }
+}
+
+const DELETE_ORG_CONFIRM_PHRASE = "Delete";
+
+export async function deleteOrganizationAction(
+  _prev: PlatformOrgActionResult | null,
+  formData: FormData,
+): Promise<PlatformOrgActionResult> {
+  try {
+    const user = await requirePlatformSuperAdmin();
+    const organizationId = requireOrgId(formData);
+    const confirmation = String(formData.get("confirmation") || "");
+    if (confirmation !== DELETE_ORG_CONFIRM_PHRASE) {
+      return {
+        ok: false,
+        message: `Type "${DELETE_ORG_CONFIRM_PHRASE}" exactly to confirm.`,
+      };
+    }
+    await deleteOrganization({
+      organizationId,
+      actorUserId: user.id,
+    });
+    revalidatePath("/platform/orgs");
+    redirect("/platform/orgs");
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "digest" in error &&
+      typeof (error as { digest?: string }).digest === "string" &&
+      (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+    ) {
+      throw error;
+    }
     return { ok: false, message: toSafeError(error) };
   }
 }
