@@ -67,6 +67,42 @@ describe("billing plans catalog", () => {
     ).toBe(true);
   });
 
+  it("formats trial end with days remaining", async () => {
+    const { formatTrialEndsSummary, billingPlanDescription } = await import(
+      "@/lib/billing/billing-state"
+    );
+    const ends = new Date("2026-09-15T12:00:00.000Z");
+    const now = new Date("2026-09-10T12:00:00.000Z");
+    expect(formatTrialEndsSummary({ trialEndsAt: ends, now })).toContain(
+      "5 days remaining",
+    );
+    expect(
+      billingPlanDescription({
+        planCode: "STANDARD",
+        billingStatus: "TRIALING",
+      }),
+    ).toContain("25 companies");
+    expect(
+      billingPlanDescription({
+        planCode: "STANDARD",
+        billingStatus: "ACTIVE",
+      }),
+    ).toContain("100 companies");
+  });
+
+  it("portal and checkout return URLs use APP_URL helper", async () => {
+    const portal = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/lib/billing/create-portal-session.ts", "utf8"),
+    );
+    const checkout = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/lib/billing/create-checkout-session.ts", "utf8"),
+    );
+    expect(portal).toContain("billingAppBaseUrl()");
+    expect(portal).toContain("/settings/billing");
+    expect(portal).not.toContain("request.url");
+    expect(checkout).toContain("billingAppBaseUrl()");
+  });
+
   it("uses conversion copy when trial research is exhausted", () => {
     expect(
       formatResearchQuotaBlockedMessage({

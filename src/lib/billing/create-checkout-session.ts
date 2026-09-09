@@ -3,6 +3,7 @@
  */
 import "server-only";
 
+import { billingAppBaseUrl } from "@/lib/billing/app-base-url";
 import {
   BILLING_PLAN_STANDARD,
   getPlanDefinition,
@@ -11,17 +12,6 @@ import {
 } from "@/lib/billing/plans";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
 import { prisma } from "@/lib/prisma";
-
-function appBaseUrl(): string {
-  const base =
-    process.env.APP_URL?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    "";
-  if (!base) {
-    throw new Error("APP_URL or NEXT_PUBLIC_APP_URL is required for Checkout");
-  }
-  return base.replace(/\/$/, "");
-}
 
 export type CreateStandardCheckoutResult =
   | { ok: true; url: string }
@@ -78,7 +68,7 @@ export async function createStandardCheckoutSession(input: {
     return {
       ok: false,
       error:
-        "This organization already has a subscription. Manage billing in Stripe Customer Portal (coming soon) or the Stripe Dashboard.",
+        "This organization already has a subscription. Use Manage billing to update your card or cancel.",
       code: "ALREADY_SUBSCRIBED",
     };
   }
@@ -109,7 +99,7 @@ export async function createStandardCheckoutSession(input: {
   }
 
   const trialDays = plan?.trialDays ?? 7;
-  const baseUrl = appBaseUrl();
+  const baseUrl = billingAppBaseUrl();
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",

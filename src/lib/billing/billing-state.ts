@@ -210,3 +210,65 @@ export function requiresStripeCheckout(profile: {
   }
   return profile.billingStatus === "UNPAID";
 }
+
+/** Customer-facing plan blurb under the plan name. */
+export function billingPlanDescription(input: {
+  planCode: string;
+  billingStatus: string;
+}): string {
+  const isTrial = input.billingStatus === "TRIALING";
+  const isStandard =
+    input.planCode === BILLING_PLAN_STANDARD ||
+    input.planCode === "STANDARD";
+
+  if (isStandard && isTrial) {
+    return "Trial: research up to 25 companies, send up to 50 emails a day (1,000 a month), full product access. Emails send through your own mailbox. After trial: 100 companies researched.";
+  }
+  if (isStandard) {
+    return "Research up to 100 companies, send up to 50 emails a day and 1,000 a month. Full product access. Emails send through your own mailbox.";
+  }
+  if (
+    input.planCode === BILLING_PLAN_COMPED ||
+    input.planCode === "FREE"
+  ) {
+    return "Comped access with limits set by your account administrator. Emails send through your own mailbox.";
+  }
+  return "Emails send through your own mailbox.";
+}
+
+export function formatBillingDate(date: Date | null | undefined): string {
+  if (!date) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+/** Whole calendar days remaining until `end` (UTC day boundary–friendly). */
+export function daysRemainingUntil(
+  end: Date | null | undefined,
+  now: Date = new Date(),
+): number | null {
+  if (!end) return null;
+  const ms = end.getTime() - now.getTime();
+  if (ms <= 0) return 0;
+  return Math.ceil(ms / (24 * 60 * 60 * 1000));
+}
+
+export function formatTrialEndsSummary(input: {
+  trialEndsAt: Date | null | undefined;
+  now?: Date;
+}): string | null {
+  if (!input.trialEndsAt) return null;
+  const days = daysRemainingUntil(input.trialEndsAt, input.now);
+  if (days == null) return null;
+  const dateLabel = formatBillingDate(input.trialEndsAt);
+  if (days <= 0) {
+    return `Trial ended ${dateLabel}`;
+  }
+  if (days === 1) {
+    return `Trial ends ${dateLabel} (1 day remaining)`;
+  }
+  return `Trial ends ${dateLabel} (${days} days remaining)`;
+}

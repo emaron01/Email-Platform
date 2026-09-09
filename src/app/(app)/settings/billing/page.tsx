@@ -3,19 +3,24 @@ import { requireOrgAdmin } from "@/lib/org/authz";
 import { prisma } from "@/lib/prisma";
 import {
   BILLING_PLAN_COMPED,
+  billingPlanDescription,
   billingPlanLabel,
   billingStatusLabel,
+  formatBillingDate,
   formatCustomerPayingAmount,
   formatDiscountSummary,
-  requiresStripeCheckout,
+  formatTrialEndsSummary,
 } from "@/lib/billing/billing-state";
 import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
 import {
   BILLING_PLAN_STANDARD,
+  getPlanDefinition,
   planIsCheckoutReady,
+  resolveEntitlementsForStatus,
 } from "@/lib/billing/plans";
 import { stripeConfigured } from "@/lib/billing/stripe";
 import { BillingCheckoutRefresh } from "@/components/billing/BillingCheckoutRefresh";
+import { OpenCustomerPortalButton } from "@/components/billing/OpenCustomerPortalButton";
 import { StartStandardCheckoutButton } from "@/components/billing/StartStandardCheckoutButton";
 import { countActiveResearchedCompanies } from "@/lib/usage/active-companies";
 import {
@@ -27,7 +32,7 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * Org billing settings — Checkout for UNPAID / optional subscribe for COMPED.
+ * Org billing settings — Checkout, portal, trial/renewal dates.
  * OWNER/ADMIN only.
  */
 export default async function OrganizationBillingSettingsPage({
@@ -62,8 +67,7 @@ export default async function OrganizationBillingSettingsPage({
   const isComped =
     planCode === BILLING_PLAN_COMPED ||
     planCode === "FREE" ||
-    (billingStatus === "FREE" && !billing?.stripeSubscriptionId);
-  const needsCheckout = billing ? requiresStripeCheckout(billing) : false;
+    (billingStatus === "FREE" && !billing?.stripeCustomerId);
 
   const hasLiveSubscription =
     Boolean(billing?.stripeSubscriptionId) &&
@@ -71,13 +75,14 @@ export default async function OrganizationBillingSettingsPage({
       billingStatus === "TRIALING" ||
       billingStatus === "PAST_DUE");
 
+  const canOpenPortal = Boolean(billing?.stripeCustomerId);
+
   let checkoutDisabled: string | null = null;
   if (!stripeConfigured() || !planIsCheckoutReady(BILLING_PLAN_STANDARD)) {
     checkoutDisabled =
       "Stripe Checkout is not configured yet (set STRIPE_SECRET_KEY and STRIPE_PRICE_STANDARD_MONTHLY).";
   } else if (hasLiveSubscription) {
-    checkoutDisabled =
-      "Subscription is active. Customer Portal for self-serve billing changes is next.";
+    checkoutDisabled = null; // portal replaces checkout CTA
   }
 
   const discountActive = billing
@@ -91,9 +96,24 @@ export default async function OrganizationBillingSettingsPage({
 
   const checkoutButtonLabel = isComped
     ? "Subscribe to Standard"
-    : needsCheckout
-      ? "Start Standard trial"
-      : "Start Standard trial";
+    : "Start Standard trial";
+
+  const trialSummary =
+    billingStatus === "TRIALING"
+      ? formatTrialEndsSummary({ trialEndsAt: billing?.trialEndsAt })
+      : null;
+
+  const showNextBilling =
+    (billingStatus === "ACTIVE" || billingStatus === "PAST_DUE") &&
+    Boolean(billing?.currentPeriodEnd);
+
+  const catalogFloor = resolveEntitlementsForStatus({
+    planCode,
+    billingStatus,
+  })?.activeResearchedCompanyLimit;
+
+  const standardPaidFloor = getPlanDefinition(BILLING_PLAN_STANDARD)
+    ?.entitlements.activeResearchedCompanyLimit;
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -112,12 +132,6 @@ export default async function OrganizationBillingSettingsPage({
           Plan and status for{" "}
           <span className="font-medium text-slate-900">{organization.name}</span>
           . Signed in as {user.email}.
-        </p>
-        <p className="mt-1 font-mono text-xs text-slate-500">
-          {planCode} / {billingStatus}
-          {billing?.stripeSubscriptionId
-            ? ` · ${billing.stripeSubscriptionId}`
-            : " · no subscription id"}
         </p>
       </div>
 
@@ -142,13 +156,16 @@ export default async function OrganizationBillingSettingsPage({
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-5">
         <h2 className="text-lg font-medium text-slate-900">Current plan</h2>
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
-          <div>
+          <div className="sm:col-span-2">
             <dt className="text-xs uppercase tracking-wide text-slate-500">
               Plan
             </dt>
             <dd className="mt-1 font-medium text-slate-900">
               {billingPlanLabel(planCode)}
             </dd>
+            <p className="mt-1 text-sm text-slate-600">
+              {billingPlanDescription({ planCode, billingStatus })}
+            </p>
           </div>
           <div>
             <dt className="text-xs uppercase tracking-wide text-slate-500">
@@ -158,65 +175,84 @@ export default async function OrganizationBillingSettingsPage({
               {billingStatusLabel(billingStatus)}
             </dd>
           </div>
+          {trialSummary ? (
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-500">
+                Trial
+              </dt>
+              <dd className="mt-1 font-medium text-slate-900">{trialSummary}</dd>
+            </div>
+          ) : null}
+          {showNextBilling ? (
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-500">
+                Next billing date
+              </dt>
+              <dd className="mt-1 font-medium text-slate-900">
+                {formatBillingDate(billing?.currentPeriodEnd)}
+                {billing?.cancelAtPeriodEnd
+                  ? " · cancels at period end"
+                  : ""}
+              </dd>
+            </div>
+          ) : null}
           <div>
             <dt className="text-xs uppercase tracking-wide text-slate-500">
-              Account type
-            </dt>
-            <dd className="mt-1 font-medium text-slate-900">
-              {organization.accountType}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-slate-500">
-              Billing contact email
+              Billing contact
             </dt>
             <dd className="mt-1 font-medium text-slate-900">
               {billing?.billingEmail ?? "—"}
             </dd>
           </div>
           {billing?.stripePriceId ? (
-            <>
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-slate-500">
-                  Paying
-                </dt>
-                <dd className="mt-1 font-medium text-slate-900">
-                  {formatCustomerPayingAmount({
-                    effectiveUnitAmountCents:
-                      billing.stripeEffectiveUnitAmountCents,
-                    listUnitAmountCents: billing.stripePriceUnitAmountCents,
-                    currency: billing.stripePriceCurrency,
-                    interval: billing.stripePriceInterval,
-                  })}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-slate-500">
-                  Discount
-                </dt>
-                <dd className="mt-1 font-medium text-slate-900">
-                  {discountActive
-                    ? formatDiscountSummary({
-                        percentOff: billing.stripeDiscountPercentOff,
-                        amountOffCents: billing.stripeDiscountAmountOffCents,
-                        currency: billing.stripePriceCurrency,
-                        couponId: billing.stripeCouponId,
-                      })
-                    : "None"}
-                </dd>
-              </div>
-            </>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-500">
+                Amount
+              </dt>
+              <dd className="mt-1 font-medium text-slate-900">
+                {formatCustomerPayingAmount({
+                  effectiveUnitAmountCents:
+                    billing.stripeEffectiveUnitAmountCents,
+                  listUnitAmountCents: billing.stripePriceUnitAmountCents,
+                  currency: billing.stripePriceCurrency,
+                  interval: billing.stripePriceInterval,
+                })}
+              </dd>
+            </div>
+          ) : null}
+          {discountActive && billing ? (
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-500">
+                Discount
+              </dt>
+              <dd className="mt-1 font-medium text-slate-900">
+                {formatDiscountSummary({
+                  percentOff: billing.stripeDiscountPercentOff,
+                  amountOffCents: billing.stripeDiscountAmountOffCents,
+                  currency: billing.stripePriceCurrency,
+                  couponId: billing.stripeCouponId,
+                })}
+              </dd>
+            </div>
           ) : null}
         </dl>
+
         <p className="text-sm text-slate-600">
           {isComped
             ? "This account is comped — no payment required. You can optionally subscribe to Standard below; raised company limits you already have are kept."
-            : "No card numbers, billing addresses, or tax IDs are stored in this app — Stripe hosts payment collection."}
+            : "Card details stay in Stripe — never stored in this app."}
         </p>
-        <StartStandardCheckoutButton
-          disabledReason={checkoutDisabled}
-          buttonLabel={checkoutButtonLabel}
-        />
+
+        {hasLiveSubscription && canOpenPortal ? (
+          <OpenCustomerPortalButton />
+        ) : null}
+
+        {!hasLiveSubscription ? (
+          <StartStandardCheckoutButton
+            disabledReason={checkoutDisabled}
+            buttonLabel={checkoutButtonLabel}
+          />
+        ) : null}
       </section>
 
       <section
@@ -233,10 +269,23 @@ export default async function OrganizationBillingSettingsPage({
             ? ` — ${remaining} remaining.`
             : " — allowance used."}
         </p>
-        <p className="text-sm text-slate-600">
-          Trial includes 25 companies; Standard includes 100 after conversion.
-          One slot per distinct company with fresh research.
-        </p>
+        {billingStatus === "TRIALING" && catalogFloor != null ? (
+          <p className="text-sm text-slate-600">
+            Trial allowance is {catalogFloor} companies
+            {standardPaidFloor != null
+              ? `; Standard is ${standardPaidFloor} after conversion`
+              : ""}
+            {policy.activeResearchedCompanyLimit > catalogFloor
+              ? ` (your account currently shows ${policy.activeResearchedCompanyLimit} because a higher limit was kept from before Checkout)`
+              : ""}
+            .
+          </p>
+        ) : (
+          <p className="text-sm text-slate-600">
+            One slot per distinct company with fresh research. Refreshing a
+            company you already researched does not use another slot.
+          </p>
+        )}
       </section>
     </div>
   );
