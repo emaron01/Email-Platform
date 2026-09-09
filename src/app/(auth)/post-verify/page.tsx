@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
+import { ONBOARDING_SUBSCRIBE_PATH } from "@/lib/billing/paths";
 
 /**
  * Better Auth email-verification callback landing.
  * callbackURL for verification emails should be `/post-verify` so:
- * - success → smart redirect (workspace / platform account / no-workspace)
+ * - success → smart redirect (subscribe / workspace / platform / no-workspace)
  * - failure → `/post-verify?error=INVALID_TOKEN` → verify-email UX (not Dashboard)
  */
 export default async function PostVerifyPage({
@@ -39,7 +40,7 @@ export default async function PostVerifyPage({
       },
     });
     if (billing && requiresStripeCheckout(billing)) {
-      redirect("/settings/billing?checkout=required");
+      redirect(ONBOARDING_SUBSCRIBE_PATH);
     }
     redirect("/");
   }

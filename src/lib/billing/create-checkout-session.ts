@@ -108,7 +108,7 @@ export async function createStandardCheckoutSession(input: {
     line_items: [{ price: priceId, quantity: 1 }],
     allow_promotion_codes: true,
     success_url: `${baseUrl}/settings/billing?checkout=success`,
-    cancel_url: `${baseUrl}/settings/billing?checkout=canceled`,
+    cancel_url: `${baseUrl}/onboarding/subscribe?checkout=canceled`,
     metadata: {
       organizationId: input.organizationId,
       actorUserId: input.actorUserId,

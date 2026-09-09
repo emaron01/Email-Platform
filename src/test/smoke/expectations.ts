@@ -48,6 +48,7 @@ const ROUTE_EXPECTATIONS: Record<string, SmokeExpectation> = {
   "/settings": { mustInclude: "Settings" },
   "/settings/account": { mustInclude: "Account Settings" },
   "/settings/billing": { mustInclude: "billing-stripe-hook" },
+  "/onboarding/subscribe": { mustInclude: "onboarding-subscribe-page" },
   "/settings/cadence": { mustInclude: "Email cadence" },
   "/settings/email": { mustInclude: "email-signature" },
   "/settings/organization": { mustInclude: "Organization" },

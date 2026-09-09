@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requireOrgAdmin } from "@/lib/org/authz";
 import { prisma } from "@/lib/prisma";
 import {
@@ -10,18 +11,17 @@ import {
   formatCustomerPayingAmount,
   formatDiscountSummary,
   formatTrialEndsSummary,
+  requiresStripeCheckout,
 } from "@/lib/billing/billing-state";
+import { ONBOARDING_SUBSCRIBE_PATH } from "@/lib/billing/paths";
 import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
 import {
   BILLING_PLAN_STANDARD,
   getPlanDefinition,
-  planIsCheckoutReady,
   resolveEntitlementsForStatus,
 } from "@/lib/billing/plans";
-import { stripeConfigured } from "@/lib/billing/stripe";
 import { BillingCheckoutRefresh } from "@/components/billing/BillingCheckoutRefresh";
 import { OpenCustomerPortalButton } from "@/components/billing/OpenCustomerPortalButton";
-import { StartStandardCheckoutButton } from "@/components/billing/StartStandardCheckoutButton";
 import { countActiveResearchedCompanies } from "@/lib/usage/active-companies";
 import {
   ensureOrganizationPolicies,
@@ -32,8 +32,8 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * Org billing settings — Checkout, portal, trial/renewal dates.
- * OWNER/ADMIN only.
+ * Manage subscription only (portal, dates, capacity).
+ * Unpaid self-serve → /onboarding/subscribe.
  */
 export default async function OrganizationBillingSettingsPage({
   searchParams,
@@ -57,6 +57,10 @@ export default async function OrganizationBillingSettingsPage({
     countActiveResearchedCompanies(organization.id),
   ]);
 
+  if (billing && requiresStripeCheckout(billing)) {
+    redirect(ONBOARDING_SUBSCRIBE_PATH);
+  }
+
   const planCode = billing?.planCode ?? BILLING_PLAN_COMPED;
   const billingStatus = billing?.billingStatus ?? "FREE";
   const remaining = Math.max(
@@ -77,14 +81,6 @@ export default async function OrganizationBillingSettingsPage({
 
   const canOpenPortal = Boolean(billing?.stripeCustomerId);
 
-  let checkoutDisabled: string | null = null;
-  if (!stripeConfigured() || !planIsCheckoutReady(BILLING_PLAN_STANDARD)) {
-    checkoutDisabled =
-      "Stripe Checkout is not configured yet (set STRIPE_SECRET_KEY and STRIPE_PRICE_STANDARD_MONTHLY).";
-  } else if (hasLiveSubscription) {
-    checkoutDisabled = null; // portal replaces checkout CTA
-  }
-
   const discountActive = billing
     ? hasActiveDiscount({
         stripeDiscountPercentOff: billing.stripeDiscountPercentOff,
@@ -93,10 +89,6 @@ export default async function OrganizationBillingSettingsPage({
         stripePriceUnitAmountCents: billing.stripePriceUnitAmountCents,
       })
     : false;
-
-  const checkoutButtonLabel = isComped
-    ? "Subscribe to Standard"
-    : "Start Standard trial";
 
   const trialSummary =
     billingStatus === "TRIALING"
@@ -135,25 +127,16 @@ export default async function OrganizationBillingSettingsPage({
         </p>
       </div>
 
-      {checkoutState === "required" ? (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          Start your 7-day Standard trial to use the product. Card required —
-          you can enter a promotion code on the next screen.
-        </p>
-      ) : null}
       {checkoutState === "success" ? (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           Checkout completed. Refreshing subscription status from Stripe…
         </p>
       ) : null}
-      {checkoutState === "canceled" ? (
-        <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          Checkout canceled — no charge was made. You can resume anytime from
-          this page.
-        </p>
-      ) : null}
 
-      <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-5">
+      <section
+        className="space-y-3 rounded-lg border border-slate-200 bg-white p-5"
+        data-testid="billing-stripe-hook"
+      >
         <h2 className="text-lg font-medium text-slate-900">Current plan</h2>
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <div className="sm:col-span-2">
@@ -239,7 +222,7 @@ export default async function OrganizationBillingSettingsPage({
 
         <p className="text-sm text-slate-600">
           {isComped
-            ? "This account is comped — no payment required. You can optionally subscribe to Standard below; raised company limits you already have are kept."
+            ? "This account is comped — no payment required. Card details stay in Stripe if you subscribe later."
             : "Card details stay in Stripe — never stored in this app."}
         </p>
 
@@ -247,11 +230,16 @@ export default async function OrganizationBillingSettingsPage({
           <OpenCustomerPortalButton />
         ) : null}
 
-        {!hasLiveSubscription ? (
-          <StartStandardCheckoutButton
-            disabledReason={checkoutDisabled}
-            buttonLabel={checkoutButtonLabel}
-          />
+        {isComped && !hasLiveSubscription ? (
+          <p className="text-sm text-slate-600">
+            <Link
+              href={ONBOARDING_SUBSCRIBE_PATH}
+              className="font-medium text-slate-900 underline"
+            >
+              Subscribe to Standard
+            </Link>{" "}
+            if you want to move this account onto a paid plan.
+          </p>
         ) : null}
       </section>
 

@@ -18,6 +18,7 @@
  */
 export const PAYMENT_LOCK_EXEMPT_PATH_PREFIXES = [
   "/settings/billing",
+  "/onboarding/subscribe",
   "/api/billing/portal",
   "/api/billing/checkout",
 ] as const;

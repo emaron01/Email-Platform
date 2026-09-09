@@ -1,5 +1,5 @@
 /**
- * Redirect self-serve UNPAID orgs to Billing until Checkout completes.
+ * Redirect self-serve UNPAID orgs to onboarding subscribe until Checkout completes.
  * Comped orgs never hit this.
  */
 import "server-only";
@@ -7,13 +7,17 @@ import "server-only";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { requiresStripeCheckout } from "@/lib/billing/billing-state";
+import { ONBOARDING_SUBSCRIBE_PATH } from "@/lib/billing/paths";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 
+export { ONBOARDING_SUBSCRIBE_PATH } from "@/lib/billing/paths";
+
 const CHECKOUT_EXEMPT_PREFIXES = [
-  "/settings/billing",
+  ONBOARDING_SUBSCRIBE_PATH,
   "/settings/account",
   "/api/billing/checkout",
+  "/api/billing/portal",
   "/no-workspace",
 ] as const;
 
@@ -40,8 +44,7 @@ export async function enforceSelfServeCheckoutGate(): Promise<void> {
   });
   if (!billing || !requiresStripeCheckout(billing)) return;
 
-  // Unknown path still redirect — Billing is the only place to resume Checkout.
   if (!pathname || !isCheckoutExempt(pathname)) {
-    redirect("/settings/billing?checkout=required");
+    redirect(ONBOARDING_SUBSCRIBE_PATH);
   }
 }

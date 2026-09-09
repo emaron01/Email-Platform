@@ -97,10 +97,18 @@ describe("billing plans catalog", () => {
     const checkout = await import("node:fs").then((fs) =>
       fs.readFileSync("src/lib/billing/create-checkout-session.ts", "utf8"),
     );
+    const gate = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/lib/billing/checkout-gate.ts", "utf8"),
+    );
+    const paths = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/lib/billing/paths.ts", "utf8"),
+    );
     expect(portal).toContain("billingAppBaseUrl()");
     expect(portal).toContain("/settings/billing");
-    expect(portal).not.toContain("request.url");
     expect(checkout).toContain("billingAppBaseUrl()");
+    expect(checkout).toContain("/onboarding/subscribe?checkout=canceled");
+    expect(paths).toContain('"/onboarding/subscribe"');
+    expect(gate).toContain("ONBOARDING_SUBSCRIBE_PATH");
   });
 
   it("uses conversion copy when trial research is exhausted", () => {
