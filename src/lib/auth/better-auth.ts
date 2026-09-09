@@ -241,6 +241,37 @@ export const auth = betterAuth({
         },
       },
     },
+    session: {
+      create: {
+        after: async (session) => {
+          // Login / re-auth for an existing verified identity does not run
+          // user.create — repair a missing workspace here.
+          const authUser = await prisma.authUser.findUnique({
+            where: { id: session.userId },
+          });
+          if (!authUser) return;
+          try {
+            await provisionIndividualWorkspace({
+              authUserId: authUser.id,
+              email: authUser.email,
+              firstName:
+                (authUser as { firstName?: string }).firstName?.trim() ||
+                "User",
+              lastName:
+                (authUser as { lastName?: string }).lastName?.trim() || "",
+            });
+          } catch (error) {
+            console.error("[auth] session workspace provision failed", {
+              authUserId: authUser.id,
+              message:
+                error instanceof Error
+                  ? error.message.slice(0, 300)
+                  : "unknown",
+            });
+          }
+        },
+      },
+    },
   },
   trustedOrigins: [authEnv.appUrl, authEnv.baseUrl],
 });

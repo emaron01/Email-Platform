@@ -82,6 +82,53 @@ describe.skipIf(!hasDatabase)(
       expect(second.user.id).toBe(first.user.id);
     });
 
+    it("provisions a workspace for an existing User with no membership", async () => {
+      if (!ready) return;
+      const { provisionIndividualWorkspace } = await import(
+        "@/lib/auth/provision"
+      );
+      const authUserId = `auth_${suffix}_orphan`;
+      const email = `auth-orphan-${suffix}@example.test`;
+
+      const orphan = await prisma.user.create({
+        data: {
+          authUserId,
+          email,
+          emailNormalized: email,
+          firstName: "Orphan",
+          lastName: "User",
+          name: "Orphan User",
+          emailVerifiedAt: new Date(),
+          platformRole: "NONE",
+        },
+      });
+
+      const repaired = await provisionIndividualWorkspace({
+        authUserId,
+        email,
+        firstName: "Orphan",
+        lastName: "User",
+      });
+      expect(repaired.created).toBe(true);
+      expect(repaired.user.id).toBe(orphan.id);
+      expect(repaired.organization).toBeTruthy();
+      expect(repaired.membershipRole).toBe("OWNER");
+
+      const billing = await prisma.organizationBillingProfile.findUnique({
+        where: { organizationId: repaired.organization!.id },
+      });
+      expect(billing).toBeTruthy();
+
+      const again = await provisionIndividualWorkspace({
+        authUserId,
+        email,
+        firstName: "Orphan",
+        lastName: "User",
+      });
+      expect(again.created).toBe(false);
+      expect(again.organization!.id).toBe(repaired.organization!.id);
+    });
+
     it("client-supplied organizationId cannot bypass membership", async () => {
       if (!ready) return;
       const { createIndividualWorkspace } = await import("@/lib/org/signup");

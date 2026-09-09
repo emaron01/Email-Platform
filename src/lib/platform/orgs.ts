@@ -533,6 +533,8 @@ export async function unsuspendOrganization(input: {
 /**
  * Hard-delete an organization and all cascading tenant data.
  * Audit is written first so the event retains org id/name after the row is gone.
+ * Then purge org-only tenant Users and their Better Auth identities so the
+ * email can be reused on a clean signup (no orphaned verified identity).
  */
 export async function deleteOrganization(input: {
   organizationId: string;
@@ -546,6 +548,12 @@ export async function deleteOrganization(input: {
     throw new Error("Organization not found.");
   }
 
+  const members = await prisma.organizationMembership.findMany({
+    where: { organizationId: org.id },
+    select: { userId: true },
+  });
+  const memberUserIds = members.map((m) => m.userId);
+
   await recordAdminAuditEvent({
     action: "PLATFORM_ORGANIZATION_DELETED",
     actorUserId: input.actorUserId,
@@ -555,12 +563,30 @@ export async function deleteOrganization(input: {
       organizationName: org.name,
       organizationSlug: org.slug,
       actorUserId: input.actorUserId,
+      memberUserIds,
     },
   });
 
   await prisma.organization.delete({
     where: { id: org.id },
   });
+
+  const { purgeOrphanedTenantUsersAfterOrgDelete } = await import(
+    "@/lib/auth/purge-identity"
+  );
+  const purged = await purgeOrphanedTenantUsersAfterOrgDelete(memberUserIds);
+  if (purged.purgedUserIds.length > 0) {
+    await recordAdminAuditEvent({
+      action: "PLATFORM_ORGANIZATION_DELETED",
+      actorUserId: input.actorUserId,
+      organizationId: org.id,
+      metadata: {
+        phase: "identity_purge",
+        organizationId: org.id,
+        purgedUserIds: purged.purgedUserIds,
+      },
+    });
+  }
 
   return { id: org.id, name: org.name };
 }

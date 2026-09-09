@@ -25,6 +25,19 @@ export default async function PostVerifyPage({
     redirect("/verify-email?error=INVALID_TOKEN");
   }
 
+  // Existing verified identities skip AuthUser create — ensure a workspace exists.
+  if (user.platformRole === "NONE" && user.authUserId) {
+    const { provisionIndividualWorkspace } = await import(
+      "@/lib/auth/provision"
+    );
+    await provisionIndividualWorkspace({
+      authUserId: user.authUserId,
+      email: user.email,
+      firstName: user.firstName?.trim() || "User",
+      lastName: user.lastName?.trim() || "",
+    });
+  }
+
   const organization = await getCurrentOrganization();
   if (organization) {
     const { prisma } = await import("@/lib/prisma");

@@ -58,10 +58,73 @@ async function uniqueSlug(
   return candidate;
 }
 
+async function createTenantWorkspaceForUser(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  input: {
+    userId: string;
+    email: string;
+    workspaceName: string;
+    timezone?: string;
+  },
+): Promise<{ organization: Organization; membershipRole: MembershipRole }> {
+  const slug = await uniqueSlug(tx, slugify(input.workspaceName));
+  const organization = await tx.organization.create({
+    data: {
+      name: input.workspaceName,
+      slug,
+      status: "ACTIVE",
+      accountType: "INDIVIDUAL",
+      timezone: input.timezone?.trim() || DEFAULT_ORGANIZATION_TIMEZONE,
+    },
+  });
+
+  await tx.organizationMembership.create({
+    data: {
+      organizationId: organization.id,
+      userId: input.userId,
+      role: "OWNER",
+      isBillingContact: true,
+    },
+  });
+
+  await tx.organizationUsagePolicy.create({
+    data: {
+      organizationId: organization.id,
+      ...SELF_SERVE_USAGE_POLICY_VALUES,
+    },
+  });
+
+  await tx.researchPolicy.create({
+    data: {
+      organizationId: organization.id,
+      ...DEFAULT_RESEARCH_POLICY_VALUES,
+    },
+  });
+
+  await tx.organizationBillingProfile.create({
+    data: {
+      organizationId: organization.id,
+      billingEmail: input.email,
+      ...SELF_SERVE_BILLING_DEFAULTS,
+    },
+  });
+
+  await tx.user.update({
+    where: { id: input.userId },
+    data: { activeOrganizationId: organization.id },
+  });
+
+  return { organization, membershipRole: "OWNER" };
+}
+
 /**
  * Transactional/idempotent signup provisioning for an authenticated identity.
  * Creates User + Organization + OWNER membership + policies + billing profile.
  * OWNER = billing/account owner; ADMIN = can manage policy/invites (invite-as-OWNER forbidden).
+ *
+ * If an application User already exists without a membership (e.g. after an org
+ * hard-delete left the identity behind), creates a fresh workspace — except
+ * during platform SUPER_ADMIN CLI provisioning or for platform operators.
  */
 export async function provisionIndividualWorkspace(input: {
   authUserId: string;
@@ -95,25 +158,58 @@ export async function provisionIndividualWorkspace(input: {
   });
   if (existingByAuth) {
     const org = existingByAuth.memberships[0]?.organization;
-    if (!org) {
-      if (isPlatformSuperAdminProvisioningActive()) {
-        return {
-          user: existingByAuth,
-          organization: null,
-          membershipRole: "ADMIN" as const,
-          created: false,
-        };
-      }
-      throw new ProvisionError(
-        "User exists without organization membership; contact support.",
-      );
+    if (org) {
+      return {
+        user: existingByAuth,
+        organization: org,
+        membershipRole:
+          existingByAuth.memberships[0]?.role ?? ("ADMIN" as const),
+        created: false,
+      };
     }
+    if (isPlatformSuperAdminProvisioningActive()) {
+      return {
+        user: existingByAuth,
+        organization: null,
+        membershipRole: "ADMIN" as const,
+        created: false,
+      };
+    }
+    // Platform operators may intentionally have no tenant workspace.
+    if (existingByAuth.platformRole !== "NONE") {
+      return {
+        user: existingByAuth,
+        organization: null,
+        membershipRole: "ADMIN" as const,
+        created: false,
+      };
+    }
+
+    const repaired = await prisma.$transaction(async (tx) => {
+      const created = await createTenantWorkspaceForUser(tx, {
+        userId: existingByAuth.id,
+        email,
+        workspaceName,
+        timezone: input.timezone,
+      });
+      const user = await tx.user.findUniqueOrThrow({
+        where: { id: existingByAuth.id },
+      });
+      return { user, ...created };
+    });
+
+    await recordAdminAuditEvent({
+      action: "USER_SIGNUP",
+      actorUserId: repaired.user.id,
+      organizationId: repaired.organization.id,
+      metadata: { via: "email_password", repairedMissingWorkspace: true },
+    });
+
     return {
-      user: existingByAuth,
-      organization: org,
-      membershipRole:
-        existingByAuth.memberships[0]?.role ?? ("ADMIN" as const),
-      created: false,
+      user: repaired.user,
+      organization: repaired.organization,
+      membershipRole: repaired.membershipRole,
+      created: true,
     };
   }
 
@@ -146,49 +242,17 @@ export async function provisionIndividualWorkspace(input: {
               membershipRole: "ADMIN" as const,
             };
           }
-          const slug = await uniqueSlug(tx, slugify(workspaceName));
-          const organization = await tx.organization.create({
-            data: {
-              name: workspaceName,
-              slug,
-              status: "ACTIVE",
-              accountType: "INDIVIDUAL",
-              timezone:
-                input.timezone?.trim() || DEFAULT_ORGANIZATION_TIMEZONE,
-            },
+          const created = await createTenantWorkspaceForUser(tx, {
+            userId: user.id,
+            email,
+            workspaceName,
+            timezone: input.timezone,
           });
-          membership = await tx.organizationMembership.create({
-            data: {
-              organizationId: organization.id,
-              userId: user.id,
-              role: "OWNER",
-              isBillingContact: true,
-            },
-            include: { organization: true },
-          });
-          await tx.organizationUsagePolicy.create({
-            data: {
-              organizationId: organization.id,
-              ...SELF_SERVE_USAGE_POLICY_VALUES,
-            },
-          });
-          await tx.researchPolicy.create({
-            data: {
-              organizationId: organization.id,
-              ...DEFAULT_RESEARCH_POLICY_VALUES,
-            },
-          });
-          await tx.organizationBillingProfile.create({
-            data: {
-              organizationId: organization.id,
-              billingEmail: email,
-              ...SELF_SERVE_BILLING_DEFAULTS,
-            },
-          });
-          await tx.user.update({
-            where: { id: user.id },
-            data: { activeOrganizationId: organization.id },
-          });
+          return {
+            user,
+            organization: created.organization,
+            membershipRole: created.membershipRole,
+          };
         }
         return {
           user,
@@ -235,57 +299,21 @@ export async function provisionIndividualWorkspace(input: {
       },
     });
 
-    const slug = await uniqueSlug(tx, slugify(workspaceName));
-    const organization = await tx.organization.create({
-      data: {
-        name: workspaceName,
-        slug,
-        status: "ACTIVE",
-        accountType: "INDIVIDUAL",
-        timezone: input.timezone?.trim() || DEFAULT_ORGANIZATION_TIMEZONE,
-      },
+    const created = await createTenantWorkspaceForUser(tx, {
+      userId: user.id,
+      email,
+      workspaceName,
+      timezone: input.timezone,
     });
 
-    await tx.organizationMembership.create({
-      data: {
-        organizationId: organization.id,
-        userId: user.id,
-        role: "OWNER",
-        isBillingContact: true,
-      },
-    });
-
-    await tx.organizationUsagePolicy.create({
-      data: {
-        organizationId: organization.id,
-        ...SELF_SERVE_USAGE_POLICY_VALUES,
-      },
-    });
-
-    await tx.researchPolicy.create({
-      data: {
-        organizationId: organization.id,
-        ...DEFAULT_RESEARCH_POLICY_VALUES,
-      },
-    });
-
-    await tx.organizationBillingProfile.create({
-      data: {
-        organizationId: organization.id,
-        billingEmail: email,
-        ...SELF_SERVE_BILLING_DEFAULTS,
-      },
-    });
-
-    const updatedUser = await tx.user.update({
+    const updatedUser = await tx.user.findUniqueOrThrow({
       where: { id: user.id },
-      data: { activeOrganizationId: organization.id },
     });
 
     return {
       user: updatedUser,
-      organization,
-      membershipRole: "OWNER" as const,
+      organization: created.organization,
+      membershipRole: created.membershipRole,
     };
   });
 

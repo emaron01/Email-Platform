@@ -151,7 +151,40 @@ export async function resolveActiveOrganization(
     orderBy: { createdAt: "asc" },
   });
 
-  if (memberships.length === 0) return null;
+  if (memberships.length === 0) {
+    // Repair orphaned tenant users (org deleted, identity left behind).
+    // Platform operators may intentionally have no customer workspace.
+    if (user.platformRole === "NONE" && user.authUserId) {
+      const { provisionIndividualWorkspace } = await import(
+        "@/lib/auth/provision-service"
+      );
+      const repaired = await provisionIndividualWorkspace({
+        authUserId: user.authUserId,
+        email: user.email,
+        firstName: user.firstName?.trim() || "User",
+        lastName: user.lastName?.trim() || "",
+      });
+      if (repaired.organization) {
+        const membership = await prisma.organizationMembership.findUnique({
+          where: {
+            organizationId_userId: {
+              organizationId: repaired.organization.id,
+              userId: repaired.user.id,
+            },
+          },
+          include: { organization: true },
+        });
+        if (membership) {
+          return {
+            user: repaired.user,
+            organization: membership.organization,
+            membership,
+          };
+        }
+      }
+    }
+    return null;
+  }
 
   const chosen = memberships[0]!;
   if (memberships.length === 1 || !user.activeOrganizationId) {

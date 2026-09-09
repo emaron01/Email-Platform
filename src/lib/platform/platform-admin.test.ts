@@ -239,6 +239,41 @@ describe("platform-orgs actions gate mutations to SUPER_ADMIN", () => {
   });
 });
 
+describe("platform org delete purges orphaned identities", () => {
+  it("deleteOrganization collects members then purges auth identity helper", () => {
+    const src = readFileSync(resolve("src/lib/platform/orgs.ts"), "utf8");
+    expect(src).toContain("purgeOrphanedTenantUsersAfterOrgDelete");
+    expect(src).toContain("PLATFORM_ORGANIZATION_DELETED");
+    const purge = readFileSync(
+      resolve("src/lib/auth/purge-identity.ts"),
+      "utf8",
+    );
+    expect(purge).toContain("authUser.delete");
+    expect(purge).toContain("authSession.deleteMany");
+    expect(purge).toContain('platformRole !== "NONE"');
+  });
+
+  it("provision repairs missing workspace instead of throwing", () => {
+    const src = readFileSync(
+      resolve("src/lib/auth/provision-service.ts"),
+      "utf8",
+    );
+    expect(src).toContain("repairedMissingWorkspace");
+    expect(src).not.toContain(
+      "User exists without organization membership; contact support.",
+    );
+  });
+
+  it("session create and resolveActiveOrganization ensure workspace", () => {
+    const auth = readFileSync(resolve("src/lib/auth/better-auth.ts"), "utf8");
+    expect(auth).toContain("session:");
+    expect(auth).toMatch(/session:\s*\{[\s\S]*create:\s*\{[\s\S]*provisionIndividualWorkspace/);
+    const session = readFileSync(resolve("src/lib/auth/session.ts"), "utf8");
+    expect(session).toContain("provisionIndividualWorkspace");
+    expect(session).toContain('platformRole === "NONE"');
+  });
+});
+
 describe("invite accept page", () => {
   it("exists and references acceptOrganizationInvitation", () => {
     const src = readFileSync(
@@ -332,7 +367,7 @@ describe("platform console navigation and account creation", () => {
     );
     expect(page).toContain("requireOrgAdmin");
     expect(page).toContain("billing-stripe-hook");
-    expect(page).toMatch(/account is free/i);
+    expect(page).toMatch(/account is comped/i);
   });
 
   it("org detail includes member invite/remove and cost", () => {
