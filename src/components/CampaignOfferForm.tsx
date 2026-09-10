@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   updateCampaignOfferAction,
@@ -42,6 +43,27 @@ export function CampaignOfferForm({
         >
           {state.message}
         </p>
+      ) : null}
+
+      {state?.ok ? (
+        <div
+          className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3"
+          data-testid="campaign-offer-next-step"
+        >
+          <p className="text-sm font-medium text-emerald-950">
+            Setup saved. Next: attach a list.
+          </p>
+          <p className="mt-1 text-sm text-emerald-900">
+            An offer is optional. Continue to the List stage to research, score,
+            and add contacts.
+          </p>
+          <Link
+            href={`/campaigns/${campaignId}?stage=list`}
+            className="mt-3 inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Continue to List
+          </Link>
+        </div>
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">

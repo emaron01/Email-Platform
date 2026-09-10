@@ -119,9 +119,20 @@ export function CampaignContactsManager({
           ) : null}
         </form>
       ) : (
-        <p className="text-sm text-slate-600">
-          No compatible completed scoring runs are available.
-        </p>
+        <div
+          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950"
+          data-testid="campaign-list-score-hint"
+        >
+          <p className="font-medium">No scored runs for this campaign yet</p>
+          <p className="mt-1">
+            Open Lists, research companies, then score against this campaign&apos;s
+            Product / ICP / Persona. When a run completes, return here and choose
+            Add from Scored Run.
+          </p>
+          <Link href="/lists" className="mt-2 inline-flex font-medium underline">
+            Go to Lists to research and score
+          </Link>
+        </div>
       )}
 
       <section className="border-t border-slate-200 pt-5">

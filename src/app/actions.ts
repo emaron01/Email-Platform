@@ -139,7 +139,11 @@ export async function deleteProductAction(
       };
     }
     const result = await deleteProduct(id);
-    revalidateSetup();
+    // Do not revalidate `/setup/${id}` — client may still be on that page.
+    revalidatePath("/setup");
+    revalidatePath("/products");
+    revalidatePath("/campaigns");
+    revalidatePath("/");
     return {
       ok: true,
       message: result.message,
@@ -309,8 +313,9 @@ export async function deleteCampaignAction(
       return { ok: false, message: "Confirm deletion before continuing." };
     }
     const result = await deleteCampaign(id);
+    // Do not revalidate `/campaigns/${id}` — the client is still on that URL until
+    // ConfirmDeleteForm navigates away; refreshing it 404s.
     revalidatePath("/campaigns");
-    revalidatePath(`/campaigns/${id}`);
     revalidateSetup();
     return { ok: true, message: result.message, mode: result.mode };
   } catch (error) {
@@ -424,8 +429,8 @@ export async function deleteContactListAction(
       "@/lib/tenant/list-delete"
     );
     const result = await deleteOrArchiveContactList(id);
+    // Do not revalidate `/lists/${id}` — same deleted-URL refresh race as campaigns.
     revalidatePath("/lists");
-    revalidatePath(`/lists/${id}`);
     revalidatePath("/contacts");
     revalidatePath("/campaigns");
     revalidatePath("/");

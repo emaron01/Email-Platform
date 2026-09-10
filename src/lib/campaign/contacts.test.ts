@@ -43,6 +43,7 @@ describe("campaign contact management seams", () => {
       "Select an Existing List To Be Researched and Scored",
     );
     expect(manager).toContain("flex flex-col items-start gap-2");
+    expect(manager).toContain("campaign-list-score-hint");
     expect(manager).toContain("campaign-contacts-status");
     expect(actions).toContain("addContactsToCampaignAction");
     expect(actions).toContain("addScoringRunContactsToCampaignAction");

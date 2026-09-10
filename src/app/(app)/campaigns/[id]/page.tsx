@@ -7,6 +7,7 @@ import { CampaignOfferForm } from "@/components/CampaignOfferForm";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { UnarchiveForm } from "@/components/UnarchiveForm";
 import { EmailDraftsStage } from "@/components/EmailDraftsStage";
+import { CampaignStageNextStep } from "@/components/CampaignStageNextStep";
 import { CampaignStageRail } from "@/components/CampaignStageRail";
 import { QualificationBuckets } from "@/components/QualificationBuckets";
 import { PageHeader, Panel, TenantMissing } from "@/components/ui";
@@ -422,7 +423,7 @@ export default async function CampaignDetailPage({
 
           <Panel
             title="Campaign offer"
-            description="Offer claims are checked against current product materials when saved."
+            description="Offer claims are checked against current product materials when saved. An offer is optional — you can continue without one."
           >
             {campaignArchived ? (
               <p className="text-sm text-slate-600">
@@ -452,6 +453,15 @@ export default async function CampaignDetailPage({
               />
             )}
           </Panel>
+
+          {!campaignArchived ? (
+            <CampaignStageNextStep
+              title="Next: attach a list"
+              body="When setup looks right, move to List. Research and score contacts there, then add them to this campaign."
+              href={`/campaigns/${campaign.id}?stage=list`}
+              label="Continue to List"
+            />
+          ) : null}
         </>
       ) : null}
 
@@ -631,16 +641,13 @@ export default async function CampaignDetailPage({
               })}
             />
           ) : (
-            <div className="rounded-md border border-dashed border-slate-300 p-6 text-center">
-              <p className="text-sm text-slate-600">
-                No contacts are attached to this campaign yet.
-              </p>
-              <Link
+            <div className="mb-4">
+              <CampaignStageNextStep
+                title="Next: attach contacts"
+                body="No contacts on this campaign yet. Go to List, add a scored run, then return here to write drafts."
                 href={`/campaigns/${campaign.id}?stage=list`}
-                className="mt-3 inline-flex text-sm font-medium text-slate-900 underline"
-              >
-                Add contacts
-              </Link>
+                label="Go to List"
+              />
             </div>
           )}
         </Panel>
@@ -649,8 +656,43 @@ export default async function CampaignDetailPage({
       {currentStage === "list" ? (
         <Panel
           title="5 List"
-          description="Select an existing scored list or attach organization contacts."
+          description="Get contacts into this campaign. Research and score a list first if you have not already, then add the scored run here."
         >
+          {!campaignArchived ? (
+            <div className="mb-4">
+              {campaign.contacts.length === 0 ? (
+                <CampaignStageNextStep
+                  title={
+                    scoringRuns.length === 0
+                      ? "Next: research and score a list"
+                      : "Next: add contacts from a scored run"
+                  }
+                  body={
+                    scoringRuns.length === 0
+                      ? "Open Lists, research companies, score against this campaign’s Product / ICP / Persona, then return here and choose Add from Scored Run."
+                      : "Pick a completed scoring run below, or search for individual contacts. After contacts are attached, continue to Companies."
+                  }
+                  href={
+                    scoringRuns.length === 0
+                      ? "/lists"
+                      : `#campaign-scored-run-form`
+                  }
+                  label={
+                    scoringRuns.length === 0
+                      ? "Go to Lists to score"
+                      : "Jump to scored runs"
+                  }
+                />
+              ) : (
+                <CampaignStageNextStep
+                  title="Next: review companies"
+                  body={`${campaign.contacts.length} contact(s) are on this campaign. Qualify companies against the campaign ICP before drafting email.`}
+                  href={`/campaigns/${campaign.id}?stage=companies`}
+                  label="Continue to Companies"
+                />
+              )}
+            </div>
+          ) : null}
           {campaignArchived ? (
             <div className="space-y-4">
               <div className="flex flex-col items-start gap-2">
@@ -696,6 +738,25 @@ export default async function CampaignDetailPage({
           title="6 Companies"
           description={`Qualification against ${campaign.icp.name}, the campaign ICP only.`}
         >
+          {campaignCompanyRows.length === 0 ? (
+            <div className="mb-4">
+              <CampaignStageNextStep
+                title="Next: attach a scored list"
+                body="Company qualification appears after contacts from a scored run are on this campaign."
+                href={`/campaigns/${campaign.id}?stage=list`}
+                label="Back to List"
+              />
+            </div>
+          ) : campaignCompanyRows.some((row) => row.bucket === "GOOD") ? (
+            <div className="mb-4">
+              <CampaignStageNextStep
+                title="Next: review contacts"
+                body="Companies in Good keep their contacts in play. Open Contacts to restore or confirm exclusions."
+                href={`/campaigns/${campaign.id}?stage=contacts`}
+                label="Continue to Contacts"
+              />
+            </div>
+          ) : null}
           <QualificationBuckets
             campaignId={campaign.id}
             scoringRunId={qualification.scoringRunId}
@@ -712,6 +773,25 @@ export default async function CampaignDetailPage({
           title="7 Contacts"
           description="Review all campaign contacts, including excluded rows with inline reasoning. Restore contacts individually or in bulk when the exclusion should not apply."
         >
+          {campaignContactRows.length === 0 ? (
+            <div className="mb-4">
+              <CampaignStageNextStep
+                title="Next: qualify companies first"
+                body="Contact qualification unlocks after at least one company is in Good."
+                href={`/campaigns/${campaign.id}?stage=companies`}
+                label="Back to Companies"
+              />
+            </div>
+          ) : qualifiedContactCount > 0 ? (
+            <div className="mb-4">
+              <CampaignStageNextStep
+                title="Next: write emails"
+                body="Qualified contacts are ready for drafts. Generate, edit, and send from the Emails stage."
+                href={`/campaigns/${campaign.id}?stage=emails`}
+                label="Continue to Emails"
+              />
+            </div>
+          ) : null}
           <QualificationBuckets
             campaignId={campaign.id}
             scoringRunId={qualification.scoringRunId}

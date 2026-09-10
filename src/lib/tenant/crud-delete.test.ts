@@ -69,15 +69,40 @@ describe("setup delete authorization policy", () => {
     const fs = await import("node:fs");
     const form = fs.readFileSync("src/components/ConfirmDeleteForm.tsx", "utf8");
     expect(form).toContain("onSuccessNavigate");
-    expect(form).toContain("router.replace(onSuccessNavigate)");
+    expect(form).toContain("window.location.assign(onSuccessNavigate)");
     expect(form).toContain("DELETE_SUCCESS_NOTICE_KEY");
-    // Race that caused 404: push then refresh while still on deleted URL.
+    // Soft replace alone raced an RSC refresh of the deleted URL.
+    expect(form).not.toContain("router.replace(onSuccessNavigate)");
     expect(form).not.toMatch(
       /router\.replace\(onSuccessNavigate\);\s*router\.refresh\(\)/,
     );
     expect(form).not.toMatch(
       /router\.push\(onSuccessNavigate\);\s*router\.refresh\(\)/,
     );
+
+    const actions = fs.readFileSync("src/app/actions.ts", "utf8");
+    const campaignDelete = actions.slice(
+      actions.indexOf("export async function deleteCampaignAction"),
+      actions.indexOf("export async function archiveCampaignAction"),
+    );
+    expect(campaignDelete).toContain('revalidatePath("/campaigns")');
+    expect(campaignDelete).not.toContain(
+      "revalidatePath(`/campaigns/${id}`)",
+    );
+
+    const listDelete = actions.slice(
+      actions.indexOf("export async function deleteContactListAction"),
+      actions.indexOf("export async function createCampaignAction"),
+    );
+    expect(listDelete).toContain('revalidatePath("/lists")');
+    expect(listDelete).not.toContain("revalidatePath(`/lists/${id}`)");
+
+    const productDelete = actions.slice(
+      actions.indexOf("export async function deleteProductAction"),
+      actions.indexOf("export async function upsertIcpAction"),
+    );
+    expect(productDelete).not.toContain("revalidateSetup()");
+    expect(productDelete).toContain('revalidatePath("/products")');
 
     const campaign = fs.readFileSync(
       "src/app/(app)/campaigns/[id]/page.tsx",
@@ -110,6 +135,31 @@ describe("setup delete authorization policy", () => {
     expect(persona).toMatch(
       /onSuccessNavigate=\{`\/setup\/\$\{productId\}`\}/,
     );
+  });
+
+  it("campaign stages surface an explicit next action", async () => {
+    const fs = await import("node:fs");
+    const page = fs.readFileSync(
+      "src/app/(app)/campaigns/[id]/page.tsx",
+      "utf8",
+    );
+    const offer = fs.readFileSync(
+      "src/components/CampaignOfferForm.tsx",
+      "utf8",
+    );
+    const manager = fs.readFileSync(
+      "src/components/CampaignContactsManager.tsx",
+      "utf8",
+    );
+    expect(page).toContain("CampaignStageNextStep");
+    expect(page).toContain("Continue to List");
+    expect(page).toContain("Continue to Companies");
+    expect(page).toContain("Continue to Contacts");
+    expect(page).toContain("Continue to Emails");
+    expect(offer).toContain("campaign-offer-next-step");
+    expect(offer).toContain("Continue to List");
+    expect(manager).toContain("campaign-list-score-hint");
+    expect(manager).toContain("Go to Lists to research and score");
   });
 });
 

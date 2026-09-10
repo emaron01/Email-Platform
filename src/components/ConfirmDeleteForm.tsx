@@ -67,7 +67,8 @@ export function ConfirmDeleteForm({
         }
         router.refresh();
       } else {
-        router.replace(onSuccessNavigate);
+        // Hard navigate so an in-flight RSC refresh of the deleted URL cannot 404.
+        window.location.assign(onSuccessNavigate);
       }
       return;
     }
