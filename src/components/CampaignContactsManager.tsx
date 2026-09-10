@@ -11,6 +11,11 @@ import {
 
 const initial: CampaignContactsActionResult | null = null;
 
+const outlinedButtonClass =
+  "inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50";
+const filledButtonClass =
+  "inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60";
+
 export function CampaignContactsManager({
   campaignId,
   search,
@@ -53,9 +58,73 @@ export function CampaignContactsManager({
     if (runState?.ok) router.refresh();
   }, [runState, router]);
 
+  const hasScoredRuns = scoringRuns.length > 0;
+
   return (
     <div className="space-y-6">
-      <section>
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href="/lists" className={outlinedButtonClass}>
+          Upload or Add List to be Researched & Scored
+        </Link>
+        <button
+          type="submit"
+          form="campaign-scored-run-form"
+          disabled={!hasScoredRuns || runPending}
+          className={filledButtonClass}
+        >
+          {runPending ? "Adding…" : "Add from Scored Run"}
+        </button>
+      </div>
+
+      {hasScoredRuns ? (
+        <form
+          id="campaign-scored-run-form"
+          action={runAction}
+          className="space-y-3"
+        >
+          <input type="hidden" name="campaignId" value={campaignId} />
+          <label className="block min-w-72 text-sm">
+            <span className="font-medium text-slate-700">Scoring run</span>
+            <select
+              name="scoringRunId"
+              required
+              defaultValue=""
+              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="" disabled>
+                Select a scored run
+              </option>
+              {scoringRuns.map((run) => (
+                <option key={run.id} value={run.id}>
+                  {run.listName} · {run.completedScoreCount} scored ·{" "}
+                  {run.status} · {run.createdLabel}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="text-sm text-slate-600">
+            Only completed scores from runs matching this campaign&apos;s
+            Product, ICP, and Persona are available.
+          </p>
+          {runState ? (
+            <p
+              role="status"
+              data-testid="campaign-scoring-run-status"
+              className={
+                runState.ok ? "text-sm text-emerald-700" : "text-sm text-red-600"
+              }
+            >
+              {runState.message}
+            </p>
+          ) : null}
+        </form>
+      ) : (
+        <p className="text-sm text-slate-600">
+          No compatible completed scoring runs are available.
+        </p>
+      )}
+
+      <section className="border-t border-slate-200 pt-5">
         <h3 className="text-sm font-semibold text-slate-900">
           Search existing contacts
         </h3>
@@ -134,7 +203,7 @@ export function CampaignContactsManager({
               <button
                 type="submit"
                 disabled={contactPending}
-                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                className={filledButtonClass}
               >
                 {contactPending ? "Adding…" : "Add selected contacts"}
               </button>
@@ -147,64 +216,6 @@ export function CampaignContactsManager({
             </p>
           )}
         </form>
-      </section>
-
-      <section className="border-t border-slate-200 pt-5">
-        <h3 className="text-sm font-semibold text-slate-900">
-          Bulk add from a scored run
-        </h3>
-        <p className="mt-1 text-sm text-slate-600">
-          Only completed scores from runs matching this campaign&apos;s
-          Product, ICP, and Persona are available.
-        </p>
-        {scoringRuns.length > 0 ? (
-          <form action={runAction} className="mt-3 flex flex-wrap items-end gap-3">
-            <input type="hidden" name="campaignId" value={campaignId} />
-            <label className="min-w-72 flex-1 text-sm">
-              <span className="font-medium text-slate-700">Scoring run</span>
-              <select
-                name="scoringRunId"
-                required
-                defaultValue=""
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-              >
-                <option value="" disabled>
-                  Select a scored run
-                </option>
-                {scoringRuns.map((run) => (
-                  <option key={run.id} value={run.id}>
-                    {run.listName} · {run.completedScoreCount} scored ·{" "}
-                    {run.status} · {run.createdLabel}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="submit"
-              disabled={runPending}
-              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-            >
-              {runPending ? "Adding…" : "Add scored contacts"}
-            </button>
-            {runState ? (
-              <p
-                role="status"
-                data-testid="campaign-scoring-run-status"
-                className={
-                  runState.ok
-                    ? "w-full text-sm text-emerald-700"
-                    : "w-full text-sm text-red-600"
-                }
-              >
-                {runState.message}
-              </p>
-            ) : null}
-          </form>
-        ) : (
-          <p className="mt-3 text-sm text-slate-600">
-            No compatible completed scoring runs are available.
-          </p>
-        )}
       </section>
     </div>
   );

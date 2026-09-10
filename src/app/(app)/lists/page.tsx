@@ -63,8 +63,12 @@ export default async function ListsPage({
 
       <DeleteSuccessNotice />
 
-      <div className="mb-6">
+      <div className="mb-6 space-y-3">
         <CompanyResearchAllowanceBanner usage={researchAllowance} />
+        <p className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900">
+          Select a list below to research and score your contacts before adding
+          them to a campaign.
+        </p>
       </div>
       {lists.length === 0 ? (
         <EmptyState

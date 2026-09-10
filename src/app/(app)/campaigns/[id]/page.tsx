@@ -651,18 +651,20 @@ export default async function CampaignDetailPage({
           title="5 List"
           description="Select an existing scored list or attach organization contacts."
         >
-          <div className="mb-4 flex flex-wrap gap-2">
-            <Link
-              href="/lists"
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800"
-            >
-              Upload or manage lists
-            </Link>
-          </div>
           {campaignArchived ? (
-            <p className="text-sm text-slate-600">
-              Contacts cannot be changed while this campaign is archived.
-            </p>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href="/lists"
+                  className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                >
+                  Upload or Add List to be Researched & Scored
+                </Link>
+              </div>
+              <p className="text-sm text-slate-600">
+                Contacts cannot be changed while this campaign is archived.
+              </p>
+            </div>
           ) : (
             <CampaignContactsManager
               campaignId={campaign.id}

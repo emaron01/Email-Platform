@@ -38,7 +38,10 @@ describe("campaign contact management seams", () => {
     expect(draftsStage).toContain("Ready to send");
     expect(draftsStage).toContain('value="all"');
     expect(manager).toContain("Search existing contacts");
-    expect(manager).toContain("Bulk add from a scored run");
+    expect(manager).toContain("Add from Scored Run");
+    expect(manager).toContain(
+      "Upload or Add List to be Researched & Scored",
+    );
     expect(manager).toContain("campaign-contacts-status");
     expect(actions).toContain("addContactsToCampaignAction");
     expect(actions).toContain("addScoringRunContactsToCampaignAction");
