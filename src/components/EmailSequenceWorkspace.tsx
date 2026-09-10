@@ -178,7 +178,23 @@ export function EmailSequenceWorkspace({
   const [regenerationGuidance, setRegenerationGuidance] = useState("");
   const [replyText, setReplyText] = useState("");
   const [showReplyBox, setShowReplyBox] = useState(false);
-  const [pending, startTransition] = useTransition();
+  /** AI work only (generate / regenerate / reply) — must not gate Open in Outlook. */
+  const [aiBusy, startAiTransition] = useTransition();
+  const [saving, setSaving] = useState(false);
+  const [sendBusy, setSendBusy] = useState<"connected" | "mark" | null>(null);
+  /** Edits not yet confirmed saved to the server. */
+  const [dirty, setDirty] = useState(false);
+  /**
+   * Persist failed after handoff/send, or autosave — never silent when the
+   * on-screen body may have left the building without a DB write.
+   */
+  const [persistFailure, setPersistFailure] = useState<{
+    message: string;
+    draftId: string;
+    subject: string;
+    body: string;
+    afterHandoff: boolean;
+  } | null>(null);
   /** True only after a successful Open in Outlook/Gmail click in this session. */
   const [awaitingSendConfirm, setAwaitingSendConfirm] = useState(false);
   const [selectedPersonaId, setSelectedPersonaId] = useState(
@@ -209,6 +225,9 @@ export function EmailSequenceWorkspace({
     () => result?.offerWarnings ?? offerWarnings,
     [result, offerWarnings],
   );
+  /** Blocks editors / AI controls — not Open in Outlook. */
+  const editorsLocked = aiBusy || sendBusy !== null;
+  const handoffLocked = sendBusy !== null || aiBusy;
 
   useEffect(() => {
     setSelectedPersonaId(
@@ -227,6 +246,8 @@ export function EmailSequenceWorkspace({
   // Leaving a draft clears an unanswered prompt — do not re-open from stored handoffAt.
   useEffect(() => {
     setAwaitingSendConfirm(false);
+    setDirty(false);
+    setPersistFailure(null);
   }, [selected?.id]);
 
   useEffect(() => {
@@ -245,6 +266,7 @@ export function EmailSequenceWorkspace({
   ]);
 
   const clientOpenInFlight = useRef(false);
+  const saveSeqRef = useRef(0);
 
   const showSendConfirm = Boolean(
     !readOnly &&
@@ -308,6 +330,8 @@ export function EmailSequenceWorkspace({
     setRegenerationGuidance("");
     setReplyText("");
     setShowReplyBox(false);
+    setDirty(false);
+    setPersistFailure(null);
     onDraftGenerated?.({
       id: next.draftId,
       subject: next.subject,
@@ -328,11 +352,18 @@ export function EmailSequenceWorkspace({
       });
       return;
     }
-    startTransition(async () => applyGenerated(await action()));
+    startAiTransition(async () => applyGenerated(await action()));
   }
 
   function updateSelectedDraft(changes: Partial<SequenceDraft>) {
     if (!selected) return;
+    if (
+      changes.subject !== undefined ||
+      changes.body !== undefined ||
+      changes.emailLength !== undefined
+    ) {
+      setDirty(true);
+    }
     setDrafts((current) =>
       current.map((draft) =>
         draft.id === selected.id ? { ...draft, ...changes } : draft,
@@ -349,7 +380,6 @@ export function EmailSequenceWorkspace({
       body: draft.body,
       emailLength: selectedLength,
     });
-    setResult(saved);
     if (saved.ok && saved.subject && saved.body) {
       setDrafts((current) =>
         current.map((entry) =>
@@ -367,21 +397,120 @@ export function EmailSequenceWorkspace({
     return saved;
   }
 
+  /**
+   * Persist without blocking handoff. On failure after handoff/send, surfaces a
+   * retry banner — the client already has the on-screen body.
+   */
+  async function persistInBackground(
+    draft: SequenceDraft,
+    options?: { afterHandoff?: boolean; explicit?: boolean },
+  ): Promise<boolean> {
+    const seq = ++saveSeqRef.current;
+    setSaving(true);
+    try {
+      const saved = await persistDraft(draft);
+      if (seq !== saveSeqRef.current) return saved.ok;
+      if (!saved.ok) {
+        const base =
+          saved.message ?? "Could not save this draft to the server.";
+        setPersistFailure({
+          draftId: draft.id,
+          subject: draft.subject,
+          body: draft.body,
+          afterHandoff: Boolean(options?.afterHandoff),
+          message: options?.afterHandoff
+            ? `Your email client opened with the current on-screen copy, but those edits were not saved here. ${base} Retry save so we keep what you sent.`
+            : base,
+        });
+        if (options?.explicit) setResult(saved);
+        return false;
+      }
+      setDirty(false);
+      setPersistFailure((current) =>
+        current?.draftId === draft.id ? null : current,
+      );
+      if (options?.explicit) {
+        setResult(saved);
+        router.refresh();
+      }
+      return true;
+    } finally {
+      if (seq === saveSeqRef.current) setSaving(false);
+    }
+  }
+
   function saveDraft() {
     if (!selected || selected.status === "SENT") return;
-    startTransition(async () => {
-      const saved = await persistDraft(selected);
-      if (saved.ok) router.refresh();
-    });
+    void persistInBackground(selected, { explicit: true });
   }
+
+  function retryFailedPersist() {
+    if (!persistFailure) return;
+    void persistInBackground(
+      {
+        ...(selected && selected.id === persistFailure.draftId
+          ? selected
+          : {
+              id: persistFailure.draftId,
+              subject: persistFailure.subject,
+              body: persistFailure.body,
+              sequenceNumber: selected?.sequenceNumber ?? 0,
+              status: selected?.status ?? "DRAFT",
+              kind: selected?.kind ?? "INITIAL",
+              sentAt: null,
+              handoffAt: null,
+              replyClassification: null,
+              referralSuggested: false,
+              emailLength: selectedLength,
+              personaId: selected?.personaId ?? null,
+              personalizationTier: null,
+              personalizationSources: null,
+              claimConflicts: selected?.claimConflicts ?? [],
+            }),
+        subject: persistFailure.subject,
+        body: persistFailure.body,
+      },
+      {
+        explicit: true,
+        afterHandoff: persistFailure.afterHandoff,
+      },
+    );
+  }
+
+  // Quiet autosave — explicit Save remains available; handoff does not wait on this.
+  useEffect(() => {
+    if (
+      !dirty ||
+      !selected ||
+      selected.status === "SENT" ||
+      selected.status === "SENDING" ||
+      readOnly ||
+      suppressed
+    ) {
+      return;
+    }
+    const draftSnapshot = selected;
+    const timer = window.setTimeout(() => {
+      void persistInBackground(draftSnapshot);
+    }, 900);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot intentionally from dirty edits
+  }, [dirty, selected?.id, selected?.subject, selected?.body, selectedLength]);
 
   function openInEmailClient(client: EmailClient) {
     if (!selected || !contactEmail || clientOpenInFlight.current) return;
+    // Handoff is composed from the on-screen draft, not a round-trip to the DB.
+    const snapshot = {
+      id: selected.id,
+      subject: selected.subject,
+      body: selected.body,
+      status: selected.status,
+    };
     const launch = buildEmailClientLaunch({
       client,
       to: contactEmail,
-      subject: selected.subject,
-      body: appendEmailSignature(selected.body, emailSignature),
+      subject: snapshot.subject,
+      body: appendEmailSignature(snapshot.body, emailSignature),
       maxUrlLength: emailDeeplinkMaxUrlLength,
     });
     if (!launch.href) {
@@ -418,15 +547,10 @@ export function EmailSequenceWorkspace({
           : null;
 
     clientOpenInFlight.current = true;
-    startTransition(async () => {
+
+    // Open immediately with the on-screen body — do not await save.
+    void (async () => {
       try {
-        if (selected.status !== "SENT") {
-          const saved = await persistDraft(selected);
-          if (!saved.ok || !saved.subject || !saved.body) {
-            preOpenedTab?.close();
-            return;
-          }
-        }
         if (copyPromise) {
           try {
             await copyPromise;
@@ -440,30 +564,40 @@ export function EmailSequenceWorkspace({
             return;
           }
         }
-        const recorded = await recordEmailClientIntentAction({
-          emailDraftId: selected.id,
-          client,
-          bodyHandling: launch.bodyHandling,
-        });
-        setResult(recorded);
-        if (!recorded.ok) {
-          preOpenedTab?.close();
-          return;
-        }
-        if (recorded.handoffAt) {
-          updateSelectedDraft({ handoffAt: recorded.handoffAt });
-          setAwaitingSendConfirm(true);
-        }
         if (preOpenedTab && !preOpenedTab.closed) {
           preOpenedTab.location.href = href;
           preOpenedTab.opener = null;
         } else {
           openEmailClientHref(href);
         }
+
+        if (snapshot.status !== "SENT") {
+          // Background persist of the same snapshot used for the handoff.
+          void persistInBackground(
+            {
+              ...selected,
+              subject: snapshot.subject,
+              body: snapshot.body,
+            },
+            { afterHandoff: true },
+          );
+        }
+
+        const recorded = await recordEmailClientIntentAction({
+          emailDraftId: snapshot.id,
+          client,
+          bodyHandling: launch.bodyHandling,
+        });
+        setResult(recorded);
+        if (!recorded.ok) return;
+        if (recorded.handoffAt) {
+          updateSelectedDraft({ handoffAt: recorded.handoffAt });
+          setAwaitingSendConfirm(true);
+        }
       } finally {
         clientOpenInFlight.current = false;
       }
-    });
+    })();
   }
 
   function answerSendConfirm(answer: "yes" | "no" | "not_yet") {
@@ -491,53 +625,82 @@ export function EmailSequenceWorkspace({
 
   function markSent() {
     if (!selected) return;
-    startTransition(async () => {
-      if (selected.status !== "SENT") {
-        const saved = await persistDraft(selected);
-        if (!saved.ok) return;
+    setSendBusy("mark");
+    void (async () => {
+      try {
+        if (selected.status !== "SENT") {
+          // Mark-as-sent must store the on-screen copy before the draft locks.
+          const saved = await persistDraft(selected);
+          if (!saved.ok) {
+            setPersistFailure({
+              draftId: selected.id,
+              subject: selected.subject,
+              body: selected.body,
+              afterHandoff: true,
+              message: `Could not save your latest edits before marking sent. ${saved.message ?? ""} Retry save, then mark sent again.`,
+            });
+            setResult(saved);
+            return;
+          }
+          setDirty(false);
+          setPersistFailure(null);
+        }
+        const next = await markEmailDraftSentAction(selected.id);
+        setResult(next);
+        if (next.ok) {
+          const sentAt = new Date().toISOString();
+          setDrafts((current) =>
+            current.map((draft) =>
+              draft.id === selected.id
+                ? {
+                    ...draft,
+                    status: "SENT",
+                    sentAt,
+                  }
+                : draft,
+            ),
+          );
+          onSendComplete?.({ id: selected.id, sentAt });
+        }
+      } finally {
+        setSendBusy(null);
       }
-      const next = await markEmailDraftSentAction(selected.id);
-      setResult(next);
-      if (next.ok) {
-        const sentAt = new Date().toISOString();
-        setDrafts((current) =>
-          current.map((draft) =>
-            draft.id === selected.id
-              ? {
-                  ...draft,
-                  status: "SENT",
-                  sentAt,
-                }
-              : draft,
-          ),
-        );
-        onSendComplete?.({ id: selected.id, sentAt });
-      }
-    });
+    })();
   }
 
   function sendConnected() {
     if (!selected || selected.status === "SENT") return;
-    startTransition(async () => {
-      const saved = await persistDraft(selected);
-      if (!saved.ok || !saved.subject || !saved.body) return;
-      const sent = await sendEmailDraftConnectedAction({
-        emailDraftId: selected.id,
-        subject: saved.subject,
-        body: saved.body,
-      });
-      setResult(sent);
-      if (sent.ok && sent.sentAt) {
-        setDrafts((current) =>
-          current.map((draft) =>
-            draft.id === selected.id
-              ? { ...draft, status: "SENT", sentAt: sent.sentAt! }
-              : draft,
-          ),
-        );
-        onSendComplete?.({ id: selected.id, sentAt: sent.sentAt });
+    // Connected send uses the on-screen subject/body; the server persists them.
+    const snapshot = {
+      id: selected.id,
+      subject: selected.subject,
+      body: selected.body,
+    };
+    setSendBusy("connected");
+    void (async () => {
+      try {
+        const sent = await sendEmailDraftConnectedAction({
+          emailDraftId: snapshot.id,
+          subject: snapshot.subject,
+          body: snapshot.body,
+        });
+        setResult(sent);
+        if (sent.ok && sent.sentAt) {
+          setDirty(false);
+          setPersistFailure(null);
+          setDrafts((current) =>
+            current.map((draft) =>
+              draft.id === selected.id
+                ? { ...draft, status: "SENT", sentAt: sent.sentAt! }
+                : draft,
+            ),
+          );
+          onSendComplete?.({ id: selected.id, sentAt: sent.sentAt });
+        }
+      } finally {
+        setSendBusy(null);
       }
-    });
+    })();
   }
 
   return (
@@ -656,7 +819,7 @@ export function EmailSequenceWorkspace({
           </div>
           <button
             type="button"
-            disabled={!canAdd || pending}
+            disabled={!canAdd || aiBusy}
             title={canAdd ? "Generate the next email." : addDisabledReason}
             onClick={() =>
               run(() =>
@@ -781,7 +944,7 @@ export function EmailSequenceWorkspace({
                     name={`emailLength-${campaignContactId}`}
                     value={value}
                     checked={selectedLength === value}
-                    disabled={pending || selected?.status === "SENT"}
+                    disabled={editorsLocked || selected?.status === "SENT"}
                     onChange={() => {
                       setSelectedLength(value);
                       updateSelectedDraft({ emailLength: value });
@@ -824,7 +987,7 @@ export function EmailSequenceWorkspace({
               <select
                 value={selectedPersonaId}
                 onChange={(event) => setSelectedPersonaId(event.target.value)}
-                disabled={pending || personaOptions.length === 0}
+                disabled={editorsLocked || personaOptions.length === 0}
                 className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
               >
                 {personaOptions.length === 0 ? (
@@ -843,7 +1006,7 @@ export function EmailSequenceWorkspace({
         {!selected ? (
           <button
             type="button"
-            disabled={pending || !selectedPersonaId}
+            disabled={aiBusy || !selectedPersonaId}
             onClick={() =>
               run(() =>
                 generateEmailDraftAction(
@@ -856,7 +1019,7 @@ export function EmailSequenceWorkspace({
             }
             className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
           >
-            {pending
+            {aiBusy
               ? "Generating…"
               : needsPersonaConfirmation
                 ? "Confirm persona & generate Email 1"
@@ -904,7 +1067,7 @@ export function EmailSequenceWorkspace({
                     updateSelectedDraft({ subject: event.target.value })
                   }
                   maxLength={EMAIL_SUBJECT_MAX_CHARS}
-                  disabled={pending}
+                  disabled={editorsLocked}
                   className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900"
                 />
               )}
@@ -923,7 +1086,7 @@ export function EmailSequenceWorkspace({
                   }
                   rows={10}
                   maxLength={EMAIL_BODY_MAX_CHARS}
-                  disabled={pending}
+                  disabled={editorsLocked}
                   className="mt-1 w-full whitespace-pre-wrap rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-800"
                 />
               )}
@@ -985,13 +1148,13 @@ export function EmailSequenceWorkspace({
                         setRegenerationGuidance(event.target.value)
                       }
                       maxLength={ADDITIONAL_GUIDANCE_MAX_CHARS}
-                      disabled={pending}
+                      disabled={aiBusy}
                       className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
                     />
                   </label>
                   <button
                     type="button"
-                    disabled={pending || !selectedPersonaId}
+                    disabled={aiBusy || !selectedPersonaId}
                     onClick={() =>
                       run(() =>
                         regenerateEmailDraftAction(
@@ -1004,26 +1167,52 @@ export function EmailSequenceWorkspace({
                     }
                     className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
                   >
-                    {pending ? "Regenerating…" : "Regenerate"}
+                    {aiBusy ? "Regenerating…" : "Regenerate"}
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                {persistFailure ? (
+                  <div
+                    className="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950"
+                    data-testid="draft-persist-failure"
+                  >
+                    <p className="font-medium">
+                      {persistFailure.afterHandoff
+                        ? "Edits were used for send, but not saved"
+                        : "Draft could not be saved"}
+                    </p>
+                    <p>{persistFailure.message}</p>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={retryFailedPersist}
+                      className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-950"
+                    >
+                      {saving ? "Saving…" : "Retry save"}
+                    </button>
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    disabled={pending}
+                    disabled={saving || sendBusy !== null}
                     onClick={saveDraft}
                     className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium"
                   >
-                    {pending ? "Saving…" : "Save draft"}
+                    {saving ? "Saving…" : "Save draft"}
                   </button>
+                  {saving ? (
+                    <span className="text-xs text-slate-500">Saving…</span>
+                  ) : dirty ? (
+                    <span className="text-xs text-slate-500">Unsaved edits</span>
+                  ) : null}
                   {EMAIL_CLIENT_OPTIONS.map((option) => (
                     <button
                       key={option.client}
                       type="button"
-                      disabled={pending || !contactEmail}
+                      disabled={handoffLocked || !contactEmail}
                       title={
                         contactEmail
-                          ? `Save and open in ${option.label}.`
+                          ? `Open in ${option.label} with the current on-screen copy.`
                           : "Add an email address to this contact first."
                       }
                       onClick={() => openInEmailClient(option.client)}
@@ -1035,7 +1224,8 @@ export function EmailSequenceWorkspace({
                   <button
                     type="button"
                     disabled={
-                      pending || mailboxConnection?.status !== "CONNECTED"
+                      handoffLocked ||
+                      mailboxConnection?.status !== "CONNECTED"
                     }
                     title={
                       mailboxConnection?.status === "CONNECTED"
@@ -1045,15 +1235,19 @@ export function EmailSequenceWorkspace({
                     onClick={sendConnected}
                     className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
-                    Send with Microsoft 365
+                    {sendBusy === "connected"
+                      ? "Sending…"
+                      : "Send with Microsoft 365"}
                   </button>
                   <button
                     type="button"
-                    disabled={pending}
+                    disabled={handoffLocked}
                     onClick={markSent}
                     className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
                   >
-                    I sent this — mark as sent
+                    {sendBusy === "mark"
+                      ? "Marking…"
+                      : "I sent this — mark as sent"}
                   </button>
                 </div>
                 {mailboxConnection?.status !== "CONNECTED" ? (
@@ -1096,7 +1290,7 @@ export function EmailSequenceWorkspace({
                     <button
                       key={option.client}
                       type="button"
-                      disabled={pending || !contactEmail}
+                      disabled={!contactEmail}
                       title={
                         contactEmail
                           ? `Open this sent email in ${option.label}.`
@@ -1110,7 +1304,7 @@ export function EmailSequenceWorkspace({
                   ))}
                   <button
                     type="button"
-                    disabled={!canDraftReply || pending}
+                    disabled={!canDraftReply || aiBusy}
                     title={
                       canDraftReply
                         ? "Paste the prospect reply."
@@ -1124,9 +1318,9 @@ export function EmailSequenceWorkspace({
                   {!sequenceStopped ? (
                     <button
                       type="button"
-                      disabled={pending}
+                      disabled={aiBusy}
                       onClick={() =>
-                        startTransition(async () => {
+                        startAiTransition(async () => {
                           const res = await stopSequenceAction(campaignContactId);
                           setResult(res);
                           router.refresh();
@@ -1140,9 +1334,9 @@ export function EmailSequenceWorkspace({
                     sequenceStoppedReason === "MAX_SEQUENCE" ? (
                     <button
                       type="button"
-                      disabled={pending}
+                      disabled={aiBusy}
                       onClick={() =>
-                        startTransition(async () => {
+                        startAiTransition(async () => {
                           const res =
                             await restoreSequenceAction(campaignContactId);
                           setResult(res);
@@ -1178,13 +1372,13 @@ export function EmailSequenceWorkspace({
                 </label>
                 <button
                   type="button"
-                  disabled={pending || !replyText.trim()}
+                  disabled={aiBusy || !replyText.trim()}
                   onClick={() =>
                     run(() => draftReplyAction(selected.id, replyText))
                   }
                   className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
                 >
-                  {pending ? "Classifying…" : "They replied"}
+                  {aiBusy ? "Classifying…" : "They replied"}
                 </button>
               </div>
             ) : null}
@@ -1222,7 +1416,7 @@ export function EmailSequenceWorkspace({
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               <button
                 type="button"
-                disabled={pending}
+                disabled={sendBusy !== null}
                 onClick={() => answerSendConfirm("yes")}
                 className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
               >
@@ -1230,7 +1424,7 @@ export function EmailSequenceWorkspace({
               </button>
               <button
                 type="button"
-                disabled={pending}
+                disabled={sendBusy !== null}
                 onClick={() => answerSendConfirm("no")}
                 className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800"
               >
@@ -1238,7 +1432,7 @@ export function EmailSequenceWorkspace({
               </button>
               <button
                 type="button"
-                disabled={pending}
+                disabled={sendBusy !== null}
                 onClick={() => answerSendConfirm("not_yet")}
                 className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800"
               >

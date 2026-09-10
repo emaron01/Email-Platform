@@ -1087,8 +1087,8 @@ describe("email generation action and UI seams", () => {
     expect(form).toContain("awaitingSendConfirm");
     expect(form).toContain("setAwaitingSendConfirm(true)");
     expect(form).toContain("canDraftReply");
-    expect(form).toContain("disabled={!canDraftReply || pending}");
-    expect(form).toContain("disabled={!canAdd || pending}");
+    expect(form).toContain("disabled={!canDraftReply || aiBusy}");
+    expect(form).toContain("disabled={!canAdd || aiBusy}");
     expect(form).toContain('aria-modal="true"');
     expect(form).toContain("fixed inset-0");
     expect(form).not.toContain("absolute inset-0 z-20");
@@ -1119,6 +1119,15 @@ describe("email generation action and UI seams", () => {
     );
     expect(form).toContain("selected.body");
     expect(form).toContain("Save draft");
+    expect(form).toContain("persistInBackground");
+    expect(form).toContain("afterHandoff");
+    expect(form).toContain("draft-persist-failure");
+    expect(form).toContain("Open in");
+    expect(form).toContain(
+      "Open in ${option.label} with the current on-screen copy.",
+    );
+    expect(form).not.toContain("disabled={pending || !contactEmail}");
+    expect(form).toContain("disabled={handoffLocked || !contactEmail}");
     const sequence = readFileSync("src/lib/email-generation/sequence.ts", "utf8");
     expect(sequence).toContain("validateGeneratedEmailClaims");
     expect(sequence).toContain("computeRepEditDelta");
