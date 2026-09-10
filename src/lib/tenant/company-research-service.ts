@@ -51,6 +51,13 @@ import { getTenantContext } from "@/lib/tenant/request-context";
 async function orgId(): Promise<string> {
   const context = getTenantContext();
   if (context?.organizationId) return context.organizationId;
+  // Workers must receive ALS via runWithTenantContext. Never import the
+  // Next-only getCurrentOrganization wrapper (server-only / @/lib/prisma).
+  if (!process.env.NEXT_RUNTIME) {
+    throw new TenantError(
+      "Organization context is required for company research.",
+    );
+  }
   const orgModule = "@/lib/tenant/" + "getCurrentOrganization";
   const { requireOrganizationId } = await import(orgModule);
   return requireOrganizationId();
@@ -62,6 +69,10 @@ async function resolveResearchUser(): Promise<
   const context = getTenantContext();
   if (context?.userId) {
     return prisma.user.findUnique({ where: { id: context.userId } });
+  }
+  // Research worker has no cookies/session — skip user-scoped gates.
+  if (!process.env.NEXT_RUNTIME) {
+    return null;
   }
   const authzPath = "@/lib/org/" + "authz";
   const { getCurrentUser } = await import(authzPath);
@@ -757,6 +768,8 @@ export type ResearchCompanyResult = {
   researchFailed?: boolean;
   failure?: ResearchFailureInfo;
   quotaBlocked?: boolean;
+  /** Email not verified — distinct from allowance quota. */
+  verificationRequired?: boolean;
 };
 
 export async function researchCompany(
@@ -778,7 +791,7 @@ export async function researchCompany(
       skipped: true,
       reason: "Verify your email address to continue with this action.",
       research: await getLatestCompanyResearch(company.id),
-      quotaBlocked: true,
+      verificationRequired: true,
     };
   }
 

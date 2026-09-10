@@ -18,10 +18,16 @@ import { isProviderLevelFailure } from "@/lib/research/failure-classification";
 import type { ResearchRunView } from "@/lib/research/run-types";
 
 export type { ResearchRunView } from "@/lib/research/run-types";
-export { isResearchRunPaused } from "@/lib/research/run-types";
+export {
+  isResearchRunPaused,
+  isResearchRunStalled,
+  RESEARCH_RUN_STALE_MS,
+} from "@/lib/research/run-types";
 
+/** Align with RESEARCH_RUN_STALE_MS — reclaim / UI stalled clock. */
 export const HEARTBEAT_STALE_MS = 15 * 60 * 1000;
-export const RUN_ABANDON_MS = 24 * 60 * 60 * 1000;
+/** Mark IN_PROGRESS runs FAILED after this long without progress. */
+export const RUN_ABANDON_MS = 30 * 60 * 1000;
 
 export const researchWorkerShutdown = {
   requested: false,
@@ -60,6 +66,7 @@ function toResearchRunView(run: ResearchRun): ResearchRunView {
     startedAt: run.startedAt?.toISOString() ?? null,
     completedAt: run.completedAt?.toISOString() ?? null,
     pausedAt: run.pausedAt?.toISOString() ?? null,
+    workerHeartbeatAt: run.workerHeartbeatAt?.toISOString() ?? null,
   };
 }
 
@@ -178,6 +185,33 @@ export type CreateResearchRunResult =
   | { ok: false; code: "NOTHING_TO_DO"; message: string }
   | { ok: false; code: "INVALID_RETRY"; message: string };
 
+function isHeartbeatStale(
+  run: Pick<ResearchRun, "workerHeartbeatAt" | "startedAt" | "createdAt">,
+  now = new Date(),
+): boolean {
+  const last = lastActivityAt(run);
+  return now.getTime() - last.getTime() > HEARTBEAT_STALE_MS;
+}
+
+async function failStaleResearchRun(
+  runId: string,
+  now = new Date(),
+  reason = "Research stopped — no worker progress.",
+): Promise<void> {
+  await prisma.researchRun.update({
+    where: { id: runId },
+    data: {
+      status: "FAILED",
+      lastError: reason,
+      completedAt: now,
+      currentCompanyId: null,
+      currentCompanyName: null,
+      workerHeartbeatAt: now,
+      pausedAt: null,
+    },
+  });
+}
+
 export async function createResearchRun(
   input: CreateResearchRunInput,
 ): Promise<CreateResearchRunResult> {
@@ -186,12 +220,16 @@ export async function createResearchRun(
     input.organizationId,
   );
   if (existing) {
-    return {
-      ok: false,
-      code: "ACTIVE_RUN",
-      activeRunId: existing.id,
-      message: "A research run is already in progress for this list.",
-    };
+    if (isHeartbeatStale(existing)) {
+      await failStaleResearchRun(existing.id);
+    } else {
+      return {
+        ok: false,
+        code: "ACTIVE_RUN",
+        activeRunId: existing.id,
+        message: "A research run is already in progress for this list.",
+      };
+    }
   }
 
   let failureTargetIds: string[] = [];
@@ -203,13 +241,27 @@ export async function createResearchRun(
         message: "Retry requires a prior run id.",
       };
     }
-    const parent = await prisma.researchRun.findFirst({
+    let parent = await prisma.researchRun.findFirst({
       where: {
         id: input.retryOfRunId,
         organizationId: input.organizationId,
         contactListId: input.contactListId,
       },
     });
+    if (
+      parent &&
+      parent.status === "IN_PROGRESS" &&
+      isHeartbeatStale(parent)
+    ) {
+      await failStaleResearchRun(parent.id);
+      parent = await prisma.researchRun.findFirst({
+        where: {
+          id: input.retryOfRunId,
+          organizationId: input.organizationId,
+          contactListId: input.contactListId,
+        },
+      });
+    }
     if (!parent || !isTerminalStatus(parent.status)) {
       return {
         ok: false,
@@ -321,7 +373,7 @@ export async function abandonStaleResearchRuns(now = new Date()): Promise<number
       where: { id: run.id },
       data: {
         status: "FAILED",
-        lastError: "Run abandoned after 24 hours without progress.",
+        lastError: "Run abandoned after 30 minutes without progress.",
         completedAt: now,
         currentCompanyId: null,
         currentCompanyName: null,
@@ -456,12 +508,13 @@ export async function processResearchRun(runId: string): Promise<void> {
     ? [...new Set(parseStringArray(run.failedCompanyIds))]
     : [];
 
-  await runWithTenantContext(
-    {
-      organizationId: run.organizationId,
-      userId: run.initiatedByUserId,
-    },
-    async () => {
+  try {
+    await runWithTenantContext(
+      {
+        organizationId: run.organizationId,
+        userId: run.initiatedByUserId,
+      },
+      async () => {
       const plan = await getCompaniesNeedingResearchForContactList(run.contactListId);
       const targets = buildTargetItems(plan, {
         forceRefresh: run.forceRefresh,
@@ -618,7 +671,13 @@ export async function processResearchRun(runId: string): Promise<void> {
           await withUpdateLock(async () => {
             if (processedCompanyIds.has(item.companyId)) return;
 
-            if (result.quotaBlocked) {
+            if (result.verificationRequired) {
+              failedCount += 1;
+              failedCompanyIds.add(item.companyId);
+              runLastError =
+                result.reason ??
+                "Verify your email address to continue with this action.";
+            } else if (result.quotaBlocked) {
               quotaBlockedCount += 1;
               quotaBlockedCompanyIds.add(item.companyId);
               quotaBlockedCompanyNames.add(item.companyName);
@@ -711,7 +770,27 @@ export async function processResearchRun(runId: string): Promise<void> {
           (runLastError ? ` lastError=${runLastError}` : ""),
       );
     },
-  );
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message.slice(0, 500)
+        : "Research worker crashed.";
+    console.error(`[research-run ${runId}] crashed — marking FAILED`, message);
+    await prisma.researchRun.update({
+      where: { id: runId },
+      data: {
+        status: "FAILED",
+        lastError: message,
+        completedAt: new Date(),
+        currentCompanyId: null,
+        currentCompanyName: null,
+        workerHeartbeatAt: new Date(),
+        pausedAt: null,
+      },
+    });
+    throw error;
+  }
 }
 
 export async function requireResearchRunInOrganization(

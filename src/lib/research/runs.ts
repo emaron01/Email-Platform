@@ -5,7 +5,11 @@
 import "server-only";
 
 export type { ResearchRunView } from "@/lib/research/run-types";
-export { isResearchRunPaused } from "@/lib/research/run-types";
+export {
+  isResearchRunPaused,
+  isResearchRunStalled,
+  RESEARCH_RUN_STALE_MS,
+} from "@/lib/research/run-types";
 export {
   HEARTBEAT_STALE_MS,
   RUN_ABANDON_MS,

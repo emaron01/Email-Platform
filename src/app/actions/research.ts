@@ -255,6 +255,14 @@ export async function refreshCompanyResearchAction(
     if (contactListId) {
       revalidatePath(`/lists/${contactListId}`);
     }
+    if (result.verificationRequired) {
+      return {
+        ok: false,
+        message:
+          result.reason ??
+          "Verify your email address to continue with this action.",
+      };
+    }
     if (result.quotaBlocked) {
       return {
         ok: false,

@@ -180,6 +180,10 @@ async function maybeFireUsageAlert(input: {
   limit: number;
   periodKey?: string;
 }): Promise<void> {
+  // Usage warning email is Next/web-only (`@/lib/usage/alerts` → server-only).
+  // Research workers and CLI have no NEXT_RUNTIME — skip without importing.
+  if (!process.env.NEXT_RUNTIME) return;
+
   try {
     const alertsModule = "@/lib/usage/alerts";
     const { maybeSendUsageLimitWarning, periodKeyForActiveCompany } =
@@ -198,7 +202,7 @@ async function maybeFireUsageAlert(input: {
       periodKey: periodKey!,
     });
   } catch {
-    // Usage alert email is web-only; workers skip it.
+    // Usage alert email is best-effort.
   }
 }
 

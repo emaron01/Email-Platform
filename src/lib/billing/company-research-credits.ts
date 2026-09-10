@@ -2,7 +2,11 @@
  * Company research credit packs — one-time purchases, 12-month expiry.
  * Effective allowance = plan base (UsagePolicy.activeResearchedCompanyLimit)
  * + sum(quantity) for rows with expiresAt > now.
+ *
+ * Node-safe (no server-only). Research workers evaluate allowance here;
+ * must use prisma-client, never the Next-only `@/lib/prisma` wrapper.
  */
+import { prisma } from "@/lib/prisma-client";
 import {
   effectiveCompanyResearchLimit,
   nextCreditExpiry,
@@ -33,7 +37,6 @@ export async function listActiveCompanyResearchCredits(
   organizationId: string,
   now: Date = new Date(),
 ): Promise<CompanyResearchCreditRow[]> {
-  const { prisma } = await import("@/lib/prisma");
   const rows = await prisma.companyResearchCredit.findMany({
     where: {
       organizationId,
@@ -104,7 +107,6 @@ export async function grantCompanyResearchCredits(input: {
   stripeCheckoutSessionId?: string | null;
   stripePaymentIntentId?: string | null;
 }): Promise<{ created: boolean; credit: CompanyResearchCreditRow }> {
-  const { prisma } = await import("@/lib/prisma");
   const quantity = input.quantity ?? COMPANY_CREDIT_BLOCK.units;
   const grantedAt = input.grantedAt ?? new Date();
   const expiresAt = creditExpiryDate(

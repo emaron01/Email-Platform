@@ -14,6 +14,7 @@ import { CompanyResearchAllowanceBanner } from "@/components/CompanyResearchAllo
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
 import {
   isResearchRunPaused,
+  isResearchRunStalled,
   isActiveResearchRunStatus,
   type ResearchRunView,
 } from "@/lib/research/run-types";
@@ -63,6 +64,13 @@ function formatRunSummary(run: ResearchRunView): string {
 
   if (isResearchRunPaused(run)) {
     return `Paused, resuming shortly. ${done} of ${run.totalCompanies} companies processed so far.`;
+  }
+
+  if (isResearchRunStalled(run)) {
+    return (
+      run.lastError ??
+      `Research stopped — no worker progress. ${done} of ${run.totalCompanies} companies processed.`
+    );
   }
 
   if (isActiveRun(run.status)) {
@@ -208,13 +216,22 @@ export function ResearchRunPanel({
     });
   }
 
-  const runInProgress = activeRun != null && isActiveRun(activeRun.status);
+  const runInProgress =
+    activeRun != null &&
+    isActiveRun(activeRun.status) &&
+    !isResearchRunStalled(activeRun);
   const retryCount = lastRun ? retryableCompanyCount(lastRun) : 0;
-  const canRetry =
+  const lastRunStalled = lastRun != null && isResearchRunStalled(lastRun);
+  const canRetryFailed =
     lastRun != null &&
     !runInProgress &&
-    (lastRun.status === "PARTIAL" || lastRun.status === "FAILED") &&
-    retryCount > 0;
+    retryCount > 0 &&
+    (lastRun.status === "PARTIAL" ||
+      lastRun.status === "FAILED" ||
+      lastRunStalled);
+  /** Stalled with no recorded failures — restart remaining companies. */
+  const canRetryStalled =
+    lastRunStalled && !runInProgress && !canRetryFailed;
 
   const researchDisabled =
     pending ||
@@ -228,6 +245,8 @@ export function ResearchRunPanel({
     displayRun != null &&
     !runInProgress &&
     (displayRun.failedCount > 0 || displayRun.quotaBlockedCount > 0);
+  const displayStalled =
+    displayRun != null && isResearchRunStalled(displayRun);
 
   return (
     <div className="space-y-4">
@@ -253,6 +272,8 @@ export function ResearchRunPanel({
             <p className="font-medium text-slate-900">
               {isResearchRunPaused(displayRun)
                 ? "Research paused"
+                : displayStalled
+                  ? "Research stopped"
                 : runInProgress
                   ? "Research running"
                   : displayHasFailures
@@ -261,37 +282,53 @@ export function ResearchRunPanel({
             </p>
             <p
               className={
-                displayHasFailures ? "font-medium text-rose-800" : "text-slate-600"
+                displayHasFailures || displayStalled
+                  ? "font-medium text-rose-800"
+                  : "text-slate-600"
               }
             >
-              {displayRun.status.replace("_", " ")}
+              {displayStalled ? "STALLED" : displayRun.status.replace("_", " ")}
             </p>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-slate-100">
             <div
-              className="h-full rounded-full bg-slate-900 transition-all"
+              className={
+                displayStalled
+                  ? "h-full rounded-full bg-amber-600 transition-all"
+                  : "h-full rounded-full bg-slate-900 transition-all"
+              }
               style={{ width: `${progressPercent(displayRun)}%` }}
             />
           </div>
           <p
             className={
-              displayHasFailures
+              displayHasFailures || displayStalled
                 ? "text-sm font-medium text-rose-950"
                 : "text-sm text-slate-600"
             }
           >
             {formatRunSummary(displayRun)}
           </p>
-          {canRetry ? (
+          {displayStalled ? (
+            <p className="text-sm text-amber-950">
+              No worker progress for 15+ minutes. Retry the remaining companies,
+              or start research again.
+            </p>
+          ) : null}
+          {canRetryFailed ? (
             <p className="text-sm text-slate-600">
               Retry will re-run only the failed or blocked companies.
             </p>
           ) : null}
           {displayRun.quotaBlockedCount > 0 ? (
-            <p className="text-sm text-amber-900">
-              {displayRun.quotaBlockedCount} companies were not researched due to
-              allowance limits.{" "}
-              <Link href={RESEARCH_BILLING_HREF} className="underline">
+            <p className="text-sm font-medium text-slate-900">
+              Researched {displayRun.completedCount} of{" "}
+              {displayRun.totalCompanies} companies.{" "}
+              {displayRun.quotaBlockedCount} need more capacity.{" "}
+              <Link
+                href={RESEARCH_BILLING_HREF}
+                className="font-semibold underline underline-offset-2"
+              >
                 Add capacity in Billing
               </Link>
               .
@@ -385,9 +422,17 @@ export function ResearchRunPanel({
           >
             Refresh Research
           </SecondaryButton>
-          {canRetry ? (
+          {canRetryFailed ? (
             <SecondaryButton disabled={pending} onClick={retryFailed}>
               Retry {retryCount} failed
+            </SecondaryButton>
+          ) : null}
+          {canRetryStalled ? (
+            <SecondaryButton
+              disabled={pending || !researchAiConfigured}
+              onClick={() => requestResearch(false)}
+            >
+              Retry research
             </SecondaryButton>
           ) : null}
         </div>

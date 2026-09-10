@@ -181,7 +181,7 @@ export function formatResearchRunFailureSummary(
 
   if (hasQuotaBlocked) {
     parts.push(
-      `${run.quotaBlockedCount} blocked by allowance limits`,
+      `${run.quotaBlockedCount} need more research capacity`,
     );
   }
 
