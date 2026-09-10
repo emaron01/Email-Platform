@@ -63,6 +63,10 @@ function NewIcpForm({
     upsertIcpAction,
     initialResult,
   );
+  const [interpretState, interpretAction, interpretPending] = useActionState(
+    interpretIcpAction,
+    initialResult,
+  );
 
   const definitionPlaceholder = productName?.trim()
     ? `Describe companies that should buy ${productName.trim()} — industry, size, geography, and other fit signals.`
@@ -73,6 +77,7 @@ function NewIcpForm({
     () => restored ?? {},
     [restored],
   );
+  const existingIcpId = String(state?.icpId || defaults.id || "").trim();
   const formKey =
     state && !state.ok
       ? `icp-fail-${state.message}-${defaults.definition?.slice(0, 24) ?? ""}`
@@ -83,6 +88,12 @@ function NewIcpForm({
     router.push(`/setup/${productId}/icps/${state.icpId}`);
   }, [state, productId, router]);
 
+  useEffect(() => {
+    if (interpretState?.ok) {
+      router.refresh();
+    }
+  }, [interpretState, router]);
+
   function fieldHint(key: keyof IcpFormValues): string | undefined {
     if (!state || state.ok) return undefined;
     return state.fieldErrors?.[key];
@@ -91,6 +102,7 @@ function NewIcpForm({
   return (
     <div className="rounded-md border border-slate-200 p-4" data-testid="icp-form">
       <StatusBanner result={state} />
+      <StatusBanner result={interpretState} testId="icp-interpret-status" />
       <form
         key={formKey}
         action={formAction}
@@ -203,10 +215,26 @@ function NewIcpForm({
             hint={fieldHint("notes")}
           />
         </div>
-        <div className="md:col-span-2">
+        <div className="md:col-span-2 flex flex-wrap items-center gap-2">
           <SubmitButton disabled={pending}>
-            {pending ? "Saving…" : "Add ICP"}
+            {pending ? "Saving…" : "Save ICP"}
           </SubmitButton>
+          {existingIcpId ? (
+            <SecondaryButton
+              type="button"
+              disabled={interpretPending}
+              onClick={() => {
+                const fd = new FormData();
+                fd.set("icpId", existingIcpId);
+                fd.set("productId", productId);
+                interpretAction(fd);
+              }}
+            >
+              {interpretPending
+                ? "Interpreting…"
+                : "Interpret / Reinterpret ICP"}
+            </SecondaryButton>
+          ) : null}
         </div>
       </form>
     </div>
@@ -419,10 +447,24 @@ export function IcpDetailsForm({
                 hint={fieldHint("notes")}
               />
             </div>
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 flex flex-wrap items-center gap-2">
               <SubmitButton disabled={pending}>
                 {pending ? "Saving…" : "Save ICP"}
               </SubmitButton>
+              <SecondaryButton
+                type="button"
+                disabled={interpretPending}
+                onClick={() => {
+                  const fd = new FormData();
+                  fd.set("icpId", icp.id);
+                  fd.set("productId", productId);
+                  interpretAction(fd);
+                }}
+              >
+                {interpretPending
+                  ? "Interpreting…"
+                  : "Interpret / Reinterpret ICP"}
+              </SecondaryButton>
             </div>
           </form>
           <IcpCriteriaReview
