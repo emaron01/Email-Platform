@@ -28,7 +28,7 @@ export function StartFreeTrialButton({
       <button
         type="button"
         disabled={pending}
-        className="w-full rounded-md bg-slate-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-60"
+        className="w-full rounded-md bg-green-600 px-4 py-3 text-sm font-medium text-white disabled:opacity-60"
         onClick={() => {
           setError(null);
           startTransition(async () => {
@@ -56,9 +56,9 @@ export function StartFreeTrialButton({
           });
         }}
       >
-        {pending ? "Redirecting…" : "Start Free Trial — Enter Payment Info"}
+        {pending ? "Redirecting…" : "Click Here To Start Your Free Trial"}
       </button>
-      <p className="text-center text-xs text-slate-500">
+      <p className="text-center text-base font-bold text-slate-900">
         You won&apos;t be charged until your trial period ends.
       </p>
       {error ? (
