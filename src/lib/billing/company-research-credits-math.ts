@@ -2,6 +2,16 @@
  * Pure credit-pack math (no DB) — 12-month expiry, sum into effective allowance.
  */
 
+/** Companies granted for N Checkout line-item units (each unit = one 100-company block). */
+export function companiesFromCreditCheckoutBlocks(
+  blocks: number,
+  unitsPerBlock: number,
+): number {
+  const safeBlocks = Math.max(0, Math.floor(blocks));
+  const safeUnits = Math.max(0, Math.floor(unitsPerBlock));
+  return safeBlocks * safeUnits;
+}
+
 export function sumActiveCreditCompanies(
   packs: ReadonlyArray<{ quantity: number; expiresAt: Date }>,
   now: Date = new Date(),

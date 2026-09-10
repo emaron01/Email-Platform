@@ -21,9 +21,12 @@ import {
   resolveEntitlementsForStatus,
 } from "@/lib/billing/plans";
 import { BillingCheckoutRefresh } from "@/components/billing/BillingCheckoutRefresh";
+import { BuyCompanyCreditsButton } from "@/components/billing/BuyCompanyCreditsButton";
 import { ConvertTrialNowButton } from "@/components/billing/ConvertTrialNowButton";
 import { OpenCustomerPortalButton } from "@/components/billing/OpenCustomerPortalButton";
 import { canOfferEarlyTrialConversion } from "@/lib/billing/end-trial-now";
+import { getCompanyResearchCreditBalance } from "@/lib/billing/company-research-credits";
+import { companyCreditBlockIsCheckoutReady } from "@/lib/billing/plans";
 import { countActiveResearchedCompanies } from "@/lib/usage/active-companies";
 import {
   ensureOrganizationPolicies,
@@ -47,8 +50,10 @@ export default async function OrganizationBillingSettingsPage({
   const params = searchParams ? await searchParams : {};
   const checkoutState =
     typeof params.checkout === "string" ? params.checkout : null;
+  const creditsState =
+    typeof params.credits === "string" ? params.credits : null;
 
-  const [billing, policy, activeCompanies, canConvertTrialEarly] =
+  const [billing, policy, activeCompanies, canConvertTrialEarly, creditBalance] =
     await Promise.all([
       prisma.organizationBillingProfile.findUnique({
         where: { organizationId: organization.id },
@@ -59,6 +64,7 @@ export default async function OrganizationBillingSettingsPage({
       }),
       countActiveResearchedCompanies(organization.id),
       canOfferEarlyTrialConversion(organization.id),
+      getCompanyResearchCreditBalance(organization.id),
     ]);
 
   if (billing && requiresStripeCheckout(billing)) {
@@ -69,8 +75,12 @@ export default async function OrganizationBillingSettingsPage({
   const billingStatus = billing?.billingStatus ?? "FREE";
   const remaining = Math.max(
     0,
-    policy.activeResearchedCompanyLimit - activeCompanies,
+    policy.activeResearchedCompanyLimit +
+      creditBalance.activeCreditCompanies -
+      activeCompanies,
   );
+  const effectiveLimit =
+    policy.activeResearchedCompanyLimit + creditBalance.activeCreditCompanies;
 
   const isComped =
     planCode === BILLING_PLAN_COMPED ||
@@ -84,6 +94,12 @@ export default async function OrganizationBillingSettingsPage({
       billingStatus === "PAST_DUE");
 
   const canOpenPortal = Boolean(billing?.stripeCustomerId);
+
+  const creditsDisabledReason = !companyCreditBlockIsCheckoutReady()
+    ? "Company credit packs are not configured yet."
+    : !hasLiveSubscription
+      ? "Subscribe to Standard before buying extra company capacity."
+      : null;
 
   const discountActive = billing
     ? hasActiveDiscount({
@@ -134,6 +150,13 @@ export default async function OrganizationBillingSettingsPage({
       {checkoutState === "success" ? (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           Checkout completed. Refreshing subscription status from Stripe…
+        </p>
+      ) : null}
+
+      {creditsState === "success" ? (
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          Credit purchase completed. Capacity updates when Stripe confirms
+          (usually a few seconds) — refresh if the balance has not changed.
         </p>
       ) : null}
 
@@ -255,11 +278,17 @@ export default async function OrganizationBillingSettingsPage({
           Company research capacity
         </h2>
         <p className="text-sm text-slate-600">
-          {activeCompanies} of {policy.activeResearchedCompanyLimit} active
-          researched companies used
+          {activeCompanies} of {effectiveLimit} active researched companies used
           {remaining > 0
             ? ` — ${remaining} remaining.`
             : " — allowance used."}
+          {creditBalance.activeCreditCompanies > 0
+            ? ` Includes ${creditBalance.activeCreditCompanies} purchased credit companies` +
+              (creditBalance.nextExpiresAt
+                ? ` (next expiry ${formatBillingDate(creditBalance.nextExpiresAt)})`
+                : "") +
+              "."
+            : ""}
         </p>
         {billingStatus === "TRIALING" && catalogFloor != null ? (
           <div className="space-y-3">
@@ -287,9 +316,12 @@ export default async function OrganizationBillingSettingsPage({
         ) : (
           <p className="text-sm text-slate-600">
             One slot per distinct company with fresh research. Refreshing a
-            company you already researched does not use another slot.
+            company you already researched does not use another slot. Plan base
+            is {policy.activeResearchedCompanyLimit}; credit packs stack on top
+            for 12 months.
           </p>
         )}
+        <BuyCompanyCreditsButton disabledReason={creditsDisabledReason} />
       </section>
     </div>
   );

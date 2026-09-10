@@ -1,10 +1,11 @@
 /**
- * Stripe webhook dispatcher — claim event id, then sync subscription state.
+ * Stripe webhook dispatcher — claim event id, then sync subscription / credit grants.
  * Never persist the raw event payload.
  */
 import "server-only";
 
 import type Stripe from "stripe";
+import { grantCreditsFromCheckoutSession } from "@/lib/billing/grant-credits-from-checkout";
 import { claimStripeWebhookEvent } from "@/lib/billing/stripe-webhook-idempotency";
 import { revalidateBillingUi } from "@/lib/billing/revalidate-billing-ui";
 import {
@@ -29,18 +30,25 @@ export async function handleStripeWebhookEvent(
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
-      if (session.mode !== "subscription") break;
-      const subscriptionId =
-        typeof session.subscription === "string"
-          ? session.subscription
-          : session.subscription?.id;
-      if (!subscriptionId) break;
-      const result = await syncSubscriptionById({
-        subscriptionId,
-        organizationId: session.metadata?.organizationId ?? null,
-        checkoutSession: session,
-      });
-      synced = Boolean(result);
+      if (session.mode === "subscription") {
+        const subscriptionId =
+          typeof session.subscription === "string"
+            ? session.subscription
+            : session.subscription?.id;
+        if (!subscriptionId) break;
+        const result = await syncSubscriptionById({
+          subscriptionId,
+          organizationId: session.metadata?.organizationId ?? null,
+          checkoutSession: session,
+        });
+        synced = Boolean(result);
+        break;
+      }
+      if (session.mode === "payment") {
+        const result = await grantCreditsFromCheckoutSession(session);
+        synced = result.ok;
+        break;
+      }
       break;
     }
     case "customer.subscription.created":

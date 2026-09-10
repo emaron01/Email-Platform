@@ -8,6 +8,7 @@
  */
 import { prisma } from "@/lib/prisma-client";
 import {
+  companiesFromCreditCheckoutBlocks,
   effectiveCompanyResearchLimit,
   nextCreditExpiry,
   sumActiveCreditCompanies,
@@ -32,6 +33,29 @@ export type CompanyResearchCreditBalance = {
   /** Soonest expiry among active packs, if any. */
   nextExpiresAt: Date | null;
 };
+
+function toRow(existing: {
+  id: string;
+  quantity: number;
+  grantedAt: Date;
+  expiresAt: Date;
+}): CompanyResearchCreditRow {
+  return {
+    id: existing.id,
+    quantity: existing.quantity,
+    grantedAt: existing.grantedAt,
+    expiresAt: existing.expiresAt,
+  };
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      String((error as { code?: unknown }).code) === "P2002",
+  );
+}
 
 export async function listActiveCompanyResearchCredits(
   organizationId: string,
@@ -98,6 +122,7 @@ export async function getEffectiveCompanyResearchAllowance(input: {
 
 /**
  * Idempotent grant after a successful one-time Checkout/PaymentIntent.
+ * `quantity` is company slots (e.g. 300 for 3×100 blocks), not block count.
  * Duplicate Stripe ids return the existing row without adding capacity twice.
  */
 export async function grantCompanyResearchCredits(input: {
@@ -119,15 +144,7 @@ export async function grantCompanyResearchCredits(input: {
       where: { stripeCheckoutSessionId: input.stripeCheckoutSessionId },
     });
     if (existing) {
-      return {
-        created: false,
-        credit: {
-          id: existing.id,
-          quantity: existing.quantity,
-          grantedAt: existing.grantedAt,
-          expiresAt: existing.expiresAt,
-        },
-      };
+      return { created: false, credit: toRow(existing) };
     }
   }
   if (input.stripePaymentIntentId) {
@@ -135,43 +152,47 @@ export async function grantCompanyResearchCredits(input: {
       where: { stripePaymentIntentId: input.stripePaymentIntentId },
     });
     if (existing) {
-      return {
-        created: false,
-        credit: {
-          id: existing.id,
-          quantity: existing.quantity,
-          grantedAt: existing.grantedAt,
-          expiresAt: existing.expiresAt,
-        },
-      };
+      return { created: false, credit: toRow(existing) };
     }
   }
 
-  const created = await prisma.companyResearchCredit.create({
-    data: {
-      organizationId: input.organizationId,
-      quantity,
-      grantedAt,
-      expiresAt,
-      stripeCheckoutSessionId: input.stripeCheckoutSessionId ?? null,
-      stripePaymentIntentId: input.stripePaymentIntentId ?? null,
-    },
-  });
+  try {
+    const created = await prisma.companyResearchCredit.create({
+      data: {
+        organizationId: input.organizationId,
+        quantity,
+        grantedAt,
+        expiresAt,
+        stripeCheckoutSessionId: input.stripeCheckoutSessionId ?? null,
+        stripePaymentIntentId: input.stripePaymentIntentId ?? null,
+      },
+    });
 
-  return {
-    created: true,
-    credit: {
-      id: created.id,
-      quantity: created.quantity,
-      grantedAt: created.grantedAt,
-      expiresAt: created.expiresAt,
-    },
-  };
+    return { created: true, credit: toRow(created) };
+  } catch (error) {
+    // Concurrent webhook / replay lost the race on unique Stripe ids.
+    if (!isUniqueViolation(error)) throw error;
+
+    if (input.stripeCheckoutSessionId) {
+      const existing = await prisma.companyResearchCredit.findUnique({
+        where: { stripeCheckoutSessionId: input.stripeCheckoutSessionId },
+      });
+      if (existing) return { created: false, credit: toRow(existing) };
+    }
+    if (input.stripePaymentIntentId) {
+      const existing = await prisma.companyResearchCredit.findUnique({
+        where: { stripePaymentIntentId: input.stripePaymentIntentId },
+      });
+      if (existing) return { created: false, credit: toRow(existing) };
+    }
+    throw error;
+  }
 }
 
 export {
-  creditExpiryDate,
+  companiesFromCreditCheckoutBlocks,
   effectiveCompanyResearchLimit,
   nextCreditExpiry,
   sumActiveCreditCompanies,
-};
+} from "@/lib/billing/company-research-credits-math";
+export { creditExpiryDate } from "@/lib/billing/plans";

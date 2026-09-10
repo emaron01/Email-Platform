@@ -11,6 +11,7 @@ import {
   effectiveCompanyResearchLimit,
   nextCreditExpiry,
   sumActiveCreditCompanies,
+  companiesFromCreditCheckoutBlocks,
 } from "@/lib/billing/company-research-credits-math";
 import { shouldSendBillingTransactionalEmail } from "@/lib/billing/billing-state";
 import {
@@ -166,6 +167,12 @@ describe("billing plans catalog", () => {
 
 describe("company research credit math", () => {
   const now = new Date("2026-06-01T00:00:00.000Z");
+
+  it("multiplies Checkout blocks by 100 companies per block", () => {
+    expect(companiesFromCreditCheckoutBlocks(1, 100)).toBe(100);
+    expect(companiesFromCreditCheckoutBlocks(3, 100)).toBe(300);
+    expect(companiesFromCreditCheckoutBlocks(0, 100)).toBe(0);
+  });
 
   it("sums only unexpired packs into the effective allowance", () => {
     const packs = [

@@ -1,0 +1,67 @@
+"use client";
+
+import { useState, useTransition } from "react";
+
+/**
+ * Opens one-time Stripe Checkout for company research credit blocks.
+ * POST /api/billing/credits-checkout — quantity adjustable on the Stripe page.
+ */
+export function BuyCompanyCreditsButton({
+  disabledReason,
+}: {
+  disabledReason?: string | null;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  if (disabledReason) {
+    return (
+      <p className="text-sm text-slate-600" data-testid="buy-company-credits">
+        {disabledReason}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2" data-testid="buy-company-credits">
+      <button
+        type="button"
+        disabled={pending}
+        className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+        onClick={() => {
+          setError(null);
+          startTransition(async () => {
+            try {
+              const res = await fetch("/api/billing/credits-checkout", {
+                method: "POST",
+                headers: {
+                  Accept: "application/json",
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ blocks: 1 }),
+              });
+              const body = (await res.json().catch(() => ({}))) as {
+                url?: string;
+                error?: string;
+              };
+              if (!res.ok || !body.url) {
+                setError(body.error ?? "Could not start credits Checkout");
+                return;
+              }
+              window.location.assign(body.url);
+            } catch {
+              setError("Could not start credits Checkout");
+            }
+          });
+        }}
+      >
+        {pending ? "Redirecting…" : "Buy company credits"}
+      </button>
+      <p className="text-xs text-slate-500">
+        Each block adds 100 companies for 12 months. On Checkout you can raise
+        the quantity (e.g. 3 blocks = 300 companies) before paying.
+      </p>
+      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+    </div>
+  );
+}

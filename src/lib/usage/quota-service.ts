@@ -358,13 +358,20 @@ export async function getActiveResearchedCompanyUsage(input: {
   const { countActiveResearchedCompanies } = await import(
     "@/lib/usage/active-companies-service"
   );
+  const { getEffectiveCompanyResearchAllowance } = await import(
+    "@/lib/billing/company-research-credits"
+  );
   const policy = await getEffectiveUsagePolicy({
     organizationId: input.organizationId,
     userId: input.userId,
   });
   const used = await countActiveResearchedCompanies(input.organizationId);
+  const { effectiveLimit } = await getEffectiveCompanyResearchAllowance({
+    organizationId: input.organizationId,
+    baseLimit: policy.activeResearchedCompanyLimit,
+  });
   return toActiveResearchedCompanyUsageView({
     used,
-    limit: policy.activeResearchedCompanyLimit,
+    limit: effectiveLimit,
   });
 }
