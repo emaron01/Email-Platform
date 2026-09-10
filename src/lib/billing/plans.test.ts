@@ -117,11 +117,38 @@ describe("billing plans catalog", () => {
         used: 25,
         limit: 25,
         billingStatus: "TRIALING",
+        trialEndsAt: new Date("2026-09-17T00:00:00.000Z"),
       }),
-    ).toContain("trial company research");
+    ).toContain("trial research allowance of 25");
+    expect(
+      formatResearchQuotaBlockedMessage({
+        used: 25,
+        limit: 25,
+        billingStatus: "TRIALING",
+        trialEndsAt: new Date("2026-09-17T00:00:00.000Z"),
+      }),
+    ).toContain("converts to Standard on");
+    expect(
+      formatResearchQuotaBlockedMessage({
+        used: 25,
+        limit: 25,
+        billingStatus: "TRIALING",
+        trialEndsAt: new Date("2026-09-17T00:00:00.000Z"),
+      }),
+    ).toContain("100 companies");
     expect(formatTrialResearchExhausted({ trialLimit: 25 })).toContain(
-      "up to 100",
+      "includes 100 companies",
     );
+  });
+
+  it("keeps add-capacity copy for active paid accounts", () => {
+    expect(
+      formatResearchQuotaBlockedMessage({
+        used: 100,
+        limit: 100,
+        billingStatus: "ACTIVE",
+      }),
+    ).toContain("Add capacity in Billing");
   });
 
   it("treats company credits as a one-time 100-unit pack with 12-month expiry", () => {

@@ -21,7 +21,9 @@ import {
   resolveEntitlementsForStatus,
 } from "@/lib/billing/plans";
 import { BillingCheckoutRefresh } from "@/components/billing/BillingCheckoutRefresh";
+import { ConvertTrialNowButton } from "@/components/billing/ConvertTrialNowButton";
 import { OpenCustomerPortalButton } from "@/components/billing/OpenCustomerPortalButton";
+import { canOfferEarlyTrialConversion } from "@/lib/billing/end-trial-now";
 import { countActiveResearchedCompanies } from "@/lib/usage/active-companies";
 import {
   ensureOrganizationPolicies,
@@ -46,16 +48,18 @@ export default async function OrganizationBillingSettingsPage({
   const checkoutState =
     typeof params.checkout === "string" ? params.checkout : null;
 
-  const [billing, policy, activeCompanies] = await Promise.all([
-    prisma.organizationBillingProfile.findUnique({
-      where: { organizationId: organization.id },
-    }),
-    getEffectiveUsagePolicy({
-      organizationId: organization.id,
-      userId: user.id,
-    }),
-    countActiveResearchedCompanies(organization.id),
-  ]);
+  const [billing, policy, activeCompanies, canConvertTrialEarly] =
+    await Promise.all([
+      prisma.organizationBillingProfile.findUnique({
+        where: { organizationId: organization.id },
+      }),
+      getEffectiveUsagePolicy({
+        organizationId: organization.id,
+        userId: user.id,
+      }),
+      countActiveResearchedCompanies(organization.id),
+      canOfferEarlyTrialConversion(organization.id),
+    ]);
 
   if (billing && requiresStripeCheckout(billing)) {
     redirect(ONBOARDING_SUBSCRIBE_PATH);
@@ -258,16 +262,28 @@ export default async function OrganizationBillingSettingsPage({
             : " — allowance used."}
         </p>
         {billingStatus === "TRIALING" && catalogFloor != null ? (
-          <p className="text-sm text-slate-600">
-            Trial allowance is {catalogFloor} companies
-            {standardPaidFloor != null
-              ? `; Standard is ${standardPaidFloor} after conversion`
-              : ""}
-            {policy.activeResearchedCompanyLimit > catalogFloor
-              ? ` (your account currently shows ${policy.activeResearchedCompanyLimit} because a higher limit was kept from before Checkout)`
-              : ""}
-            .
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Trial allowance is {catalogFloor} companies
+              {standardPaidFloor != null
+                ? `; Standard is ${standardPaidFloor} after conversion`
+                : ""}
+              {policy.activeResearchedCompanyLimit > catalogFloor
+                ? ` (your account currently shows ${policy.activeResearchedCompanyLimit} because a higher limit was kept from before Checkout)`
+                : ""}
+              .
+            </p>
+            {canConvertTrialEarly ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
+                <p className="mb-2 text-sm text-slate-700">
+                  Need capacity before {trialSummary ?? "trial end"}? Convert
+                  now — we charge your card today and start the Standard
+                  billing cycle immediately (100 companies).
+                </p>
+                <ConvertTrialNowButton />
+              </div>
+            ) : null}
+          </div>
         ) : (
           <p className="text-sm text-slate-600">
             One slot per distinct company with fresh research. Refreshing a

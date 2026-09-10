@@ -8,6 +8,7 @@ import {
   PageHeader,
   TenantMissing,
 } from "@/components/ui";
+import { loadResearchBillingContext } from "@/lib/billing/research-billing-context";
 import { getMembershipForCurrentUser } from "@/lib/org/authz";
 import { listContactLists } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
@@ -36,14 +37,14 @@ export default async function ListsPage({
   }
 
   const membership = await getMembershipForCurrentUser(organization.id);
-  const [lists, researchAllowance] = await Promise.all([
+  const [lists, researchAllowance, researchBilling] = await Promise.all([
     listContactLists({ includeArchived }),
     getActiveResearchedCompanyUsage({
       organizationId: organization.id,
       userId: membership.user.id,
     }),
+    loadResearchBillingContext(organization.id),
   ]);
-
   return (
     <div>
       <PageHeader
@@ -64,7 +65,10 @@ export default async function ListsPage({
       <DeleteSuccessNotice />
 
       <div className="mb-6 space-y-3">
-        <CompanyResearchAllowanceBanner usage={researchAllowance} />
+        <CompanyResearchAllowanceBanner
+          usage={researchAllowance}
+          billing={researchBilling}
+        />
         <p className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900">
           Select a list below to research and score your contacts before adding
           them to a campaign.

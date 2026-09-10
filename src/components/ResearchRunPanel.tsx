@@ -11,6 +11,7 @@ import {
   type ResearchStartResult,
 } from "@/app/actions/research";
 import { CompanyResearchAllowanceBanner } from "@/components/CompanyResearchAllowanceBanner";
+import { ConvertTrialNowButton } from "@/components/billing/ConvertTrialNowButton";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
 import {
   isResearchRunPaused,
@@ -21,8 +22,11 @@ import {
 import { formatResearchRunFailureSummary } from "@/lib/research/failure-classification";
 import {
   formatResearchAllowanceWarning,
-  RESEARCH_BILLING_HREF,
+  formatResearchQuotaBlockedMessage,
+  formatResearchQuotaHeldSummary,
+  researchQuotaBlockedCta,
   type ActiveResearchedCompanyUsageView,
+  type ResearchBillingContext,
 } from "@/lib/usage/research-allowance";
 
 export type ResearchPlanView = {
@@ -80,6 +84,14 @@ function formatRunSummary(run: ResearchRunView): string {
     return `Research in progress: ${done} of ${run.totalCompanies} companies processed.${current}`;
   }
 
+  if (run.failedCount === 0 && run.quotaBlockedCount > 0) {
+    return formatResearchQuotaHeldSummary({
+      completedCount: run.completedCount,
+      totalCompanies: run.totalCompanies,
+      quotaBlockedCount: run.quotaBlockedCount,
+    });
+  }
+
   const failureSummary = formatResearchRunFailureSummary(run);
   if (failureSummary) {
     return failureSummary;
@@ -96,10 +108,24 @@ function formatRunSummary(run: ResearchRunView): string {
   return "Research run finished.";
 }
 
-function retryableCompanyCount(run: ResearchRunView): number {
+function failedCompanyCount(run: ResearchRunView): number {
   const failedIds = run.failedCompanyIds.length;
-  const failed = failedIds > 0 ? failedIds : run.failedCount;
-  return failed + run.quotaBlockedCount;
+  return failedIds > 0 ? failedIds : run.failedCount;
+}
+
+function runHeading(input: {
+  run: ResearchRunView;
+  runInProgress: boolean;
+  stalled: boolean;
+  hasRealFailures: boolean;
+  hasQuotaHeld: boolean;
+}): string {
+  if (isResearchRunPaused(input.run)) return "Research paused";
+  if (input.stalled) return "Research stopped";
+  if (input.runInProgress) return "Research running";
+  if (input.hasRealFailures) return "Research finished with failures";
+  if (input.hasQuotaHeld) return "Research finished";
+  return "Last research run";
 }
 
 export function ResearchRunPanel({
@@ -108,6 +134,7 @@ export function ResearchRunPanel({
   plan,
   researchAiConfigured,
   allowance,
+  billing,
   initialActiveRun,
   initialLastRun,
 }: {
@@ -116,6 +143,7 @@ export function ResearchRunPanel({
   plan: ResearchPlanView;
   researchAiConfigured: boolean;
   allowance: ActiveResearchedCompanyUsageView;
+  billing?: ResearchBillingContext | null;
   initialActiveRun?: ResearchRunView | null;
   initialLastRun?: ResearchRunView | null;
 }) {
@@ -220,12 +248,12 @@ export function ResearchRunPanel({
     activeRun != null &&
     isActiveRun(activeRun.status) &&
     !isResearchRunStalled(activeRun);
-  const retryCount = lastRun ? retryableCompanyCount(lastRun) : 0;
+  const failedCount = lastRun ? failedCompanyCount(lastRun) : 0;
   const lastRunStalled = lastRun != null && isResearchRunStalled(lastRun);
   const canRetryFailed =
     lastRun != null &&
     !runInProgress &&
-    retryCount > 0 &&
+    failedCount > 0 &&
     (lastRun.status === "PARTIAL" ||
       lastRun.status === "FAILED" ||
       lastRunStalled);
@@ -242,15 +270,26 @@ export function ResearchRunPanel({
 
   const displayRun = runInProgress ? activeRun : lastRun;
   const displayHasFailures =
-    displayRun != null &&
-    !runInProgress &&
-    (displayRun.failedCount > 0 || displayRun.quotaBlockedCount > 0);
+    displayRun != null && !runInProgress && displayRun.failedCount > 0;
+  const displayHasQuotaHeld =
+    displayRun != null && !runInProgress && displayRun.quotaBlockedCount > 0;
   const displayStalled =
     displayRun != null && isResearchRunStalled(displayRun);
 
+  const quotaCta = researchQuotaBlockedCta({
+    billingStatus: billing?.billingStatus,
+  });
+  const isTrialing = billing?.billingStatus === "TRIALING";
+  const exhaustedMessage = formatResearchQuotaBlockedMessage({
+    used: allowance.used,
+    limit: allowance.limit,
+    billingStatus: billing?.billingStatus,
+    trialEndsAt: billing?.trialEndsAt,
+  });
+
   return (
     <div className="space-y-4">
-      <CompanyResearchAllowanceBanner usage={allowance} />
+      <CompanyResearchAllowanceBanner usage={allowance} billing={billing} />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Total Contacts" value={plan.totalContacts} />
@@ -270,21 +309,21 @@ export function ResearchRunPanel({
         >
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <p className="font-medium text-slate-900">
-              {isResearchRunPaused(displayRun)
-                ? "Research paused"
-                : displayStalled
-                  ? "Research stopped"
-                : runInProgress
-                  ? "Research running"
-                  : displayHasFailures
-                    ? "Research finished with failures"
-                    : "Last research run"}
+              {runHeading({
+                run: displayRun,
+                runInProgress,
+                stalled: displayStalled,
+                hasRealFailures: displayHasFailures,
+                hasQuotaHeld: displayHasQuotaHeld,
+              })}
             </p>
             <p
               className={
                 displayHasFailures || displayStalled
                   ? "font-medium text-rose-800"
-                  : "text-slate-600"
+                  : displayHasQuotaHeld
+                    ? "font-medium text-slate-700"
+                    : "text-slate-600"
               }
             >
               {displayStalled ? "STALLED" : displayRun.status.replace("_", " ")}
@@ -315,24 +354,38 @@ export function ResearchRunPanel({
               or start research again.
             </p>
           ) : null}
-          {canRetryFailed ? (
+          {displayHasFailures ? (
             <p className="text-sm text-slate-600">
-              Retry will re-run only the failed or blocked companies.
+              Retry will re-run only the companies that failed.
             </p>
           ) : null}
-          {displayRun.quotaBlockedCount > 0 ? (
-            <p className="text-sm font-medium text-slate-900">
-              Researched {displayRun.completedCount} of{" "}
-              {displayRun.totalCompanies} companies.{" "}
-              {displayRun.quotaBlockedCount} need more capacity.{" "}
-              <Link
-                href={RESEARCH_BILLING_HREF}
-                className="font-semibold underline underline-offset-2"
-              >
-                Add capacity in Billing
-              </Link>
-              .
-            </p>
+          {displayHasQuotaHeld ? (
+            <div className="space-y-2 text-sm text-slate-900">
+              <p className="font-medium">
+                {formatResearchQuotaBlockedMessage({
+                  used: allowance.used,
+                  limit: allowance.limit,
+                  billingStatus: billing?.billingStatus,
+                  trialEndsAt: billing?.trialEndsAt,
+                })}
+              </p>
+              {billing?.canConvertTrialEarly ? (
+                <ConvertTrialNowButton />
+              ) : null}
+              <p>
+                <Link
+                  href={quotaCta.href}
+                  className="font-semibold underline underline-offset-2"
+                >
+                  {quotaCta.label}
+                </Link>
+                {isTrialing && !billing?.canConvertTrialEarly
+                  ? " — capacity unlocks when your plan converts to Standard."
+                  : isTrialing
+                    ? " — or wait until the scheduled conversion date."
+                    : "."}
+              </p>
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -353,20 +406,22 @@ export function ResearchRunPanel({
       ) : null}
 
       {allowance.exhausted && plan.needingResearch > 0 ? (
-        <p
-          className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950"
+        <div
+          className="space-y-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950"
           data-testid="research-hard-stop"
         >
-          New company research is stopped — your allowance is used. Refreshing
-          companies you already researched still works.{" "}
-          <Link
-            href={RESEARCH_BILLING_HREF}
-            className="font-medium underline underline-offset-2"
-          >
-            Add capacity in Billing
-          </Link>
-          .
-        </p>
+          <p>{exhaustedMessage}</p>
+          {billing?.canConvertTrialEarly ? <ConvertTrialNowButton /> : null}
+          <p>
+            <Link
+              href={quotaCta.href}
+              className="font-medium underline underline-offset-2"
+            >
+              {quotaCta.label}
+            </Link>
+            .
+          </p>
+        </div>
       ) : null}
 
       {confirmWarning ? (
@@ -385,10 +440,10 @@ export function ResearchRunPanel({
               Continue anyway
             </PrimaryButton>
             <Link
-              href={RESEARCH_BILLING_HREF}
+              href={quotaCta.href}
               className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
-              Buy more
+              {isTrialing ? "View Billing" : "Buy more"}
             </Link>
             <SecondaryButton
               type="button"
@@ -424,7 +479,7 @@ export function ResearchRunPanel({
           </SecondaryButton>
           {canRetryFailed ? (
             <SecondaryButton disabled={pending} onClick={retryFailed}>
-              Retry {retryCount} failed
+              Retry {failedCount} failed
             </SecondaryButton>
           ) : null}
           {canRetryStalled ? (

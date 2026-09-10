@@ -162,6 +162,11 @@ export function formatResearchRunFailureSummary(
   const hasFailures = run.failedCount > 0;
   const hasQuotaBlocked = run.quotaBlockedCount > 0;
 
+  // Quota-only PARTIAL is not a failure — callers use formatResearchQuotaHeldSummary.
+  if (!hasFailures && hasQuotaBlocked && run.status !== "FAILED") {
+    return null;
+  }
+
   if (!hasFailures && !hasQuotaBlocked && run.status !== "FAILED") {
     return null;
   }
@@ -181,7 +186,7 @@ export function formatResearchRunFailureSummary(
 
   if (hasQuotaBlocked) {
     parts.push(
-      `${run.quotaBlockedCount} need more research capacity`,
+      `${run.quotaBlockedCount} waiting on capacity`,
     );
   }
 

@@ -93,4 +93,32 @@ describe("formatResearchRunFailureSummary", () => {
       }),
     ).toBeNull();
   });
+
+  it("returns null for quota-only PARTIAL (not a failure)", () => {
+    expect(
+      formatResearchRunFailureSummary({
+        status: "PARTIAL",
+        failedCount: 0,
+        completedCount: 25,
+        skippedFreshCount: 0,
+        quotaBlockedCount: 6,
+        lastError: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("distinguishes real failures from capacity holds", () => {
+    expect(
+      formatResearchRunFailureSummary({
+        status: "PARTIAL",
+        failedCount: 2,
+        completedCount: 25,
+        skippedFreshCount: 0,
+        quotaBlockedCount: 4,
+        lastError: "research timed out",
+      }),
+    ).toBe(
+      "2 companies failed: research timed out · 4 waiting on capacity · 25 completed",
+    );
+  });
 });

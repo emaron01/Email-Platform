@@ -16,6 +16,7 @@ import {
   TenantMissing,
 } from "@/components/ui";
 import { isResearchAiConfigured } from "@/lib/ai/config";
+import { loadResearchBillingContext } from "@/lib/billing/research-billing-context";
 import { getMembershipForCurrentUser } from "@/lib/org/authz";
 import {
   getContactList,
@@ -86,6 +87,7 @@ export default async function ListDetailPage({
     icps,
     personas,
     researchAllowance,
+    researchBilling,
     activeResearchRun,
     latestResearchRun,
   ] = await Promise.all([
@@ -99,6 +101,7 @@ export default async function ListDetailPage({
       organizationId: organization.id,
       userId: membership.user.id,
     }),
+    loadResearchBillingContext(organization.id),
     getActiveResearchRunForContactList(id, organization.id),
     getLatestResearchRunForContactList(id, organization.id),
   ]);
@@ -200,6 +203,7 @@ export default async function ListDetailPage({
             contactListId={id}
             researchAiConfigured={isResearchAiConfigured()}
             allowance={researchAllowance}
+            billing={researchBilling}
             initialActiveRun={activeResearchRun}
             initialLastRun={
               activeResearchRun ? null : latestResearchRun

@@ -121,6 +121,8 @@ export async function createStandardCheckoutSession(input: {
         planCode: BILLING_PLAN_STANDARD,
       },
     },
+    // Required so trial orgs can convert early (trial_end: 'now') with a card on file.
+    payment_method_collection: "always",
   });
 
   if (!session.url) {

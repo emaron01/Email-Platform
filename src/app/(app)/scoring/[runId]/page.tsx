@@ -31,6 +31,7 @@ import {
   listActiveNormalizedEmails,
 } from "@/lib/suppression/service";
 import { isResearchAiConfigured } from "@/lib/ai/config";
+import { loadResearchBillingContext } from "@/lib/billing/research-billing-context";
 import {
   listAiRoleStatuses,
   listUnconfiguredScoringRoles,
@@ -108,6 +109,7 @@ export default async function ScoringReportPage({
     personas,
     titleSuggestions,
     researchAllowance,
+    researchBilling,
     activeResearchRun,
     latestResearchRun,
   ] = await Promise.all([
@@ -130,6 +132,7 @@ export default async function ScoringReportPage({
       organizationId: organization.id,
       userId: membership.user.id,
     }),
+    loadResearchBillingContext(organization.id),
     getActiveResearchRunForContactList(run.contactListId, organization.id),
     getLatestResearchRunForContactList(run.contactListId, organization.id),
   ]);
@@ -216,6 +219,7 @@ export default async function ScoringReportPage({
             runId={run.id}
             researchAiConfigured={isResearchAiConfigured()}
             allowance={researchAllowance}
+            billing={researchBilling}
             initialActiveRun={activeResearchRun}
             initialLastRun={
               activeResearchRun ? null : latestResearchRun

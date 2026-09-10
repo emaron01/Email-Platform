@@ -3,6 +3,8 @@
  * Safe for client + server — no DB imports.
  */
 
+import { formatBillingDate } from "@/lib/billing/billing-state";
+
 /** Heads-up when this many (or fewer) new-company slots remain. Does not block. */
 export const ACTIVE_RESEARCHED_COMPANY_WARN_REMAINING = 10;
 
@@ -15,6 +17,14 @@ export type ActiveResearchedCompanyUsageView = {
   remaining: number;
   warning: boolean;
   exhausted: boolean;
+};
+
+/** Billing fields the research UI needs for trial-aware quota copy. */
+export type ResearchBillingContext = {
+  billingStatus: string;
+  trialEndsAt: string | null;
+  /** TRIALING + card on file — eligible for Stripe trial_end: 'now'. */
+  canConvertTrialEarly: boolean;
 };
 
 export function toActiveResearchedCompanyUsageView(input: {
@@ -58,26 +68,77 @@ export function formatResearchAllowanceExhausted(limit: number): string {
   return `You've used your company research allowance (${limit} companies). Add capacity in Billing to research new companies. Scoring, email generation, and sending still work for companies you've already researched.`;
 }
 
+function parseTrialEndsAt(
+  trialEndsAt?: Date | string | null,
+): Date | null {
+  if (trialEndsAt == null) return null;
+  const ends =
+    typeof trialEndsAt === "string" ? new Date(trialEndsAt) : trialEndsAt;
+  return Number.isNaN(ends.getTime()) ? null : ends;
+}
+
 /**
  * Mid-trial hit of the 25-company cap — conversion copy, not a bare quota error.
  */
 export function formatTrialResearchExhausted(input: {
   trialLimit: number;
   paidLimit?: number;
+  trialEndsAt?: Date | string | null;
 }): string {
   const paid = input.paidLimit ?? STANDARD_ACTIVE_COMPANY_LIMIT;
-  return `You've used your trial company research (${input.trialLimit} companies). Convert to Standard to research up to ${paid} companies. Scoring, email generation, and sending still work for companies you've already researched.`;
+  const ends = parseTrialEndsAt(input.trialEndsAt ?? null);
+  const dateLabel = ends ? formatBillingDate(ends) : null;
+  if (dateLabel) {
+    return `You've used your trial research allowance of ${input.trialLimit} companies. Your plan converts to Standard on ${dateLabel}, which includes ${paid} companies.`;
+  }
+  return `You've used your trial research allowance of ${input.trialLimit} companies. Your plan converts to Standard at the end of the trial, which includes ${paid} companies.`;
 }
 
 export function formatResearchQuotaBlockedMessage(input: {
   used: number;
   limit: number;
   billingStatus?: string | null;
+  trialEndsAt?: Date | string | null;
 }): string {
   if (input.billingStatus === "TRIALING") {
-    return formatTrialResearchExhausted({ trialLimit: input.limit });
+    return formatTrialResearchExhausted({
+      trialLimit: input.limit,
+      trialEndsAt: input.trialEndsAt,
+    });
   }
   return formatResearchAllowanceExhausted(input.limit);
+}
+
+/**
+ * Neutral run copy when companies were held for allowance (not a defect).
+ */
+export function formatResearchQuotaHeldSummary(input: {
+  completedCount: number;
+  totalCompanies: number;
+  quotaBlockedCount: number;
+}): string {
+  return `Researched ${input.completedCount} of ${input.totalCompanies} companies. ${input.quotaBlockedCount} waiting on capacity.`;
+}
+
+export type ResearchQuotaCta = {
+  label: string;
+  href: string;
+};
+
+/** Secondary Billing link after hitting the company research cap. */
+export function researchQuotaBlockedCta(input: {
+  billingStatus?: string | null;
+}): ResearchQuotaCta {
+  if (input.billingStatus === "TRIALING") {
+    return {
+      label: "View Standard conversion in Billing",
+      href: RESEARCH_BILLING_HREF,
+    };
+  }
+  return {
+    label: "Add capacity in Billing",
+    href: RESEARCH_BILLING_HREF,
+  };
 }
 
 export const RESEARCH_BILLING_HREF = "/settings/billing";

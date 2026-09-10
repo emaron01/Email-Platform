@@ -1,19 +1,27 @@
 import Link from "next/link";
+import { ConvertTrialNowButton } from "@/components/billing/ConvertTrialNowButton";
 import {
-  formatResearchAllowanceExhausted,
   formatResearchAllowanceSummary,
   formatResearchAllowanceWarning,
-  RESEARCH_BILLING_HREF,
+  formatResearchQuotaBlockedMessage,
+  researchQuotaBlockedCta,
   type ActiveResearchedCompanyUsageView,
+  type ResearchBillingContext,
 } from "@/lib/usage/research-allowance";
 
 export function CompanyResearchAllowanceBanner({
   usage,
+  billing,
   compact = false,
 }: {
   usage: ActiveResearchedCompanyUsageView;
+  billing?: ResearchBillingContext | null;
   compact?: boolean;
 }) {
+  const cta = researchQuotaBlockedCta({
+    billingStatus: billing?.billingStatus,
+  });
+
   if (usage.exhausted) {
     return (
       <div
@@ -24,14 +32,26 @@ export function CompanyResearchAllowanceBanner({
           {formatResearchAllowanceSummary(usage)}
         </p>
         {!compact ? (
-          <p className="mt-1">{formatResearchAllowanceExhausted(usage.limit)}</p>
+          <p className="mt-1">
+            {formatResearchQuotaBlockedMessage({
+              used: usage.used,
+              limit: usage.limit,
+              billingStatus: billing?.billingStatus,
+              trialEndsAt: billing?.trialEndsAt,
+            })}
+          </p>
+        ) : null}
+        {billing?.canConvertTrialEarly ? (
+          <div className="mt-2">
+            <ConvertTrialNowButton />
+          </div>
         ) : null}
         <p className="mt-2">
           <Link
-            href={RESEARCH_BILLING_HREF}
+            href={cta.href}
             className="font-medium underline underline-offset-2"
           >
-            Buy more in Billing
+            {cta.label}
           </Link>
         </p>
       </div>
@@ -54,10 +74,12 @@ export function CompanyResearchAllowanceBanner({
         ) : null}
         <p className="mt-2">
           <Link
-            href={RESEARCH_BILLING_HREF}
+            href={cta.href}
             className="font-medium underline underline-offset-2"
           >
-            Buy more in Billing
+            {billing?.billingStatus === "TRIALING"
+              ? "View Billing"
+              : "Buy more in Billing"}
           </Link>
         </p>
       </div>
