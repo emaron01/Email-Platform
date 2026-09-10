@@ -62,9 +62,9 @@ export function CampaignContactsManager({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col items-start gap-2">
         <Link href="/lists" className={outlinedButtonClass}>
-          Upload or Add List to be Researched & Scored
+          Select an Existing List To Be Researched and Scored
         </Link>
         <button
           type="submit"

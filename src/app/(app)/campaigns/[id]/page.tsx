@@ -653,12 +653,12 @@ export default async function CampaignDetailPage({
         >
           {campaignArchived ? (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col items-start gap-2">
                 <Link
                   href="/lists"
                   className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
                 >
-                  Upload or Add List to be Researched & Scored
+                  Select an Existing List To Be Researched and Scored
                 </Link>
               </div>
               <p className="text-sm text-slate-600">
