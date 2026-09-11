@@ -1,14 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  DELETE_SUCCESS_NOTICE_EVENT,
+  DELETE_SUCCESS_NOTICE_KEY,
+} from "@/lib/tenant/delete-success-notice";
 
-export const DELETE_SUCCESS_NOTICE_KEY = "delete-success-notice";
-export const DELETE_SUCCESS_NOTICE_EVENT = "delete-success-notice";
+export {
+  DELETE_SUCCESS_NOTICE_EVENT,
+  DELETE_SUCCESS_NOTICE_KEY,
+} from "@/lib/tenant/delete-success-notice";
 
 /**
- * One-shot banner after ConfirmDeleteForm leaves a deleted record.
- * Cross-route: message is in sessionStorage before replace().
- * Same-route (e.g. product delete on /products): custom event + refresh.
+ * One-shot banner after a successful delete.
+ * - Server redirect(): cookie set by the action
+ * - Same-route client refresh: sessionStorage / custom event from ConfirmDeleteForm
  */
 export function DeleteSuccessNotice() {
   const [message, setMessage] = useState<string | null>(null);
@@ -26,6 +32,21 @@ export function DeleteSuccessNotice() {
       // sessionStorage may be unavailable
     }
 
+    try {
+      const match = document.cookie.match(
+        new RegExp(
+          `(?:^|; )${DELETE_SUCCESS_NOTICE_KEY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]*)`,
+        ),
+      );
+      if (match?.[1]) {
+        const fromCookie = decodeURIComponent(match[1]);
+        document.cookie = `${DELETE_SUCCESS_NOTICE_KEY}=; path=/; max-age=0`;
+        if (fromCookie) show(fromCookie);
+      }
+    } catch {
+      // ignore
+    }
+
     const onNotice = (event: Event) => {
       const detail = (event as CustomEvent<string>).detail;
       if (typeof detail === "string" && detail) {
@@ -39,7 +60,8 @@ export function DeleteSuccessNotice() {
     };
 
     window.addEventListener(DELETE_SUCCESS_NOTICE_EVENT, onNotice);
-    return () => window.removeEventListener(DELETE_SUCCESS_NOTICE_EVENT, onNotice);
+    return () =>
+      window.removeEventListener(DELETE_SUCCESS_NOTICE_EVENT, onNotice);
   }, []);
 
   if (!message) return null;

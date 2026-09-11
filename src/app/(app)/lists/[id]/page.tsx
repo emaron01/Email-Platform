@@ -189,7 +189,7 @@ export default async function ListDetailPage({
             )}
             <ConfirmDeleteForm
               action={deleteContactListAction}
-              hiddenFields={{ id: list.id }}
+              hiddenFields={{ id: list.id, redirectTo: listsHref }}
               triggerLabel="Delete list"
               confirmTitle={`Delete list "${list.name}"?`}
               confirmBody={listDeleteConfirmBody(deleteDecision)}

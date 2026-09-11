@@ -23,6 +23,7 @@ import {
 import { BillingCheckoutRefresh } from "@/components/billing/BillingCheckoutRefresh";
 import { BuyCompanyCreditsButton } from "@/components/billing/BuyCompanyCreditsButton";
 import { ConvertTrialNowButton } from "@/components/billing/ConvertTrialNowButton";
+import { OpenCustomerPortalButton } from "@/components/billing/OpenCustomerPortalButton";
 import { ReferralProgramPanel } from "@/components/billing/ReferralProgramPanel";
 import { canOfferEarlyTrialConversion } from "@/lib/billing/end-trial-now";
 import { getCompanyResearchCreditBalance } from "@/lib/billing/company-research-credits";

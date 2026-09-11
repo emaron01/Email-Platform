@@ -1,6 +1,8 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import {
   createCampaign,
   createIcp,
@@ -48,6 +50,7 @@ import {
 } from "@/lib/auth/authz";
 import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
 import { validateCampaignOffer } from "@/lib/campaign/offer-validation";
+import { DELETE_SUCCESS_NOTICE_KEY } from "@/lib/tenant/delete-success-notice";
 
 function requiredString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -66,6 +69,24 @@ function revalidateSetup(productId?: string) {
   if (productId) revalidatePath(`/setup/${productId}`);
   revalidatePath("/campaigns");
   revalidatePath("/");
+}
+
+/** Flash banner for DeleteSuccessNotice after server redirect(). */
+async function flashDeleteSuccessNotice(message: string): Promise<void> {
+  const jar = await cookies();
+  jar.set(DELETE_SUCCESS_NOTICE_KEY, message, {
+    path: "/",
+    maxAge: 60,
+    sameSite: "lax",
+  });
+}
+
+/** Allow only app-relative list destinations (optional campaign query). */
+function safeListRedirectTo(raw: string): string {
+  const value = raw.trim() || "/lists";
+  if (!value.startsWith("/lists")) return "/lists";
+  if (value.includes("://") || value.includes("//")) return "/lists";
+  return value;
 }
 
 export async function upsertProductAction(
@@ -127,6 +148,7 @@ export async function deleteProductAction(
   _prev: CrudDeleteResult | null,
   formData: FormData,
 ): Promise<CrudDeleteResult> {
+  let notice: string;
   try {
     await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
@@ -139,21 +161,20 @@ export async function deleteProductAction(
       };
     }
     const result = await deleteProduct(id);
-    // Do not revalidate `/setup/${id}` — client may still be on that page.
+    // Do not revalidate `/setup/${id}` — that URL is leaving via redirect below.
     revalidatePath("/setup");
     revalidatePath("/products");
     revalidatePath("/campaigns");
     revalidatePath("/");
-    return {
-      ok: true,
-      message: result.message,
-      mode: result.mode,
-      productId: id,
-    };
+    notice = result.message;
   } catch (error) {
     logActionError("Failed to delete product.", error);
     return { ok: false, message: toSafeCrudDeleteError(error) };
   }
+
+  // redirect() throws — keep outside try/catch so it is not swallowed.
+  await flashDeleteSuccessNotice(notice);
+  redirect("/products");
 }
 
 export async function upsertIcpAction(
@@ -305,6 +326,7 @@ export async function deleteCampaignAction(
   _prev: CrudDeleteResult | null,
   formData: FormData,
 ): Promise<CrudDeleteResult> {
+  let notice: string;
   try {
     await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
@@ -313,15 +335,20 @@ export async function deleteCampaignAction(
       return { ok: false, message: "Confirm deletion before continuing." };
     }
     const result = await deleteCampaign(id);
-    // Do not revalidate `/campaigns/${id}` — the client is still on that URL until
-    // ConfirmDeleteForm navigates away; refreshing it 404s.
+    // Revalidate list destinations only — never `/campaigns/${id}` (deleted).
+    // Any revalidatePath would also re-render the current deleted URL; redirect
+    // in the same response navigates away instead.
     revalidatePath("/campaigns");
     revalidateSetup();
-    return { ok: true, message: result.message, mode: result.mode };
+    notice = result.message;
   } catch (error) {
     logActionError("Failed to delete campaign.", error);
     return { ok: false, message: toSafeCrudDeleteError(error) };
   }
+
+  // redirect() throws — keep outside try/catch so it is not swallowed.
+  await flashDeleteSuccessNotice(notice);
+  redirect("/campaigns");
 }
 
 export async function archiveCampaignAction(
@@ -418,6 +445,8 @@ export async function deleteContactListAction(
   _prev: CrudDeleteResult | null,
   formData: FormData,
 ): Promise<CrudDeleteResult> {
+  let notice: string;
+  let destination: string;
   try {
     await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
@@ -429,16 +458,21 @@ export async function deleteContactListAction(
       "@/lib/tenant/list-delete"
     );
     const result = await deleteOrArchiveContactList(id);
-    // Do not revalidate `/lists/${id}` — same deleted-URL refresh race as campaigns.
+    // Never revalidate `/lists/${id}` — redirect away in the same response.
     revalidatePath("/lists");
     revalidatePath("/contacts");
     revalidatePath("/campaigns");
     revalidatePath("/");
-    return { ok: true, message: result.message, mode: result.mode };
+    notice = result.message;
+    destination = safeListRedirectTo(requiredString(formData, "redirectTo"));
   } catch (error) {
     logActionError("Failed to delete list.", error);
     return { ok: false, message: toSafeCrudDeleteError(error) };
   }
+
+  // redirect() throws — keep outside try/catch so it is not swallowed.
+  await flashDeleteSuccessNotice(notice);
+  redirect(destination);
 }
 
 export async function createCampaignAction(

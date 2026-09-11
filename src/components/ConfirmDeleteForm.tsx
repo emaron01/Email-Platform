@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   DELETE_SUCCESS_NOTICE_EVENT,
   DELETE_SUCCESS_NOTICE_KEY,
-} from "@/components/DeleteSuccessNotice";
+} from "@/lib/tenant/delete-success-notice";
 import type { CrudDeleteResult } from "@/lib/tenant/crud-delete";
 
 type DeleteAction = (

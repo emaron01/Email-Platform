@@ -111,4 +111,20 @@ describe("redirect-throwing actions keep redirect outside try/catch", () => {
     expect(afterCatch).toContain("redirect(");
     expect(afterCatch).not.toMatch(/try\s*\{[\s\S]*redirect\(/);
   });
+
+  it.each([
+    "deleteCampaignAction",
+    "deleteProductAction",
+    "deleteContactListAction",
+  ])("%s calls redirect after try/catch, not inside", (name) => {
+    const source = readFileSync("src/app/actions.ts", "utf8");
+    const start = source.indexOf(`export async function ${name}`);
+    expect(start).toBeGreaterThan(-1);
+    const next = source.indexOf("export async function", start + 1);
+    const body = source.slice(start, next === -1 ? undefined : next);
+    expect(body).toMatch(/\}\s*catch[\s\S]*return\s*\{\s*ok:\s*false/);
+    const afterCatch = body.split(/\}\s*catch[\s\S]*?\n\s*\}/).pop() ?? "";
+    expect(afterCatch).toContain("redirect(");
+    expect(afterCatch).not.toMatch(/try\s*\{[\s\S]*redirect\(/);
+  });
 });
