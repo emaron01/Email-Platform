@@ -151,13 +151,15 @@ describe("setup delete authorization policy", () => {
       "src/components/CampaignContactsManager.tsx",
       "utf8",
     );
-    expect(page).toContain("CampaignStageNextStep");
+    expect(page).toContain("CampaignStageShell");
     expect(page).toContain("Continue to List");
     expect(page).toContain("Continue to Companies");
     expect(page).toContain("Continue to Contacts");
     expect(page).toContain("Continue to Emails");
+    expect(page).toContain("An offer is optional");
     expect(offer).toContain("campaign-offer-next-step");
     expect(offer).toContain("Continue to List");
+    expect(offer).toContain("Optional. Not required to save or continue to List.");
     expect(manager).toContain("campaign-list-score-hint");
     expect(manager).toContain("Go to Lists to research and score");
   });

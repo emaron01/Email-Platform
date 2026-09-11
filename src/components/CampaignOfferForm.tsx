@@ -71,11 +71,13 @@ export function CampaignOfferForm({
           label="Offer Name"
           name="offerName"
           defaultValue={values.offerName}
+          hint="Optional. Not required to save or continue to List."
         />
         <Field
           label="Primary CTA"
           name="offerCta"
           defaultValue={values.offerCta}
+          hint="Optional."
         />
         <div className="md:col-span-2">
           <Field
@@ -83,6 +85,7 @@ export function CampaignOfferForm({
             name="offerDescription"
             as="textarea"
             defaultValue={values.offerDescription}
+            hint="Optional. Used in email copy when present."
           />
         </div>
         <div className="md:col-span-2">
@@ -91,6 +94,7 @@ export function CampaignOfferForm({
             name="offerNotes"
             as="textarea"
             defaultValue={values.offerNotes}
+            hint="Optional."
           />
         </div>
       </div>

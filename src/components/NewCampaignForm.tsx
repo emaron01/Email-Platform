@@ -227,8 +227,9 @@ export function NewCampaignForm({
           Campaign offer
         </p>
         <p className="mb-4 text-sm text-slate-600">
-          Offers are campaign-specific. The same product and ICP can use
-          different offers across campaigns.
+          Optional. Offers are campaign-specific and used in email copy when
+          present. Leave blank if you do not have one yet — you can still create
+          the campaign and move to List.
         </p>
         <div className="grid gap-4 md:grid-cols-2">
           <Field
@@ -236,12 +237,14 @@ export function NewCampaignForm({
             name="offerName"
             placeholder="Free Forecast Audit"
             defaultValue={restored?.offerName}
+            hint="Optional. Not required to create the campaign."
           />
           <Field
             label="Primary CTA"
             name="offerCta"
             placeholder="Book a demo"
             defaultValue={restored?.offerCta}
+            hint="Optional."
           />
           <div className="md:col-span-2">
             <Field
@@ -249,6 +252,7 @@ export function NewCampaignForm({
               name="offerDescription"
               as="textarea"
               defaultValue={restored?.offerDescription}
+              hint="Optional."
             />
           </div>
           <div className="md:col-span-2">
@@ -257,6 +261,7 @@ export function NewCampaignForm({
               name="offerNotes"
               as="textarea"
               defaultValue={restored?.offerNotes}
+              hint="Optional."
             />
           </div>
         </div>
