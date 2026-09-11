@@ -110,6 +110,8 @@ export default async function OrganizationBillingSettingsPage({
       })
     : false;
 
+  // Trial end date comes from the Stripe-synced billing profile — never from
+  // BILLING_TRIAL_PERIOD_DAYS (env only affects NEW Checkout sessions).
   const trialSummary =
     billingStatus === "TRIALING"
       ? formatTrialEndsSummary({ trialEndsAt: billing?.trialEndsAt })

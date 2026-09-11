@@ -5,15 +5,21 @@ import { useRouter } from "next/navigation";
 
 /**
  * Onboarding CTA → Stripe Checkout (same /api/billing/checkout as settings).
+ * Copy follows BILLING_TRIAL_PERIOD_DAYS (passed from the server) so we never
+ * promise a trial when the env has trials disabled.
  */
 export function StartFreeTrialButton({
   disabledReason,
+  trialPeriodDays = 7,
 }: {
   disabledReason?: string | null;
+  /** From resolveTrialPeriodDays(); null = trial off for NEW checkouts. */
+  trialPeriodDays?: number | null;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const trialOff = trialPeriodDays == null;
 
   if (disabledReason) {
     return (
@@ -56,10 +62,16 @@ export function StartFreeTrialButton({
           });
         }}
       >
-        {pending ? "Redirecting…" : "Click Here To Start Your Free Trial"}
+        {pending
+          ? "Redirecting…"
+          : trialOff
+            ? "Subscribe to Standard"
+            : "Click Here To Start Your Free Trial"}
       </button>
       <p className="text-center text-base font-bold text-slate-900">
-        You won&apos;t be charged until your trial period ends.
+        {trialOff
+          ? "You\u2019ll be charged when Checkout completes."
+          : "You won\u2019t be charged until your trial period ends."}
       </p>
       {error ? (
         <p className="text-center text-sm text-red-700">{error}</p>

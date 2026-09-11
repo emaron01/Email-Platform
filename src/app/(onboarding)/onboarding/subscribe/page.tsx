@@ -10,6 +10,7 @@ import {
   BILLING_PLAN_STANDARD,
   planIsCheckoutReady,
 } from "@/lib/billing/plans";
+import { resolveTrialPeriodDays } from "@/lib/billing/trial-period";
 import { stripeConfigured } from "@/lib/billing/stripe";
 import { StartFreeTrialButton } from "@/components/billing/StartFreeTrialButton";
 
@@ -18,6 +19,7 @@ export const dynamic = "force-dynamic";
 /**
  * Post-verify subscribe pitch — unpaid self-serve only.
  * Not available once a Stripe subscription is active.
+ * Trial copy follows BILLING_TRIAL_PERIOD_DAYS for NEW signups only.
  */
 export default async function OnboardingSubscribePage({
   searchParams,
@@ -64,14 +66,19 @@ export default async function OnboardingSubscribePage({
       "Checkout is not configured yet. Contact support if this persists.";
   }
 
+  const trialPeriodDays = resolveTrialPeriodDays();
+  const trialOff = trialPeriodDays == null;
+
   return (
     <div className="space-y-8" data-testid="onboarding-subscribe-page">
       <div className="space-y-2 text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-          Start Your Free Trial
+          {trialOff ? "Subscribe to Standard" : "Start Your Free Trial"}
         </h1>
         <p className="text-base text-slate-600">
-          No charge until your trial ends. Cancel anytime.
+          {trialOff
+            ? "Billing starts when Checkout completes. Cancel anytime."
+            : "No charge until your trial ends. Cancel anytime."}
         </p>
       </div>
 
@@ -115,7 +122,9 @@ export default async function OnboardingSubscribePage({
           </p>
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
             <li>
-              Research up to 25 companies during your trial (100 on a paid plan)
+              {trialOff
+                ? "Research up to 100 companies on Standard"
+                : `Research up to 25 companies during your ${trialPeriodDays}-day trial (100 on a paid plan)`}
             </li>
             <li>Up to 50 curated emails per day (1,000 per month)</li>
             <li>
@@ -135,11 +144,15 @@ export default async function OnboardingSubscribePage({
         </div>
 
         <p className="text-sm text-slate-600">
-          Cancel anytime before your trial ends and you won&apos;t be charged.
-          Cancellations take effect at the end of the current billing cycle.
+          {trialOff
+            ? "Cancel anytime. Cancellations take effect at the end of the current billing cycle."
+            : "Cancel anytime before your trial ends and you won\u2019t be charged. Cancellations take effect at the end of the current billing cycle."}
         </p>
 
-        <StartFreeTrialButton disabledReason={ctaDisabled} />
+        <StartFreeTrialButton
+          disabledReason={ctaDisabled}
+          trialPeriodDays={trialPeriodDays}
+        />
       </section>
     </div>
   );
