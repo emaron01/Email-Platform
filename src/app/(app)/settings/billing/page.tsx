@@ -23,7 +23,7 @@ import {
 import { BillingCheckoutRefresh } from "@/components/billing/BillingCheckoutRefresh";
 import { BuyCompanyCreditsButton } from "@/components/billing/BuyCompanyCreditsButton";
 import { ConvertTrialNowButton } from "@/components/billing/ConvertTrialNowButton";
-import { OpenCustomerPortalButton } from "@/components/billing/OpenCustomerPortalButton";
+import { ReferralProgramPanel } from "@/components/billing/ReferralProgramPanel";
 import { canOfferEarlyTrialConversion } from "@/lib/billing/end-trial-now";
 import { getCompanyResearchCreditBalance } from "@/lib/billing/company-research-credits";
 import { companyCreditBlockIsCheckoutReady } from "@/lib/billing/plans";
@@ -271,6 +271,10 @@ export default async function OrganizationBillingSettingsPage({
           </p>
         ) : null}
       </section>
+
+      <ReferralProgramPanel
+        enabled={organization.accountType === "INDIVIDUAL"}
+      />
 
       <section
         className="space-y-3 rounded-lg border border-slate-200 bg-white p-5"

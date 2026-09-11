@@ -541,6 +541,10 @@ model Organization {
   cadencePolicy            OrganizationCadencePolicy?
   dailyDigestSends         DailyDigestSend[]
   researchRuns             ResearchRun[]
+  referralCode             OrganizationReferralCode?
+  referralReward           OrganizationReferralReward?
+  referralRedemptionsAsReferrer ReferralRedemption[] @relation("ReferrerRedemptions")
+  referralRedemptionsAsReferee  ReferralRedemption[] @relation("RefereeRedemptions")
 
   @@index([status])
   @@index([accountType])
@@ -796,6 +800,67 @@ model OrganizationBillingProfile {
   @@index([planCode])
   @@index([stripeCustomerId])
   @@index([stripeSubscriptionId])
+}
+
+/// Lazy Individual referral promo code (created on first open of referral UI).
+model OrganizationReferralCode {
+  id                    String   @id @default(cuid())
+  organizationId        String   @unique
+  /// Human-readable Checkout promotion code (e.g. JOIN-K7Q2).
+  code                  String   @unique
+  /// Stripe Promotion Code id (promo_…).
+  stripePromotionCodeId String   @unique
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([stripePromotionCodeId])
+}
+
+/// Referrer's cumulative reward rate (advanced only when a referee first becomes ACTIVE).
+model OrganizationReferralReward {
+  id                      String   @id @default(cuid())
+  organizationId          String   @unique
+  /// Counted ACTIVE referrals (keeps growing after the 50% cap).
+  successfulReferralCount Int      @default(0)
+  /// min(50, count * 10) — 0 | 10 | 20 | 30 | 40 | 50.
+  rewardPercent           Int      @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum ReferralRedemptionStatus {
+  ATTRIBUTED
+  COUNTED
+}
+
+/// One lifetime referral credit per referee organization (idempotent on subscription too).
+model ReferralRedemption {
+  id                      String                   @id @default(cuid())
+  referrerOrganizationId  String
+  /// Unique: a referee org can only credit a referrer once.
+  refereeOrganizationId   String                   @unique
+  stripePromotionCodeId   String
+  /// Unique: webhook replay on the same subscription cannot double-count.
+  stripeSubscriptionId    String                   @unique
+  refereeEmailNormalized  String
+  referrerEmailNormalized String
+  status                  ReferralRedemptionStatus @default(ATTRIBUTED)
+  attributedAt            DateTime                 @default(now())
+  countedAt               DateTime?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+
+  referrer Organization @relation("ReferrerRedemptions", fields: [referrerOrganizationId], references: [id], onDelete: Cascade)
+  referee  Organization @relation("RefereeRedemptions", fields: [refereeOrganizationId], references: [id], onDelete: Cascade)
+
+  @@index([referrerOrganizationId])
+  @@index([stripePromotionCodeId])
+  @@index([refereeEmailNormalized])
+  @@index([status])
 }
 
 /// One-time company research capacity packs ($30 / 100). Expire 12 months after grant.

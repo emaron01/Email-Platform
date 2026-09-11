@@ -6,6 +6,10 @@ import "server-only";
 
 import type Stripe from "stripe";
 import { grantCreditsFromCheckoutSession } from "@/lib/billing/grant-credits-from-checkout";
+import {
+  attributeReferralFromCheckoutSession,
+  countReferralIfActive,
+} from "@/lib/billing/referrals";
 import { claimStripeWebhookEvent } from "@/lib/billing/stripe-webhook-idempotency";
 import { revalidateBillingUi } from "@/lib/billing/revalidate-billing-ui";
 import {
@@ -42,6 +46,18 @@ export async function handleStripeWebhookEvent(
           checkoutSession: session,
         });
         synced = Boolean(result);
+        if (result) {
+          await attributeReferralFromCheckoutSession({
+            session,
+            refereeOrganizationId: result.organizationId,
+            subscriptionId,
+          });
+          await countReferralIfActive({
+            refereeOrganizationId: result.organizationId,
+            subscriptionId,
+            billingStatus: result.billingStatus,
+          });
+        }
         break;
       }
       if (session.mode === "payment") {
@@ -59,6 +75,13 @@ export async function handleStripeWebhookEvent(
         organizationId: subscription.metadata?.organizationId ?? null,
       });
       synced = Boolean(result);
+      if (result) {
+        await countReferralIfActive({
+          refereeOrganizationId: result.organizationId,
+          subscriptionId: subscription.id,
+          billingStatus: result.billingStatus,
+        });
+      }
       break;
     }
     case "customer.subscription.deleted": {

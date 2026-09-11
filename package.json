@@ -25,6 +25,7 @@
     "auth:bootstrap": "dotenv -e .env.local -e .env -- tsx scripts/auth-bootstrap.ts",
     "platform:bootstrap-admin": "dotenv -e .env.local -e .env -- tsx scripts/platform-bootstrap-admin.ts",
     "platform:provision-super-admin": "dotenv -e .env.local -e .env -- tsx scripts/platform-provision-super-admin.ts",
+    "billing:create-referral-coupons": "dotenv -e .env.local -e .env -- tsx scripts/create-referral-coupons.ts",
     "test": "vitest run",
     "test:smoke": "tsx scripts/smoke-routes.ts",
     "typecheck:scripts": "tsc -p scripts/ad-hoc/tsconfig.json --noEmit"

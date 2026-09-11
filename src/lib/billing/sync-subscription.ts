@@ -202,7 +202,7 @@ export async function syncSubscriptionById(input: {
   subscriptionId: string;
   organizationId?: string | null;
   checkoutSession?: Stripe.Checkout.Session | null;
-}): Promise<{ organizationId: string } | null> {
+}): Promise<{ organizationId: string; billingStatus: string } | null> {
   const subscription = await retrieveSubscriptionExpanded(input.subscriptionId);
   const organizationId =
     input.organizationId ??
@@ -216,7 +216,10 @@ export async function syncSubscriptionById(input: {
     organizationId,
     subscription,
   });
-  return { organizationId };
+  return {
+    organizationId,
+    billingStatus: mapStripeSubscriptionStatus(subscription.status),
+  };
 }
 
 /** Prefer full syncOrganizationFromStripeSubscription; this is a fallback. */
