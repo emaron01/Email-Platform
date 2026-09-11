@@ -1,10 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import {
   addContactsToCampaign,
   addScoringRunContactsToCampaign,
 } from "@/lib/campaign/contacts";
+import {
+  campaignAfterScoringAttachHref,
+  campaignReturnFromScoringHref,
+} from "@/lib/lists/campaign-query";
+import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 
 export type CampaignContactsActionResult = {
@@ -86,4 +92,53 @@ export async function addScoringRunContactsToCampaignAction(
     console.error("Failed to add scored campaign contacts.", error);
     return { ok: false, message: toSafeCampaignContactsError(error) };
   }
+}
+
+/**
+ * Score-report return: attach Ready to include (GOOD) contacts from this run,
+ * then land on Companies (or List if the campaign still has no contacts).
+ * Scoring engine behavior is unchanged — attach + navigation only.
+ */
+export async function saveScoringRunAndReturnToCampaignAction(
+  formData: FormData,
+): Promise<void> {
+  const campaignId = campaignIdFrom(formData);
+  const scoringRunId = String(formData.get("scoringRunId") ?? "").trim();
+  if (!campaignId || !scoringRunId) {
+    throw new TenantError("Campaign and scoring run are required.");
+  }
+
+  let attachedCount = 0;
+  let attachFailed = false;
+  try {
+    attachedCount = await addScoringRunContactsToCampaign({
+      campaignId,
+      scoringRunId,
+      qualificationBuckets: ["GOOD"],
+    });
+  } catch (error) {
+    console.error("Failed to save scoring run back to campaign.", error);
+    attachFailed = true;
+  }
+
+  revalidateCampaign(campaignId);
+
+  // redirect() throws — keep outside the attach try/catch.
+  if (attachFailed) {
+    redirect(campaignReturnFromScoringHref(campaignId, scoringRunId));
+  }
+
+  const { requireOrganizationId } = await import(
+    "@/lib/tenant/getCurrentOrganization"
+  );
+  const organizationId = await requireOrganizationId();
+  const contactCount = await prisma.campaignContact.count({
+    where: { campaignId, organizationId },
+  });
+  redirect(
+    campaignAfterScoringAttachHref(campaignId, {
+      hasContacts: contactCount > 0,
+      attachedCount,
+    }),
+  );
 }

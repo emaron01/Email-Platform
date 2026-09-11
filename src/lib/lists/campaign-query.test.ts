@@ -14,10 +14,28 @@ describe("campaign scoring round-trip URLs", () => {
     );
   });
 
-  it("returns to list stage with the scored run preselected", () => {
+  it("returns to list stage with the scored run preselected (fallback)", () => {
     expect(campaignReturnFromScoringHref("camp_1", "run_9")).toBe(
       "/campaigns/camp_1?stage=list&scoringRun=run_9",
     );
+  });
+
+  it("lands on companies after attaching Ready contacts", async () => {
+    const { campaignAfterScoringAttachHref } = await import(
+      "@/lib/lists/campaign-query"
+    );
+    expect(
+      campaignAfterScoringAttachHref("camp_1", {
+        hasContacts: true,
+        attachedCount: 3,
+      }),
+    ).toBe("/campaigns/camp_1?stage=companies&attached=3");
+    expect(
+      campaignAfterScoringAttachHref("camp_1", {
+        hasContacts: false,
+        attachedCount: 0,
+      }),
+    ).toBe("/campaigns/camp_1?stage=list&attached=0");
   });
 
   it("names campaign-triggered runs with campaign · list", () => {

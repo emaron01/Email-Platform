@@ -47,11 +47,11 @@ import { getMembershipForCurrentUser } from "@/lib/org/authz";
 import { getActiveResearchedCompanyUsage } from "@/lib/usage/quota";
 import { formatDate, formatNumber } from "@/lib/utils";
 import {
-  campaignReturnFromScoringHref,
   listDetailHref,
   parseCampaignId,
   scoringRunDisplayName,
 } from "@/lib/lists/campaign-query";
+import { SaveAndReturnToCampaignButton } from "@/components/SaveAndReturnToCampaignButton";
 import { readQualificationBucket } from "@/lib/workflow/qualification";
 
 type PageProps = {
@@ -165,10 +165,6 @@ export default async function ScoringReportPage({
   const campaign = campaignId
     ? await getCampaignForListWorkflow(campaignId)
     : null;
-  const backToCampaignHref =
-    campaign != null
-      ? campaignReturnFromScoringHref(campaign.id, run.id)
-      : null;
   const runTitle = scoringRunDisplayName(run);
   const scoringFinished =
     run.status === "COMPLETED" || run.status === "PARTIAL";
@@ -176,14 +172,12 @@ export default async function ScoringReportPage({
     (row) => readQualificationBucket(row.assessmentData) === "EXCLUDED",
   ).length;
 
-  const backToCampaignLink = backToCampaignHref ? (
-    <Link
-      href={backToCampaignHref}
-      data-testid="back-to-campaign"
-      className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-    >
-      Back to Campaign
-    </Link>
+  const backToCampaignButton = campaign ? (
+    <SaveAndReturnToCampaignButton
+      campaignId={campaign.id}
+      scoringRunId={run.id}
+      testId="back-to-campaign"
+    />
   ) : null;
 
   return (
@@ -197,7 +191,7 @@ export default async function ScoringReportPage({
         }
         actions={
           <div className="flex flex-wrap gap-2">
-            {backToCampaignLink}
+            {backToCampaignButton}
             <Link
               href={listDetailHref(run.contactListId, {
                 campaignId: campaign?.id,
@@ -224,6 +218,18 @@ export default async function ScoringReportPage({
 
       <div className="mb-6">
         <Panel
+          title="AI Scoring"
+          description="Qualifies contacts using company ICP criteria and persona title fit. Contact role research runs when you generate email, not during scoring."
+        >
+          <ScoreContactsPanel
+            runId={run.id}
+            readiness={scoringReadiness}
+          />
+        </Panel>
+      </div>
+
+      <div className="mb-6">
+        <Panel
           title="Company Research"
           description="Research is company-level and reusable across contacts, lists, and scoring runs in this organization."
         >
@@ -243,18 +249,6 @@ export default async function ScoringReportPage({
               needingResearch: researchPlan.needingResearch,
               statusCounts: researchPlan.statusCounts,
             }}
-          />
-        </Panel>
-      </div>
-
-      <div className="mb-6">
-        <Panel
-          title="AI Scoring"
-          description="Qualifies contacts using company ICP criteria and persona title fit. Contact role research runs when you generate email, not during scoring."
-        >
-          <ScoreContactsPanel
-            runId={run.id}
-            readiness={scoringReadiness}
           />
         </Panel>
       </div>
@@ -487,15 +481,13 @@ export default async function ScoringReportPage({
         />
       </div>
 
-      {backToCampaignHref ? (
+      {campaign ? (
         <div className="mt-8 flex justify-start">
-          <Link
-            href={backToCampaignHref}
-            data-testid="back-to-campaign-bottom"
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            Back to Campaign
-          </Link>
+          <SaveAndReturnToCampaignButton
+            campaignId={campaign.id}
+            scoringRunId={run.id}
+            testId="back-to-campaign-bottom"
+          />
         </div>
       ) : null}
     </div>

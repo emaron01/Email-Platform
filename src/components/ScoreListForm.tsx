@@ -29,7 +29,7 @@ export function ScoreListForm({
   defaultProductId?: string;
   defaultIcpId?: string;
   defaultPersonaId?: string | null;
-  /** When set, run is labeled with the campaign and Back to Campaign works. */
+  /** When set, run is labeled with the campaign and Save and return works. */
   campaignId?: string | null;
 }) {
   const [productId, setProductId] = useState(() =>

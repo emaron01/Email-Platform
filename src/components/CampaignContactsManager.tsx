@@ -140,7 +140,8 @@ export function CampaignContactsManager({
           <p className="font-medium">No scored runs for this campaign yet</p>
           <p className="mt-1">
             Select a list, research companies, then score for this campaign.
-            When a run completes, return here and choose Add from Scored Run.
+            When a run completes, choose Save and return to campaign on the
+            score report to attach Ready to include contacts.
           </p>
           <Link
             href={listIndexHref({ campaignId })}

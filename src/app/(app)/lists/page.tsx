@@ -96,7 +96,7 @@ export default async function ListsPage({
         />
         <p className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900">
           {campaign
-            ? `Select a list to research and score for ${campaign.name}. After scoring, return to the campaign and choose Add from Scored Run.`
+            ? `Select a list to research and score for ${campaign.name}. After scoring, save and return to the campaign to attach Ready to include contacts.`
             : "Select a list below to research and score your contacts before adding them to a campaign."}
         </p>
       </div>

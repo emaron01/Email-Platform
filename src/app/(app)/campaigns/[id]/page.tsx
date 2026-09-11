@@ -53,6 +53,7 @@ type PageProps = {
     stage?: string;
     contact?: string;
     scoringRun?: string;
+    attached?: string;
   }>;
 };
 
@@ -293,9 +294,6 @@ export default async function CampaignDetailPage({
   });
   const currentStage = resolveCampaignStage(query.stage, stages);
   const selectedScoringRunId = query.scoringRun?.trim() || null;
-  const selectedRunIsCompatible =
-    Boolean(selectedScoringRunId) &&
-    scoringRuns.some((run) => run.id === selectedScoringRunId);
   const bucketByContactId = new Map(
     campaignContactRows.map((row) => [row.id, row.bucket]),
   );
@@ -333,21 +331,18 @@ export default async function CampaignDetailPage({
     ? null
     : campaign.contacts.length === 0
       ? {
-          title: selectedRunIsCompatible
-            ? "Next: add the scored run you just finished"
-            : scoringRuns.length === 0
+          title:
+            scoringRuns.length === 0
               ? "Next: research and score a list"
               : "Next: add contacts from a scored run",
-          body: selectedRunIsCompatible
-            ? "Your scored run is selected below. Add it to this campaign, then continue to Companies."
-            : scoringRuns.length === 0
-              ? "Open Lists, research companies, score against this campaign’s Product / ICP / Persona, then return here and choose Add from Scored Run."
+          body:
+            scoringRuns.length === 0
+              ? "Open Lists, research companies, score against this campaign’s Product / ICP / Persona, then save and return from the score report."
               : "Pick a completed scoring run below, or search for individual contacts. After contacts are attached, continue to Companies.",
           href:
             scoringRuns.length === 0 ? "/lists" : `#campaign-scored-run-form`,
-          label: selectedRunIsCompatible
-            ? "Jump to selected run"
-            : scoringRuns.length === 0
+          label:
+            scoringRuns.length === 0
               ? "Go to Lists to score"
               : "Jump to scored runs",
         }
@@ -470,6 +465,17 @@ export default async function CampaignDetailPage({
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           This campaign is archived. History is intact. Unarchive it to generate
           emails or change contacts.
+        </div>
+      ) : null}
+      {query.attached != null && query.attached !== "" ? (
+        <div
+          role="status"
+          data-testid="scoring-attach-status"
+          className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+        >
+          {Number.parseInt(query.attached, 10) > 0
+            ? `${query.attached} Ready to include contact${query.attached === "1" ? "" : "s"} attached from the scoring run.`
+            : "No Ready to include contacts to attach from that scoring run. Check before including and Left out stay on the score report."}
         </div>
       ) : null}
       <CampaignStageRail

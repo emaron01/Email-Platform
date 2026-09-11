@@ -704,6 +704,12 @@ export async function addContactsToCampaign(input: {
 export async function addScoringRunContactsToCampaign(input: {
   campaignId: string;
   scoringRunId: string;
+  /**
+   * When set, only attach contacts whose workflow bucket is in this list.
+   * Campaign return uses ["GOOD"] (Ready to include). Manual add omits this
+   * and still attaches every completed score.
+   */
+  qualificationBuckets?: QualificationBucket[];
 }): Promise<number> {
   const organizationId = await requireOrganizationId();
   const campaign = await requireCampaignForOrganization(
@@ -733,15 +739,34 @@ export async function addScoringRunContactsToCampaign(input: {
       scoringRunId: run.id,
       scoringStatus: "COMPLETED",
     },
-    select: { contactId: true },
+    select: {
+      contactId: true,
+      scoreLabel: true,
+      assessmentData: true,
+    },
   });
   if (scores.length === 0) {
+    if (input.qualificationBuckets) return 0;
     throw new TenantError("This scoring run has no completed contact scores.");
   }
+
+  const allowed = input.qualificationBuckets
+    ? new Set(input.qualificationBuckets)
+    : null;
+  const contactIds = scores
+    .filter((score) => {
+      if (!allowed) return true;
+      return allowed.has(
+        scoreLabelToBucket(score.scoreLabel, score.assessmentData),
+      );
+    })
+    .map((score) => score.contactId);
+
+  if (contactIds.length === 0) return 0;
 
   return insertCampaignContacts({
     organizationId,
     campaignId: campaign.id,
-    contactIds: scores.map((score) => score.contactId),
+    contactIds,
   });
 }

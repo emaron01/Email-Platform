@@ -183,11 +183,14 @@ describe("scoring run UI seam", () => {
     expect(pageSrc).toContain("Unmatched titles");
     expect(pageSrc).toContain("AI Scoring");
     expect(pageSrc.indexOf("AI Scoring")).toBeLessThan(
+      pageSrc.indexOf("Company Research"),
+    );
+    expect(pageSrc.indexOf("AI Scoring")).toBeLessThan(
       pageSrc.indexOf("AI roles for this run"),
     );
     expect(pageSrc).toContain("left-out-review-guidance");
+    expect(pageSrc).toContain("SaveAndReturnToCampaignButton");
     expect(pageSrc).toContain("back-to-campaign");
-    expect(pageSrc).toContain("campaignReturnFromScoringHref");
     expect(reviewSrc).toContain("resolveTitleSuggestionAction");
     expect(reviewSrc).toContain("Approve");
     expect(reviewSrc).toContain("Dismiss");

@@ -48,10 +48,14 @@ describe("campaign contact management seams", () => {
     expect(manager).toContain("campaign-contacts-status");
     expect(actions).toContain("addContactsToCampaignAction");
     expect(actions).toContain("addScoringRunContactsToCampaignAction");
+    expect(actions).toContain("saveScoringRunAndReturnToCampaignAction");
+    expect(actions).toContain('qualificationBuckets: ["GOOD"]');
     expect(actions).toContain("Promise<CampaignContactsActionResult>");
     const contactsLib = readFileSync("src/lib/campaign/contacts.ts", "utf8");
     expect(contactsLib).toContain("compatibleScoringRunWhere");
     expect(contactsLib).toContain("scoringRunPersonaWhere");
+    expect(contactsLib).toContain("qualificationBuckets");
+    expect(contactsLib).toContain("scoreLabelToBucket");
     expect(contactsLib).not.toMatch(
       /personaId:\s*campaign\.personaId/,
     );

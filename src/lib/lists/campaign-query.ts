@@ -46,7 +46,25 @@ export function scoringRunHref(
   return `/scoring/${runId}?${params.toString()}`;
 }
 
-/** Return to campaign List stage with the scored run pre-selected. */
+/**
+ * After save-and-return attaches Ready contacts: Companies when the campaign
+ * has contacts; otherwise List (nothing ready to carry forward yet).
+ */
+export function campaignAfterScoringAttachHref(
+  campaignId: string,
+  input: { hasContacts: boolean; attachedCount: number },
+): string {
+  const params = new URLSearchParams();
+  if (input.hasContacts) {
+    params.set("stage", "companies");
+  } else {
+    params.set("stage", "list");
+  }
+  params.set("attached", String(input.attachedCount));
+  return `/campaigns/${campaignId}?${params.toString()}`;
+}
+
+/** Deep-link fallback: List stage with the scored run pre-selected. */
 export function campaignReturnFromScoringHref(
   campaignId: string,
   scoringRunId: string,
