@@ -271,16 +271,21 @@ export default async function ListDetailPage({
                 >
                   <div className="text-sm">
                     <p className="font-medium text-slate-900">
-                      {formatDate(run.createdAt)} · {run.product.name}
+                      {run.label?.trim()
+                        ? run.label
+                        : `${formatDate(run.createdAt)} · ${run.product.name}`}
                     </p>
                     <p className="mt-1 text-slate-600">
+                      {run.label?.trim()
+                        ? `${formatDate(run.createdAt)} · ${run.product.name} · `
+                        : null}
                       ICP: {run.icp.name} · Persona:{" "}
                       {run.persona?.name ?? "All personas"} ·{" "}
                       {formatNumber(run.totalContacts)} contacts · {run.status}
                     </p>
                   </div>
                   <Link
-                    href={`/scoring/${run.id}`}
+                    href={`/scoring/${run.id}${campaign?.id ? `?campaign=${campaign.id}` : ""}`}
                     className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     View Report

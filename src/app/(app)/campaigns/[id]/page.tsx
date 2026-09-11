@@ -41,12 +41,19 @@ import { parseEmailLength } from "@/lib/campaign/save";
 import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
 import { loadEmailDraftScreenStates } from "@/lib/email-generation/context";
 import { emailDraftStaleness } from "@/lib/email-generation/draft-staleness";
-import { listIndexHref } from "@/lib/lists/campaign-query";
+import {
+  listIndexHref,
+} from "@/lib/lists/campaign-query";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ q?: string; stage?: string; contact?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    stage?: string;
+    contact?: string;
+    scoringRun?: string;
+  }>;
 };
 
 function asPersonalizationTier(
@@ -285,6 +292,10 @@ export default async function CampaignDetailPage({
     sentEmailCount,
   });
   const currentStage = resolveCampaignStage(query.stage, stages);
+  const selectedScoringRunId = query.scoringRun?.trim() || null;
+  const selectedRunIsCompatible =
+    Boolean(selectedScoringRunId) &&
+    scoringRuns.some((run) => run.id === selectedScoringRunId);
   const bucketByContactId = new Map(
     campaignContactRows.map((row) => [row.id, row.bucket]),
   );
@@ -322,18 +333,21 @@ export default async function CampaignDetailPage({
     ? null
     : campaign.contacts.length === 0
       ? {
-          title:
-            scoringRuns.length === 0
+          title: selectedRunIsCompatible
+            ? "Next: add the scored run you just finished"
+            : scoringRuns.length === 0
               ? "Next: research and score a list"
               : "Next: add contacts from a scored run",
-          body:
-            scoringRuns.length === 0
+          body: selectedRunIsCompatible
+            ? "Your scored run is selected below. Add it to this campaign, then continue to Companies."
+            : scoringRuns.length === 0
               ? "Open Lists, research companies, score against this campaign’s Product / ICP / Persona, then return here and choose Add from Scored Run."
               : "Pick a completed scoring run below, or search for individual contacts. After contacts are attached, continue to Companies.",
           href:
             scoringRuns.length === 0 ? "/lists" : `#campaign-scored-run-form`,
-          label:
-            scoringRuns.length === 0
+          label: selectedRunIsCompatible
+            ? "Jump to selected run"
+            : scoringRuns.length === 0
               ? "Go to Lists to score"
               : "Jump to scored runs",
         }
@@ -757,6 +771,7 @@ export default async function CampaignDetailPage({
             <CampaignContactsManager
               campaignId={campaign.id}
               search={query.q?.trim() ?? ""}
+              selectedScoringRunId={selectedScoringRunId}
               contacts={availableContacts.map((contact) => ({
                 id: contact.id,
                 name: contactDisplayName(contact.firstName, contact.lastName),
@@ -770,6 +785,7 @@ export default async function CampaignDetailPage({
               scoringRuns={scoringRuns.map((run) => ({
                 id: run.id,
                 listName: run.contactList.name,
+                label: run.label,
                 status: run.status,
                 completedScoreCount: run.completedScoreCount,
                 createdLabel: formatDate(run.createdAt),

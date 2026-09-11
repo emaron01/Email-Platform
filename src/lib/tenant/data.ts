@@ -1073,10 +1073,12 @@ export async function createScoringRun(input: {
   productId: string;
   icpId: string;
   personaId: string | null;
+  /** When set, stamps label + sourceCampaignId for campaign round-trip UX. */
+  campaignId?: string | null;
 }): Promise<ScoringRun> {
   const organizationId = await orgId();
 
-  const [list, product, icp] = await Promise.all([
+  const [list, product, icp, sourceCampaign] = await Promise.all([
     prisma.contactList.findFirst({
       where: { id: input.contactListId, organizationId },
     }),
@@ -1086,6 +1088,12 @@ export async function createScoringRun(input: {
     prisma.icp.findFirst({
       where: { id: input.icpId, organizationId },
     }),
+    input.campaignId
+      ? prisma.campaign.findFirst({
+          where: { id: input.campaignId, organizationId },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   if (!list) {
@@ -1186,6 +1194,13 @@ export async function createScoringRun(input: {
   const primaryPersona = personaRows[0]!;
   const primarySnapshot = personaSnapshots[0]!;
 
+  const { scoringRunLabelForCampaign } = await import(
+    "@/lib/lists/campaign-query"
+  );
+  const runLabel = sourceCampaign
+    ? scoringRunLabelForCampaign(sourceCampaign.name, list.name)
+    : null;
+
   return prisma.$transaction(async (tx) => {
     const run = await tx.scoringRun.create({
       data: {
@@ -1194,6 +1209,8 @@ export async function createScoringRun(input: {
         productId: product.id,
         icpId: icp.id,
         personaId: input.personaId ? primaryPersona.id : null,
+        label: runLabel,
+        sourceCampaignId: sourceCampaign?.id ?? null,
         status: "PENDING",
         totalContacts: contacts.length,
         scoredContacts: 0,

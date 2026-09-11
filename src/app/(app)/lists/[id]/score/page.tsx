@@ -117,6 +117,7 @@ export default async function ScoreListPage({ params, searchParams }: PageProps)
             defaultProductId={campaign?.productId}
             defaultIcpId={campaign?.icpId}
             defaultPersonaId={campaign?.personaId}
+            campaignId={campaign?.id}
           />
         )}
       </Panel>

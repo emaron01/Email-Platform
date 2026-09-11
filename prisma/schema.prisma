@@ -1886,6 +1886,10 @@ model ScoringRun {
   icpId           String
   /// Null means the run scores against every product persona (see personaSnapshots).
   personaId       String?
+  /// Display name when started from a campaign (e.g. "Campaign · List").
+  label           String?
+  /// Campaign that triggered this run; used for Back to Campaign navigation.
+  sourceCampaignId String?
   status          ScoringRunStatus @default(PENDING)
   totalContacts   Int              @default(0)
   scoredContacts  Int              @default(0)
@@ -1904,6 +1908,7 @@ model ScoringRun {
   product                Product                       @relation(fields: [productId], references: [id], onDelete: Restrict)
   icp                    Icp                           @relation(fields: [icpId], references: [id], onDelete: Restrict)
   persona                Persona?                      @relation(fields: [personaId], references: [id], onDelete: Restrict)
+  sourceCampaign         Campaign?                     @relation(fields: [sourceCampaignId], references: [id], onDelete: SetNull)
   scores                 ContactScore[]
   qualificationOverrides QualificationBucketOverride[]
   titleSuggestions       TitleSuggestion[]
@@ -1917,6 +1922,7 @@ model ScoringRun {
   @@index([productId])
   @@index([icpId])
   @@index([personaId])
+  @@index([sourceCampaignId])
 }
 
 /// Distinct unmatched job titles from an all-personas scoring run, with an optional AI proposal.
@@ -2088,6 +2094,7 @@ model Campaign {
   offer        Offer?            @relation(fields: [offerId], references: [id])
   contacts     CampaignContact[]
   personasInPlay CampaignPersona[]
+  sourcedScoringRuns ScoringRun[]
 
   @@index([organizationId])
   @@index([organizationId, createdAt])

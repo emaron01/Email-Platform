@@ -16,7 +16,10 @@ describe("createScoringRunAction redirect", () => {
       (err as Error & { digest?: string }).digest = "NEXT_REDIRECT";
       throw err;
     });
-    const createScoringRun = vi.fn(async () => ({ id: "run_abc" }));
+    const createScoringRun = vi.fn(async () => ({
+      id: "run_abc",
+      sourceCampaignId: null,
+    }));
 
     vi.doMock("next/navigation", () => ({ redirect }));
     vi.doMock("@/lib/tenant/data", () => ({ createScoringRun }));
@@ -40,9 +43,49 @@ describe("createScoringRunAction redirect", () => {
     );
     expect(createScoringRun).toHaveBeenCalledTimes(1);
     expect(createScoringRun).toHaveBeenCalledWith(
-      expect.objectContaining({ personaId: "persona_1" }),
+      expect.objectContaining({
+        personaId: "persona_1",
+        campaignId: null,
+      }),
     );
     expect(redirect).toHaveBeenCalledWith("/scoring/run_abc");
+  });
+
+  it("redirects with campaign query when create carries campaignId", async () => {
+    const redirect = vi.fn((url: string) => {
+      const err = new Error(`NEXT_REDIRECT:${url}`);
+      (err as Error & { digest?: string }).digest = "NEXT_REDIRECT";
+      throw err;
+    });
+    const createScoringRun = vi.fn(async () => ({
+      id: "run_camp",
+      sourceCampaignId: "camp_1",
+    }));
+
+    vi.doMock("next/navigation", () => ({ redirect }));
+    vi.doMock("@/lib/tenant/data", () => ({ createScoringRun }));
+    vi.doMock("@/lib/interpretation/icp", () => ({
+      listIcpCriteria: vi.fn(async () => []),
+    }));
+    vi.doMock("@/lib/tenant/getCurrentOrganization", async () => ({
+      ...(await vi.importActual("@/lib/tenant/getCurrentOrganization")),
+      requireOrganizationId: vi.fn(async () => "org_1"),
+    }));
+
+    const { createScoringRunAction } = await import("@/app/actions/scoring");
+    const formData = new FormData();
+    formData.set("contactListId", "list_1");
+    formData.set("productId", "prod_1");
+    formData.set("icpId", "icp_1");
+    formData.set("personaId", "persona_1");
+    formData.set("campaignId", "camp_1");
+
+    await expect(createScoringRunAction(null, formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/scoring/run_camp?campaign=camp_1",
+    );
+    expect(createScoringRun).toHaveBeenCalledWith(
+      expect.objectContaining({ campaignId: "camp_1" }),
+    );
   });
 
   it("creates an all-personas run when the sentinel is submitted", async () => {
@@ -122,10 +165,12 @@ describe("scoring run UI seam", () => {
     expect(formSrc).toContain("defaultProductId");
     expect(formSrc).toContain("defaultIcpId");
     expect(formSrc).toContain("defaultPersonaId");
+    expect(formSrc).toContain("campaignId");
+    expect(formSrc).toContain('name="campaignId"');
     expect(formSrc).toContain("state.message");
   });
 
-  it("score report hosts unmatched-title review", () => {
+  it("score report hosts unmatched-title review and campaign return", () => {
     const pageSrc = readFileSync(
       "src/app/(app)/scoring/[runId]/page.tsx",
       "utf8",
@@ -136,6 +181,13 @@ describe("scoring run UI seam", () => {
     );
     expect(pageSrc).toContain("TitleSuggestionReview");
     expect(pageSrc).toContain("Unmatched titles");
+    expect(pageSrc).toContain("AI Scoring");
+    expect(pageSrc.indexOf("AI Scoring")).toBeLessThan(
+      pageSrc.indexOf("AI roles for this run"),
+    );
+    expect(pageSrc).toContain("left-out-review-guidance");
+    expect(pageSrc).toContain("back-to-campaign");
+    expect(pageSrc).toContain("campaignReturnFromScoringHref");
     expect(reviewSrc).toContain("resolveTitleSuggestionAction");
     expect(reviewSrc).toContain("Approve");
     expect(reviewSrc).toContain("Dismiss");

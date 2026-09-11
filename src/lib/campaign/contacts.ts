@@ -127,6 +127,7 @@ export type CompatibleScoringRun = {
   id: string;
   status: "COMPLETED" | "PARTIAL";
   createdAt: Date;
+  label: string | null;
   contactList: { id: string; name: string };
   completedScoreCount: number;
 };
@@ -562,6 +563,7 @@ export async function listCompatibleScoringRuns(
       id: true,
       status: true,
       createdAt: true,
+      label: true,
       contactList: { select: { id: true, name: true } },
       _count: {
         select: {
@@ -578,6 +580,7 @@ export async function listCompatibleScoringRuns(
       id: run.id,
       status: run.status as "COMPLETED" | "PARTIAL",
       createdAt: run.createdAt,
+      label: run.label,
       contactList: run.contactList,
       completedScoreCount: run._count.scores,
     }));

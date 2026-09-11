@@ -8,7 +8,7 @@ import {
   addScoringRunContactsToCampaignAction,
   type CampaignContactsActionResult,
 } from "@/app/actions/campaign-contacts";
-import { listIndexHref } from "@/lib/lists/campaign-query";
+import { listIndexHref, scoringRunDisplayName } from "@/lib/lists/campaign-query";
 
 const initial: CampaignContactsActionResult | null = null;
 
@@ -22,6 +22,7 @@ export function CampaignContactsManager({
   search,
   contacts,
   scoringRuns,
+  selectedScoringRunId,
 }: {
   campaignId: string;
   search: string;
@@ -36,10 +37,13 @@ export function CampaignContactsManager({
   scoringRuns: Array<{
     id: string;
     listName: string;
+    label?: string | null;
     status: "COMPLETED" | "PARTIAL";
     completedScoreCount: number;
     createdLabel: string;
   }>;
+  /** Pre-select this run when returning from scoring. */
+  selectedScoringRunId?: string | null;
 }) {
   const router = useRouter();
   const [contactState, contactAction, contactPending] = useActionState(
@@ -60,6 +64,11 @@ export function CampaignContactsManager({
   }, [runState, router]);
 
   const hasScoredRuns = scoringRuns.length > 0;
+  const preselectedRunId =
+    selectedScoringRunId &&
+    scoringRuns.some((run) => run.id === selectedScoringRunId)
+      ? selectedScoringRunId
+      : "";
 
   return (
     <div className="space-y-6">
@@ -92,7 +101,8 @@ export function CampaignContactsManager({
             <select
               name="scoringRunId"
               required
-              defaultValue=""
+              key={preselectedRunId || "none"}
+              defaultValue={preselectedRunId}
               className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
             >
               <option value="" disabled>
@@ -100,8 +110,8 @@ export function CampaignContactsManager({
               </option>
               {scoringRuns.map((run) => (
                 <option key={run.id} value={run.id}>
-                  {run.listName} · {run.completedScoreCount} scored ·{" "}
-                  {run.status} · {run.createdLabel}
+                  {scoringRunDisplayName(run)} · {run.completedScoreCount}{" "}
+                  scored · {run.status} · {run.createdLabel}
                 </option>
               ))}
             </select>

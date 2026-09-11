@@ -35,6 +35,7 @@ export async function createScoringRunAction(
   const productId = requiredString(formData, "productId");
   const icpId = requiredString(formData, "icpId");
   const personaRaw = requiredString(formData, "personaId");
+  const campaignId = requiredString(formData, "campaignId") || null;
   const allPersonas = personaRaw === ALL_PERSONAS_VALUE;
 
   if (!contactListId || !productId || !icpId || (!allPersonas && !personaRaw)) {
@@ -95,13 +96,15 @@ export async function createScoringRunAction(
       productId,
       icpId,
       personaId: allPersonas ? null : personaRaw,
+      campaignId,
     });
   } catch (error) {
     return { ok: false, message: toSafeScoringRunActionError(error) };
   }
 
   // redirect() throws — keep it outside try/catch so navigation still fires.
-  redirect(`/scoring/${run.id}`);
+  const { scoringRunHref } = await import("@/lib/lists/campaign-query");
+  redirect(scoringRunHref(run.id, campaignId ?? run.sourceCampaignId));
 }
 
 export async function scoreContactsAction(

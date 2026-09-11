@@ -12,6 +12,7 @@ import {
   TenantMissing,
 } from "@/components/ui";
 import {
+  getCampaignForListWorkflow,
   getScoreReportRows,
   getScoringRun,
   listPersonas,
@@ -45,6 +46,13 @@ import {
 import { getMembershipForCurrentUser } from "@/lib/org/authz";
 import { getActiveResearchedCompanyUsage } from "@/lib/usage/quota";
 import { formatDate, formatNumber } from "@/lib/utils";
+import {
+  campaignReturnFromScoringHref,
+  listDetailHref,
+  parseCampaignId,
+  scoringRunDisplayName,
+} from "@/lib/lists/campaign-query";
+import { readQualificationBucket } from "@/lib/workflow/qualification";
 
 type PageProps = {
   params: Promise<{ runId: string }>;
@@ -55,6 +63,7 @@ type PageProps = {
     researchStatus?: string;
     sort?: string;
     sortDir?: string;
+    campaign?: string;
   }>;
 };
 
@@ -151,22 +160,58 @@ export default async function ScoringReportPage({
     })),
   });
 
+  const campaignIdFromQuery = parseCampaignId(query.campaign);
+  const campaignId = campaignIdFromQuery ?? run.sourceCampaignId ?? null;
+  const campaign = campaignId
+    ? await getCampaignForListWorkflow(campaignId)
+    : null;
+  const backToCampaignHref =
+    campaign != null
+      ? campaignReturnFromScoringHref(campaign.id, run.id)
+      : null;
+  const runTitle = scoringRunDisplayName(run);
+  const scoringFinished =
+    run.status === "COMPLETED" || run.status === "PARTIAL";
+  const leftOutCount = rows.filter(
+    (row) => readQualificationBucket(row.assessmentData) === "EXCLUDED",
+  ).length;
+
+  const backToCampaignLink = backToCampaignHref ? (
+    <Link
+      href={backToCampaignHref}
+      data-testid="back-to-campaign"
+      className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+    >
+      Back to Campaign
+    </Link>
+  ) : null;
+
   return (
     <div>
       <PageHeader
         title="Score Report"
-        description="Qualification by ICP criteria and persona title fit. Contacts are Ready to include, Check before including, or Left out — with a reason you can act on."
+        description={
+          campaign
+            ? `${runTitle}. Qualification by ICP criteria and persona title fit. Contacts are Ready to include, Check before including, or Left out — with a reason you can act on.`
+            : "Qualification by ICP criteria and persona title fit. Contacts are Ready to include, Check before including, or Left out — with a reason you can act on."
+        }
         actions={
-          <Link
-            href={`/lists/${run.contactListId}`}
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            Back to list
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {backToCampaignLink}
+            <Link
+              href={listDetailHref(run.contactListId, {
+                campaignId: campaign?.id,
+              })}
+              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Back to list
+            </Link>
+          </div>
         }
       />
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Meta label="Run" value={runTitle} />
         <Meta label="List" value={run.contactList.name} />
         <Meta label="Product" value={run.product.name} />
         <Meta label="ICP" value={run.icp.name} />
@@ -175,39 +220,6 @@ export default async function ScoringReportPage({
         <Meta label="Scored Contacts" value={formatNumber(run.scoredContacts)} />
         <Meta label="Status" value={run.status} />
         <Meta label="Created" value={formatDate(run.createdAt)} />
-      </div>
-
-      <div className="mb-6">
-        <Panel
-          title="AI roles for this run"
-          description={
-            scoringReadiness.contactResearchEnabled
-              ? "Scoring needs Contact scoring and Contact research. Company research is optional but shown so an unset role cannot hide."
-              : "Scoring needs Contact scoring. Contact research is disabled for this workspace — email personalization uses company research only. Company research is optional but shown so an unset role cannot hide."
-          }
-        >
-          <AiRoleStatusList
-            roles={listAiRoleStatuses().filter(
-              (role) =>
-                role.requiredForScoring || role.role === "research",
-            )}
-            orgDisabledNotes={
-              scoringReadiness.contactResearchEnabled
-                ? undefined
-                : {
-                    contact_research: CONTACT_RESEARCH_DISABLED_USER_MESSAGE,
-                  }
-            }
-          />
-          {listUnconfiguredScoringRoles({
-            contactResearchEnabled: scoringReadiness.contactResearchEnabled,
-          }).length > 0 ? (
-            <p className="mt-3 text-sm text-amber-950">
-              Score Contacts stays disabled until every required role is
-              configured. Set the listed environment variables and restart.
-            </p>
-          ) : null}
-        </Panel>
       </div>
 
       <div className="mb-6">
@@ -247,6 +259,55 @@ export default async function ScoringReportPage({
         </Panel>
       </div>
 
+      {scoringFinished && leftOutCount > 0 ? (
+        <div
+          className="mb-6 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950"
+          data-testid="left-out-review-guidance"
+        >
+          <p className="font-medium">
+            Review contacts left out before moving on
+          </p>
+          <p className="mt-1">
+            {leftOutCount === 1
+              ? "1 contact was left out of this run. Review them in the report below — you can restore any contact that should stay in play."
+              : `${leftOutCount} contacts were left out of this run. Review them in the report below — you can restore any of them that should stay in play.`}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mb-6">
+        <Panel
+          title="AI roles for this run"
+          description={
+            scoringReadiness.contactResearchEnabled
+              ? "Scoring needs Contact scoring and Contact research. Company research is optional but shown so an unset role cannot hide."
+              : "Scoring needs Contact scoring. Contact research is disabled for this workspace — email personalization uses company research only. Company research is optional but shown so an unset role cannot hide."
+          }
+        >
+          <AiRoleStatusList
+            roles={listAiRoleStatuses().filter(
+              (role) =>
+                role.requiredForScoring || role.role === "research",
+            )}
+            orgDisabledNotes={
+              scoringReadiness.contactResearchEnabled
+                ? undefined
+                : {
+                    contact_research: CONTACT_RESEARCH_DISABLED_USER_MESSAGE,
+                  }
+            }
+          />
+          {listUnconfiguredScoringRoles({
+            contactResearchEnabled: scoringReadiness.contactResearchEnabled,
+          }).length > 0 ? (
+            <p className="mt-3 text-sm text-amber-950">
+              Score Contacts stays disabled until every required role is
+              configured. Set the listed environment variables and restart.
+            </p>
+          ) : null}
+        </Panel>
+      </div>
+
       {titleSuggestions.some((row) => row.status === "PENDING") ? (
         <div className="mb-6">
           <Panel
@@ -276,6 +337,9 @@ export default async function ScoringReportPage({
 
       <Panel title="Filters" description="Simple tenant-scoped filters for this scoring run.">
         <form className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {campaign?.id ? (
+            <input type="hidden" name="campaign" value={campaign.id} />
+          ) : null}
           <label className="block text-sm">
             <span className="font-medium text-slate-700">Score Label</span>
             <select
@@ -422,6 +486,18 @@ export default async function ScoringReportPage({
           }))}
         />
       </div>
+
+      {backToCampaignHref ? (
+        <div className="mt-8 flex justify-start">
+          <Link
+            href={backToCampaignHref}
+            data-testid="back-to-campaign-bottom"
+            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            Back to Campaign
+          </Link>
+        </div>
+      ) : null}
     </div>
   );
 }

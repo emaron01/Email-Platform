@@ -20,6 +20,7 @@ export function ScoreListForm({
   defaultProductId,
   defaultIcpId,
   defaultPersonaId,
+  campaignId,
 }: {
   contactListId: string;
   products: Array<{ id: string; name: string }>;
@@ -28,6 +29,8 @@ export function ScoreListForm({
   defaultProductId?: string;
   defaultIcpId?: string;
   defaultPersonaId?: string | null;
+  /** When set, run is labeled with the campaign and Back to Campaign works. */
+  campaignId?: string | null;
 }) {
   const [productId, setProductId] = useState(() =>
     products.some((product) => product.id === defaultProductId)
@@ -68,6 +71,9 @@ export function ScoreListForm({
   return (
     <form action={formAction} className="grid gap-4 md:grid-cols-2">
       <input type="hidden" name="contactListId" value={contactListId} />
+      {campaignId ? (
+        <input type="hidden" name="campaignId" value={campaignId} />
+      ) : null}
 
       {state && !state.ok ? (
         <p
