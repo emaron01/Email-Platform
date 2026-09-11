@@ -12,6 +12,7 @@ import {
 } from "@/app/actions/settings";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import { requireOrgAdmin } from "@/lib/org/authz";
+import { orgAdminInvitesAllowed, individualOrgAdminInviteBlockMessage } from "@/lib/org/seats";
 import { prisma } from "@/lib/prisma";
 import { ensureOrganizationPolicies } from "@/lib/usage/policy";
 
@@ -19,7 +20,7 @@ export default async function OrganizationSettingsPage() {
   const { organization, user } = await requireOrgAdmin();
   await ensureOrganizationPolicies(organization.id);
 
-  const [usagePolicy, researchPolicy, members, overrides, invitations] =
+  const [usagePolicy, researchPolicy, members, overrides, invitations, billing] =
     await Promise.all([
       prisma.organizationUsagePolicy.findUniqueOrThrow({
         where: { organizationId: organization.id },
@@ -39,7 +40,16 @@ export default async function OrganizationSettingsPage() {
         where: { organizationId: organization.id, status: "PENDING" },
         orderBy: { createdAt: "desc" },
       }),
+      prisma.organizationBillingProfile.findUnique({
+        where: { organizationId: organization.id },
+        select: { planCode: true },
+      }),
     ]);
+
+  const canInvite = orgAdminInvitesAllowed({
+    accountType: organization.accountType,
+    planCode: billing?.planCode ?? null,
+  });
 
   const overrideByUser = new Map(
     overrides.map((o) => [o.userId, o] as const),
@@ -219,9 +229,9 @@ export default async function OrganizationSettingsPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-900">Members</h2>
         <p className="text-sm text-slate-600">
-          OWNER and ADMIN can invite, change roles, and remove users. Product,
-          ICP, and Personas are shared across the org; voice and signature stay
-          per user.
+          OWNER and ADMIN can change roles and remove users
+          {canInvite ? ", and invite new members" : ""}. Product, ICP, and
+          Personas are shared across the org; voice and signature stay per user.
         </p>
         <ul className="space-y-3">
           {members.map((m) => (
@@ -347,60 +357,71 @@ export default async function OrganizationSettingsPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-900">Invite user</h2>
-        <ActionFeedbackForm
-          action={inviteUserAction}
-          className="grid gap-2 sm:grid-cols-3"
-          testId="invite-user-form"
-        >
-          <input
-            name="email"
-            type="email"
-            required
-            placeholder="colleague@company.com"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
-          />
-          <select
-            name="role"
-            defaultValue="MEMBER"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value="MEMBER">MEMBER</option>
-            <option value="ADMIN">ADMIN</option>
-          </select>
-          <button
-            type="submit"
-            className="sm:col-span-3 w-fit rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-          >
-            Create invitation
-          </button>
-        </ActionFeedbackForm>
-        {invitations.length > 0 ? (
-          <ul className="space-y-2 text-sm text-slate-600">
-            {invitations.map((inv) => (
-              <li
-                key={inv.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2"
+        {canInvite ? (
+          <>
+            <ActionFeedbackForm
+              action={inviteUserAction}
+              className="grid gap-2 sm:grid-cols-3"
+              testId="invite-user-form"
+            >
+              <input
+                name="email"
+                type="email"
+                required
+                placeholder="colleague@company.com"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
+              />
+              <select
+                name="role"
+                defaultValue="MEMBER"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
               >
-                <span>
-                  Pending: {inv.email} as {inv.role} (expires{" "}
-                  {inv.expiresAt.toISOString().slice(0, 10)})
-                </span>
-                <ActionFeedbackForm action={revokeInvitationAction}>
-                  <input type="hidden" name="invitationId" value={inv.id} />
-                  <button
-                    type="submit"
-                    className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                <option value="MEMBER">MEMBER</option>
+                <option value="ADMIN">ADMIN</option>
+              </select>
+              <button
+                type="submit"
+                className="sm:col-span-3 w-fit rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              >
+                Create invitation
+              </button>
+            </ActionFeedbackForm>
+            {invitations.length > 0 ? (
+              <ul className="space-y-2 text-sm text-slate-600">
+                {invitations.map((inv) => (
+                  <li
+                    key={inv.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2"
                   >
-                    Revoke
-                  </button>
-                </ActionFeedbackForm>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <p className="text-xs text-slate-500">
-          Invitation tokens are hashed at rest. Accept via the emailed link.
-        </p>
+                    <span>
+                      Pending: {inv.email} as {inv.role} (expires{" "}
+                      {inv.expiresAt.toISOString().slice(0, 10)})
+                    </span>
+                    <ActionFeedbackForm action={revokeInvitationAction}>
+                      <input type="hidden" name="invitationId" value={inv.id} />
+                      <button
+                        type="submit"
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                      >
+                        Revoke
+                      </button>
+                    </ActionFeedbackForm>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="text-xs text-slate-500">
+              Invitation tokens are hashed at rest. Accept via the emailed link.
+            </p>
+          </>
+        ) : (
+          <p
+            className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700"
+            data-testid="invite-blocked-individual"
+          >
+            {individualOrgAdminInviteBlockMessage()}
+          </p>
+        )}
       </section>
     </div>
   );

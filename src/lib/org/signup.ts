@@ -8,6 +8,7 @@ import {
   canRenameWorkspace,
   AuthorizationError,
 } from "@/lib/org/authz";
+import { orgAdminInviteDenialReason } from "@/lib/org/seats";
 import { ensureOrganizationPolicies } from "@/lib/usage/policy";
 
 export class SignupError extends Error {
@@ -157,6 +158,24 @@ export async function createOrganizationInvitation(input: {
     );
   }
 
+  const [organization, billing] = await Promise.all([
+    prisma.organization.findUniqueOrThrow({
+      where: { id: input.organizationId },
+      select: { accountType: true },
+    }),
+    prisma.organizationBillingProfile.findUnique({
+      where: { organizationId: input.organizationId },
+      select: { planCode: true },
+    }),
+  ]);
+  const denial = orgAdminInviteDenialReason({
+    accountType: organization.accountType,
+    planCode: billing?.planCode ?? null,
+  });
+  if (denial) {
+    throw new InvitationError(denial);
+  }
+
   const role = input.role ?? "MEMBER";
   if (role === "OWNER") {
     throw new InvitationError(
@@ -176,6 +195,8 @@ export async function createOrganizationInvitation(input: {
 
 /**
  * Platform SUPER_ADMIN invite into any org (no membership required).
+ * Not gated by Individual seat policy — comps and enterprise seats are
+ * managed deliberately from the platform console.
  * Allows OWNER only when the org currently has zero OWNER members (bootstrap).
  */
 export async function createOrganizationInvitationAsPlatform(input: {

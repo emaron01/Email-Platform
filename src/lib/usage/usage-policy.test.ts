@@ -450,6 +450,24 @@ describe.skipIf(!hasDatabase)(
       name: "Invite Owner",
     });
 
+    await expect(
+      createOrganizationInvitation({
+        organizationId: organization.id,
+        invitedByUserId: owner.id,
+        email: `blocked-${suffix}@example.test`,
+        role: "MEMBER",
+      }),
+    ).rejects.toMatchObject({
+      name: "InvitationError",
+      message: expect.stringContaining("limited to one user"),
+    });
+
+    // Team / platform-shaped workspaces may invite (ENTERPRISE).
+    await prisma.organization.update({
+      where: { id: organization.id },
+      data: { accountType: "ENTERPRISE" },
+    });
+
     await renameOrganizationWorkspace({
       organizationId: organization.id,
       actorUserId: owner.id,

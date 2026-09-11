@@ -14,8 +14,8 @@ enum OrganizationStatus {
   CANCELLED
 }
 
-/// Workspace shape: INDIVIDUAL starts as one OWNER (seat 1); ENTERPRISE is multi-user.
-/// Both may invite additional users (individual can grow into a team).
+/// Workspace shape: INDIVIDUAL is one seat (org-admin invites blocked unless COMPED);
+/// ENTERPRISE is multi-user. Platform invites remain available for comps / enterprise.
 enum OrganizationAccountType {
   INDIVIDUAL
   ENTERPRISE
