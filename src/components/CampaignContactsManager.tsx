@@ -9,13 +9,12 @@ import {
   type CampaignContactsActionResult,
 } from "@/app/actions/campaign-contacts";
 import { listIndexHref, scoringRunDisplayName } from "@/lib/lists/campaign-query";
+import {
+  PRIMARY_BUTTON_CLASS,
+  SECONDARY_BUTTON_CLASS,
+} from "@/components/ui";
 
 const initial: CampaignContactsActionResult | null = null;
-
-const outlinedButtonClass =
-  "inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50";
-const filledButtonClass =
-  "inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60";
 
 export function CampaignContactsManager({
   campaignId,
@@ -75,7 +74,7 @@ export function CampaignContactsManager({
       <div className="flex flex-col items-start gap-2">
         <Link
           href={listIndexHref({ campaignId })}
-          className={outlinedButtonClass}
+          className={SECONDARY_BUTTON_CLASS}
         >
           Select an Existing List To Be Researched and Scored
         </Link>
@@ -83,7 +82,7 @@ export function CampaignContactsManager({
           type="submit"
           form="campaign-scored-run-form"
           disabled={!hasScoredRuns || runPending}
-          className={filledButtonClass}
+          className={PRIMARY_BUTTON_CLASS}
         >
           {runPending ? "Adding…" : "Add from Scored Run"}
         </button>
@@ -168,7 +167,7 @@ export function CampaignContactsManager({
           </label>
           <button
             type="submit"
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className={`${SECONDARY_BUTTON_CLASS}`}
           >
             Search
           </button>
@@ -231,7 +230,7 @@ export function CampaignContactsManager({
               <button
                 type="submit"
                 disabled={contactPending}
-                className={filledButtonClass}
+                className={PRIMARY_BUTTON_CLASS}
               >
                 {contactPending ? "Adding…" : "Add selected contacts"}
               </button>

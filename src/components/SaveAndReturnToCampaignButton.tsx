@@ -2,6 +2,7 @@
 
 import { useFormStatus } from "react-dom";
 import { saveScoringRunAndReturnToCampaignAction } from "@/app/actions/campaign-contacts";
+import { SECONDARY_BUTTON_CLASS } from "@/components/ui";
 
 function SubmitButton({
   testId,
@@ -14,7 +15,7 @@ function SubmitButton({
       type="submit"
       disabled={pending}
       data-testid={testId}
-      className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      className={SECONDARY_BUTTON_CLASS}
     >
       {pending ? "Saving…" : "Save and return to campaign"}
     </button>

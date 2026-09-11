@@ -23,7 +23,7 @@ import { projectPersonaSignalsFromProfileAction, rebuildPersonaFromProductEviden
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { ExportPdfButton } from "@/components/ExportPdfButton";
 import { PersonaBriefingDocument } from "@/components/PersonaBriefingDocument";
-import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
+import { Field, SECONDARY_BUTTON_CLASS, SecondaryButton, SubmitButton } from "@/components/ui";
 import { formatCriterionDisplay } from "@/lib/criteria/types";
 import type { PersonaActionResult } from "@/lib/persona/save";
 import {
@@ -35,7 +35,7 @@ import {
   type PersonaReviewSource,
 } from "@/lib/persona-research/persona-briefing";
 import { NEEDS_REVIEW_CLASSIFY_TARGETS } from "@/lib/persona-research/project-signals";
-import { listToCommaString } from "@/lib/utils";
+import { cn, listToCommaString } from "@/lib/utils";
 
 type CriterionRow = {
   id?: string;
@@ -286,7 +286,7 @@ function NeedsReviewCriterionRow({
             <input type="hidden" name="productId" value={productId} />
             <button
               type="submit"
-              className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+              className={cn(SECONDARY_BUTTON_CLASS, "py-1", "!px-2", "!py-1", "!text-[11px]")}
             >
               Dismiss
             </button>
@@ -458,7 +458,7 @@ function NewPersonaForm({
             type="submit"
             formAction={interpretAction}
             disabled={pending}
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className={SECONDARY_BUTTON_CLASS}
           >
             {interpretPending
               ? "Regenerating criteria…"
@@ -707,7 +707,7 @@ export function PersonaForm({
                 type="submit"
                 formAction={interpretAction}
                 disabled={pending}
-                className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className={SECONDARY_BUTTON_CLASS}
               >
                 {interpretPending
                   ? "Regenerating criteria…"
@@ -733,7 +733,7 @@ export function PersonaForm({
               <button
                 type="submit"
                 disabled={interpretPending}
-                className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className={SECONDARY_BUTTON_CLASS}
               >
                 {interpretPending
                   ? "Regenerating criteria…"
@@ -747,7 +747,7 @@ export function PersonaForm({
                 <button
                   type="submit"
                   disabled={rebuildPending}
-                  className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className={SECONDARY_BUTTON_CLASS}
                 >
                   {rebuildPending
                     ? "Rebuilding…"

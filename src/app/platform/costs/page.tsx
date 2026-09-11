@@ -1,3 +1,5 @@
+import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import {
   canMutatePlatform,
@@ -378,7 +380,7 @@ export default async function PlatformCostsPage({
             </label>
             <button
               type="submit"
-              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white sm:col-span-2"
+              className={cn(PRIMARY_BUTTON_CLASS, "sm:col-span-2", "!px-3")}
             >
               Add rate version
             </button>
@@ -450,7 +452,7 @@ export default async function PlatformCostsPage({
             </label>
             <button
               type="submit"
-              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white sm:col-span-2"
+              className={cn(PRIMARY_BUTTON_CLASS, "sm:col-span-2", "!px-3")}
             >
               Record reconciliation
             </button>

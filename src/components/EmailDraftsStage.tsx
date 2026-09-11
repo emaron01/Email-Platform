@@ -1,4 +1,6 @@
 "use client";
+import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { QualificationBucket } from "@prisma/client";
@@ -322,11 +324,9 @@ export function EmailDraftsStage({
         <button
           type="button"
           onClick={() => setView("write")}
-          className={`rounded-md px-3 py-2 text-sm font-medium ${
-            view === "write"
-              ? "bg-slate-900 text-white"
-              : "border border-slate-300 bg-white text-slate-700"
-          }`}
+          className={
+            view === "write" ? PRIMARY_BUTTON_CLASS : SECONDARY_BUTTON_CLASS
+          }
         >
           Write
         </button>
@@ -334,11 +334,9 @@ export function EmailDraftsStage({
           type="button"
           data-testid="compare-drafts-toggle"
           onClick={() => setView("compare")}
-          className={`rounded-md px-3 py-2 text-sm font-medium ${
-            view === "compare"
-              ? "bg-slate-900 text-white"
-              : "border border-slate-300 bg-white text-slate-700"
-          }`}
+          className={
+            view === "compare" ? PRIMARY_BUTTON_CLASS : SECONDARY_BUTTON_CLASS
+          }
         >
           Compare drafts
         </button>
@@ -573,7 +571,7 @@ function CampaignDraftCompare({
             <button
               type="button"
               onClick={() => onOpenInWrite(contact.campaignContactId)}
-              className="cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 shadow-sm hover:border-slate-400 hover:bg-slate-50"
+              className={cn(SECONDARY_BUTTON_CLASS, "px-2.5", "!px-2.5", "!py-1.5", "!text-xs")}
             >
               Open in Write
             </button>

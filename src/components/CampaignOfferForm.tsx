@@ -8,7 +8,8 @@ import {
   type CampaignOfferActionResult,
 } from "@/app/actions/campaign-offer";
 import type { CampaignOfferFields } from "@/lib/campaign/offer-validation";
-import { Field, SubmitButton } from "@/components/ui";
+import { Field, PRIMARY_BUTTON_CLASS, SubmitButton } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 const initial: CampaignOfferActionResult | null = null;
 
@@ -59,7 +60,7 @@ export function CampaignOfferForm({
           </p>
           <Link
             href={`/campaigns/${campaignId}?stage=list`}
-            className="mt-3 inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className={cn(PRIMARY_BUTTON_CLASS, "mt-3")}
           >
             Continue to List
           </Link>

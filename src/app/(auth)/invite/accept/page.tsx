@@ -1,3 +1,5 @@
+import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -58,7 +60,7 @@ async function AcceptInviteBody({ token }: { token: string | null }) {
         <div className="mt-6 flex flex-wrap gap-3 text-sm">
           <Link
             href={`/login?next=${encodeURIComponent(next)}`}
-            className="rounded-md bg-slate-900 px-3 py-2 font-medium text-white"
+            className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
           >
             Sign in
           </Link>

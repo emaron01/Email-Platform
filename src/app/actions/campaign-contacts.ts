@@ -101,7 +101,7 @@ export async function addScoringRunContactsToCampaignAction(
  */
 export async function saveScoringRunAndReturnToCampaignAction(
   formData: FormData,
-): Promise<void> {
+) {
   const campaignId = campaignIdFrom(formData);
   const scoringRunId = String(formData.get("scoringRunId") ?? "").trim();
   if (!campaignId || !scoringRunId) {

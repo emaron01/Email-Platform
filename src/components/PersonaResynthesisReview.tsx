@@ -9,7 +9,7 @@ import {
   type PersonaSetupActionResult,
 } from "@/app/actions/persona-setup";
 import { AutosizeTextarea } from "@/components/AutosizeTextarea";
-import { SecondaryButton, SubmitButton } from "@/components/ui";
+import { SECONDARY_BUTTON_CLASS, SecondaryButton, SubmitButton } from "@/components/ui";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import {
   buildPersonaCriteriaForReview,
@@ -284,7 +284,7 @@ export function PersonaResynthesisReview({
           </SecondaryButton>
           <Link
             href={`/setup/${productId}/personas/manage/${personaId}`}
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+            className={SECONDARY_BUTTON_CLASS}
           >
             Cancel
           </Link>
@@ -387,7 +387,7 @@ export function PersonaResynthesisReview({
           </SubmitButton>
           <Link
             href={`/setup/${productId}/personas/manage/${personaId}`}
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+            className={SECONDARY_BUTTON_CLASS}
           >
             Cancel
           </Link>

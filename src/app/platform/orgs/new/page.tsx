@@ -1,3 +1,5 @@
+import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { canMutatePlatform, requirePlatformOperator } from "@/lib/auth/authz";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
@@ -165,7 +167,7 @@ export default async function PlatformCreateOrgPage() {
         </label>
         <button
           type="submit"
-          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+          className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
         >
           Create and send invite
         </button>

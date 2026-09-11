@@ -9,7 +9,8 @@ import {
   retryProductSynthesisAction,
   type ProductSetupActionResult,
 } from "@/app/actions/product-setup";
-import { Field, SecondaryButton, SubmitButton } from "@/components/ui";
+import { Field, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS, SecondaryButton, SubmitButton } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import type {
   PersonaDraft,
   SuggestedBuyerRole,
@@ -189,7 +190,7 @@ export function AssistedProductIntake({
               type="submit"
               formAction={saveAction}
               disabled={pending || savePending}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
+              className={SECONDARY_BUTTON_CLASS}
             >
               {savePending ? "Saving…" : "Save Product only"}
             </button>
@@ -276,7 +277,7 @@ export function SuggestedBuyerRolesPanel({
               <p className="mt-3">
                 <Link
                   href={`/setup/${productId}/personas/new?role=${encodeURIComponent(role.suggestionKey)}`}
-                  className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
+                  className={cn(PRIMARY_BUTTON_CLASS, "!px-3", "!py-1.5")}
                 >
                   Build Persona
                 </Link>

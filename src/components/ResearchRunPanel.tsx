@@ -12,7 +12,7 @@ import {
 } from "@/app/actions/research";
 import { CompanyResearchAllowanceBanner } from "@/components/CompanyResearchAllowanceBanner";
 import { ConvertTrialNowButton } from "@/components/billing/ConvertTrialNowButton";
-import { PrimaryButton, SecondaryButton } from "@/components/ui";
+import { PrimaryButton, SECONDARY_BUTTON_CLASS, SecondaryButton } from "@/components/ui";
 import {
   isResearchRunPaused,
   isResearchRunStalled,
@@ -441,7 +441,7 @@ export function ResearchRunPanel({
             </PrimaryButton>
             <Link
               href={quotaCta.href}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className={SECONDARY_BUTTON_CLASS}
             >
               {isTrialing ? "View Billing" : "Buy more"}
             </Link>

@@ -15,7 +15,7 @@ import {
 import { AutosizeTextarea } from "@/components/AutosizeTextarea";
 import { ExportPdfButton } from "@/components/ExportPdfButton";
 import { SourceMarkers } from "@/components/research-document";
-import { SecondaryButton, SubmitButton } from "@/components/ui";
+import { SECONDARY_CHIP_CLASS, SecondaryButton, SubmitButton } from "@/components/ui";
 import type {
   ProductDraft,
   ProductMessagingDraft,
@@ -100,7 +100,7 @@ function EvidenceChip({
       <button
         type="button"
         data-print-hide
-        className="research-source-chip-button cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 underline decoration-slate-300 underline-offset-2 shadow-sm hover:border-slate-400 hover:bg-slate-50 hover:decoration-slate-600"
+        className={SECONDARY_CHIP_CLASS}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >

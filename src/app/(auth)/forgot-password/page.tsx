@@ -1,4 +1,6 @@
 "use client";
+import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
@@ -88,7 +90,7 @@ export default function ForgotPasswordPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+          className={cn(PRIMARY_BUTTON_CLASS, "w-full", "!px-3")}
         >
           {loading ? "Sending…" : "Send reset link"}
         </button>

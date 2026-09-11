@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PersonaResynthesisReview } from "@/components/PersonaResynthesisReview";
-import { PageHeader, TenantMissing } from "@/components/ui";
+import { PageHeader, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { listPersonaCriteria } from "@/lib/interpretation/persona";
 import { prisma } from "@/lib/prisma";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
@@ -76,13 +76,13 @@ export default async function PersonaResynthesisReviewPage({ params }: PageProps
           <div className="flex flex-wrap gap-2">
             <Link
               href={`/personas?product=${product.id}`}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+              className={SECONDARY_BUTTON_CLASS}
             >
               All personas
             </Link>
             <Link
               href={`/setup/${product.id}/personas/manage/${persona.id}`}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+              className={SECONDARY_BUTTON_CLASS}
             >
               Back to persona
             </Link>

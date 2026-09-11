@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { NewCampaignForm } from "@/components/NewCampaignForm";
-import { PageHeader, TenantMissing } from "@/components/ui";
+import { PageHeader, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { listIcps, listPersonas } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { getHomeWorkflow } from "@/lib/workflow/home";
@@ -39,7 +39,7 @@ export default async function NewCampaignPage() {
         actions={
           <Link
             href="/campaigns"
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+            className={SECONDARY_BUTTON_CLASS}
           >
             Back to campaigns
           </Link>

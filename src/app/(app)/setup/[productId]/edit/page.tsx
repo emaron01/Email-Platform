@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductDetailsForm } from "@/components/ProductDetailsForm";
-import { PageHeader, TenantMissing } from "@/components/ui";
+import { PageHeader, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { getProduct } from "@/lib/tenant/data";
 import {
   getCurrentOrganization,
@@ -41,7 +41,7 @@ export default async function EditProductPage({ params }: PageProps) {
         actions={
           <Link
             href={`/setup/${product.id}`}
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+            className={SECONDARY_BUTTON_CLASS}
           >
             Back to overview
           </Link>

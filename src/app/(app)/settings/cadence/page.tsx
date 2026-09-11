@@ -1,3 +1,5 @@
+import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import {
@@ -99,7 +101,7 @@ export default async function CadenceSettingsPage() {
           </label>
           <button
             type="submit"
-            className="sm:col-span-2 w-fit rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+            className={cn(PRIMARY_BUTTON_CLASS, "sm:col-span-2", "w-fit", "!px-3")}
           >
             Save cadence policy
           </button>

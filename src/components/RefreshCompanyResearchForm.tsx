@@ -1,4 +1,5 @@
 "use client";
+import { SECONDARY_BUTTON_CLASS } from "@/components/ui";
 
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import { refreshCompanyResearchAction } from "@/app/actions/research";
@@ -20,7 +21,7 @@ export function RefreshCompanyResearchForm({
       ) : null}
       <button
         type="submit"
-        className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+        className={SECONDARY_BUTTON_CLASS}
       >
         {label}
       </button>

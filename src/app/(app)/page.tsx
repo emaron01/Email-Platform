@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { HomeSetupRail } from "@/components/HomeSetupRail";
-import { PageHeader, TenantMissing } from "@/components/ui";
+import { PageHeader, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -12,7 +13,7 @@ function HomeNavLink({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+      className={SECONDARY_BUTTON_CLASS}
     >
       {label}
     </Link>
@@ -91,7 +92,7 @@ export default async function DashboardPage({
         {workflow.setupComplete ? (
           <Link
             href="/campaigns/new"
-            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+            className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
           >
             New campaign
           </Link>
@@ -128,7 +129,7 @@ export default async function DashboardPage({
           {workflow.setupComplete ? (
             <Link
               href="/campaigns/new"
-              className="mt-4 inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              className={cn(PRIMARY_BUTTON_CLASS, "mt-4", "!px-3")}
             >
               New campaign
             </Link>

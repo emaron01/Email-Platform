@@ -4,7 +4,33 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-describe("createScoringRunAction redirect", () => {
+function mockScoringActionDeps(input: {
+  redirect: ReturnType<typeof vi.fn>;
+  createScoringRun: ReturnType<typeof vi.fn>;
+}) {
+  vi.doMock("next/navigation", () => ({ redirect: input.redirect }));
+  vi.doMock("@/lib/tenant/data", () => ({
+    createScoringRun: input.createScoringRun,
+  }));
+  vi.doMock("@/lib/interpretation/icp", () => ({
+    listIcpCriteria: vi.fn(async () => []),
+  }));
+  // Avoid importActual — under full-suite transform load it can blow the
+  // default 5s timeout while resolving the real org module graph.
+  vi.doMock("@/lib/tenant/getCurrentOrganization", () => ({
+    requireOrganizationId: vi.fn(async () => "org_1"),
+    TenantError: class TenantError extends Error {},
+  }));
+  vi.doMock("@/lib/lists/campaign-query", () => ({
+    scoringRunHref: (runId: string, campaignId?: string | null) =>
+      campaignId
+        ? `/scoring/${runId}?campaign=${campaignId}`
+        : `/scoring/${runId}`,
+  }));
+}
+
+// Dynamic imports under full-suite contention exceed the default 5s timeout.
+describe("createScoringRunAction redirect", { timeout: 30_000 }, () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
@@ -21,15 +47,7 @@ describe("createScoringRunAction redirect", () => {
       sourceCampaignId: null,
     }));
 
-    vi.doMock("next/navigation", () => ({ redirect }));
-    vi.doMock("@/lib/tenant/data", () => ({ createScoringRun }));
-    vi.doMock("@/lib/interpretation/icp", () => ({
-      listIcpCriteria: vi.fn(async () => []),
-    }));
-    vi.doMock("@/lib/tenant/getCurrentOrganization", async () => ({
-      ...(await vi.importActual("@/lib/tenant/getCurrentOrganization")),
-      requireOrganizationId: vi.fn(async () => "org_1"),
-    }));
+    mockScoringActionDeps({ redirect, createScoringRun });
 
     const { createScoringRunAction } = await import("@/app/actions/scoring");
     const formData = new FormData();
@@ -62,15 +80,7 @@ describe("createScoringRunAction redirect", () => {
       sourceCampaignId: "camp_1",
     }));
 
-    vi.doMock("next/navigation", () => ({ redirect }));
-    vi.doMock("@/lib/tenant/data", () => ({ createScoringRun }));
-    vi.doMock("@/lib/interpretation/icp", () => ({
-      listIcpCriteria: vi.fn(async () => []),
-    }));
-    vi.doMock("@/lib/tenant/getCurrentOrganization", async () => ({
-      ...(await vi.importActual("@/lib/tenant/getCurrentOrganization")),
-      requireOrganizationId: vi.fn(async () => "org_1"),
-    }));
+    mockScoringActionDeps({ redirect, createScoringRun });
 
     const { createScoringRunAction } = await import("@/app/actions/scoring");
     const formData = new FormData();
@@ -96,15 +106,7 @@ describe("createScoringRunAction redirect", () => {
     });
     const createScoringRun = vi.fn(async () => ({ id: "run_all" }));
 
-    vi.doMock("next/navigation", () => ({ redirect }));
-    vi.doMock("@/lib/tenant/data", () => ({ createScoringRun }));
-    vi.doMock("@/lib/interpretation/icp", () => ({
-      listIcpCriteria: vi.fn(async () => []),
-    }));
-    vi.doMock("@/lib/tenant/getCurrentOrganization", async () => ({
-      ...(await vi.importActual("@/lib/tenant/getCurrentOrganization")),
-      requireOrganizationId: vi.fn(async () => "org_1"),
-    }));
+    mockScoringActionDeps({ redirect, createScoringRun });
 
     const { createScoringRunAction } = await import("@/app/actions/scoring");
     const { ALL_PERSONAS_VALUE } = await import("@/lib/scoring/title-fit");
@@ -128,15 +130,7 @@ describe("createScoringRunAction redirect", () => {
       throw new Error("db down");
     });
 
-    vi.doMock("next/navigation", () => ({ redirect }));
-    vi.doMock("@/lib/tenant/data", () => ({ createScoringRun }));
-    vi.doMock("@/lib/interpretation/icp", () => ({
-      listIcpCriteria: vi.fn(async () => []),
-    }));
-    vi.doMock("@/lib/tenant/getCurrentOrganization", async () => ({
-      ...(await vi.importActual("@/lib/tenant/getCurrentOrganization")),
-      requireOrganizationId: vi.fn(async () => "org_1"),
-    }));
+    mockScoringActionDeps({ redirect, createScoringRun });
 
     const { createScoringRunAction } = await import("@/app/actions/scoring");
     const formData = new FormData();

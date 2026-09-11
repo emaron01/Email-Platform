@@ -19,6 +19,7 @@ import {
   Field,
   PrimaryButton,
   SecondaryButton,
+  SECONDARY_BUTTON_CLASS,
   SubmitButton,
 } from "@/components/ui";
 import { contactDisplayName, cn } from "@/lib/utils";
@@ -676,7 +677,10 @@ export function ScoreReportClient({
                       ) : (
                         <button
                           type="button"
-                          className="w-full cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1.5 text-left text-sm text-slate-700 shadow-sm hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900"
+                          className={cn(
+                            SECONDARY_BUTTON_CLASS,
+                            "w-full !px-2 !py-1.5 text-left",
+                          )}
                           title={resolvedQualification.reason ?? "Pending"}
                           aria-expanded={open}
                           onClick={() => setExpandedId(open ? null : row.id)}

@@ -1,4 +1,5 @@
 "use client";
+import { SECONDARY_BUTTON_CLASS } from "@/components/ui";
 
 import { useActionState, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -81,7 +82,7 @@ export function ConfirmDeleteForm({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          className={SECONDARY_BUTTON_CLASS}
         >
           {triggerLabel}
         </button>
@@ -122,7 +123,7 @@ export function ConfirmDeleteForm({
               type="button"
               onClick={() => setOpen(false)}
               disabled={pending}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+              className={SECONDARY_BUTTON_CLASS}
             >
               Cancel
             </button>

@@ -9,7 +9,7 @@ import {
   type ProductSetupActionResult,
 } from "@/app/actions/product-setup";
 import { AutosizeTextarea } from "@/components/AutosizeTextarea";
-import { SecondaryButton, SubmitButton } from "@/components/ui";
+import { SECONDARY_BUTTON_CLASS, SecondaryButton, SubmitButton } from "@/components/ui";
 import type { ProductDraft } from "@/lib/product-research/contract";
 import {
   buildProductResynthesisApplyPlan,
@@ -247,7 +247,7 @@ export function ProductResynthesisReview({
           </SecondaryButton>
           <Link
             href={`/setup/${productId}/research`}
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+            className={SECONDARY_BUTTON_CLASS}
           >
             Cancel
           </Link>
@@ -327,7 +327,7 @@ export function ProductResynthesisReview({
           </SubmitButton>
           <Link
             href={`/setup/${productId}/research`}
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+            className={SECONDARY_BUTTON_CLASS}
           >
             Cancel
           </Link>

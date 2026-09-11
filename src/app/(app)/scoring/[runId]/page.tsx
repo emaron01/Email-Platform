@@ -5,12 +5,7 @@ import { ResearchRunPanel } from "@/components/ResearchRunPanel";
 import { ScoreContactsPanel } from "@/components/ScoreContactsPanel";
 import { ScoreReportClient } from "@/components/ScoreReportClient";
 import { TitleSuggestionReview } from "@/components/TitleSuggestionReview";
-import {
-  PageHeader,
-  Panel,
-  PrimaryButton,
-  TenantMissing,
-} from "@/components/ui";
+import { PageHeader, Panel, PrimaryButton, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import {
   getCampaignForListWorkflow,
   getScoreReportRows,
@@ -196,7 +191,7 @@ export default async function ScoringReportPage({
               href={listDetailHref(run.contactListId, {
                 campaignId: campaign?.id,
               })}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className={SECONDARY_BUTTON_CLASS}
             >
               Back to list
             </Link>

@@ -1,3 +1,5 @@
+import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -86,7 +88,7 @@ export default async function PlatformOrgDetailPage({
         </div>
         <Link
           href={`/platform/orgs/${id}/view`}
-          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800"
+          className={cn(SECONDARY_BUTTON_CLASS, "!px-3")}
         >
           Scoped customer view
         </Link>
@@ -368,7 +370,7 @@ export default async function PlatformOrgDetailPage({
             </select>
             <button
               type="submit"
-              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
             >
               Invite user
             </button>
@@ -542,7 +544,7 @@ export default async function PlatformOrgDetailPage({
             </label>
             <button
               type="submit"
-              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
             >
               Save usage policy
             </button>
@@ -575,7 +577,7 @@ export default async function PlatformOrgDetailPage({
             </label>
             <button
               type="submit"
-              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
             >
               Save research policy
             </button>
@@ -653,7 +655,7 @@ export default async function PlatformOrgDetailPage({
             </label>
             <button
               type="submit"
-              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
             >
               Grant credit
             </button>

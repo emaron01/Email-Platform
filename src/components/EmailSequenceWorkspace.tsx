@@ -1,4 +1,6 @@
 "use client";
+import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -830,7 +832,7 @@ export function EmailSequenceWorkspace({
                 ),
               )
             }
-            className="mt-3 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+            className={cn(SECONDARY_BUTTON_CLASS, "mt-3", "disabled:border-slate-200", "disabled:bg-slate-50", "disabled:text-slate-400", "!px-3")}
           >
             + Add to sequence
           </button>
@@ -1017,7 +1019,7 @@ export function EmailSequenceWorkspace({
                 ),
               )
             }
-            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+            className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
           >
             {aiBusy
               ? "Generating…"
@@ -1165,7 +1167,7 @@ export function EmailSequenceWorkspace({
                         ),
                       )
                     }
-                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
+                    className={cn(SECONDARY_BUTTON_CLASS, "!px-3")}
                   >
                     {aiBusy ? "Regenerating…" : "Regenerate"}
                   </button>
@@ -1243,7 +1245,7 @@ export function EmailSequenceWorkspace({
                     type="button"
                     disabled={handoffLocked}
                     onClick={markSent}
-                    className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                    className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
                   >
                     {sendBusy === "mark"
                       ? "Marking…"
@@ -1376,7 +1378,7 @@ export function EmailSequenceWorkspace({
                   onClick={() =>
                     run(() => draftReplyAction(selected.id, replyText))
                   }
-                  className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
                 >
                   {aiBusy ? "Classifying…" : "They replied"}
                 </button>
@@ -1418,7 +1420,7 @@ export function EmailSequenceWorkspace({
                 type="button"
                 disabled={sendBusy !== null}
                 onClick={() => answerSendConfirm("yes")}
-                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
               >
                 Yes
               </button>
@@ -1426,7 +1428,7 @@ export function EmailSequenceWorkspace({
                 type="button"
                 disabled={sendBusy !== null}
                 onClick={() => answerSendConfirm("no")}
-                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800"
+                className={cn(SECONDARY_BUTTON_CLASS, "!px-3")}
               >
                 No
               </button>
@@ -1434,7 +1436,7 @@ export function EmailSequenceWorkspace({
                 type="button"
                 disabled={sendBusy !== null}
                 onClick={() => answerSendConfirm("not_yet")}
-                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800"
+                className={cn(SECONDARY_BUTTON_CLASS, "!px-3")}
               >
                 Not yet
               </button>

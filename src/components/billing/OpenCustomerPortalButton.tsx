@@ -1,4 +1,6 @@
 "use client";
+import { SECONDARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 import { useState, useTransition } from "react";
 
@@ -15,7 +17,7 @@ export function OpenCustomerPortalButton() {
       <button
         type="button"
         disabled={pending}
-        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 disabled:opacity-60"
+        className={cn(SECONDARY_BUTTON_CLASS, "!px-3")}
         onClick={() => {
           setError(null);
           startTransition(async () => {

@@ -136,12 +136,27 @@ export function SubmitButton({
     <button
       type="submit"
       disabled={disabled}
-      className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+      className={PRIMARY_BUTTON_CLASS}
     >
       {children}
     </button>
   );
 }
+
+/** Solid black — primary action (submit, create, continue). */
+export const PRIMARY_BUTTON_CLASS =
+  "inline-flex cursor-pointer items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50";
+
+/**
+ * Bordered white — secondary action (back, cancel, alternate path).
+ * Keep hover/cursor strong so it still reads as clickable next to primary.
+ */
+export const SECONDARY_BUTTON_CLASS =
+  "inline-flex cursor-pointer items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none";
+
+/** Compact secondary control for source chips / micro-actions. */
+export const SECONDARY_CHIP_CLASS =
+  "cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 underline decoration-slate-300 underline-offset-2 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 hover:decoration-slate-600";
 
 export function PrimaryButton({
   children,
@@ -162,7 +177,7 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+      className={PRIMARY_BUTTON_CLASS}
     >
       {children}
     </button>
@@ -185,7 +200,7 @@ export function SecondaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      className={SECONDARY_BUTTON_CLASS}
     >
       {children}
     </button>

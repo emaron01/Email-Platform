@@ -10,12 +10,7 @@ import { CampaignListWorkflowButtons } from "@/components/CampaignListWorkflowBu
 import { ListCompanyResearchView } from "@/components/ListCompanyResearchView";
 import { ResearchRunPanel } from "@/components/ResearchRunPanel";
 import { UnarchiveForm } from "@/components/UnarchiveForm";
-import {
-  EmptyState,
-  PageHeader,
-  Panel,
-  TenantMissing,
-} from "@/components/ui";
+import { EmptyState, PageHeader, Panel, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { isResearchAiConfigured } from "@/lib/ai/config";
 import { loadResearchBillingContext } from "@/lib/billing/research-billing-context";
 import { getMembershipForCurrentUser } from "@/lib/org/authz";
@@ -54,7 +49,7 @@ import {
 } from "@/lib/tenant/list-delete";
 import { listActiveNormalizedEmails } from "@/lib/suppression/service";
 import { getActiveResearchedCompanyUsage } from "@/lib/usage/quota";
-import { formatDate, formatNumber } from "@/lib/utils";
+import { cn, formatDate, formatNumber } from "@/lib/utils";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -170,7 +165,7 @@ export default async function ListDetailPage({
                 ) : (
                   <Link
                     href={scoreHref}
-                    className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                    className={PRIMARY_BUTTON_CLASS}
                   >
                     Score List
                   </Link>
@@ -204,7 +199,7 @@ export default async function ListDetailPage({
             />
             <Link
               href={listsHref}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className={SECONDARY_BUTTON_CLASS}
             >
               Back to lists
             </Link>
@@ -286,7 +281,7 @@ export default async function ListDetailPage({
                   </div>
                   <Link
                     href={`/scoring/${run.id}${campaign?.id ? `?campaign=${campaign.id}` : ""}`}
-                    className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className={cn(SECONDARY_BUTTON_CLASS, "!px-3", "!py-1.5")}
                   >
                     View Report
                   </Link>
@@ -325,7 +320,7 @@ export default async function ListDetailPage({
                       campaignId: campaign?.id,
                       page: page - 1,
                     })}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50"
+                    className={cn(SECONDARY_BUTTON_CLASS, "!px-3", "!py-1.5")}
                   >
                     Previous
                   </Link>
@@ -336,7 +331,7 @@ export default async function ListDetailPage({
                       campaignId: campaign?.id,
                       page: page + 1,
                     })}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50"
+                    className={cn(SECONDARY_BUTTON_CLASS, "!px-3", "!py-1.5")}
                   >
                     Next
                   </Link>

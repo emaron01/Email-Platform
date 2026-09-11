@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
-import { EmptyState, PageHeader, TenantMissing } from "@/components/ui";
+import { EmptyState, PageHeader, PRIMARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import { listCampaigns } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { getHomeWorkflow } from "@/lib/workflow/home";
 
 export default async function CampaignsPage({
@@ -50,7 +50,7 @@ export default async function CampaignsPage({
             {canCreate ? (
               <Link
                 href="/campaigns/new"
-                className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white"
+                className={PRIMARY_BUTTON_CLASS}
               >
                 New campaign
               </Link>
@@ -76,14 +76,14 @@ export default async function CampaignsPage({
             canCreate ? (
               <Link
                 href="/campaigns/new"
-                className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
               >
                 New campaign
               </Link>
             ) : (
               <Link
                 href="/products/new"
-                className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
               >
                 New product
               </Link>

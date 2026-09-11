@@ -6,7 +6,7 @@ import {
 } from "@/components/AssistedProductSetup";
 import { AddProductMaterialPanel } from "@/components/AddProductMaterialPanel";
 import { ProductDraftReview } from "@/components/ProductDraftReview";
-import { PageHeader, TenantMissing } from "@/components/ui";
+import { PageHeader, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { getProduct } from "@/lib/tenant/data";
 import {
@@ -158,7 +158,7 @@ export default async function ProductResearchPage({ params }: PageProps) {
           actions={
             <Link
               href={`/setup/${product.id}`}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+              className={SECONDARY_BUTTON_CLASS}
             >
               Product setup
             </Link>

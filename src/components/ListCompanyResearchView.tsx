@@ -1,10 +1,11 @@
+import { SECONDARY_BUTTON_CLASS } from "@/components/ui";
 import Link from "next/link";
 import { RefreshCompanyResearchForm } from "@/components/RefreshCompanyResearchForm";
 import { SuppressContactForm } from "@/components/SuppressContactForm";
 import type { ContactListCompanyGroup } from "@/lib/tenant/companies";
 import { parseStringArray } from "@/lib/research/freshness";
 import { contactMatchesSuppressionSet } from "@/lib/suppression/service";
-import { contactDisplayName, formatNumber } from "@/lib/utils";
+import { cn, contactDisplayName, formatNumber } from "@/lib/utils";
 import type { CompanyResearch } from "@prisma/client";
 
 function hasResearchSummary(research: CompanyResearch | null): boolean {
@@ -110,7 +111,7 @@ export function ListCompanyResearchView({
                 {isLinkedCompany && showSummary ? (
                   <Link
                     href={`/companies/${group.companyId}`}
-                    className="inline-flex shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    className={cn(SECONDARY_BUTTON_CLASS, "shrink-0", "!px-3", "!py-1.5")}
                   >
                     Full company briefing
                   </Link>

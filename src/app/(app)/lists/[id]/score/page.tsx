@@ -1,11 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ScoreListForm } from "@/components/ScoreListForm";
-import {
-  PageHeader,
-  Panel,
-  TenantMissing,
-} from "@/components/ui";
+import { PageHeader, Panel, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import {
   listDetailHref,
   parseCampaignId,
@@ -74,7 +70,7 @@ export default async function ScoreListPage({ params, searchParams }: PageProps)
         actions={
           <Link
             href={listDetailHref(id, { campaignId: campaign?.id })}
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            className={SECONDARY_BUTTON_CLASS}
           >
             Back to list
           </Link>

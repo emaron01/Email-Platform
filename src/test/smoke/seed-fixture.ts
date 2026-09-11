@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { auth } from "@/lib/auth/better-auth";
+import { COMPED_BILLING_DEFAULTS } from "@/lib/billing/billing-state";
 import { seedContactOnList } from "@/test/contact-seed";
 import { testEntityName } from "@/test/database";
 import type { SmokeRouteIds } from "@/test/smoke/discover-routes";
@@ -60,6 +61,13 @@ export async function seedSmokeFixture(prisma: PrismaClient): Promise<SmokeFixtu
   if (!organizationId) {
     throw new Error("Smoke signup did not provision an organization.");
   }
+
+  // Signup provisions UNPAID self-serve billing. Smoke needs app routes,
+  // not the checkout gate — mark the fixture org as a durable platform comp.
+  await prisma.organizationBillingProfile.update({
+    where: { organizationId },
+    data: { ...COMPED_BILLING_DEFAULTS },
+  });
 
   const product = await prisma.product.create({
     data: {

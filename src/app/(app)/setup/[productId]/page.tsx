@@ -6,7 +6,8 @@ import { deleteProductAction } from "@/app/actions";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
 import { ExportPdfButton } from "@/components/ExportPdfButton";
-import { PageHeader, Panel, TenantMissing } from "@/components/ui";
+import { PageHeader, Panel, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import { listIcpCriteria } from "@/lib/interpretation/icp";
 import { listPersonaCriteria } from "@/lib/interpretation/persona";
 import { productDraftFromApprovedProfile } from "@/lib/product-research/resynthesize-approved-plan";
@@ -88,8 +89,8 @@ function ActionLink({
       href={href}
       className={
         primary
-          ? "inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-slate-800"
-          : "inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          ? cn(PRIMARY_BUTTON_CLASS, "!px-3", "!py-1.5")
+          : cn(SECONDARY_BUTTON_CLASS, "!px-3", "!py-1.5")
       }
     >
       {children}
@@ -229,13 +230,13 @@ export default async function SetupProductPage({ params }: PageProps) {
             <div className="flex flex-wrap gap-2">
               <Link
                 href={`/setup/${product.id}/research`}
-                className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                className={PRIMARY_BUTTON_CLASS}
               >
                 Research & Build
               </Link>
               <Link
                 href="/setup"
-                className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className={SECONDARY_BUTTON_CLASS}
               >
                 All products
               </Link>

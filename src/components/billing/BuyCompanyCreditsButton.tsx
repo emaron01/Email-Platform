@@ -1,4 +1,6 @@
 "use client";
+import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 import { useState, useTransition } from "react";
 
@@ -27,7 +29,7 @@ export function BuyCompanyCreditsButton({
       <button
         type="button"
         disabled={pending}
-        className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+        className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
         onClick={() => {
           setError(null);
           startTransition(async () => {

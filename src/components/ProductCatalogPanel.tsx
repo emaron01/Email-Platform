@@ -1,3 +1,4 @@
+import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
 import Link from "next/link";
 import { deleteProductAction } from "@/app/actions";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
@@ -30,13 +31,13 @@ export function ProductCatalogPanel({
           <div className="flex flex-wrap gap-2">
             <Link
               href={`/setup/${product.id}/research`}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className={SECONDARY_BUTTON_CLASS}
             >
               Research
             </Link>
             <Link
               href={`/setup/${product.id}`}
-              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+              className={PRIMARY_BUTTON_CLASS}
             >
               Manage
             </Link>

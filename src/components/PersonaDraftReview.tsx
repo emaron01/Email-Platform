@@ -10,7 +10,8 @@ import {
 import { AutosizeTextarea } from "@/components/AutosizeTextarea";
 import { ExportPdfButton } from "@/components/ExportPdfButton";
 import { PersonaBriefingDocument } from "@/components/PersonaBriefingDocument";
-import { SecondaryButton, SubmitButton } from "@/components/ui";
+import { SECONDARY_BUTTON_CLASS, SecondaryButton, SubmitButton } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import {
   describePersonaSourceLead,
@@ -204,7 +205,7 @@ function PersonaCriteriaEditor({
                   ))}
                   <button
                     type="button"
-                    className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                    className={cn(SECONDARY_BUTTON_CLASS, "py-1", "!px-2", "!py-1", "!text-[11px]")}
                     onClick={() => dismissNeedsReview(row.name)}
                   >
                     Dismiss

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductResynthesisReview } from "@/components/ProductResynthesisReview";
-import { PageHeader, TenantMissing } from "@/components/ui";
+import { PageHeader, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import type { ProductDraft } from "@/lib/product-research/contract";
 import { PRODUCT_RESYNTHESIS_USER_CONTEXT_FLAG } from "@/lib/product-research/resynthesize-approved";
@@ -63,13 +63,13 @@ export default async function ProductResynthesisReviewPage({ params }: PageProps
           <div className="flex flex-wrap gap-2">
             <Link
               href="/products"
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+              className={SECONDARY_BUTTON_CLASS}
             >
               All products
             </Link>
             <Link
               href={`/setup/${product.id}/research`}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+              className={SECONDARY_BUTTON_CLASS}
             >
               Back to research
             </Link>

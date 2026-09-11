@@ -1,4 +1,5 @@
 "use client";
+import { SECONDARY_BUTTON_CLASS } from "@/components/ui";
 
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -34,7 +35,7 @@ export function UnarchiveForm({
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          className={SECONDARY_BUTTON_CLASS}
           data-testid="unarchive-submit"
         >
           {pending ? "Restoring…" : label}

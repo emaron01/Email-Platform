@@ -10,7 +10,7 @@ import { EmailDraftsStage } from "@/components/EmailDraftsStage";
 import { CampaignStageShell } from "@/components/CampaignStageShell";
 import { CampaignStageRail } from "@/components/CampaignStageRail";
 import { QualificationBuckets } from "@/components/QualificationBuckets";
-import { PageHeader, Panel, TenantMissing } from "@/components/ui";
+import { PageHeader, Panel, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { campaignDeleteConfirmBody } from "@/lib/tenant/campaign-delete";
 import { campaignArchiveConfirmBody } from "@/lib/tenant/campaign-archive";
 import {
@@ -25,7 +25,7 @@ import {
 } from "@/lib/campaign/contacts";
 import { TenantError } from "@/lib/tenant/errors";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
-import { contactDisplayName, formatDate } from "@/lib/utils";
+import { cn, contactDisplayName, formatDate } from "@/lib/utils";
 import { claimConflictsFromJson } from "@/lib/email-generation/claim-conflicts";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { getEffectiveUsagePolicy } from "@/lib/usage/policy";
@@ -423,7 +423,7 @@ export default async function CampaignDetailPage({
           <div className="flex flex-col items-end gap-2">
             <Link
               href="/campaigns"
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className={SECONDARY_BUTTON_CLASS}
             >
               Back to campaigns
             </Link>
@@ -764,7 +764,7 @@ export default async function CampaignDetailPage({
               <div className="flex flex-col items-start gap-2">
                 <Link
                   href={listIndexHref({ campaignId: campaign.id })}
-                  className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                  className={cn(SECONDARY_BUTTON_CLASS, "!px-3")}
                 >
                   Select an Existing List To Be Researched and Scored
                 </Link>

@@ -3,11 +3,7 @@ import { AddContactsWizard } from "@/components/AddContactsWizard";
 import { CompanyResearchAllowanceBanner } from "@/components/CompanyResearchAllowanceBanner";
 import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
 import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
-import {
-  EmptyState,
-  PageHeader,
-  TenantMissing,
-} from "@/components/ui";
+import { EmptyState, PageHeader, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { loadResearchBillingContext } from "@/lib/billing/research-billing-context";
 import { getMembershipForCurrentUser } from "@/lib/org/authz";
 import {
@@ -69,7 +65,7 @@ export default async function ListsPage({
             {campaign ? (
               <Link
                 href={campaignListStageHref(campaign.id)}
-                className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className={SECONDARY_BUTTON_CLASS}
               >
                 Back to {campaign.name}
               </Link>

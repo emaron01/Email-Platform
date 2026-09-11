@@ -1,4 +1,5 @@
 "use client";
+import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -63,7 +64,7 @@ export function ProductContinuePicker({
           if (!productId) return;
           router.push(buildProductContinuePath(continuePathTemplate, productId));
         }}
-        className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+        className={PRIMARY_BUTTON_CLASS}
       >
         {continueLabel}
       </button>

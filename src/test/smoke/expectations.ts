@@ -48,7 +48,13 @@ const ROUTE_EXPECTATIONS: Record<string, SmokeExpectation> = {
   "/settings": { mustInclude: "Settings" },
   "/settings/account": { mustInclude: "Account Settings" },
   "/settings/billing": { mustInclude: "billing-stripe-hook" },
-  "/onboarding/subscribe": { mustInclude: "onboarding-subscribe-page" },
+  // Comped smoke fixture redirects away; unpaid would render the pitch page.
+  "/onboarding/subscribe": {
+    mustInclude: [
+      "onboarding-subscribe-page",
+      "data-testid=\"app-sidebar\"",
+    ],
+  },
   "/settings/cadence": { mustInclude: "Email cadence" },
   "/settings/email": { mustInclude: "email-signature" },
   "/settings/organization": { mustInclude: "Organization" },

@@ -1,4 +1,5 @@
 "use client";
+import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -49,7 +50,7 @@ export function ConvertTrialNowButton({
             disabled={pending}
             className={
               className ??
-              "rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white disabled:opacity-60"
+              PRIMARY_BUTTON_CLASS
             }
             onClick={() => {
               setError(null);
@@ -85,7 +86,7 @@ export function ConvertTrialNowButton({
           <button
             type="button"
             disabled={pending}
-            className="rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
+            className={SECONDARY_BUTTON_CLASS}
             onClick={() => setConfirming(false)}
           >
             Cancel
@@ -104,7 +105,7 @@ export function ConvertTrialNowButton({
         data-testid="convert-trial-now"
         className={
           className ??
-          "rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white disabled:opacity-60"
+          PRIMARY_BUTTON_CLASS
         }
         onClick={() => {
           setError(null);

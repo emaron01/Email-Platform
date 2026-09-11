@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
-import { EmptyState, PageHeader, TenantMissing } from "@/components/ui";
+import { EmptyState, PageHeader, PRIMARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import { ProductCatalogPanel } from "@/components/ProductCatalogPanel";
 import { listProductsWithCounts } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
@@ -30,7 +31,7 @@ export default async function ProductsPage() {
         actions={
           <Link
             href="/products/new"
-            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white"
+            className={PRIMARY_BUTTON_CLASS}
           >
             New product
           </Link>
@@ -46,7 +47,7 @@ export default async function ProductsPage() {
           actions={
             <Link
               href="/products/new"
-              className="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+              className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
             >
               New product
             </Link>

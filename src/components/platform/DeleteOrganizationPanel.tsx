@@ -1,4 +1,6 @@
 "use client";
+import { SECONDARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 import { useActionState, useEffect, useId, useState } from "react";
 import { deleteOrganizationAction } from "@/app/actions/platform-orgs";
@@ -102,7 +104,7 @@ export function DeleteOrganizationPanel({
                 type="button"
                 onClick={() => setOpen(false)}
                 disabled={pending}
-                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
+                className={cn(SECONDARY_BUTTON_CLASS, "!px-3")}
                 data-testid="platform-delete-organization-cancel"
               >
                 Cancel

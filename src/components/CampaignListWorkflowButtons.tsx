@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import {
   campaignListScoreButtonLabel,
   listScoreHref,
 } from "@/lib/lists/campaign-query";
-
-const headerButtonClass =
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium transition";
 
 /**
  * Header actions when a list was opened from a campaign ( ?campaign= ).
@@ -52,8 +51,11 @@ export function CampaignListWorkflowButtons({
         }
         className={
           researchComplete
-            ? `${headerButtonClass} bg-emerald-600 text-white hover:bg-emerald-500`
-            : `${headerButtonClass} bg-slate-900 text-white hover:bg-slate-800`
+            ? cn(
+                PRIMARY_BUTTON_CLASS,
+                "gap-1.5 whitespace-nowrap !bg-emerald-600 hover:!bg-emerald-500",
+              )
+            : PRIMARY_BUTTON_CLASS
         }
       >
         {researchComplete ? (
@@ -74,7 +76,7 @@ export function CampaignListWorkflowButtons({
         <Link
           href={listScoreHref(listId, campaignId)}
           data-testid="campaign-list-score-button"
-          className={`${headerButtonClass} bg-slate-900 text-white hover:bg-slate-800`}
+          className={PRIMARY_BUTTON_CLASS}
         >
           {scoreLabel}
         </Link>
@@ -82,7 +84,10 @@ export function CampaignListWorkflowButtons({
         <span
           data-testid="campaign-list-score-button"
           title="Research companies on this list first"
-          className={`${headerButtonClass} cursor-not-allowed border border-slate-300 bg-slate-100 text-slate-500`}
+          className={cn(
+            SECONDARY_BUTTON_CLASS,
+            "cursor-not-allowed border-slate-300 bg-slate-100 text-slate-500 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-500",
+          )}
         >
           {scoreLabel}
         </span>

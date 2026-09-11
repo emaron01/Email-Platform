@@ -1,4 +1,6 @@
 "use client";
+import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -84,7 +86,7 @@ function DecisionForm({
           <button
             type="submit"
             disabled={pending}
-            className="rounded-md bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+            className={cn(PRIMARY_BUTTON_CLASS, "!px-2.5", "!py-1.5", "!text-xs")}
           >
             Keep — confirm when found, never penalize when not found
           </button>
@@ -97,7 +99,7 @@ function DecisionForm({
           <button
             type="submit"
             disabled={pending}
-            className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 disabled:opacity-60"
+            className={cn(SECONDARY_BUTTON_CLASS, "px-2.5", "!px-2.5", "!py-1.5", "!text-xs")}
           >
             Make supporting
           </button>

@@ -1,4 +1,6 @@
 "use client";
+import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 import { useActionState } from "react";
 import {
@@ -71,7 +73,7 @@ export function MailboxConnectionPanel({
         {!connected ? (
           <a
             href="/api/mailbox/microsoft/connect?returnTo=/settings/email"
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            className={cn(PRIMARY_BUTTON_CLASS, "!px-4")}
           >
             {connection ? "Reconnect Microsoft 365" : "Connect Microsoft 365"}
           </a>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { IcpDetailsForm } from "@/components/IcpDetailsForm";
-import { PageHeader, TenantMissing } from "@/components/ui";
+import { PageHeader, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { serializeIcpForClient } from "@/lib/icp/save";
 import { listIcpCriteria } from "@/lib/interpretation/icp";
 import { getProduct, listIcps } from "@/lib/tenant/data";
@@ -55,13 +55,13 @@ export default async function ListIcpsPage({ params }: PageProps) {
           <div className="flex flex-wrap gap-2">
             <Link
               href={`/setup/${product.id}/icps/new`}
-              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white"
+              className={PRIMARY_BUTTON_CLASS}
             >
               Add ICP
             </Link>
             <Link
               href={`/setup/${product.id}`}
-              className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700"
+              className={SECONDARY_BUTTON_CLASS}
             >
               Back to overview
             </Link>

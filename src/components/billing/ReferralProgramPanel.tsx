@@ -1,4 +1,6 @@
 "use client";
+import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 import { useState, useTransition } from "react";
 
@@ -67,7 +69,7 @@ export function ReferralProgramPanel({
           <button
             type="button"
             onClick={loadCode}
-            className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
             data-testid="billing-referral-open"
           >
             Show my referral code
@@ -96,7 +98,7 @@ export function ReferralProgramPanel({
                 </code>
                 <button
                   type="button"
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                  className={cn(SECONDARY_BUTTON_CLASS, "!px-3")}
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(code);
