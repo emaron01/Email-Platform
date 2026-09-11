@@ -19,11 +19,7 @@ import {
   isOnCurrentCatalogPrice,
 } from "@/lib/billing/billing-state";
 import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
-import {
-  BILLING_PLAN_STANDARD,
-  getPlanDefinition,
-  resolveStripePriceId,
-} from "@/lib/billing/plans";
+import { loadFlattenedBillingPrices } from "@/lib/billing/effective-prices";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import { DeleteOrganizationPanel } from "@/components/platform/DeleteOrganizationPanel";
 import {
@@ -64,6 +60,7 @@ export default async function PlatformOrgDetailPage({
   });
 
   const cost = await computeCostReport({ organizationId: id, window: "30d" });
+  const catalogPrices = await loadFlattenedBillingPrices();
   const canMutate = canMutatePlatform(user.platformRole);
   const { organization: org, usage, health, usagePolicy, researchPolicy, billing } = detail;
 
@@ -119,14 +116,7 @@ export default async function PlatformOrgDetailPage({
               {billing.stripePriceId ?? "—"}
             </p>
             {(() => {
-              const standard = getPlanDefinition(BILLING_PLAN_STANDARD);
-              const base = standard?.components.find(
-                (c) => c.kind === "recurring_base",
-              );
-              const catalogPriceId =
-                base && base.kind === "recurring_base"
-                  ? resolveStripePriceId(base.stripePriceIdEnv)
-                  : null;
+              const catalogPriceId = catalogPrices.standardMonthlyPriceId;
               const onCatalog = isOnCurrentCatalogPrice(
                 billing.stripePriceId,
                 catalogPriceId,

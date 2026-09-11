@@ -10,8 +10,8 @@ import { companiesFromCreditCheckoutBlocks } from "@/lib/billing/company-researc
 import { grantCompanyResearchCredits } from "@/lib/billing/company-research-credits";
 import {
   COMPANY_CREDIT_BLOCK,
-  resolveStripePriceId,
 } from "@/lib/billing/plans";
+import { loadFlattenedBillingPrices } from "@/lib/billing/effective-prices";
 import { getStripe } from "@/lib/billing/stripe";
 import { prisma } from "@/lib/prisma";
 
@@ -63,9 +63,8 @@ export async function resolveOrganizationIdForCreditCheckout(
 export async function resolveCreditCheckoutBlocks(
   session: Stripe.Checkout.Session,
 ): Promise<number> {
-  const creditPriceId = resolveStripePriceId(
-    COMPANY_CREDIT_BLOCK.stripePriceIdEnv,
-  );
+  const { companyCreditsPriceId: creditPriceId } =
+    await loadFlattenedBillingPrices();
   const stripe = getStripe();
   const lineItems = await stripe.checkout.sessions.listLineItems(session.id, {
     limit: 20,
@@ -110,9 +109,8 @@ export async function grantCreditsFromCheckoutSession(
   // If purpose metadata is missing (e.g. Dashboard Payment Link), still grant when
   // the session contains our configured credit price.
   if (!purpose) {
-    const creditPriceId = resolveStripePriceId(
-      COMPANY_CREDIT_BLOCK.stripePriceIdEnv,
-    );
+    const { companyCreditsPriceId: creditPriceId } =
+      await loadFlattenedBillingPrices();
     if (!creditPriceId) {
       return { ok: false, reason: "price_not_configured" };
     }

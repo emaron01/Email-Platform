@@ -4,14 +4,14 @@
 import "server-only";
 
 import { billingAppBaseUrl } from "@/lib/billing/app-base-url";
+import { effectivePricesAreCheckoutReady } from "@/lib/billing/billing-prices";
+import { loadEffectiveBillingPrices } from "@/lib/billing/effective-prices";
+import { loadEffectiveTrialPeriod } from "@/lib/billing/effective-trial";
 import {
   BILLING_PLAN_STANDARD,
   getPlanDefinition,
-  planIsCheckoutReady,
-  resolveStripePriceId,
 } from "@/lib/billing/plans";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
-import { loadEffectiveTrialPeriod } from "@/lib/billing/effective-trial";
 import { prisma } from "@/lib/prisma";
 
 export type CreateStandardCheckoutResult =
@@ -30,7 +30,9 @@ export async function createStandardCheckoutSession(input: {
       code: "STRIPE_NOT_CONFIGURED",
     };
   }
-  if (!planIsCheckoutReady(BILLING_PLAN_STANDARD)) {
+
+  const prices = await loadEffectiveBillingPrices();
+  if (!effectivePricesAreCheckoutReady(prices)) {
     return {
       ok: false,
       error: "Standard plan price is not configured.",
@@ -39,15 +41,7 @@ export async function createStandardCheckoutSession(input: {
   }
 
   const plan = getPlanDefinition(BILLING_PLAN_STANDARD);
-  const base = plan?.components.find((c) => c.kind === "recurring_base");
-  if (!base || base.kind !== "recurring_base") {
-    return {
-      ok: false,
-      error: "Standard plan is missing a recurring price.",
-      code: "PRICE_NOT_CONFIGURED",
-    };
-  }
-  const priceId = resolveStripePriceId(base.stripePriceIdEnv);
+  const priceId = prices.standardMonthlyPriceId.value;
   if (!priceId) {
     return {
       ok: false,
@@ -99,8 +93,8 @@ export async function createStandardCheckoutSession(input: {
     });
   }
 
-  // Trial length: platform console → env. Only applied to NEW Checkout sessions.
-  // Existing Stripe subscriptions keep their trial_end; changing the setting does not rewrite them.
+  // Trial length + catalog Price: platform console → env. Only applied to NEW
+  // Checkout sessions. Existing Stripe subscriptions keep their Price and trial_end.
   const effective =
     plan?.trialDays != null
       ? await loadEffectiveTrialPeriod({ planCode: BILLING_PLAN_STANDARD })

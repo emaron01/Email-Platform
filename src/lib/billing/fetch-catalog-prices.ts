@@ -3,12 +3,12 @@
  */
 import "server-only";
 
+import { loadFlattenedBillingPrices } from "@/lib/billing/effective-prices";
+import { formatStripeMoney } from "@/lib/billing/billing-state";
 import {
   BILLING_PLAN_CATALOG,
-  resolveStripePriceId,
-  resolveStripeProductId,
+  BILLING_PLAN_STANDARD,
 } from "@/lib/billing/plans";
-import { formatStripeMoney } from "@/lib/billing/billing-state";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
 
 export type CatalogPriceDisplay = {
@@ -47,8 +47,8 @@ function intervalLabel(interval: string | null): string {
 
 /**
  * Loads active recurring Prices for every sellable catalog plan that has
- * env-mapped Price + Product IDs. Safe to call when Stripe is misconfigured —
- * returns usedFallback + empty plans.
+ * console/env-mapped Price + Product IDs. Safe to call when Stripe is
+ * misconfigured — returns usedFallback + empty plans.
  */
 export async function fetchSellableCatalogPrices(): Promise<CatalogPricesResult> {
   if (!stripeConfigured()) {
@@ -57,14 +57,24 @@ export async function fetchSellableCatalogPrices(): Promise<CatalogPricesResult>
 
   const stripe = getStripe();
   const plans: CatalogPriceDisplay[] = [];
+  const flattened = await loadFlattenedBillingPrices();
 
   try {
     for (const plan of BILLING_PLAN_CATALOG) {
       if (!plan.sellable || !plan.requiresStripe) continue;
       const base = plan.components.find((c) => c.kind === "recurring_base");
       if (!base || base.kind !== "recurring_base") continue;
-      const priceId = resolveStripePriceId(base.stripePriceIdEnv);
-      const productId = resolveStripeProductId(base.stripeProductIdEnv);
+
+      // Standard IDs come from platform console → env. Other sellable plans
+      // (future Premium) still need console fields before they go live.
+      const priceId =
+        plan.planCode === BILLING_PLAN_STANDARD
+          ? flattened.standardMonthlyPriceId
+          : null;
+      const productId =
+        plan.planCode === BILLING_PLAN_STANDARD
+          ? flattened.standardProductId
+          : null;
       if (!priceId || !productId) continue;
 
       const price = await stripe.prices.retrieve(priceId, {

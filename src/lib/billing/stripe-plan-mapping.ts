@@ -45,12 +45,31 @@ export function mapStripeSubscriptionStatus(
 
 /**
  * Resolve plan from the subscription's price/product — supports grandfathered
- * prices on the same Product after env catalog Price ID changes.
+ * prices on the same Product after catalog Price ID changes (console or env).
  */
 export function resolvePlanCodeFromStripeIds(input: {
   priceId: string | null;
   productId: string | null;
+  /**
+   * Extra identifiers from platform console (and any other known catalog IDs).
+   * Env-mapped catalog IDs are always checked as well.
+   */
+  additional?: {
+    priceIds?: Array<{ planCode: string; priceId: string }>;
+    productIds?: Array<{ planCode: string; productId: string }>;
+  };
 }): string {
+  if (input.priceId) {
+    for (const row of input.additional?.priceIds ?? []) {
+      if (row.priceId === input.priceId) return row.planCode;
+    }
+  }
+  if (input.productId) {
+    for (const row of input.additional?.productIds ?? []) {
+      if (row.productId === input.productId) return row.planCode;
+    }
+  }
+
   for (const plan of BILLING_PLAN_CATALOG) {
     if (!plan.requiresStripe) continue;
     const base = plan.components.find((c) => c.kind === "recurring_base");

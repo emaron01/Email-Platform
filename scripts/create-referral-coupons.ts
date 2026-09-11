@@ -4,7 +4,8 @@
  * Usage:
  *   dotenv -e .env.local -e .env -- tsx scripts/create-referral-coupons.ts
  *
- * Requires STRIPE_SECRET_KEY + STRIPE_PRODUCT_STANDARD.
+ * Requires STRIPE_SECRET_KEY and Standard product ID (STRIPE_PRODUCT_STANDARD
+ * or the product ID saved under billing.prices in /platform/billing).
  * Coupon ids are fixed (referral_reward_10 … _50) so test and live match.
  */
 import Stripe from "stripe";
@@ -12,16 +13,40 @@ import {
   REFERRAL_REWARD_COUPON_IDS,
   REFERRAL_REWARD_PERCENTS,
 } from "../src/lib/billing/referral-coupons";
+import { parseBillingPricesSetting } from "../src/lib/billing/billing-prices";
+
+async function resolveStandardProductId(): Promise<string> {
+  const fromEnv = process.env.STRIPE_PRODUCT_STANDARD?.trim();
+  if (process.env.DATABASE_URL?.trim()) {
+    try {
+      const { PrismaClient } = await import("@prisma/client");
+      const prisma = new PrismaClient();
+      try {
+        const row = await prisma.platformSetting.findUnique({
+          where: { key: "billing.prices" },
+          select: { value: true },
+        });
+        const parsed = parseBillingPricesSetting(row?.value ?? null);
+        if (parsed?.standardProductId) return parsed.standardProductId;
+      } finally {
+        await prisma.$disconnect();
+      }
+    } catch {
+      // Fall through to env — script still works without DB.
+    }
+  }
+  if (fromEnv) return fromEnv;
+  throw new Error(
+    "Standard product ID required: set billing.prices in /platform/billing or STRIPE_PRODUCT_STANDARD",
+  );
+}
 
 async function main() {
   const key = process.env.STRIPE_SECRET_KEY?.trim();
-  const productId = process.env.STRIPE_PRODUCT_STANDARD?.trim();
   if (!key) {
     throw new Error("STRIPE_SECRET_KEY is required");
   }
-  if (!productId) {
-    throw new Error("STRIPE_PRODUCT_STANDARD is required (applies_to product)");
-  }
+  const productId = await resolveStandardProductId();
 
   const mode = key.startsWith("sk_live")
     ? "live"

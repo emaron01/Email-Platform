@@ -6,6 +6,11 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { recordAdminAuditEvent } from "@/lib/auth/audit";
 import {
+  PLATFORM_SETTING_BILLING_PRICES,
+  parseBillingPricesSetting,
+  type BillingPricesSettingValue,
+} from "@/lib/billing/billing-prices";
+import {
   PLATFORM_SETTING_BILLING_TRIAL,
   parseBillingTrialSetting,
   type BillingTrialSettingValue,
@@ -35,6 +40,12 @@ export async function getBillingTrialPlatformSetting(): Promise<BillingTrialSett
   const raw = await getPlatformSettingValue(PLATFORM_SETTING_BILLING_TRIAL);
   if (raw == null) return null;
   return parseBillingTrialSetting(raw);
+}
+
+export async function getBillingPricesPlatformSetting(): Promise<BillingPricesSettingValue | null> {
+  const raw = await getPlatformSettingValue(PLATFORM_SETTING_BILLING_PRICES);
+  if (raw == null) return null;
+  return parseBillingPricesSetting(raw);
 }
 
 export async function upsertPlatformSetting(input: {
@@ -94,6 +105,21 @@ export async function upsertBillingTrialSetting(input: {
   }
   await upsertPlatformSetting({
     key: PLATFORM_SETTING_BILLING_TRIAL,
+    value: parsed as Prisma.InputJsonValue,
+    actorUserId: input.actorUserId,
+  });
+}
+
+export async function upsertBillingPricesSetting(input: {
+  value: BillingPricesSettingValue;
+  actorUserId: string;
+}): Promise<void> {
+  const parsed = parseBillingPricesSetting(input.value);
+  if (!parsed) {
+    throw new TenantError("Invalid billing prices setting payload.");
+  }
+  await upsertPlatformSetting({
+    key: PLATFORM_SETTING_BILLING_PRICES,
     value: parsed as Prisma.InputJsonValue,
     actorUserId: input.actorUserId,
   });

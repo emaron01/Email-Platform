@@ -6,6 +6,11 @@ import {
   requirePlatformSuperAdmin,
 } from "@/lib/auth/authz";
 import {
+  buildBillingPricesSetting,
+  PLATFORM_SETTING_BILLING_PRICES,
+} from "@/lib/billing/billing-prices";
+import { validateBillingPricesAgainstStripe } from "@/lib/billing/validate-billing-prices";
+import {
   buildBillingTrialSetting,
   MAX_TRIAL_PERIOD_DAYS,
   MIN_TRIAL_PERIOD_DAYS,
@@ -14,6 +19,7 @@ import {
 import {
   deletePlatformSetting,
   getBillingTrialPlatformSetting,
+  upsertBillingPricesSetting,
   upsertBillingTrialSetting,
 } from "@/lib/platform/settings";
 import { TenantError } from "@/lib/tenant/errors";
@@ -40,6 +46,11 @@ function toSafeError(error: unknown): string {
   return "Unable to save platform setting. Please try again.";
 }
 
+function revalidateBillingConsole(): void {
+  revalidatePath("/platform");
+  revalidatePath("/platform/billing");
+}
+
 export async function updateBillingTrialSettingAction(
   _prev: PlatformSettingsActionResult | null,
   formData: FormData,
@@ -53,10 +64,11 @@ export async function updateBillingTrialSettingAction(
         key: PLATFORM_SETTING_BILLING_TRIAL,
         actorUserId: user.id,
       });
-      revalidatePath("/platform");
+      revalidateBillingConsole();
       return {
         ok: true,
-        message: "Console trial setting cleared. Environment fallback is in effect.",
+        message:
+          "Console trial setting cleared. Environment fallback is in effect.",
       };
     }
 
@@ -89,12 +101,64 @@ export async function updateBillingTrialSettingAction(
       value,
       actorUserId: user.id,
     });
-    revalidatePath("/platform");
+    revalidateBillingConsole();
     return {
       ok: true,
       message: enabled
         ? `Trial set to ${days} days for new Checkout sessions.`
         : "Trial turned off for new Checkout sessions.",
+    };
+  } catch (error) {
+    return { ok: false, message: toSafeError(error) };
+  }
+}
+
+export async function updateBillingPricesSettingAction(
+  _prev: PlatformSettingsActionResult | null,
+  formData: FormData,
+): Promise<PlatformSettingsActionResult> {
+  try {
+    const user = await requirePlatformSuperAdmin();
+    const intent = String(formData.get("intent") || "save").trim();
+
+    if (intent === "clear") {
+      await deletePlatformSetting({
+        key: PLATFORM_SETTING_BILLING_PRICES,
+        actorUserId: user.id,
+      });
+      revalidateBillingConsole();
+      return {
+        ok: true,
+        message:
+          "Console price IDs cleared. Environment fallback is in effect.",
+      };
+    }
+
+    let value;
+    try {
+      value = buildBillingPricesSetting({
+        standardMonthlyPriceId: String(
+          formData.get("standardMonthlyPriceId") || "",
+        ),
+        standardProductId: String(formData.get("standardProductId") || ""),
+        companyCreditsPriceId: String(
+          formData.get("companyCreditsPriceId") || "",
+        ),
+      });
+    } catch (error) {
+      return { ok: false, message: toSafeError(error) };
+    }
+
+    await validateBillingPricesAgainstStripe(value);
+    await upsertBillingPricesSetting({
+      value,
+      actorUserId: user.id,
+    });
+    revalidateBillingConsole();
+    return {
+      ok: true,
+      message:
+        "Price IDs verified with Stripe and saved for new Checkout sessions.",
     };
   } catch (error) {
     return { ok: false, message: toSafeError(error) };

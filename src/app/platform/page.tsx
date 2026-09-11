@@ -63,7 +63,7 @@ export default async function PlatformHomePage() {
     {
       href: "/platform/billing",
       title: "Billing",
-      body: "Trial length for new Checkout (console override over environment).",
+      body: "Trial length and Stripe price IDs for new Checkout (console override over environment).",
       superAdminOnly: true,
     },
   ].filter((a) => !a.superAdminOnly || canEditTemplates);

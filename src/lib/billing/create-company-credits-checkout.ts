@@ -5,11 +5,9 @@
 import "server-only";
 
 import { billingAppBaseUrl } from "@/lib/billing/app-base-url";
-import {
-  COMPANY_CREDIT_BLOCK,
-  companyCreditBlockIsCheckoutReady,
-  resolveStripePriceId,
-} from "@/lib/billing/plans";
+import { effectiveCreditsAreCheckoutReady } from "@/lib/billing/billing-prices";
+import { loadEffectiveBillingPrices } from "@/lib/billing/effective-prices";
+import { COMPANY_CREDIT_BLOCK } from "@/lib/billing/plans";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
 import { prisma } from "@/lib/prisma";
 
@@ -33,7 +31,9 @@ export async function createCompanyCreditsCheckoutSession(input: {
       code: "STRIPE_NOT_CONFIGURED",
     };
   }
-  if (!companyCreditBlockIsCheckoutReady()) {
+
+  const prices = await loadEffectiveBillingPrices();
+  if (!effectiveCreditsAreCheckoutReady(prices)) {
     return {
       ok: false,
       error: "Company credit pack price is not configured.",
@@ -41,7 +41,7 @@ export async function createCompanyCreditsCheckoutSession(input: {
     };
   }
 
-  const priceId = resolveStripePriceId(COMPANY_CREDIT_BLOCK.stripePriceIdEnv);
+  const priceId = prices.companyCreditsPriceId.value;
   if (!priceId) {
     return {
       ok: false,

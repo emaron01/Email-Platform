@@ -128,9 +128,32 @@ export async function syncOrganizationFromStripeSubscription(input: {
   });
 
   const billingStatus = mapStripeSubscriptionStatus(subscription.status);
+  const { loadFlattenedBillingPrices } = await import(
+    "@/lib/billing/effective-prices"
+  );
+  const { BILLING_PLAN_STANDARD } = await import("@/lib/billing/plans");
+  const prices = await loadFlattenedBillingPrices();
   const planCode = resolvePlanCodeFromStripeIds({
     priceId: item.priceId,
     productId: item.productId,
+    additional: {
+      priceIds: prices.standardMonthlyPriceId
+        ? [
+            {
+              planCode: BILLING_PLAN_STANDARD,
+              priceId: prices.standardMonthlyPriceId,
+            },
+          ]
+        : [],
+      productIds: prices.standardProductId
+        ? [
+            {
+              planCode: BILLING_PLAN_STANDARD,
+              productId: prices.standardProductId,
+            },
+          ]
+        : [],
+    },
   });
 
   const customerId =

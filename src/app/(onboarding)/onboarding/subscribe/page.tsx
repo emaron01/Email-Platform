@@ -8,8 +8,9 @@ import {
 import { fetchSellableCatalogPrices } from "@/lib/billing/fetch-catalog-prices";
 import {
   BILLING_PLAN_STANDARD,
-  planIsCheckoutReady,
 } from "@/lib/billing/plans";
+import { effectivePricesAreCheckoutReady } from "@/lib/billing/billing-prices";
+import { loadEffectiveBillingPrices } from "@/lib/billing/effective-prices";
 import { loadEffectiveTrialPeriod } from "@/lib/billing/effective-trial";
 import { stripeConfigured } from "@/lib/billing/stripe";
 import { StartFreeTrialButton } from "@/components/billing/StartFreeTrialButton";
@@ -61,7 +62,8 @@ export default async function OnboardingSubscribePage({
     null;
 
   let ctaDisabled: string | null = null;
-  if (!stripeConfigured() || !planIsCheckoutReady(BILLING_PLAN_STANDARD)) {
+  const prices = await loadEffectiveBillingPrices();
+  if (!stripeConfigured() || !effectivePricesAreCheckoutReady(prices)) {
     ctaDisabled =
       "Checkout is not configured yet. Contact support if this persists.";
   }

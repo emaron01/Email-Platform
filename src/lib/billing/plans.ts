@@ -1,5 +1,6 @@
 /**
- * Billing plan configuration — component kinds mapped to Stripe Price/Product IDs via env.
+ * Billing plan configuration — component kinds mapped to Stripe Price/Product IDs
+ * via platform console (billing.prices) with env fallback.
  * Dollar amounts live in Stripe; this module never hard-codes list prices.
  *
  * Paths:
@@ -189,14 +190,20 @@ export function resolveEntitlementsForStatus(input: {
   return plan.entitlements;
 }
 
+/** Env-only lookup — prefer loadEffectiveBillingPrices() for Checkout. */
 export function resolveStripePriceId(envName: string): string | null {
   return envId(envName);
 }
 
+/** Env-only lookup — prefer loadEffectiveBillingPrices() for Checkout. */
 export function resolveStripeProductId(envName: string): string | null {
   return envId(envName);
 }
 
+/**
+ * Env-only readiness check. Prefer effectivePricesAreCheckoutReady after
+ * loadEffectiveBillingPrices() so the platform console is honored.
+ */
 export function planIsCheckoutReady(planCode: string): boolean {
   const plan = getPlanDefinition(planCode);
   if (!plan?.sellable || !plan.requiresStripe) return false;
@@ -208,6 +215,7 @@ export function planIsCheckoutReady(planCode: string): boolean {
   );
 }
 
+/** Env-only. Prefer effectiveCreditsAreCheckoutReady after load. */
 export function companyCreditBlockIsCheckoutReady(): boolean {
   return Boolean(resolveStripePriceId(COMPANY_CREDIT_BLOCK.stripePriceIdEnv));
 }

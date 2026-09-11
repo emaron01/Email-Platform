@@ -27,7 +27,8 @@ import { OpenCustomerPortalButton } from "@/components/billing/OpenCustomerPorta
 import { ReferralProgramPanel } from "@/components/billing/ReferralProgramPanel";
 import { canOfferEarlyTrialConversion } from "@/lib/billing/end-trial-now";
 import { getCompanyResearchCreditBalance } from "@/lib/billing/company-research-credits";
-import { companyCreditBlockIsCheckoutReady } from "@/lib/billing/plans";
+import { effectiveCreditsAreCheckoutReady } from "@/lib/billing/billing-prices";
+import { loadEffectiveBillingPrices } from "@/lib/billing/effective-prices";
 import { countActiveResearchedCompanies } from "@/lib/usage/active-companies";
 import {
   ensureOrganizationPolicies,
@@ -54,7 +55,7 @@ export default async function OrganizationBillingSettingsPage({
   const creditsState =
     typeof params.credits === "string" ? params.credits : null;
 
-  const [billing, policy, activeCompanies, canConvertTrialEarly, creditBalance] =
+  const [billing, policy, activeCompanies, canConvertTrialEarly, creditBalance, prices] =
     await Promise.all([
       prisma.organizationBillingProfile.findUnique({
         where: { organizationId: organization.id },
@@ -66,6 +67,7 @@ export default async function OrganizationBillingSettingsPage({
       countActiveResearchedCompanies(organization.id),
       canOfferEarlyTrialConversion(organization.id),
       getCompanyResearchCreditBalance(organization.id),
+      loadEffectiveBillingPrices(),
     ]);
 
   if (billing && requiresStripeCheckout(billing)) {
@@ -96,7 +98,7 @@ export default async function OrganizationBillingSettingsPage({
 
   const canOpenPortal = Boolean(billing?.stripeCustomerId);
 
-  const creditsDisabledReason = !companyCreditBlockIsCheckoutReady()
+  const creditsDisabledReason = !effectiveCreditsAreCheckoutReady(prices)
     ? "Company credit packs are not configured yet."
     : !hasLiveSubscription
       ? "Subscribe to Standard before buying extra company capacity."
