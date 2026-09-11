@@ -148,14 +148,17 @@ export function PrimaryButton({
   type = "button",
   onClick,
   disabled,
+  id,
 }: {
   children: React.ReactNode;
   type?: "button" | "submit";
   onClick?: () => void;
   disabled?: boolean;
+  id?: string;
 }) {
   return (
     <button
+      id={id}
       type={type}
       onClick={onClick}
       disabled={disabled}

@@ -457,6 +457,7 @@ export function ResearchRunPanel({
       ) : (
         <div className="flex flex-wrap gap-2">
           <PrimaryButton
+            id={contactListId ? "research-companies-start" : undefined}
             disabled={researchDisabled}
             onClick={() => requestResearch(false)}
           >

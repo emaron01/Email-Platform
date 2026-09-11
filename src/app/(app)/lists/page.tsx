@@ -10,7 +10,16 @@ import {
 } from "@/components/ui";
 import { loadResearchBillingContext } from "@/lib/billing/research-billing-context";
 import { getMembershipForCurrentUser } from "@/lib/org/authz";
-import { listContactLists } from "@/lib/tenant/data";
+import {
+  campaignListStageHref,
+  listDetailHref,
+  listIndexHref,
+  parseCampaignId,
+} from "@/lib/lists/campaign-query";
+import {
+  getCampaignForListWorkflow,
+  listContactLists,
+} from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { getActiveResearchedCompanyUsage } from "@/lib/usage/quota";
 import { formatDate, formatNumber } from "@/lib/utils";
@@ -18,11 +27,12 @@ import { formatDate, formatNumber } from "@/lib/utils";
 export default async function ListsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archived?: string }>;
+  searchParams: Promise<{ archived?: string; campaign?: string }>;
 }) {
   const organization = await getCurrentOrganization();
   const query = await searchParams;
   const includeArchived = query.archived === "1";
+  const campaignId = parseCampaignId(query.campaign);
 
   if (!organization) {
     return (
@@ -37,14 +47,18 @@ export default async function ListsPage({
   }
 
   const membership = await getMembershipForCurrentUser(organization.id);
-  const [lists, researchAllowance, researchBilling] = await Promise.all([
-    listContactLists({ includeArchived }),
-    getActiveResearchedCompanyUsage({
-      organizationId: organization.id,
-      userId: membership.user.id,
-    }),
-    loadResearchBillingContext(organization.id),
-  ]);
+  const [lists, researchAllowance, researchBilling, campaign] =
+    await Promise.all([
+      listContactLists({ includeArchived }),
+      getActiveResearchedCompanyUsage({
+        organizationId: organization.id,
+        userId: membership.user.id,
+      }),
+      loadResearchBillingContext(organization.id),
+      campaignId ? getCampaignForListWorkflow(campaignId) : Promise.resolve(null),
+    ]);
+  const workflowCampaignId = campaign?.id ?? null;
+
   return (
     <div>
       <PageHeader
@@ -52,8 +66,19 @@ export default async function ListsPage({
         description="Create lists by pasting contacts or uploading CSV/XLSX files. All data stays in this organization."
         actions={
           <div className="flex flex-wrap items-center gap-3">
+            {campaign ? (
+              <Link
+                href={campaignListStageHref(campaign.id)}
+                className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Back to {campaign.name}
+              </Link>
+            ) : null}
             <ShowArchivedToggle
-              href={includeArchived ? "/lists" : "/lists?archived=1"}
+              href={listIndexHref({
+                campaignId: workflowCampaignId,
+                archived: !includeArchived,
+              })}
               includeArchived={includeArchived}
               label="lists"
             />
@@ -70,8 +95,9 @@ export default async function ListsPage({
           billing={researchBilling}
         />
         <p className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900">
-          Select a list below to research and score your contacts before adding
-          them to a campaign.
+          {campaign
+            ? `Select a list to research and score for ${campaign.name}. After scoring, return to the campaign and choose Add from Scored Run.`
+            : "Select a list below to research and score your contacts before adding them to a campaign."}
         </p>
       </div>
       {lists.length === 0 ? (
@@ -96,7 +122,9 @@ export default async function ListsPage({
                 <tr key={list.id}>
                   <td className="px-4 py-3 font-medium text-slate-900">
                     <Link
-                      href={`/lists/${list.id}`}
+                      href={listDetailHref(list.id, {
+                        campaignId: workflowCampaignId,
+                      })}
                       className="hover:underline"
                     >
                       {list.name}

@@ -8,6 +8,7 @@ import {
   addScoringRunContactsToCampaignAction,
   type CampaignContactsActionResult,
 } from "@/app/actions/campaign-contacts";
+import { listIndexHref } from "@/lib/lists/campaign-query";
 
 const initial: CampaignContactsActionResult | null = null;
 
@@ -63,7 +64,10 @@ export function CampaignContactsManager({
   return (
     <div className="space-y-6">
       <div className="flex flex-col items-start gap-2">
-        <Link href="/lists" className={outlinedButtonClass}>
+        <Link
+          href={listIndexHref({ campaignId })}
+          className={outlinedButtonClass}
+        >
           Select an Existing List To Be Researched and Scored
         </Link>
         <button
@@ -125,11 +129,13 @@ export function CampaignContactsManager({
         >
           <p className="font-medium">No scored runs for this campaign yet</p>
           <p className="mt-1">
-            Open Lists, research companies, then score against this campaign&apos;s
-            Product / ICP / Persona. When a run completes, return here and choose
-            Add from Scored Run.
+            Select a list, research companies, then score for this campaign.
+            When a run completes, return here and choose Add from Scored Run.
           </p>
-          <Link href="/lists" className="mt-2 inline-flex font-medium underline">
+          <Link
+            href={listIndexHref({ campaignId })}
+            className="mt-2 inline-flex font-medium underline"
+          >
             Go to Lists to research and score
           </Link>
         </div>

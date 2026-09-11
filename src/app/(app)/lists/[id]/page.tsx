@@ -6,6 +6,7 @@ import {
   unarchiveContactListAction,
 } from "@/app/actions";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
+import { CampaignListWorkflowButtons } from "@/components/CampaignListWorkflowButtons";
 import { ListCompanyResearchView } from "@/components/ListCompanyResearchView";
 import { ResearchRunPanel } from "@/components/ResearchRunPanel";
 import { UnarchiveForm } from "@/components/UnarchiveForm";
@@ -19,6 +20,14 @@ import { isResearchAiConfigured } from "@/lib/ai/config";
 import { loadResearchBillingContext } from "@/lib/billing/research-billing-context";
 import { getMembershipForCurrentUser } from "@/lib/org/authz";
 import {
+  isContactListResearchComplete,
+  listDetailHref,
+  listIndexHref,
+  listScoreHref,
+  parseCampaignId,
+} from "@/lib/lists/campaign-query";
+import {
+  getCampaignForListWorkflow,
   getContactList,
   listIcps,
   listPersonas,
@@ -49,7 +58,7 @@ import { formatDate, formatNumber } from "@/lib/utils";
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; campaign?: string }>;
 };
 
 export default async function ListDetailPage({
@@ -60,6 +69,7 @@ export default async function ListDetailPage({
   const { id } = await params;
   const query = await searchParams;
   const page = Number.parseInt(query.page ?? "1", 10) || 1;
+  const campaignId = parseCampaignId(query.campaign);
 
   if (!organization) {
     return (
@@ -90,6 +100,7 @@ export default async function ListDetailPage({
     researchBilling,
     activeResearchRun,
     latestResearchRun,
+    campaign,
   ] = await Promise.all([
     getContactListCompanyGroups(id, { page, pageSize: 25 }),
     getCompaniesNeedingResearchForContactList(id),
@@ -104,6 +115,7 @@ export default async function ListDetailPage({
     loadResearchBillingContext(organization.id),
     getActiveResearchRunForContactList(id, organization.id),
     getLatestResearchRunForContactList(id, organization.id),
+    campaignId ? getCampaignForListWorkflow(campaignId) : Promise.resolve(null),
   ]);
 
   const allEmails = companyGroups.groups.flatMap((group) =>
@@ -115,6 +127,10 @@ export default async function ListDetailPage({
   ]);
   const deleteDecision = decideListDelete(impact);
   const listArchived = list.archivedAt != null;
+  const researchComplete =
+    isContactListResearchComplete(researchPlan) && !activeResearchRun;
+  const scoreHref = listScoreHref(id, campaign?.id);
+  const listsHref = listIndexHref({ campaignId: campaign?.id });
 
   const totalPages = Math.max(
     1,
@@ -144,12 +160,21 @@ export default async function ListDetailPage({
               />
             ) : (
               <>
-                <Link
-                  href={`/lists/${id}/score`}
-                  className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-                >
-                  Score List
-                </Link>
+                {campaign ? (
+                  <CampaignListWorkflowButtons
+                    listId={id}
+                    campaignId={campaign.id}
+                    campaignName={campaign.name}
+                    researchComplete={researchComplete}
+                  />
+                ) : (
+                  <Link
+                    href={scoreHref}
+                    className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                  >
+                    Score List
+                  </Link>
+                )}
                 <ConfirmDeleteForm
                   action={archiveContactListAction}
                   hiddenFields={{ id: list.id }}
@@ -175,10 +200,10 @@ export default async function ListDetailPage({
                     ? "Archive list"
                     : "Cannot delete"
               }
-              onSuccessNavigate="/lists"
+              onSuccessNavigate={listsHref}
             />
             <Link
-              href="/lists"
+              href={listsHref}
               className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               Back to lists
@@ -194,7 +219,7 @@ export default async function ListDetailPage({
         </div>
       ) : null}
 
-      <div className="mb-6">
+      <div id="company-research" className="mb-6">
         <Panel
           title="Company Research"
           description="Research runs once per unique company on this list. Results appear below grouped by company — qualification scoring stays on the score report."
@@ -230,7 +255,7 @@ export default async function ListDetailPage({
               {listArchived
                 ? "Unarchive this list to score it."
                 : readyProducts.length > 0 ? (
-                <Link href={`/lists/${id}/score`} className="underline">
+                <Link href={scoreHref} className="underline">
                   Score this list
                 </Link>
               ) : (
@@ -291,7 +316,10 @@ export default async function ListDetailPage({
               <div className="flex gap-2">
                 {page > 1 ? (
                   <Link
-                    href={`/lists/${id}?page=${page - 1}`}
+                    href={listDetailHref(id, {
+                      campaignId: campaign?.id,
+                      page: page - 1,
+                    })}
                     className="rounded-md border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50"
                   >
                     Previous
@@ -299,7 +327,10 @@ export default async function ListDetailPage({
                 ) : null}
                 {page < totalPages ? (
                   <Link
-                    href={`/lists/${id}?page=${page + 1}`}
+                    href={listDetailHref(id, {
+                      campaignId: campaign?.id,
+                      page: page + 1,
+                    })}
                     className="rounded-md border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50"
                   >
                     Next

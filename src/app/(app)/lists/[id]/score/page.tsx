@@ -7,6 +7,11 @@ import {
   TenantMissing,
 } from "@/components/ui";
 import {
+  listDetailHref,
+  parseCampaignId,
+} from "@/lib/lists/campaign-query";
+import {
+  getCampaignForListWorkflow,
   getContactList,
   listIcps,
   listPersonas,
@@ -19,11 +24,13 @@ import {
 
 type PageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ campaign?: string }>;
 };
 
-export default async function ScoreListPage({ params }: PageProps) {
+export default async function ScoreListPage({ params, searchParams }: PageProps) {
   const organization = await getCurrentOrganization();
   const { id } = await params;
+  const campaignId = parseCampaignId((await searchParams).campaign);
 
   if (!organization) {
     return (
@@ -42,10 +49,11 @@ export default async function ScoreListPage({ params }: PageProps) {
     throw error;
   }
 
-  const [products, icps, personas] = await Promise.all([
+  const [products, icps, personas, campaign] = await Promise.all([
     listProducts(),
     listIcps(),
     listPersonas(),
+    campaignId ? getCampaignForListWorkflow(campaignId) : Promise.resolve(null),
   ]);
 
   const readyProducts = products.filter((product) => {
@@ -59,11 +67,13 @@ export default async function ScoreListPage({ params }: PageProps) {
   return (
     <div>
       <PageHeader
-        title={`Score: ${list.name}`}
+        title={
+          campaign ? `Score for ${campaign.name}: ${list.name}` : `Score: ${list.name}`
+        }
         description="Select Product → ICP → Persona. Default is All personas so mixed lists are scored against every buyer role."
         actions={
           <Link
-            href={`/lists/${id}`}
+            href={listDetailHref(id, { campaignId: campaign?.id })}
             className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
           >
             Back to list
@@ -104,6 +114,9 @@ export default async function ScoreListPage({ params }: PageProps) {
               name: persona.name,
               productId: persona.productId,
             }))}
+            defaultProductId={campaign?.productId}
+            defaultIcpId={campaign?.icpId}
+            defaultPersonaId={campaign?.personaId}
           />
         )}
       </Panel>

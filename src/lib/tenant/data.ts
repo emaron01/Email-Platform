@@ -1002,6 +1002,26 @@ export async function assertCampaignBelongsToOrg(campaignId: string): Promise<vo
   }
 }
 
+export async function getCampaignForListWorkflow(campaignId: string): Promise<{
+  id: string;
+  name: string;
+  productId: string;
+  icpId: string;
+  personaId: string | null;
+} | null> {
+  const organizationId = await orgId();
+  return prisma.campaign.findFirst({
+    where: { id: campaignId, organizationId },
+    select: {
+      id: true,
+      name: true,
+      productId: true,
+      icpId: true,
+      personaId: true,
+    },
+  });
+}
+
 // --- Scoring ---
 
 export type ScoringRunWithRelations = ScoringRun & {

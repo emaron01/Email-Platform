@@ -114,7 +114,7 @@ describe("setup delete authorization policy", () => {
     ).toContain("DeleteSuccessNotice");
 
     const list = fs.readFileSync("src/app/(app)/lists/[id]/page.tsx", "utf8");
-    expect(list).toContain('onSuccessNavigate="/lists"');
+    expect(list).toContain("onSuccessNavigate={listsHref}");
     expect(fs.readFileSync("src/app/(app)/lists/page.tsx", "utf8")).toContain(
       "DeleteSuccessNotice",
     );

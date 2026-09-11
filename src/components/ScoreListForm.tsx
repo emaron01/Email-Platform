@@ -17,15 +17,32 @@ export function ScoreListForm({
   products,
   icps,
   personas,
+  defaultProductId,
+  defaultIcpId,
+  defaultPersonaId,
 }: {
   contactListId: string;
   products: Array<{ id: string; name: string }>;
   icps: Option[];
   personas: Option[];
+  defaultProductId?: string;
+  defaultIcpId?: string;
+  defaultPersonaId?: string | null;
 }) {
-  const [productId, setProductId] = useState("");
-  const [icpId, setIcpId] = useState("");
-  const [personaId, setPersonaId] = useState(ALL_PERSONAS_VALUE);
+  const [productId, setProductId] = useState(() =>
+    products.some((product) => product.id === defaultProductId)
+      ? defaultProductId!
+      : "",
+  );
+  const [icpId, setIcpId] = useState(() =>
+    icps.some((icp) => icp.id === defaultIcpId) ? defaultIcpId! : "",
+  );
+  const [personaId, setPersonaId] = useState(() =>
+    defaultPersonaId &&
+    personas.some((persona) => persona.id === defaultPersonaId)
+      ? defaultPersonaId
+      : ALL_PERSONAS_VALUE,
+  );
   const [state, formAction, pending] = useActionState(
     createScoringRunAction,
     initial,
