@@ -74,7 +74,7 @@ export function CampaignContactsManager({
       <div className="flex flex-col items-start gap-2">
         <Link
           href={listIndexHref({ campaignId })}
-          className={SECONDARY_BUTTON_CLASS}
+          className={PRIMARY_BUTTON_CLASS}
         >
           Select an Existing List To Be Researched and Scored
         </Link>
@@ -82,7 +82,7 @@ export function CampaignContactsManager({
           type="submit"
           form="campaign-scored-run-form"
           disabled={!hasScoredRuns || runPending}
-          className={PRIMARY_BUTTON_CLASS}
+          className={SECONDARY_BUTTON_CLASS}
         >
           {runPending ? "Adding…" : "Add from Scored Run"}
         </button>

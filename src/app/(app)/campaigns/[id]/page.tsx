@@ -10,7 +10,7 @@ import { EmailDraftsStage } from "@/components/EmailDraftsStage";
 import { CampaignStageShell } from "@/components/CampaignStageShell";
 import { CampaignStageRail } from "@/components/CampaignStageRail";
 import { QualificationBuckets } from "@/components/QualificationBuckets";
-import { PageHeader, Panel, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
+import { PageHeader, Panel, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { campaignDeleteConfirmBody } from "@/lib/tenant/campaign-delete";
 import { campaignArchiveConfirmBody } from "@/lib/tenant/campaign-archive";
 import {
@@ -420,7 +420,7 @@ export default async function CampaignDetailPage({
         title={campaign.name}
         description={`Stage ${stages.find((stage) => stage.key === currentStage)?.number}: ${stages.find((stage) => stage.key === currentStage)?.label}`}
         actions={
-          <div className="flex flex-col items-end gap-2">
+          <>
             <Link
               href="/campaigns"
               className={SECONDARY_BUTTON_CLASS}
@@ -458,7 +458,7 @@ export default async function CampaignDetailPage({
               confirmButtonLabel="Delete campaign"
               onSuccessNavigate="/campaigns"
             />
-          </div>
+          </>
         }
       />
       {campaignArchived ? (
@@ -764,7 +764,7 @@ export default async function CampaignDetailPage({
               <div className="flex flex-col items-start gap-2">
                 <Link
                   href={listIndexHref({ campaignId: campaign.id })}
-                  className={cn(SECONDARY_BUTTON_CLASS, "!px-3")}
+                  className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
                 >
                   Select an Existing List To Be Researched and Scored
                 </Link>
