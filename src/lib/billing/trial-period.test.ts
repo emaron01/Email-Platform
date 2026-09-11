@@ -33,10 +33,18 @@ describe("resolveTrialPeriodDays", () => {
     );
   });
 
-  it("rejects zero, oversized, and nonsensical values with fallback + warn", () => {
+  it("turns trial off for 0 / off / false / none / disabled", () => {
+    expect(resolveTrialPeriodDays("0")).toBeNull();
+    expect(resolveTrialPeriodDays("off")).toBeNull();
+    expect(resolveTrialPeriodDays("OFF")).toBeNull();
+    expect(resolveTrialPeriodDays("false")).toBeNull();
+    expect(resolveTrialPeriodDays("none")).toBeNull();
+    expect(resolveTrialPeriodDays("disabled")).toBeNull();
+  });
+
+  it("rejects oversized and nonsensical values with fallback + warn", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    expect(resolveTrialPeriodDays("0")).toBe(DEFAULT_TRIAL_PERIOD_DAYS);
     expect(resolveTrialPeriodDays("1000")).toBe(DEFAULT_TRIAL_PERIOD_DAYS);
     expect(resolveTrialPeriodDays("-3")).toBe(DEFAULT_TRIAL_PERIOD_DAYS);
     expect(resolveTrialPeriodDays("7.5")).toBe(DEFAULT_TRIAL_PERIOD_DAYS);

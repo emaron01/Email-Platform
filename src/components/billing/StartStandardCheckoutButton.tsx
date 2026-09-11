@@ -13,8 +13,11 @@ export function StartStandardCheckoutButton({
 }: {
   disabledReason?: string | null;
   buttonLabel?: string;
-  /** From BILLING_TRIAL_PERIOD_DAYS (server); display only. */
-  trialPeriodDays?: number;
+  /**
+   * From BILLING_TRIAL_PERIOD_DAYS (server). `null` = trial off.
+   * Display only — Checkout reads the env server-side.
+   */
+  trialPeriodDays?: number | null;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -65,9 +68,9 @@ export function StartStandardCheckoutButton({
         {pending ? "Redirecting…" : buttonLabel}
       </button>
       <p className="text-xs text-slate-500">
-        Card required for a {trialPeriodDays}-day trial (full product access, 25
-        companies). You can enter a promotion code on the Stripe Checkout page.
-        Card details stay in Stripe.
+        {trialPeriodDays == null
+          ? "Card required. Billing starts when Checkout completes (no free trial). You can enter a promotion code on the Stripe Checkout page. Card details stay in Stripe."
+          : `Card required for a ${trialPeriodDays}-day trial (full product access, 25 companies). You can enter a promotion code on the Stripe Checkout page. Card details stay in Stripe.`}
       </p>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
     </div>
