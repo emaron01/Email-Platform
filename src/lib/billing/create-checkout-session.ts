@@ -11,6 +11,7 @@ import {
   resolveStripePriceId,
 } from "@/lib/billing/plans";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
+import { resolveTrialPeriodDays } from "@/lib/billing/trial-period";
 import { prisma } from "@/lib/prisma";
 
 export type CreateStandardCheckoutResult =
@@ -98,7 +99,10 @@ export async function createStandardCheckoutSession(input: {
     });
   }
 
-  const trialDays = plan?.trialDays ?? 7;
+  // Trial length from BILLING_TRIAL_PERIOD_DAYS — only applied to NEW Checkout sessions.
+  // Existing Stripe subscriptions keep their trial_end; changing the env does not rewrite them.
+  const trialDays =
+    plan?.trialDays != null ? resolveTrialPeriodDays() : null;
   const baseUrl = billingAppBaseUrl();
 
   const session = await stripe.checkout.sessions.create({
@@ -115,7 +119,7 @@ export async function createStandardCheckoutSession(input: {
       planCode: BILLING_PLAN_STANDARD,
     },
     subscription_data: {
-      trial_period_days: trialDays,
+      ...(trialDays != null ? { trial_period_days: trialDays } : {}),
       metadata: {
         organizationId: input.organizationId,
         planCode: BILLING_PLAN_STANDARD,

@@ -9,9 +9,12 @@ import { useRouter } from "next/navigation";
 export function StartStandardCheckoutButton({
   disabledReason,
   buttonLabel = "Start Standard trial",
+  trialPeriodDays = 7,
 }: {
   disabledReason?: string | null;
   buttonLabel?: string;
+  /** From BILLING_TRIAL_PERIOD_DAYS (server); display only. */
+  trialPeriodDays?: number;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -62,9 +65,9 @@ export function StartStandardCheckoutButton({
         {pending ? "Redirecting…" : buttonLabel}
       </button>
       <p className="text-xs text-slate-500">
-        Card required for a 7-day trial (full product access, 25 companies). You
-        can enter a promotion code on the Stripe Checkout page. Card details
-        stay in Stripe.
+        Card required for a {trialPeriodDays}-day trial (full product access, 25
+        companies). You can enter a promotion code on the Stripe Checkout page.
+        Card details stay in Stripe.
       </p>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
     </div>
