@@ -388,6 +388,7 @@ enum AdminAuditAction {
   PLATFORM_ORGANIZATION_DELETED
   ORGANIZATION_MEMBER_REMOVED
   ORGANIZATION_INVITATION_REVOKED
+  PLATFORM_SETTING_CHANGED
 }
 
 enum TransactionalEmailTemplateKey {
@@ -640,6 +641,7 @@ model User {
   digestSendTimeLocal      String                        @default("08:00")
   dailyDigestSends         DailyDigestSend[]
   researchRunsInitiated    ResearchRun[]                 @relation("ResearchRunInitiatedBy")
+  platformSettingsUpdated  PlatformSetting[]             @relation("PlatformSettingUpdatedBy")
 
   @@index([platformRole])
   @@index([activeOrganizationId])
@@ -2350,6 +2352,21 @@ model AdminAuditEvent {
   @@index([actorUserId])
   @@index([organizationId])
   @@index([createdAt])
+}
+
+/// Global ops configuration (one row per namespaced key). SUPER_ADMIN writable.
+/// Value JSON is key-specific and validated in app code — e.g. billing.trial.
+model PlatformSetting {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  updatedByUserId String?
+
+  updatedBy User? @relation("PlatformSettingUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([updatedByUserId])
 }
 
 model TransactionalEmailTemplate {

@@ -10,7 +10,7 @@ import {
   BILLING_PLAN_STANDARD,
   planIsCheckoutReady,
 } from "@/lib/billing/plans";
-import { resolveTrialPeriodDays } from "@/lib/billing/trial-period";
+import { loadEffectiveTrialPeriod } from "@/lib/billing/effective-trial";
 import { stripeConfigured } from "@/lib/billing/stripe";
 import { StartFreeTrialButton } from "@/components/billing/StartFreeTrialButton";
 
@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 /**
  * Post-verify subscribe pitch — unpaid self-serve only.
  * Not available once a Stripe subscription is active.
- * Trial copy follows BILLING_TRIAL_PERIOD_DAYS for NEW signups only.
+ * Trial copy follows platform console → env for NEW signups only.
  */
 export default async function OnboardingSubscribePage({
   searchParams,
@@ -66,7 +66,9 @@ export default async function OnboardingSubscribePage({
       "Checkout is not configured yet. Contact support if this persists.";
   }
 
-  const trialPeriodDays = resolveTrialPeriodDays();
+  const { days: trialPeriodDays } = await loadEffectiveTrialPeriod({
+    planCode: BILLING_PLAN_STANDARD,
+  });
   const trialOff = trialPeriodDays == null;
 
   return (

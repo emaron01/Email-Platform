@@ -11,7 +11,7 @@ import {
   resolveStripePriceId,
 } from "@/lib/billing/plans";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
-import { resolveTrialPeriodDays } from "@/lib/billing/trial-period";
+import { loadEffectiveTrialPeriod } from "@/lib/billing/effective-trial";
 import { prisma } from "@/lib/prisma";
 
 export type CreateStandardCheckoutResult =
@@ -99,10 +99,13 @@ export async function createStandardCheckoutSession(input: {
     });
   }
 
-  // Trial length from BILLING_TRIAL_PERIOD_DAYS — only applied to NEW Checkout sessions.
-  // Existing Stripe subscriptions keep their trial_end; changing the env does not rewrite them.
-  const trialDays =
-    plan?.trialDays != null ? resolveTrialPeriodDays() : null;
+  // Trial length: platform console → env. Only applied to NEW Checkout sessions.
+  // Existing Stripe subscriptions keep their trial_end; changing the setting does not rewrite them.
+  const effective =
+    plan?.trialDays != null
+      ? await loadEffectiveTrialPeriod({ planCode: BILLING_PLAN_STANDARD })
+      : null;
+  const trialDays = effective?.days ?? null;
   const baseUrl = billingAppBaseUrl();
 
   const session = await stripe.checkout.sessions.create({

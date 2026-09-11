@@ -48,7 +48,7 @@ export type PlanDefinition = {
   requiresStripe: boolean;
   /**
    * When non-null, Checkout attaches a Stripe trial. Length comes from
-   * BILLING_TRIAL_PERIOD_DAYS (see resolveTrialPeriodDays) — not this number.
+   * platform console billing.trial → BILLING_TRIAL_PERIOD_DAYS — not this number.
    * Catalog value is the documented default only.
    */
   trialDays: number | null;

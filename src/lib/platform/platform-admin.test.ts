@@ -318,6 +318,7 @@ describe("platform console navigation and account creation", () => {
     expect(home).toContain("/platform/costs");
     expect(home).toContain("/platform/ai");
     expect(home).toContain("/platform/email-templates");
+    expect(home).toContain("/platform/billing");
     expect(home).toContain("PLATFORM_ROUTE_AUDIT");
   });
 

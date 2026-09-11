@@ -18,6 +18,12 @@ const PLATFORM_NAV_ITEMS = [
     match: "exact" as const,
     superAdminOnly: true,
   },
+  {
+    href: "/platform/billing",
+    label: "Billing",
+    match: "exact" as const,
+    superAdminOnly: true,
+  },
 ] as const;
 
 function itemsForRole(platformRole: PlatformRole) {

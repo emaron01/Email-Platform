@@ -60,6 +60,12 @@ export default async function PlatformHomePage() {
       body: "Edit and test transactional email templates.",
       superAdminOnly: true,
     },
+    {
+      href: "/platform/billing",
+      title: "Billing",
+      body: "Trial length for new Checkout (console override over environment).",
+      superAdminOnly: true,
+    },
   ].filter((a) => !a.superAdminOnly || canEditTemplates);
 
   return (

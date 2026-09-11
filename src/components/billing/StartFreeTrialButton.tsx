@@ -13,7 +13,7 @@ export function StartFreeTrialButton({
   trialPeriodDays = 7,
 }: {
   disabledReason?: string | null;
-  /** From resolveTrialPeriodDays(); null = trial off for NEW checkouts. */
+  /** Effective trial days (platform → env); null = trial off for NEW checkouts. */
   trialPeriodDays?: number | null;
 }) {
   const router = useRouter();

@@ -4,7 +4,7 @@ import { requirePlatformOperator } from "@/lib/auth/authz";
 
 /**
  * Platform admin routes share the authenticated shell and persistent console nav.
- * Email templates remain SUPER_ADMIN-only at the page gate.
+ * Email templates and billing settings remain SUPER_ADMIN-only at the page gate.
  */
 export default async function PlatformLayout({
   children,
