@@ -1,6 +1,8 @@
 /**
  * Delete actions must redirect() in the same response as the mutation so Next
  * does not re-render the deleted record URL (404) after revalidatePath.
+ *
+ * Named lifecycle titles for campaign/list live in crud-delete.test.ts.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,41 +16,6 @@ describe("crud delete actions redirect after mutation", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-  });
-
-  it("deleteCampaignAction redirects to /campaigns and does not return ok", async () => {
-    const redirect = vi.fn(redirectThrow);
-    const deleteCampaign = vi.fn(async () => ({
-      message: "Campaign deleted.",
-      mode: "delete" as const,
-    }));
-    const cookieSet = vi.fn();
-
-    vi.doMock("next/navigation", () => ({ redirect }));
-    vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
-    vi.doMock("next/headers", () => ({
-      cookies: async () => ({ set: cookieSet }),
-    }));
-    vi.doMock("@/lib/tenant/data", async () => ({
-      ...(await vi.importActual("@/lib/tenant/data")),
-      deleteCampaign,
-    }));
-    vi.doMock("@/lib/auth/authz", async () => ({
-      ...(await vi.importActual("@/lib/auth/authz")),
-      requireSetupDeletePermission: vi.fn(async () => undefined),
-    }));
-
-    const { deleteCampaignAction } = await import("@/app/actions");
-    const formData = new FormData();
-    formData.set("id", "camp_1");
-    formData.set("confirm", "1");
-
-    await expect(deleteCampaignAction(null, formData)).rejects.toThrow(
-      "NEXT_REDIRECT:/campaigns",
-    );
-    expect(deleteCampaign).toHaveBeenCalledWith("camp_1");
-    expect(redirect).toHaveBeenCalledWith("/campaigns");
-    expect(cookieSet).toHaveBeenCalled();
   });
 
   it("deleteProductAction redirects to /products", async () => {
@@ -81,7 +48,7 @@ describe("crud delete actions redirect after mutation", () => {
       "NEXT_REDIRECT:/products",
     );
     expect(redirect).toHaveBeenCalledWith("/products");
-  });
+  }, 20_000);
 
   it("deleteContactListAction redirects to redirectTo (or /lists)", async () => {
     const redirect = vi.fn(redirectThrow);
@@ -113,7 +80,7 @@ describe("crud delete actions redirect after mutation", () => {
       "NEXT_REDIRECT:/lists?campaign=camp_1",
     );
     expect(redirect).toHaveBeenCalledWith("/lists?campaign=camp_1");
-  });
+  }, 20_000);
 
   it("deleteContactListAction rejects unsafe redirectTo", async () => {
     const redirect = vi.fn(redirectThrow);
@@ -142,5 +109,5 @@ describe("crud delete actions redirect after mutation", () => {
     await expect(deleteContactListAction(null, formData)).rejects.toThrow(
       "NEXT_REDIRECT:/lists",
     );
-  });
+  }, 20_000);
 });

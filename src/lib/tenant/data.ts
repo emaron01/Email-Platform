@@ -1149,8 +1149,12 @@ export async function createScoringRun(input: {
   }
 
   // Best-effort company association before creating the run (tenant-scoped).
+  // Establish ALS so company-research-service does not need NEXT_RUNTIME.
   const { associateContactsForList } = await import("@/lib/tenant/companies");
-  await associateContactsForList(list.id);
+  const { runWithTenantContext } = await import("@/lib/tenant/request-context");
+  await runWithTenantContext({ organizationId }, () =>
+    associateContactsForList(list.id),
+  );
 
   const {
     ensureIcpLegacyCriteriaBackfilled,

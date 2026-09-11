@@ -4,7 +4,7 @@ import { TenantError } from "@/lib/tenant/errors";
 import { EMAIL_SIGNATURE_MAX_CHARS } from "@/lib/signature/types";
 
 describe("email signature seams", () => {
-  it("lives on Email connection settings and is appended on both send paths", () => {
+  it("lives on Email connection settings (not Voice)", () => {
     const voice = readFileSync("src/app/(app)/settings/voice/page.tsx", "utf8");
     const emailPage = readFileSync(
       "src/app/(app)/settings/email/page.tsx",
@@ -12,8 +12,6 @@ describe("email signature seams", () => {
     );
     const settings = readFileSync("src/app/(app)/settings/page.tsx", "utf8");
     const form = readFileSync("src/components/EmailSignatureForm.tsx", "utf8");
-    const graph = readFileSync("src/lib/mailbox/microsoft-graph.ts", "utf8");
-    const send = readFileSync("src/lib/mailbox/send.ts", "utf8");
     const workspace = readFileSync(
       "src/components/EmailSequenceWorkspace.tsx",
       "utf8",
@@ -30,15 +28,46 @@ describe("email signature seams", () => {
     expect(form).toContain("EMAIL_SIGNATURE_HTML_MAX_CHARS");
     expect(form).toContain('name="htmlBody"');
     expect(form).not.toMatch(/generate|openai|getAiConfig/i);
-    expect(send).toContain("getEmailSignatureForSend");
-    expect(send).toContain("signatureText: signature.text");
-    expect(send).toContain("signatureHtml: signature.html");
-    expect(send).toContain("finalBody: finalBodyForRecord");
-    expect(graph).toContain("buildMicrosoftGraphSendMailPayload");
-    expect(graph).toContain("signatureHtml: input.signatureHtml");
-    expect(workspace).toContain(
-      "appendEmailSignature(selected.body, emailSignature)",
+  });
+
+  it("client handoff and connected send both append signature via appendEmailSignature", async () => {
+    const {
+      appendEmailSignature,
+      buildEmailClientLaunch,
+      buildMicrosoftGraphSendMailPayload,
+    } = await import("@/lib/email-generation/email-body");
+
+    const draftBody = "Would this help next quarter?";
+    const signature = "Alex Rivera\nAcme";
+    const withSignature = appendEmailSignature(draftBody, signature);
+    expect(withSignature).toBe(`${draftBody}\n\n${signature}`);
+
+    // Mailto / Outlook desktop handoff — same helper the workspace uses.
+    const launch = buildEmailClientLaunch({
+      client: "OUTLOOK_DESKTOP",
+      to: "prospect@example.com",
+      subject: "Quick question",
+      body: withSignature,
+      maxUrlLength: 8000,
+    });
+    expect(launch.href).toBeTruthy();
+    expect(decodeURIComponent(launch.href!)).toContain("Alex Rivera");
+    expect(decodeURIComponent(launch.href!)).toContain(
+      "Would this help next quarter?",
     );
+
+    // Connected Graph send — same append for the plain-text record body.
+    expect(appendEmailSignature(draftBody, signature)).toBe(withSignature);
+    const graph = buildMicrosoftGraphSendMailPayload({
+      to: "prospect@example.com",
+      subject: "Quick question",
+      body: draftBody,
+      signatureText: signature,
+      signatureHtml: null,
+    });
+    expect(graph.message.body.contentType).toBe("Text");
+    expect(graph.message.body.content).toContain("Alex Rivera");
+    expect(graph.message.body.content).toContain(draftBody);
   });
 });
 

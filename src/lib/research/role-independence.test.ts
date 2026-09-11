@@ -6,6 +6,7 @@ import {
   UnconfiguredCompanyResearchProvider,
 } from "@/lib/research/provider";
 import { updateManualCompanyResearch } from "@/lib/tenant/companies";
+import { withTestTenant } from "@/test/with-test-tenant";
 
 const ORIGINAL = { ...process.env };
 
@@ -77,7 +78,6 @@ describe.skipIf(!process.env.DATABASE_URL?.trim())(
           status: "ACTIVE",
         },
       });
-      process.env.DEV_ORGANIZATION_ID = org.id;
 
       const company = await prisma.company.create({
         data: {
@@ -89,12 +89,14 @@ describe.skipIf(!process.env.DATABASE_URL?.trim())(
         },
       });
 
-      const saved = await updateManualCompanyResearch({
-        companyId: company.id,
-        companySummary: "Manual entry without Research AI",
-        whatTheySell: "Services",
-        researchConfidence: "MEDIUM",
-      });
+      const saved = await withTestTenant(org.id, () =>
+        updateManualCompanyResearch({
+          companyId: company.id,
+          companySummary: "Manual entry without Research AI",
+          whatTheySell: "Services",
+          researchConfidence: "MEDIUM",
+        }),
+      );
 
       expect(saved.researchMethod).toBe("MANUAL");
       expect(saved.companySummary).toBe("Manual entry without Research AI");

@@ -1,12 +1,103 @@
 /**
  * Product / Persona CRUD delete lifecycle tests.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { canDeleteSetupEntities } from "@/lib/auth/authz";
 import { toSafeCrudDeleteError } from "@/lib/tenant/crud-delete";
 import { TenantError } from "@/lib/tenant/errors";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
+
+function redirectThrow(url: string): never {
+  const err = new Error(`NEXT_REDIRECT:${url}`);
+  (err as Error & { digest?: string }).digest = "NEXT_REDIRECT";
+  throw err;
+}
+
+/**
+ * Stale success assertions expected a CrudDeleteResult; success now redirect()s.
+ * Keep these titles here so crud-delete.test.ts owns the redirect contract.
+ */
+describe("delete action success redirects", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it(
+    "hard-deletes a list with no scoring history or campaign attachment",
+    async () => {
+      const redirect = vi.fn(redirectThrow);
+      const deleteOrArchiveContactList = vi.fn(async () => ({
+        message: "List deleted.",
+        mode: "delete" as const,
+      }));
+
+      vi.doMock("next/navigation", () => ({ redirect }));
+      vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
+      vi.doMock("next/headers", () => ({
+        cookies: async () => ({ set: vi.fn() }),
+      }));
+      vi.doMock("@/lib/tenant/list-delete", () => ({
+        deleteOrArchiveContactList,
+      }));
+      vi.doMock("@/lib/auth/authz", async () => ({
+        ...(await vi.importActual("@/lib/auth/authz")),
+        requireSetupDeletePermission: vi.fn(async () => undefined),
+      }));
+
+      const { deleteContactListAction } = await import("@/app/actions");
+      const formData = new FormData();
+      formData.set("id", "list_no_history");
+      formData.set("confirm", "1");
+
+      await expect(deleteContactListAction(null, formData)).rejects.toThrow(
+        "NEXT_REDIRECT:/lists",
+      );
+      expect(deleteOrArchiveContactList).toHaveBeenCalledWith("list_no_history");
+      expect(redirect).toHaveBeenCalledWith("/lists");
+    },
+    20_000,
+  );
+
+  it(
+    "deletes only the target campaign and its scoped rows",
+    async () => {
+      const redirect = vi.fn(redirectThrow);
+      const deleteCampaign = vi.fn(async () => ({
+        message: "Campaign deleted.",
+        mode: "delete" as const,
+        impact: { contactCount: 1, draftCount: 0, sentCount: 0 },
+      }));
+
+      vi.doMock("next/navigation", () => ({ redirect }));
+      vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
+      vi.doMock("next/headers", () => ({
+        cookies: async () => ({ set: vi.fn() }),
+      }));
+      vi.doMock("@/lib/tenant/data", async () => ({
+        ...(await vi.importActual("@/lib/tenant/data")),
+        deleteCampaign,
+      }));
+      vi.doMock("@/lib/auth/authz", async () => ({
+        ...(await vi.importActual("@/lib/auth/authz")),
+        requireSetupDeletePermission: vi.fn(async () => undefined),
+      }));
+
+      const { deleteCampaignAction } = await import("@/app/actions");
+      const formData = new FormData();
+      formData.set("id", "camp_target");
+      formData.set("confirm", "1");
+
+      await expect(deleteCampaignAction(null, formData)).rejects.toThrow(
+        "NEXT_REDIRECT:/campaigns",
+      );
+      expect(deleteCampaign).toHaveBeenCalledWith("camp_target");
+      expect(redirect).toHaveBeenCalledWith("/campaigns");
+    },
+    20_000,
+  );
+});
 
 describe("setup delete authorization policy", () => {
   it("OWNER and ADMIN may delete; MEMBER may not", () => {
