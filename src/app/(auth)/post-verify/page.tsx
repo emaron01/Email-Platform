@@ -1,12 +1,16 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
-import { ONBOARDING_SUBSCRIBE_PATH } from "@/lib/billing/paths";
+import {
+  ONBOARDING_EULA_PATH,
+  ONBOARDING_SUBSCRIBE_PATH,
+} from "@/lib/billing/paths";
+import { userNeedsEulaAcceptance } from "@/lib/legal/eula";
 
 /**
  * Better Auth email-verification callback landing.
  * callbackURL for verification emails should be `/post-verify` so:
- * - success → smart redirect (subscribe / workspace / platform / no-workspace)
+ * - success → smart redirect (eula / subscribe / workspace / platform / no-workspace)
  * - failure → `/post-verify?error=INVALID_TOKEN` → verify-email UX (not Dashboard)
  */
 export default async function PostVerifyPage({
@@ -36,6 +40,11 @@ export default async function PostVerifyPage({
       firstName: user.firstName?.trim() || "User",
       lastName: user.lastName?.trim() || "",
     });
+  }
+
+  const eula = await userNeedsEulaAcceptance(user.id);
+  if (eula.needs) {
+    redirect(ONBOARDING_EULA_PATH);
   }
 
   const organization = await getCurrentOrganization();

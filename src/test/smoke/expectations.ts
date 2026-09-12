@@ -70,6 +70,8 @@ const ROUTE_EXPECTATIONS: Record<string, SmokeExpectation> = {
   "/platform/email-templates": { mustInclude: "Email templates" },
   "/platform/billing": { mustInclude: "Billing settings" },
   "/platform/catalog": { mustInclude: "Product catalog" },
+  "/platform/eula": { mustInclude: "End User License Agreement" },
+  "/onboarding/eula": { mustInclude: "onboarding-eula-page" },
 };
 
 function expectationForCampaignChild(pathname: string): SmokeExpectation | null {

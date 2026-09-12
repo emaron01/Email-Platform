@@ -72,6 +72,12 @@ export default async function PlatformHomePage() {
       body: "Plan names, feature bullets, and entitlement floors for new signups.",
       superAdminOnly: true,
     },
+    {
+      href: "/platform/eula",
+      title: "EULA / Terms",
+      body: "Publish End User License Agreement versions users must accept.",
+      superAdminOnly: true,
+    },
   ].filter((a) => !a.superAdminOnly || canEditTemplates);
 
   return (

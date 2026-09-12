@@ -10,6 +10,10 @@ import {
 } from "../src/lib/usage/defaults";
 import { ensureTransactionalTemplatesSeeded } from "../src/lib/transactional-email/seed";
 import { ensureAiModelRatesSeeded } from "../src/lib/platform/model-rates";
+import {
+  ensureEulaSeeded,
+  getPublishedEulaVersion,
+} from "../src/lib/legal/eula";
 
 const prisma = new PrismaClient();
 
@@ -84,6 +88,23 @@ async function main() {
 
   await ensureTransactionalTemplatesSeeded();
   await ensureAiModelRatesSeeded();
+  await ensureEulaSeeded(user.id);
+  const publishedEula = await getPublishedEulaVersion();
+  if (publishedEula) {
+    await prisma.userEulaAcceptance.upsert({
+      where: {
+        userId_eulaVersionId: {
+          userId: user.id,
+          eulaVersionId: publishedEula.id,
+        },
+      },
+      update: {},
+      create: {
+        userId: user.id,
+        eulaVersionId: publishedEula.id,
+      },
+    });
+  }
 
   await prisma.organizationUsagePolicy.upsert({
     where: { organizationId: org.id },

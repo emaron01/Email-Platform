@@ -10,4 +10,5 @@ export const PLATFORM_ROUTE_AUDIT = [
   "/platform/email-templates",
   "/platform/billing",
   "/platform/catalog",
+  "/platform/eula",
 ] as const;

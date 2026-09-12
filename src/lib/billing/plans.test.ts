@@ -118,7 +118,9 @@ describe("billing plans catalog", () => {
     expect(checkout).toContain("billingAppBaseUrl()");
     expect(checkout).toContain("/onboarding/subscribe?checkout=canceled");
     expect(paths).toContain('"/onboarding/subscribe"');
+    expect(paths).toContain('"/onboarding/eula"');
     expect(gate).toContain("ONBOARDING_SUBSCRIBE_PATH");
+    expect(gate).toContain("ONBOARDING_EULA_PATH");
   });
 
   it("uses conversion copy when trial research is exhausted", () => {

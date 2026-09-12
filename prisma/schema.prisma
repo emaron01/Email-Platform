@@ -389,6 +389,8 @@ enum AdminAuditAction {
   ORGANIZATION_MEMBER_REMOVED
   ORGANIZATION_INVITATION_REVOKED
   PLATFORM_SETTING_CHANGED
+  EULA_PUBLISHED
+  EULA_ACCEPTED
 }
 
 enum TransactionalEmailTemplateKey {
@@ -642,6 +644,8 @@ model User {
   dailyDigestSends         DailyDigestSend[]
   researchRunsInitiated    ResearchRun[]                 @relation("ResearchRunInitiatedBy")
   platformSettingsUpdated  PlatformSetting[]             @relation("PlatformSettingUpdatedBy")
+  eulaVersionsCreated      EulaVersion[]                 @relation("EulaVersionCreatedBy")
+  eulaAcceptances          UserEulaAcceptance[]
 
   @@index([platformRole])
   @@index([activeOrganizationId])
@@ -2352,6 +2356,40 @@ model AdminAuditEvent {
   @@index([actorUserId])
   @@index([organizationId])
   @@index([createdAt])
+}
+
+/// Published or draft End User License Agreement / Terms of Service text.
+/// At most one row should have publishedAt set; enforced in publish action.
+model EulaVersion {
+  id              String    @id @default(cuid())
+  versionNumber   Int       @unique
+  content         String
+  createdAt       DateTime  @default(now())
+  publishedAt     DateTime?
+  createdByUserId String?
+
+  createdBy   User?                 @relation("EulaVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  acceptances UserEulaAcceptance[]
+
+  @@index([publishedAt])
+  @@index([createdByUserId])
+}
+
+/// Per-user acceptance of a specific EULA version.
+model UserEulaAcceptance {
+  id            String   @id @default(cuid())
+  userId        String
+  eulaVersionId String
+  acceptedAt    DateTime @default(now())
+  ipAddress     String?
+  userAgent     String?
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eulaVersion EulaVersion @relation(fields: [eulaVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eulaVersionId])
+  @@index([eulaVersionId])
+  @@index([userId])
 }
 
 /// Global ops configuration (one row per namespaced key). SUPER_ADMIN writable.
