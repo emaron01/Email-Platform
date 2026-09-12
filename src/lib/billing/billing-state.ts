@@ -211,27 +211,47 @@ export function requiresStripeCheckout(profile: {
   return profile.billingStatus === "UNPAID";
 }
 
-/** Customer-facing plan blurb under the plan name. */
+/** Customer-facing plan blurb from the org's stored entitlements (what they bought). */
 export function billingPlanDescription(input: {
   planCode: string;
   billingStatus: string;
+  activeResearchedCompanyLimit?: number | null;
+  dailyEmailSendWarningLimit?: number | null;
+  monthlyEmailSendLimit?: number | null;
 }): string {
   const isTrial = input.billingStatus === "TRIALING";
   const isStandard =
     input.planCode === BILLING_PLAN_STANDARD ||
     input.planCode === "STANDARD";
+  const companies = input.activeResearchedCompanyLimit;
+  const daily = input.dailyEmailSendWarningLimit;
+  const monthly = input.monthlyEmailSendLimit;
 
+  if (
+    input.planCode === BILLING_PLAN_COMPED ||
+    input.planCode === "FREE"
+  ) {
+    if (companies != null) {
+      return `Comped access: research up to ${companies} companies. Emails send through your own mailbox.`;
+    }
+    return "Comped access with limits set by your account administrator. Emails send through your own mailbox.";
+  }
+
+  if (isStandard && companies != null && daily != null) {
+    const monthlyBit =
+      monthly != null ? ` (${monthly.toLocaleString("en-US")} a month)` : "";
+    if (isTrial) {
+      return `Trial: research up to ${companies} companies, send up to ${daily} emails a day${monthlyBit}, full product access. Emails send through your own mailbox.`;
+    }
+    return `Research up to ${companies} companies, send up to ${daily} emails a day${monthlyBit}. Full product access. Emails send through your own mailbox.`;
+  }
+
+  // Fallback when policy numbers are unavailable (legacy callers / tests).
   if (isStandard && isTrial) {
     return "Trial: research up to 25 companies, send up to 50 emails a day (1,000 a month), full product access. Emails send through your own mailbox. After trial: 100 companies researched.";
   }
   if (isStandard) {
     return "Research up to 100 companies, send up to 50 emails a day and 1,000 a month. Full product access. Emails send through your own mailbox.";
-  }
-  if (
-    input.planCode === BILLING_PLAN_COMPED ||
-    input.planCode === "FREE"
-  ) {
-    return "Comped access with limits set by your account administrator. Emails send through your own mailbox.";
   }
   return "Emails send through your own mailbox.";
 }

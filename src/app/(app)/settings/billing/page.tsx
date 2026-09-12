@@ -18,8 +18,9 @@ import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
 import {
   BILLING_PLAN_STANDARD,
   getPlanDefinition,
-  resolveEntitlementsForStatus,
 } from "@/lib/billing/plans";
+import { loadEffectiveBillingCatalog } from "@/lib/billing/effective-catalog";
+import { resolveCatalogEntitlementsForStatus } from "@/lib/billing/billing-catalog";
 import { BillingCheckoutRefresh } from "@/components/billing/BillingCheckoutRefresh";
 import { BuyCompanyCreditsButton } from "@/components/billing/BuyCompanyCreditsButton";
 import { ConvertTrialNowButton } from "@/components/billing/ConvertTrialNowButton";
@@ -55,7 +56,7 @@ export default async function OrganizationBillingSettingsPage({
   const creditsState =
     typeof params.credits === "string" ? params.credits : null;
 
-  const [billing, policy, activeCompanies, canConvertTrialEarly, creditBalance, prices] =
+  const [billing, policy, activeCompanies, canConvertTrialEarly, creditBalance, prices, catalogEffective] =
     await Promise.all([
       prisma.organizationBillingProfile.findUnique({
         where: { organizationId: organization.id },
@@ -68,6 +69,7 @@ export default async function OrganizationBillingSettingsPage({
       canOfferEarlyTrialConversion(organization.id),
       getCompanyResearchCreditBalance(organization.id),
       loadEffectiveBillingPrices(),
+      loadEffectiveBillingCatalog(),
     ]);
 
   if (billing && requiresStripeCheckout(billing)) {
@@ -124,13 +126,20 @@ export default async function OrganizationBillingSettingsPage({
     (billingStatus === "ACTIVE" || billingStatus === "PAST_DUE") &&
     Boolean(billing?.currentPeriodEnd);
 
-  const catalogFloor = resolveEntitlementsForStatus({
-    planCode,
-    billingStatus,
-  })?.activeResearchedCompanyLimit;
+  // Trial allowance = what this org actually has stored.
+  const trialAllowance = policy.activeResearchedCompanyLimit;
 
-  const standardPaidFloor = getPlanDefinition(BILLING_PLAN_STANDARD)
-    ?.entitlements.activeResearchedCompanyLimit;
+  // Paid Standard floor = live billing.catalog, else plans.ts.
+  const standardPaidFromCatalog = resolveCatalogEntitlementsForStatus({
+    catalog: catalogEffective.catalog,
+    planCode: BILLING_PLAN_STANDARD,
+    billingStatus: "ACTIVE",
+  })?.activeResearchedCompanyLimit;
+  const standardPaidFloor =
+    standardPaidFromCatalog ??
+    getPlanDefinition(BILLING_PLAN_STANDARD)?.entitlements
+      .activeResearchedCompanyLimit ??
+    null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -179,7 +188,14 @@ export default async function OrganizationBillingSettingsPage({
               {billingPlanLabel(planCode)}
             </dd>
             <p className="mt-1 text-sm text-slate-600">
-              {billingPlanDescription({ planCode, billingStatus })}
+              {billingPlanDescription({
+                planCode,
+                billingStatus,
+                activeResearchedCompanyLimit:
+                  policy.activeResearchedCompanyLimit,
+                dailyEmailSendWarningLimit: policy.dailyEmailSendWarningLimit,
+                monthlyEmailSendLimit: policy.monthlyEmailSendLimit,
+              })}
             </p>
           </div>
           <div>
@@ -297,15 +313,12 @@ export default async function OrganizationBillingSettingsPage({
               "."
             : ""}
         </p>
-        {billingStatus === "TRIALING" && catalogFloor != null ? (
+        {billingStatus === "TRIALING" && trialAllowance != null ? (
           <div className="space-y-3">
             <p className="text-sm text-slate-600">
-              Trial allowance is {catalogFloor} companies
+              Trial allowance is {trialAllowance} companies
               {standardPaidFloor != null
                 ? `; Standard is ${standardPaidFloor} after conversion`
-                : ""}
-              {policy.activeResearchedCompanyLimit > catalogFloor
-                ? ` (your account currently shows ${policy.activeResearchedCompanyLimit} because a higher limit was kept from before Checkout)`
                 : ""}
               .
             </p>
@@ -314,7 +327,11 @@ export default async function OrganizationBillingSettingsPage({
                 <p className="mb-2 text-sm text-slate-700">
                   Need capacity before {trialSummary ?? "trial end"}? Convert
                   now — we charge your card today and start the Standard
-                  billing cycle immediately (100 companies).
+                  billing cycle immediately
+                  {standardPaidFloor != null
+                    ? ` (${standardPaidFloor} companies)`
+                    : ""}
+                  .
                 </p>
                 <ConvertTrialNowButton />
               </div>

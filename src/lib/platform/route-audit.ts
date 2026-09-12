@@ -9,4 +9,5 @@ export const PLATFORM_ROUTE_AUDIT = [
   "/platform/ai",
   "/platform/email-templates",
   "/platform/billing",
+  "/platform/catalog",
 ] as const;

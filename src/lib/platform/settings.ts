@@ -11,6 +11,11 @@ import {
   type BillingPricesSettingValue,
 } from "@/lib/billing/billing-prices";
 import {
+  PLATFORM_SETTING_BILLING_CATALOG,
+  parseBillingCatalogSetting,
+  type BillingCatalogSettingValue,
+} from "@/lib/billing/billing-catalog";
+import {
   PLATFORM_SETTING_BILLING_TRIAL,
   parseBillingTrialSetting,
   type BillingTrialSettingValue,
@@ -46,6 +51,12 @@ export async function getBillingPricesPlatformSetting(): Promise<BillingPricesSe
   const raw = await getPlatformSettingValue(PLATFORM_SETTING_BILLING_PRICES);
   if (raw == null) return null;
   return parseBillingPricesSetting(raw);
+}
+
+export async function getBillingCatalogPlatformSetting(): Promise<BillingCatalogSettingValue | null> {
+  const raw = await getPlatformSettingValue(PLATFORM_SETTING_BILLING_CATALOG);
+  if (raw == null) return null;
+  return parseBillingCatalogSetting(raw);
 }
 
 export async function upsertPlatformSetting(input: {
@@ -120,6 +131,21 @@ export async function upsertBillingPricesSetting(input: {
   }
   await upsertPlatformSetting({
     key: PLATFORM_SETTING_BILLING_PRICES,
+    value: parsed as Prisma.InputJsonValue,
+    actorUserId: input.actorUserId,
+  });
+}
+
+export async function upsertBillingCatalogSetting(input: {
+  value: BillingCatalogSettingValue;
+  actorUserId: string;
+}): Promise<void> {
+  const parsed = parseBillingCatalogSetting(input.value);
+  if (!parsed) {
+    throw new TenantError("Invalid billing catalog setting payload.");
+  }
+  await upsertPlatformSetting({
+    key: PLATFORM_SETTING_BILLING_CATALOG,
     value: parsed as Prisma.InputJsonValue,
     actorUserId: input.actorUserId,
   });

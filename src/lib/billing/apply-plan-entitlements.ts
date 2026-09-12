@@ -1,15 +1,13 @@
 /**
- * Apply plan entitlements from catalog onto UsagePolicy / ResearchPolicy.
- * Company limit: Math.max(existing, floor) — never lowers a platform-raised override
- * (including when a COMPED org converts to paid).
- * TRIALING uses trialEntitlements (25 companies); ACTIVE uses catalog (100).
+ * Apply plan entitlements onto UsagePolicy / ResearchPolicy (Stripe webhook sync).
+ * Floors come from billing.catalog when present, else plans.ts.
+ * Company limit: Math.max(existing, floor) — never lowers a platform-raised override.
  */
 import "server-only";
 
-import {
-  getPlanDefinition,
-  resolveEntitlementsForStatus,
-} from "@/lib/billing/plans";
+import { getPlanDefinition } from "@/lib/billing/plans";
+import { resolveCatalogEntitlementsForStatus } from "@/lib/billing/billing-catalog";
+import { loadEffectiveBillingCatalog } from "@/lib/billing/effective-catalog";
 import {
   DEFAULT_RESEARCH_POLICY_VALUES,
   DEFAULT_USAGE_POLICY_VALUES,
@@ -24,7 +22,9 @@ export async function applyPlanEntitlements(input: {
   const plan = getPlanDefinition(input.planCode);
   if (!plan) return;
 
-  const entitlements = resolveEntitlementsForStatus({
+  const { catalog } = await loadEffectiveBillingCatalog();
+  const entitlements = resolveCatalogEntitlementsForStatus({
+    catalog,
     planCode: input.planCode,
     billingStatus: input.billingStatus,
   });
@@ -32,7 +32,10 @@ export async function applyPlanEntitlements(input: {
 
   const existing = await prisma.organizationUsagePolicy.findUnique({
     where: { organizationId: input.organizationId },
-    select: { activeResearchedCompanyLimit: true },
+    select: {
+      activeResearchedCompanyLimit: true,
+      dailyEmailGenerationLimit: true,
+    },
   });
 
   const activeResearchedCompanyLimit = Math.max(
@@ -40,13 +43,18 @@ export async function applyPlanEntitlements(input: {
     entitlements.activeResearchedCompanyLimit,
   );
 
+  // Generation ceiling: take catalog floor; never lower an existing higher override.
+  const dailyEmailGenerationLimit = Math.max(
+    existing?.dailyEmailGenerationLimit ?? 0,
+    entitlements.dailyAiGenerationLimit,
+  );
+
   await prisma.organizationUsagePolicy.upsert({
     where: { organizationId: input.organizationId },
     create: {
       organizationId: input.organizationId,
       activeResearchedCompanyLimit,
-      dailyEmailGenerationLimit:
-        DEFAULT_USAGE_POLICY_VALUES.dailyEmailGenerationLimit,
+      dailyEmailGenerationLimit,
       dailyEmailSendWarningLimit: entitlements.dailyEmailSendWarningLimit,
       dailyEmailSendLimit: DEFAULT_USAGE_POLICY_VALUES.dailyEmailSendLimit,
       monthlyEmailSendLimit: entitlements.monthlyEmailSendLimit,
@@ -55,6 +63,7 @@ export async function applyPlanEntitlements(input: {
     },
     update: {
       activeResearchedCompanyLimit,
+      dailyEmailGenerationLimit,
       dailyEmailSendWarningLimit: entitlements.dailyEmailSendWarningLimit,
       monthlyEmailSendLimit: entitlements.monthlyEmailSendLimit,
     },

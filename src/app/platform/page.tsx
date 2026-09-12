@@ -66,6 +66,12 @@ export default async function PlatformHomePage() {
       body: "Trial length and Stripe price IDs for new Checkout (console override over environment).",
       superAdminOnly: true,
     },
+    {
+      href: "/platform/catalog",
+      title: "Product catalog",
+      body: "Plan names, feature bullets, and entitlement floors for new signups.",
+      superAdminOnly: true,
+    },
   ].filter((a) => !a.superAdminOnly || canEditTemplates);
 
   return (
