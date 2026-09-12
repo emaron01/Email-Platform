@@ -114,4 +114,26 @@ describe("referral wiring contracts", () => {
     expect(webhook).toContain("countReferralIfActive");
     expect(billing).toContain("ReferralProgramPanel");
   });
+
+  it("exposes copy code and editable copy message with no mailto", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { referralShareMessage } = await import(
+      "@/lib/billing/referral-share-message"
+    );
+    const panel = readFileSync(
+      "src/components/billing/ReferralProgramPanel.tsx",
+      "utf8",
+    );
+    const msg = referralShareMessage("AIMED10");
+    expect(msg).toContain("Use code AIMED10 when you sign up");
+    expect(msg).toContain("aimedoutreach.com");
+    expect(msg).toContain("10% off for as long as you use it");
+    expect(panel).toContain("Copy code");
+    expect(panel).toContain("Copy message");
+    expect(panel).toContain("billing-referral-copy-code");
+    expect(panel).toContain("billing-referral-copy-message");
+    expect(panel).toContain("billing-referral-message");
+    expect(panel).toContain("referralShareMessage");
+    expect(panel).not.toMatch(/mailto:/i);
+  });
 });

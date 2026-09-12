@@ -1,11 +1,14 @@
 "use client";
-import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
-import { cn } from "@/lib/utils";
 
 import { useState, useTransition } from "react";
+import { AutosizeTextarea } from "@/components/AutosizeTextarea";
+import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
+import { referralShareMessage } from "@/lib/billing/referral-share-message";
+import { cn } from "@/lib/utils";
 
 /**
  * Lazy referral section — Stripe promo code is created only when opened.
+ * Copy code / copy message only — no mailto or in-app send.
  */
 export function ReferralProgramPanel({
   enabled,
@@ -15,10 +18,13 @@ export function ReferralProgramPanel({
 }) {
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
   const [count, setCount] = useState<number | null>(null);
   const [rewardPercent, setRewardPercent] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedKind, setCopiedKind] = useState<"code" | "message" | null>(
+    null,
+  );
   const [pending, startTransition] = useTransition();
 
   if (!enabled) return null;
@@ -44,12 +50,23 @@ export function ReferralProgramPanel({
           return;
         }
         setCode(body.code);
+        setMessage(referralShareMessage(body.code));
         setCount(body.successfulReferralCount ?? 0);
         setRewardPercent(body.rewardPercent ?? 0);
       } catch {
         setError("Could not load referral code");
       }
     });
+  }
+
+  async function copyText(kind: "code" | "message", text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKind(kind);
+      window.setTimeout(() => setCopiedKind(null), 2000);
+    } catch {
+      setError("Could not copy to clipboard");
+    }
   }
 
   return (
@@ -99,27 +116,50 @@ export function ReferralProgramPanel({
                 <button
                   type="button"
                   className={cn(SECONDARY_BUTTON_CLASS, "!px-3")}
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(code);
-                      setCopied(true);
-                      window.setTimeout(() => setCopied(false), 2000);
-                    } catch {
-                      setError("Could not copy to clipboard");
-                    }
-                  }}
+                  data-testid="billing-referral-copy-code"
+                  onClick={() => copyText("code", code)}
                 >
-                  {copied ? "Copied" : "Copy"}
+                  {copiedKind === "code" ? "Copied" : "Copy code"}
                 </button>
               </div>
-              <p className="text-sm text-slate-700" data-testid="billing-referral-stats">
-                {count ?? 0} successful referral{(count ?? 0) === 1 ? "" : "s"}{" "}
-                · your rate {rewardPercent ?? 0}% off
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Suggested message
+                  <span className="ml-1 font-normal text-slate-500">
+                    — edit before copying if you want
+                  </span>
+                </label>
+                <AutosizeTextarea
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  minRows={4}
+                  data-testid="billing-referral-message"
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 placeholder:text-slate-400 focus:ring-2"
+                />
+                <button
+                  type="button"
+                  className={cn(SECONDARY_BUTTON_CLASS, "!px-3")}
+                  data-testid="billing-referral-copy-message"
+                  onClick={() => copyText("message", message)}
+                >
+                  {copiedKind === "message" ? "Copied" : "Copy message"}
+                </button>
+              </div>
+
+              <p
+                className="text-sm text-slate-700"
+                data-testid="billing-referral-stats"
+              >
+                {count ?? 0} successful referral
+                {(count ?? 0) === 1 ? "" : "s"} · your rate{" "}
+                {rewardPercent ?? 0}% off
                 {(rewardPercent ?? 0) >= 50 ? " (capped)" : ""}
               </p>
               <p className="text-xs text-slate-500">
                 A referral counts when they reach an active paid subscription —
                 not at trial start. Your discount stays if they cancel later.
+                Paste into Slack, email, or text — there is no in-app send.
               </p>
             </>
           ) : null}
