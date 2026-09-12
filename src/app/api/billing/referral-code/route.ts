@@ -1,22 +1,32 @@
 import { NextResponse } from "next/server";
-import { requireOrgAdmin } from "@/lib/org/authz";
+import { requireCurrentUser } from "@/lib/auth/authz";
 import { ensureOrganizationReferralCode } from "@/lib/billing/referrals";
+import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 
 /**
- * POST /api/billing/referral-code — lazy-create Individual referral promo code.
+ * POST /api/billing/referral-code — lazy-create org referral promo code.
+ * Any signed-in member of the active workspace may open/share the code.
+ * Does not run on page load — only when the client explicitly POSTs.
  */
 export async function POST() {
   try {
-    const { organization } = await requireOrgAdmin();
+    await requireCurrentUser();
+    const organization = await getCurrentOrganization();
+    if (!organization) {
+      return NextResponse.json(
+        { error: "No active workspace.", code: "NO_ORGANIZATION" },
+        { status: 400 },
+      );
+    }
     const result = await ensureOrganizationReferralCode({
       organizationId: organization.id,
     });
     if (!result.ok) {
       const status =
-        result.code === "NOT_INDIVIDUAL"
-          ? 403
-          : result.code === "STRIPE_NOT_CONFIGURED"
-            ? 503
+        result.code === "STRIPE_NOT_CONFIGURED"
+          ? 503
+          : result.code === "NOT_FOUND"
+            ? 404
             : 400;
       return NextResponse.json(
         { error: result.error, code: result.code },

@@ -50,17 +50,10 @@ export async function ensureOrganizationReferralCode(input: {
 
   const org = await prisma.organization.findUnique({
     where: { id: input.organizationId },
-    select: { id: true, accountType: true },
+    select: { id: true },
   });
   if (!org) {
     return { ok: false, error: "Organization not found.", code: "NOT_FOUND" };
-  }
-  if (org.accountType !== "INDIVIDUAL") {
-    return {
-      ok: false,
-      error: "Referral codes are available on Individual accounts.",
-      code: "NOT_INDIVIDUAL",
-    };
   }
 
   const existing = await prisma.organizationReferralCode.findUnique({

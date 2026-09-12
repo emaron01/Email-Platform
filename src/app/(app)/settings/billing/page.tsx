@@ -275,9 +275,7 @@ export default async function OrganizationBillingSettingsPage({
         ) : null}
       </section>
 
-      <ReferralProgramPanel
-        enabled={organization.accountType === "INDIVIDUAL"}
-      />
+      <ReferralProgramPanel />
 
       <section
         className="space-y-3 rounded-lg border border-slate-200 bg-white p-5"

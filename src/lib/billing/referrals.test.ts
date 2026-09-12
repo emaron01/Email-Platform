@@ -120,20 +120,57 @@ describe("referral wiring contracts", () => {
     const { referralShareMessage } = await import(
       "@/lib/billing/referral-share-message"
     );
+    const fields = readFileSync(
+      "src/components/billing/ReferralShareFields.tsx",
+      "utf8",
+    );
     const panel = readFileSync(
       "src/components/billing/ReferralProgramPanel.tsx",
       "utf8",
     );
+    const nav = readFileSync(
+      "src/components/billing/ReferAFriendButton.tsx",
+      "utf8",
+    );
+    const topBar = readFileSync("src/components/TopBar.tsx", "utf8");
     const msg = referralShareMessage("AIMED10");
     expect(msg).toContain("Use code AIMED10 when you sign up");
     expect(msg).toContain("aimedoutreach.com");
     expect(msg).toContain("10% off for as long as you use it");
-    expect(panel).toContain("Copy code");
-    expect(panel).toContain("Copy message");
-    expect(panel).toContain("billing-referral-copy-code");
-    expect(panel).toContain("billing-referral-copy-message");
-    expect(panel).toContain("billing-referral-message");
-    expect(panel).toContain("referralShareMessage");
-    expect(panel).not.toMatch(/mailto:/i);
+    expect(fields).toContain("Copy code");
+    expect(fields).toContain("Copy message");
+    expect(fields).toContain("useReferralShare");
+    expect(fields).not.toMatch(/mailto:/i);
+    expect(panel).toContain("ReferralShareFields");
+    expect(panel).toContain("billing-referral");
+    expect(nav).toContain("refer-a-friend-modal");
+    expect(nav).toContain("useReferralShare(open)");
+    expect(topBar).toContain("ReferAFriendButton");
+    expect(topBar).toContain("UserMenu");
+  });
+
+  it("allows any account type and stays lazy until open", async () => {
+    const { readFileSync } = await import("node:fs");
+    const referrals = readFileSync("src/lib/billing/referrals.ts", "utf8");
+    const route = readFileSync(
+      "src/app/api/billing/referral-code/route.ts",
+      "utf8",
+    );
+    const billing = readFileSync(
+      "src/app/(app)/settings/billing/page.tsx",
+      "utf8",
+    );
+    const share = readFileSync(
+      "src/components/billing/ReferralShareFields.tsx",
+      "utf8",
+    );
+    expect(referrals).not.toContain("NOT_INDIVIDUAL");
+    expect(referrals).not.toContain('accountType !== "INDIVIDUAL"');
+    expect(route).not.toContain("NOT_INDIVIDUAL");
+    expect(route).toContain("requireCurrentUser");
+    expect(billing).toContain("<ReferralProgramPanel />");
+    expect(billing).not.toContain('accountType === "INDIVIDUAL"');
+    expect(share).toContain("if (!active || code) return");
+    expect(share).toContain('method: "POST"');
   });
 });

@@ -1,3 +1,4 @@
+import { ReferAFriendButton } from "@/components/billing/ReferAFriendButton";
 import { UserMenu } from "@/components/UserMenu";
 import type { UserMenuModel } from "@/lib/auth/user-menu";
 
@@ -17,7 +18,10 @@ export function TopBar({
       </div>
       <div className="flex items-center gap-3">
         {menuModel ? (
-          <UserMenu model={menuModel} />
+          <>
+            <ReferAFriendButton />
+            <UserMenu model={menuModel} />
+          </>
         ) : (
           <p className="text-sm text-slate-500">Sign in required</p>
         )}
