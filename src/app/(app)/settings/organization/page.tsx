@@ -2,10 +2,7 @@ import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import {
-  updateOrganizationUsagePolicyAction,
-  updateResearchPolicyAction,
   updateOrganizationTimezoneAction,
-  upsertUserUsageOverrideAction,
   renameWorkspaceAction,
   inviteUserAction,
   revokeInvitationAction,
@@ -17,6 +14,11 @@ import { requireOrgAdmin } from "@/lib/org/authz";
 import { orgAdminInvitesAllowed, individualOrgAdminInviteBlockMessage } from "@/lib/org/seats";
 import { prisma } from "@/lib/prisma";
 import { ensureOrganizationPolicies } from "@/lib/usage/policy";
+
+function formatLimit(value: number | null | undefined): string {
+  if (value == null) return "Inherit organization default";
+  return String(value);
+}
 
 export default async function OrganizationSettingsPage() {
   const { organization, user } = await requireOrgAdmin();
@@ -127,105 +129,76 @@ export default async function OrganizationSettingsPage() {
         </p>
       </section>
 
-      <section className="space-y-3">
+      <section className="space-y-3" data-testid="usage-policy-readonly">
         <h2 className="text-lg font-medium text-slate-900">Usage limits</h2>
         <p className="text-sm text-slate-600">
-          Confirmed sends are advisory only — they leave from the rep&apos;s
-          mailbox and protect domain reputation, not platform cost. AI email
-          generation is a separate platform ceiling and does not count toward
-          the send advisory.
+          Set by your account administrator. Confirmed sends are advisory only —
+          they leave from the rep&apos;s mailbox and protect domain reputation,
+          not platform cost. AI email generation is a separate platform ceiling
+          and does not count toward the send advisory.
         </p>
-        <ActionFeedbackForm
-          action={updateOrganizationUsagePolicyAction}
-          className="grid gap-3 sm:grid-cols-2"
-          testId="usage-policy-form"
-        >
-          <label className="text-sm">
-            Active researched companies
-            <input
-              name="activeResearchedCompanyLimit"
-              type="number"
-              min={0}
-              defaultValue={usagePolicy.activeResearchedCompanyLimit}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            />
-          </label>
-          <label className="text-sm">
-            Daily AI email generations
-            <input
-              name="dailyEmailGenerationLimit"
-              type="number"
-              min={0}
-              defaultValue={usagePolicy.dailyEmailGenerationLimit}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            />
-          </label>
-          <label className="text-sm sm:col-span-2">
-            Daily send advisory threshold
-            <input
-              name="dailyEmailSendWarningLimit"
-              type="number"
-              min={0}
-              defaultValue={usagePolicy.dailyEmailSendWarningLimit}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            />
-            <span className="mt-1 block text-xs text-slate-500">
+        <dl className="grid gap-3 rounded-md border border-slate-200 bg-white p-4 sm:grid-cols-2">
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Active researched companies
+            </dt>
+            <dd className="mt-1 text-sm text-slate-900">
+              {usagePolicy.activeResearchedCompanyLimit}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Daily AI email generations
+            </dt>
+            <dd className="mt-1 text-sm text-slate-900">
+              {usagePolicy.dailyEmailGenerationLimit}
+            </dd>
+          </div>
+          <div className="sm:col-span-2">
+            <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Daily send advisory threshold
+            </dt>
+            <dd className="mt-1 text-sm text-slate-900">
+              {usagePolicy.dailyEmailSendWarningLimit}
+            </dd>
+            <p className="mt-1 text-xs text-slate-500">
               Warn after this many confirmed sends today. Never blocks sending.
-            </span>
-          </label>
-          <button
-            type="submit"
-            className={cn(PRIMARY_BUTTON_CLASS, "sm:col-span-2", "w-fit", "!px-3")}
-          >
-            Save usage policy
-          </button>
-        </ActionFeedbackForm>
+            </p>
+          </div>
+        </dl>
       </section>
 
-      <section className="space-y-3">
+      <section className="space-y-3" data-testid="research-policy-readonly">
         <h2 className="text-lg font-medium text-slate-900">Research depth</h2>
-        <ActionFeedbackForm
-          action={updateResearchPolicyAction}
-          className="grid gap-3 sm:grid-cols-3"
-          testId="research-policy-form"
-        >
-          <label className="text-sm">
-            Max searches / company
-            <input
-              name="maxSearchQueriesPerCompany"
-              type="number"
-              min={1}
-              defaultValue={researchPolicy.maxSearchQueriesPerCompany}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            />
-          </label>
-          <label className="text-sm">
-            Max sources / company
-            <input
-              name="maxSourcesPerCompany"
-              type="number"
-              min={0}
-              defaultValue={researchPolicy.maxSourcesPerCompany}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            />
-          </label>
-          <label className="text-sm">
-            Freshness (days)
-            <input
-              name="researchFreshnessDays"
-              type="number"
-              min={1}
-              defaultValue={researchPolicy.researchFreshnessDays}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            />
-          </label>
-          <button
-            type="submit"
-            className={cn(PRIMARY_BUTTON_CLASS, "sm:col-span-3", "w-fit", "!px-3")}
-          >
-            Save research policy
-          </button>
-        </ActionFeedbackForm>
+        <p className="text-sm text-slate-600">
+          Set by your account administrator.
+        </p>
+        <dl className="grid gap-3 rounded-md border border-slate-200 bg-white p-4 sm:grid-cols-3">
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Max searches / company
+            </dt>
+            <dd className="mt-1 text-sm text-slate-900">
+              {researchPolicy.maxSearchQueriesPerCompany}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Max sources / company
+            </dt>
+            <dd className="mt-1 text-sm text-slate-900">
+              {researchPolicy.maxSourcesPerCompany}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Freshness (days)
+            </dt>
+            <dd className="mt-1 text-sm text-slate-900">
+              {researchPolicy.researchFreshnessDays}
+            </dd>
+          </div>
+        </dl>
       </section>
 
       <section className="space-y-3">
@@ -285,11 +258,11 @@ export default async function OrganizationSettingsPage() {
         </ul>
       </section>
 
-      <section className="space-y-3">
+      <section className="space-y-3" data-testid="user-overrides-readonly">
         <h2 className="text-lg font-medium text-slate-900">User overrides</h2>
         <p className="text-sm text-slate-600">
-          Leave blank to inherit organization defaults. Members cannot raise their
-          own limits.
+          Per-user ceilings set by your account administrator. Blank means the
+          member inherits organization defaults.
         </p>
         <ul className="space-y-4">
           {members.map((m) => {
@@ -298,6 +271,7 @@ export default async function OrganizationSettingsPage() {
               <li
                 key={m.id}
                 className="rounded-md border border-slate-200 bg-white p-4"
+                data-testid={`user-override-readonly-${m.userId}`}
               >
                 <p className="text-sm font-medium text-slate-900">
                   {m.user.name ?? m.user.email}{" "}
@@ -305,52 +279,28 @@ export default async function OrganizationSettingsPage() {
                     ({m.role})
                   </span>
                 </p>
-                <ActionFeedbackForm
-                  action={upsertUserUsageOverrideAction}
-                  className="mt-3 grid gap-2 sm:grid-cols-4"
-                  testId={`user-override-form-${m.userId}`}
-                >
-                  <input type="hidden" name="userId" value={m.userId} />
-                  <label className="text-xs text-slate-600">
-                    Active companies
-                    <input
-                      name="activeResearchedCompanyLimit"
-                      type="number"
-                      min={0}
-                      defaultValue={ov?.activeResearchedCompanyLimit ?? ""}
-                      placeholder="inherit"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="text-xs text-slate-600">
-                    Daily AI generations
-                    <input
-                      name="dailyEmailGenerationLimit"
-                      type="number"
-                      min={0}
-                      defaultValue={ov?.dailyEmailGenerationLimit ?? ""}
-                      placeholder="inherit"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="text-xs text-slate-600">
-                    Send advisory
-                    <input
-                      name="dailyEmailSendWarningLimit"
-                      type="number"
-                      min={0}
-                      defaultValue={ov?.dailyEmailSendWarningLimit ?? ""}
-                      placeholder="inherit"
-                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <button
-                    type="submit"
-                    className="self-end rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                  >
-                    Save override
-                  </button>
-                </ActionFeedbackForm>
+                <dl className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <div>
+                    <dt className="text-xs text-slate-600">Active companies</dt>
+                    <dd className="mt-1 text-sm text-slate-900">
+                      {formatLimit(ov?.activeResearchedCompanyLimit)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-600">
+                      Daily AI generations
+                    </dt>
+                    <dd className="mt-1 text-sm text-slate-900">
+                      {formatLimit(ov?.dailyEmailGenerationLimit)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-600">Send advisory</dt>
+                    <dd className="mt-1 text-sm text-slate-900">
+                      {formatLimit(ov?.dailyEmailSendWarningLimit)}
+                    </dd>
+                  </div>
+                </dl>
               </li>
             );
           })}

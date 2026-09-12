@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   AuthorizationError,
   requireOrgAdmin,
+  requirePlatformSuperAdmin,
   getMembershipForCurrentUser,
 } from "@/lib/org/authz";
 import {
@@ -51,11 +52,16 @@ function asPositiveInt(value: FormDataEntryValue | null, label: string): number 
   return n;
 }
 
+/**
+ * Platform-only. Org admins must not raise their own entitlements.
+ * Customer UI is read-only; operators edit via /platform/orgs/[id].
+ */
 export async function updateOrganizationUsagePolicyAction(
   _prev: SettingsActionResult | null,
   formData: FormData,
 ): Promise<SettingsActionResult> {
   try {
+    await requirePlatformSuperAdmin();
     const { organization } = await requireOrgAdmin();
     const activeResearchedCompanyLimit = asPositiveInt(
       formData.get("activeResearchedCompanyLimit"),
@@ -98,11 +104,15 @@ export async function updateOrganizationUsagePolicyAction(
   }
 }
 
+/**
+ * Platform-only. Org admins must not change research depth themselves.
+ */
 export async function updateResearchPolicyAction(
   _prev: SettingsActionResult | null,
   formData: FormData,
 ): Promise<SettingsActionResult> {
   try {
+    await requirePlatformSuperAdmin();
     const { organization } = await requireOrgAdmin();
     const maxSearchQueriesPerCompany = asPositiveInt(
       formData.get("maxSearchQueriesPerCompany"),
@@ -173,11 +183,15 @@ export async function updateOrganizationTimezoneAction(
   }
 }
 
+/**
+ * Platform-only. Org admins must not set per-user entitlement overrides.
+ */
 export async function upsertUserUsageOverrideAction(
   _prev: SettingsActionResult | null,
   formData: FormData,
 ): Promise<SettingsActionResult> {
   try {
+    await requirePlatformSuperAdmin();
     const { organization } = await requireOrgAdmin();
     const userId = String(formData.get("userId") ?? "").trim();
     if (!userId) throw new Error("User is required.");
