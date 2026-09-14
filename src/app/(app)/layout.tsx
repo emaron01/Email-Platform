@@ -15,9 +15,18 @@ export default async function AppLayout({
   await enforcePaymentLockGate();
 
   const organization = await getCurrentOrganization();
-  const paymentLocked = organization
-    ? (await getOrganizationPaymentLockState(organization.id)).locked
-    : false;
+  const lockState = organization
+    ? await getOrganizationPaymentLockState(organization.id)
+    : null;
 
-  return <AppShell paymentLocked={paymentLocked}>{children}</AppShell>;
+  return (
+    <AppShell
+      paymentLocked={lockState?.locked ?? false}
+      pastDueReadOnly={
+        Boolean(lockState?.spendBlocked) && !Boolean(lockState?.locked)
+      }
+    >
+      {children}
+    </AppShell>
+  );
 }

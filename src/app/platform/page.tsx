@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   canEditTransactionalTemplates,
+  canMutatePlatform,
   requirePlatformOperator,
 } from "@/lib/auth/authz";
 import { ensureAiModelRatesSeeded } from "@/lib/platform/model-rates";
@@ -8,6 +9,8 @@ import {
   computeCostReport,
   getLatestSpendDrift,
 } from "@/lib/platform/cost";
+import { listPurgeEligibleOrganizations } from "@/lib/platform/purge-contact-outbound";
+import { CONTACT_OUTBOUND_RETENTION_DAYS } from "@/lib/platform/purge-contact-outbound-shared";
 import { PLATFORM_ROUTE_AUDIT } from "@/lib/platform/route-audit";
 
 function formatUsd(n: number | null): string {
@@ -20,16 +23,22 @@ function formatRatio(n: number | null): string {
   return `${n.toFixed(2)}×`;
 }
 
+function formatDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 export default async function PlatformHomePage() {
   const user = await requirePlatformOperator();
   await ensureAiModelRatesSeeded();
 
-  const [report, drift] = await Promise.all([
+  const [report, drift, purgeEligible] = await Promise.all([
     computeCostReport({ window: "30d" }),
     getLatestSpendDrift(),
+    listPurgeEligibleOrganizations(),
   ]);
 
   const canEditTemplates = canEditTransactionalTemplates(user.platformRole);
+  const canMutate = canMutatePlatform(user.platformRole);
   const proj300 = report.projections.find((p) => p.emails === 300);
 
   const areas = [
@@ -112,6 +121,57 @@ export default async function PlatformHomePage() {
             </Link>
           </p>
         </div>
+      ) : null}
+
+      {purgeEligible.length > 0 ? (
+        <section
+          className="space-y-3 rounded-lg border border-amber-300 bg-amber-50/80 p-4"
+          data-testid="platform-purge-eligible"
+        >
+          <div>
+            <h2 className="text-lg font-medium text-amber-950">
+              Contact data purge due ({purgeEligible.length})
+            </h2>
+            <p className="mt-1 text-sm text-amber-900">
+              Canceled organizations past the {CONTACT_OUTBOUND_RETENTION_DAYS}
+              -day retention window that still have contacts, campaigns, or
+              suppressions. Open the org and run{" "}
+              <span className="font-medium">
+                Delete contact and outbound data
+              </span>
+              {canMutate ? "" : " (SUPER_ADMIN only)"}.
+            </p>
+          </div>
+          <ul className="divide-y divide-amber-200/80 rounded-md border border-amber-200 bg-white text-sm">
+            {purgeEligible.map((org) => (
+              <li
+                key={org.organizationId}
+                className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5"
+              >
+                <div>
+                  <Link
+                    href={`/platform/orgs/${org.organizationId}`}
+                    className="font-medium text-slate-900 underline"
+                  >
+                    {org.name}
+                  </Link>
+                  <p className="text-xs text-slate-500">
+                    Canceled {formatDate(org.canceledAt)} · Eligible since{" "}
+                    {formatDate(org.eligibleAt)} · {org.contactCount} contacts ·{" "}
+                    {org.campaignCount} campaigns · {org.suppressionCount}{" "}
+                    suppressions
+                  </p>
+                </div>
+                <Link
+                  href={`/platform/orgs/${org.organizationId}`}
+                  className="text-xs font-medium text-amber-950 underline"
+                >
+                  Open org
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       <section className="space-y-3">

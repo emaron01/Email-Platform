@@ -4,6 +4,16 @@
 
 export const CONTACT_OUTBOUND_PURGE_CONFIRM_PHRASE = "Purge contacts";
 
+/** Days after cancellation before contact/outbound data should be purged. */
+export const CONTACT_OUTBOUND_RETENTION_DAYS = 30;
+
+export const CONTACT_OUTBOUND_RETENTION_MS =
+  CONTACT_OUTBOUND_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+export function contactOutboundPurgeEligibleAt(canceledAt: Date): Date {
+  return new Date(canceledAt.getTime() + CONTACT_OUTBOUND_RETENTION_MS);
+}
+
 /** What the platform confirm dialog must name. */
 export function contactOutboundPurgeConfirmSummary(): {
   deletes: string[];

@@ -279,6 +279,8 @@ export async function syncSubscriptionById(input: {
 export async function markSubscriptionCanceled(input: {
   organizationId: string;
   subscriptionId: string;
+  /** Stripe subscription.canceled_at (unix seconds or Date). Prefer over webhook wall clock. */
+  canceledAt?: Date | number | null;
 }): Promise<void> {
   const profile = await prisma.organizationBillingProfile.findFirst({
     where: {
@@ -288,12 +290,20 @@ export async function markSubscriptionCanceled(input: {
   });
   if (!profile) return;
 
+  const canceledAt =
+    input.canceledAt instanceof Date
+      ? input.canceledAt
+      : typeof input.canceledAt === "number"
+        ? unixToDate(input.canceledAt)
+        : null;
+
   await prisma.organizationBillingProfile.update({
     where: { organizationId: input.organizationId },
     data: {
       billingStatus: "CANCELED",
       cancelAtPeriodEnd: false,
-      canceledAt: new Date(),
+      // Prefer Stripe's cancellation timestamp so the 30-day purge clock is accurate.
+      canceledAt: canceledAt ?? new Date(),
       lockReason: "CANCELED",
       gracePeriodEndsAt: null,
       stripeDiscountPercentOff: null,

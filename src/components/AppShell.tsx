@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
@@ -12,9 +13,12 @@ import {
 export async function AppShell({
   children,
   paymentLocked = false,
+  pastDueReadOnly = false,
 }: {
   children: React.ReactNode;
   paymentLocked?: boolean;
+  /** PAST_DUE grace: views allowed, spend blocked. */
+  pastDueReadOnly?: boolean;
 }) {
   const user = await getCurrentUser();
   const organization = user ? await getCurrentOrganization() : null;
@@ -48,6 +52,25 @@ export async function AppShell({
       <Sidebar items={sidebarItems} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar menuModel={menuModel} />
+        {pastDueReadOnly && !paymentLocked ? (
+          <div
+            role="status"
+            className="border-b border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-950"
+            data-testid="past-due-readonly-banner"
+          >
+            <p>
+              Payment is past due — you can view your workspace, but research,
+              email generation, and sending are paused.{" "}
+              <Link
+                href="/settings/billing"
+                className="font-medium underline underline-offset-2"
+              >
+                Update billing
+              </Link>{" "}
+              to restore those actions.
+            </p>
+          </div>
+        ) : null}
         <main className="flex-1 overflow-auto bg-slate-50/60 p-4 sm:p-6">
           <div className="mx-auto w-full max-w-7xl">{children}</div>
         </main>

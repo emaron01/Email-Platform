@@ -96,6 +96,7 @@ export default async function OrganizationBillingSettingsPage({
   }
 
   const paymentLocked = lockState.locked;
+  const spendBlocked = lockState.spendBlocked;
   const planCode = billing?.planCode ?? BILLING_PLAN_COMPED;
   const billingStatus = billing?.billingStatus ?? "FREE";
   const remaining = Math.max(
@@ -119,7 +120,8 @@ export default async function OrganizationBillingSettingsPage({
       billingStatus === "PAST_DUE");
 
   const canOpenPortal = Boolean(billing?.stripeCustomerId);
-  const showPortal = canOpenPortal && (hasLiveSubscription || paymentLocked);
+  const showPortal =
+    canOpenPortal && (hasLiveSubscription || paymentLocked || spendBlocked);
   const showResubscribe =
     paymentLocked && isAdmin && !hasLiveSubscription && !isComped;
 
@@ -188,7 +190,7 @@ export default async function OrganizationBillingSettingsPage({
         </p>
       </div>
 
-      {paymentLocked && lockState.profile ? (
+      {spendBlocked && lockState.profile ? (
         <div
           role="alert"
           className="space-y-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
@@ -217,6 +219,16 @@ export default async function OrganizationBillingSettingsPage({
                 can return and rebuild lists.
               </p>
             </>
+          ) : billingStatus === "PAST_DUE" && !paymentLocked ? (
+            <p>
+              You can still open campaigns, contacts, and setup. Research, email
+              generation, and sending stay off until payment succeeds. Stripe may
+              retry the charge automatically; you can also update your card in
+              the billing portal.
+              {billing?.gracePeriodEndsAt
+                ? ` If payment is still unpaid after ${formatBillingDate(billing.gracePeriodEndsAt)}, access narrows to this billing page only.`
+                : ""}
+            </p>
           ) : (
             <p>
               Your products, ICPs, personas, and account stay on this workspace.

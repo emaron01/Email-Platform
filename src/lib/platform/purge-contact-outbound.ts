@@ -6,10 +6,18 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { recordAdminAuditEvent } from "@/lib/auth/audit";
+import { BILLING_PLAN_COMPED } from "@/lib/billing/plans";
+import {
+  CONTACT_OUTBOUND_RETENTION_MS,
+  contactOutboundPurgeEligibleAt,
+} from "@/lib/platform/purge-contact-outbound-shared";
 
 export {
   CONTACT_OUTBOUND_PURGE_CONFIRM_PHRASE,
+  CONTACT_OUTBOUND_RETENTION_DAYS,
+  CONTACT_OUTBOUND_RETENTION_MS,
   contactOutboundPurgeConfirmSummary,
+  contactOutboundPurgeEligibleAt,
 } from "@/lib/platform/purge-contact-outbound-shared";
 
 export type ContactOutboundPurgeCounts = {
@@ -176,4 +184,80 @@ export async function purgeOrganizationContactOutboundData(input: {
   });
 
   return counts;
+}
+
+export type PurgeEligibleOrganization = {
+  organizationId: string;
+  name: string;
+  slug: string;
+  canceledAt: Date;
+  eligibleAt: Date;
+  contactCount: number;
+  campaignCount: number;
+  suppressionCount: number;
+};
+
+/**
+ * CANCELED orgs past the 30-day retention window that still have contact/outbound
+ * rows. Comped plans are excluded.
+ */
+export async function listPurgeEligibleOrganizations(
+  now: Date = new Date(),
+): Promise<PurgeEligibleOrganization[]> {
+  const cutoff = new Date(now.getTime() - CONTACT_OUTBOUND_RETENTION_MS);
+
+  const profiles = await prisma.organizationBillingProfile.findMany({
+    where: {
+      billingStatus: "CANCELED",
+      canceledAt: { not: null, lte: cutoff },
+      planCode: { notIn: [BILLING_PLAN_COMPED, "FREE"] },
+    },
+    select: {
+      organizationId: true,
+      canceledAt: true,
+      organization: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          _count: {
+            select: {
+              contacts: true,
+              campaigns: true,
+              emailSuppressions: true,
+              contactLists: true,
+              companies: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: { canceledAt: "asc" },
+  });
+
+  const rows: PurgeEligibleOrganization[] = [];
+  for (const profile of profiles) {
+    if (!profile.canceledAt) continue;
+    const counts = profile.organization._count;
+    const remaining =
+      counts.contacts +
+      counts.campaigns +
+      counts.emailSuppressions +
+      counts.contactLists +
+      counts.companies;
+    if (remaining === 0) continue;
+
+    rows.push({
+      organizationId: profile.organization.id,
+      name: profile.organization.name,
+      slug: profile.organization.slug,
+      canceledAt: profile.canceledAt,
+      eligibleAt: contactOutboundPurgeEligibleAt(profile.canceledAt),
+      contactCount: counts.contacts,
+      campaignCount: counts.campaigns,
+      suppressionCount: counts.emailSuppressions,
+    });
+  }
+
+  return rows;
 }

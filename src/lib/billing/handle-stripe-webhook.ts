@@ -98,6 +98,7 @@ export async function handleStripeWebhookEvent(
           await markSubscriptionCanceled({
             organizationId,
             subscriptionId: subscription.id,
+            canceledAt: subscription.canceled_at,
           });
           synced = true;
         }

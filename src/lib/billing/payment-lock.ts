@@ -2,17 +2,17 @@
  * Payment-lock policy + evaluation.
  *
  * Trial end with a working card: Stripe auto-converts to active — we sync ACTIVE.
- * Card decline at trial conversion: Stripe → past_due; we mirror PAST_DUE and use the
- * existing 7-day grace + PAYMENT_FAILED lock. Do not build a separate trial-expiry path;
- * BillingLockReason.TRIAL_ENDED is reserved/unused for that flow.
+ * Card decline at trial conversion: Stripe → past_due; we mirror PAST_DUE.
  *
- * When locked (route gate):
- * - Every (app) route redirects to /settings/billing.
- * - Resubscribe / update payment is the only product action.
- * - Sign-out remains available from the billing shell user menu.
+ * PAST_DUE has two phases:
+ * - Grace (read-only): login + all views; research / generation / send blocked.
+ *   Billing + Stripe Customer Portal stay open so they can fix the card.
+ * - After grace (route lock): every (app) route redirects to /settings/billing.
  *
- * Defense-in-depth asserts still block research, generation, send, and invites if a
- * worker or action bypasses the layout.
+ * CANCELED and Stripe-mapped UNPAID (has subscription id) are route-locked immediately.
+ *
+ * Defense-in-depth asserts block research, generation, send, and invites whenever
+ * spend is blocked (including PAST_DUE grace).
  *
  * HARD EXEMPTION — a locked org must still be able to pay us:
  * - Stripe Customer Portal / Checkout API paths
@@ -24,7 +24,7 @@ import type { BillingLockReason } from "@prisma/client";
 import { BILLING_PLAN_COMPED } from "@/lib/billing/plans";
 import { prisma } from "@/lib/prisma-client";
 
-/** Page routes locked orgs may still open (under (app) layout). */
+/** Page routes route-locked orgs may still open (under (app) layout). */
 export const PAYMENT_LOCK_ROUTE_EXEMPT_PREFIXES = [
   "/settings/billing",
 ] as const;
@@ -43,8 +43,12 @@ export type PaymentLockExemptCapability =
   | "START_STRIPE_CHECKOUT"
   | "VIEW_BILLING_STATE";
 
-/** 7-day grace after PAST_DUE before spend is locked. */
-export const PAYMENT_LOCK_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Read-only window after PAST_DUE before route lock (billing-only shell).
+ * 14 days aligns with Stripe’s recommended Smart Retries horizon (~2 weeks);
+ * grace is read-only so a longer window does not give free AI spend.
+ */
+export const PAYMENT_LOCK_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
 
 export class PaymentLockError extends Error {
   readonly code = "PAYMENT_LOCKED";
@@ -73,9 +77,18 @@ function isCompedOrFree(profile: PaymentLockProfile): boolean {
   );
 }
 
+/** True while PAST_DUE and before gracePeriodEndsAt (or grace not written yet). */
+export function isPastDueInGrace(
+  profile: PaymentLockProfile,
+  now: Date = new Date(),
+): boolean {
+  if (profile.billingStatus !== "PAST_DUE") return false;
+  if (!profile.gracePeriodEndsAt) return true;
+  return now.getTime() < profile.gracePeriodEndsAt.getTime();
+}
+
 /**
- * Pure lock check. Status-first so already-synced CANCELED orgs lock even when
- * lockReason was never written (pre-enforcement sync).
+ * Route lock: billing-only shell. PAST_DUE is route-locked only after grace ends.
  */
 export function isPaymentLocked(
   profile: PaymentLockProfile | null | undefined,
@@ -94,13 +107,34 @@ export function isPaymentLocked(
       // Pre-checkout UNPAID (no sub id) → checkout gate, not this lock.
       // Stripe "unpaid" keeps a subscription id → lock immediately.
       return Boolean(profile.stripeSubscriptionId);
-    case "PAST_DUE": {
-      if (profile.gracePeriodEndsAt) {
-        return now.getTime() >= profile.gracePeriodEndsAt.getTime();
-      }
-      // Grace not written yet — treat as still within grace; heal/sync starts the clock.
+    case "PAST_DUE":
+      return !isPastDueInGrace(profile, now);
+    default:
       return false;
-    }
+  }
+}
+
+/**
+ * Spend lock: no research, generation, send, or org invites.
+ * True for all PAST_DUE (including grace), CANCELED, and Stripe-mapped UNPAID.
+ */
+export function isSpendBlocked(
+  profile: PaymentLockProfile | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!profile || isCompedOrFree(profile)) return false;
+
+  switch (profile.billingStatus) {
+    case "ACTIVE":
+    case "TRIALING":
+    case "FREE":
+      return false;
+    case "CANCELED":
+      return true;
+    case "UNPAID":
+      return Boolean(profile.stripeSubscriptionId);
+    case "PAST_DUE":
+      return true;
     default:
       return false;
   }
@@ -108,12 +142,16 @@ export function isPaymentLocked(
 
 export function paymentLockUserMessage(
   profile: PaymentLockProfile,
+  now: Date = new Date(),
 ): string {
   switch (profile.billingStatus) {
     case "CANCELED":
       return "Your subscription is canceled. Open Billing to resubscribe before researching, generating, or sending email.";
     case "PAST_DUE":
-      return "Your payment is past due. Update billing to restore research, email generation, and sending.";
+      if (isPastDueInGrace(profile, now)) {
+        return "Your payment is past due. You can still view your workspace, but research, email generation, and sending are paused until you update your card.";
+      }
+      return "Your payment is past due. Update billing to restore access to your workspace.";
     case "UNPAID":
       return "Your subscription payment failed. Open Billing to update payment and restore access.";
     default:
@@ -250,24 +288,27 @@ export async function assertOrganizationNotPaymentLocked(
   organizationId: string,
   now: Date = new Date(),
 ): Promise<void> {
-  const { locked, profile } = await getOrganizationPaymentLockState(
+  const { spendBlocked, profile } = await getOrganizationPaymentLockState(
     organizationId,
     now,
   );
-  if (!locked || !profile) return;
+  if (!spendBlocked || !profile) return;
 
   throw new PaymentLockError(
-    paymentLockUserMessage(profile),
+    paymentLockUserMessage(profile, now),
     profile.lockReason ?? profile.billingStatus,
   );
 }
 
-/** Load + heal lock fields; used by route gate and billing UI. */
+/** Load + heal lock fields; used by route gate, asserts, and billing UI. */
 export async function getOrganizationPaymentLockState(
   organizationId: string,
   now: Date = new Date(),
 ): Promise<{
+  /** Billing-only shell (after PAST_DUE grace, or immediate for cancel/unpaid). */
   locked: boolean;
+  /** No research / generation / send (includes PAST_DUE grace). */
+  spendBlocked: boolean;
   profile: LockSelect | null;
 }> {
   const profile = await prisma.organizationBillingProfile.findUnique({
@@ -280,8 +321,14 @@ export async function getOrganizationPaymentLockState(
       gracePeriodEndsAt: true,
     },
   });
-  if (!profile) return { locked: false, profile: null };
+  if (!profile) {
+    return { locked: false, spendBlocked: false, profile: null };
+  }
 
   const healed = await healPaymentLockFields(organizationId, profile, now);
-  return { locked: isPaymentLocked(healed, now), profile: healed };
+  return {
+    locked: isPaymentLocked(healed, now),
+    spendBlocked: isSpendBlocked(healed, now),
+    profile: healed,
+  };
 }

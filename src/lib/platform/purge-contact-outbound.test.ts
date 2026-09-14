@@ -39,4 +39,24 @@ describe("contact outbound purge policy", () => {
     expect(sync).toContain("extendCompanyResearchCreditsAfterCancelLapse");
     expect(sync).toContain('billingStatus === "CANCELED"');
   });
+
+  it("surfaces purge-eligible orgs on platform home and orgs list", () => {
+    const home = readFileSync("src/app/platform/page.tsx", "utf8");
+    const orgs = readFileSync("src/app/platform/orgs/page.tsx", "utf8");
+    expect(home).toContain("listPurgeEligibleOrganizations");
+    expect(home).toContain("platform-purge-eligible");
+    expect(orgs).toContain("listPurgeEligibleOrganizations");
+    expect(orgs).toContain("Eligible");
+  });
+
+  it("uses Stripe canceled_at for purge clock on delete fallback", () => {
+    const sync = readFileSync("src/lib/billing/sync-subscription.ts", "utf8");
+    const webhook = readFileSync(
+      "src/lib/billing/handle-stripe-webhook.ts",
+      "utf8",
+    );
+    expect(sync).toContain("unixToDate(subscription.canceled_at)");
+    expect(sync).toContain("canceledAt: canceledAt ?? new Date()");
+    expect(webhook).toContain("canceledAt: subscription.canceled_at");
+  });
 });

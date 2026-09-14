@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   isPaymentLocked,
+  isSpendBlocked,
+  isPastDueInGrace,
   nextPaymentLockFields,
   paymentLockUserMessage,
   PAYMENT_LOCK_GRACE_MS,
@@ -81,43 +83,35 @@ describe("isPaymentLocked entitlement matrix", () => {
     ).toBe(true);
   });
 
-  it("allows PAST_DUE during grace and locks after grace ends", () => {
-    expect(
-      isPaymentLocked(
-        {
-          planCode: BILLING_PLAN_STANDARD,
-          billingStatus: "PAST_DUE",
-          stripeSubscriptionId: "sub_x",
-          lockReason: "PAYMENT_FAILED",
-          gracePeriodEndsAt: new Date("2026-09-20T12:00:00.000Z"),
-        },
-        now,
-      ),
-    ).toBe(false);
-    expect(
-      isPaymentLocked(
-        {
-          planCode: BILLING_PLAN_STANDARD,
-          billingStatus: "PAST_DUE",
-          stripeSubscriptionId: "sub_x",
-          lockReason: "PAYMENT_FAILED",
-          gracePeriodEndsAt: new Date("2026-09-10T12:00:00.000Z"),
-        },
-        now,
-      ),
-    ).toBe(true);
-    // Grace not written yet — still allowed; heal/sync starts the clock.
-    expect(
-      isPaymentLocked(
-        {
-          planCode: BILLING_PLAN_STANDARD,
-          billingStatus: "PAST_DUE",
-          stripeSubscriptionId: "sub_x",
-          gracePeriodEndsAt: null,
-        },
-        now,
-      ),
-    ).toBe(false);
+  it("PAST_DUE grace is read-only: spend blocked, routes open until grace ends", () => {
+    const inGrace = {
+      planCode: BILLING_PLAN_STANDARD,
+      billingStatus: "PAST_DUE" as const,
+      stripeSubscriptionId: "sub_x",
+      lockReason: "PAYMENT_FAILED" as const,
+      gracePeriodEndsAt: new Date("2026-09-28T12:00:00.000Z"),
+    };
+    expect(isPastDueInGrace(inGrace, now)).toBe(true);
+    expect(isPaymentLocked(inGrace, now)).toBe(false);
+    expect(isSpendBlocked(inGrace, now)).toBe(true);
+
+    const afterGrace = {
+      ...inGrace,
+      gracePeriodEndsAt: new Date("2026-09-10T12:00:00.000Z"),
+    };
+    expect(isPastDueInGrace(afterGrace, now)).toBe(false);
+    expect(isPaymentLocked(afterGrace, now)).toBe(true);
+    expect(isSpendBlocked(afterGrace, now)).toBe(true);
+
+    // Grace not written yet — still in grace (heal starts the clock); spend blocked.
+    const pendingGrace = {
+      planCode: BILLING_PLAN_STANDARD,
+      billingStatus: "PAST_DUE" as const,
+      stripeSubscriptionId: "sub_x",
+      gracePeriodEndsAt: null,
+    };
+    expect(isPaymentLocked(pendingGrace, now)).toBe(false);
+    expect(isSpendBlocked(pendingGrace, now)).toBe(true);
   });
 });
 
@@ -166,6 +160,7 @@ describe("nextPaymentLockFields", () => {
     expect(first.gracePeriodEndsAt?.getTime()).toBe(
       now.getTime() + PAYMENT_LOCK_GRACE_MS,
     );
+    expect(PAYMENT_LOCK_GRACE_MS).toBe(14 * 24 * 60 * 60 * 1000);
 
     const later = new Date("2026-09-16T12:00:00.000Z");
     const second = nextPaymentLockFields({
@@ -192,6 +187,20 @@ describe("paymentLockUserMessage", () => {
       }),
     ).toMatch(/Billing/i);
   });
+
+  it("describes read-only during PAST_DUE grace", () => {
+    const now = new Date("2026-09-14T12:00:00.000Z");
+    expect(
+      paymentLockUserMessage(
+        {
+          planCode: BILLING_PLAN_STANDARD,
+          billingStatus: "PAST_DUE",
+          gracePeriodEndsAt: new Date("2026-09-28T12:00:00.000Z"),
+        },
+        now,
+      ),
+    ).toMatch(/view your workspace/i);
+  });
 });
 
 describe("payment lock route gate", () => {
@@ -209,5 +218,11 @@ describe("payment lock route gate", () => {
     expect(gate).toContain('redirect("/settings/billing")');
     expect(lock).toContain("PAYMENT_LOCK_ROUTE_EXEMPT_PREFIXES");
     expect(lock).toContain('"/settings/billing"');
+  });
+
+  it("assert uses spendBlocked so PAST_DUE grace cannot research", () => {
+    const lock = readFileSync("src/lib/billing/payment-lock.ts", "utf8");
+    expect(lock).toContain("spendBlocked");
+    expect(lock).toContain("isSpendBlocked");
   });
 });
