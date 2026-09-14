@@ -24,12 +24,9 @@ export default async function OrganizationSettingsPage() {
   const { organization, user } = await requireOrgAdmin();
   await ensureOrganizationPolicies(organization.id);
 
-  const [usagePolicy, researchPolicy, members, overrides, invitations, billing] =
+  const [usagePolicy, members, overrides, invitations, billing] =
     await Promise.all([
       prisma.organizationUsagePolicy.findUniqueOrThrow({
-        where: { organizationId: organization.id },
-      }),
-      prisma.researchPolicy.findUniqueOrThrow({
         where: { organizationId: organization.id },
       }),
       prisma.organizationMembership.findMany({
@@ -164,39 +161,6 @@ export default async function OrganizationSettingsPage() {
             <p className="mt-1 text-xs text-slate-500">
               Warn after this many confirmed sends today. Never blocks sending.
             </p>
-          </div>
-        </dl>
-      </section>
-
-      <section className="space-y-3" data-testid="research-policy-readonly">
-        <h2 className="text-lg font-medium text-slate-900">Research depth</h2>
-        <p className="text-sm text-slate-600">
-          Set by your account administrator.
-        </p>
-        <dl className="grid gap-3 rounded-md border border-slate-200 bg-white p-4 sm:grid-cols-3">
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Max searches / company
-            </dt>
-            <dd className="mt-1 text-sm text-slate-900">
-              {researchPolicy.maxSearchQueriesPerCompany}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Max sources / company
-            </dt>
-            <dd className="mt-1 text-sm text-slate-900">
-              {researchPolicy.maxSourcesPerCompany}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Freshness (days)
-            </dt>
-            <dd className="mt-1 text-sm text-slate-900">
-              {researchPolicy.researchFreshnessDays}
-            </dd>
           </div>
         </dl>
       </section>

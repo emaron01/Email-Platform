@@ -5,14 +5,15 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("organization settings entitlement lock", () => {
-  it("shows usage/research/overrides as read-only (no save forms)", () => {
+  it("shows usage/overrides as read-only; hides research depth from org users", () => {
     const page = readFileSync(
       "src/app/(app)/settings/organization/page.tsx",
       "utf8",
     );
     expect(page).toContain("usage-policy-readonly");
-    expect(page).toContain("research-policy-readonly");
     expect(page).toContain("user-overrides-readonly");
+    expect(page).not.toContain("research-policy-readonly");
+    expect(page).not.toContain("Research depth");
     expect(page).not.toContain("updateOrganizationUsagePolicyAction");
     expect(page).not.toContain("updateResearchPolicyAction");
     expect(page).not.toContain("upsertUserUsageOverrideAction");
