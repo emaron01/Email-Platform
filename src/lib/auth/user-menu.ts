@@ -72,24 +72,27 @@ function isPlatformOperatorRole(role: string): boolean {
  * Logout is always included when the menu is shown.
  */
 export function buildUserMenuModel(
-  input: AuthenticatedNavInput,
+  input: AuthenticatedNavInput & { paymentLocked?: boolean },
 ): UserMenuModel {
   const displayName = displayNameFromUser(input);
   const organizationName = input.organizationName?.trim() || null;
   const isSuperAdmin = input.platformRole === "SUPER_ADMIN";
   const isSupport = input.platformRole === "SUPPORT";
   const showOrganizationSettings =
+    !input.paymentLocked &&
     Boolean(organizationName) &&
     canManageOrgSettings(input.membershipRole ?? null);
   const showPlatformAdmin = isPlatformOperatorRole(input.platformRole);
 
-  const links: UserMenuLink[] = [
-    {
+  const links: UserMenuLink[] = [];
+
+  if (!input.paymentLocked) {
+    links.push({
       id: "account_settings",
       href: "/settings/account",
       label: "Account Settings",
-    },
-  ];
+    });
+  }
 
   if (showOrganizationSettings) {
     links.push({
@@ -139,9 +142,25 @@ export function buildSidebarNavItems(input: {
   isPlatformOperator: boolean;
   /** @deprecated use isPlatformOperator */
   isSuperAdmin?: boolean;
+  /** When true, only Billing (and Platform for operators). */
+  paymentLocked?: boolean;
 }): SidebarNavItem[] {
   const isOperator =
     input.isPlatformOperator || Boolean(input.isSuperAdmin);
+
+  if (input.paymentLocked && input.hasOrganization) {
+    const items: SidebarNavItem[] = [
+      { href: "/settings/billing", label: "Billing" },
+    ];
+    if (isOperator) {
+      items.push({
+        href: "/platform",
+        label: "Platform",
+        separatorBefore: true,
+      });
+    }
+    return items;
+  }
 
   if (!input.hasOrganization) {
     const items: SidebarNavItem[] = [

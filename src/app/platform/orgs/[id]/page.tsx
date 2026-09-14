@@ -24,6 +24,7 @@ import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
 import { loadFlattenedBillingPrices } from "@/lib/billing/effective-prices";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import { DeleteOrganizationPanel } from "@/components/platform/DeleteOrganizationPanel";
+import { PurgeContactOutboundPanel } from "@/components/platform/PurgeContactOutboundPanel";
 import {
   grantOrganizationCreditAction,
   platformChangeMemberRoleAction,
@@ -660,6 +661,11 @@ export default async function PlatformOrgDetailPage({
               Grant credit
             </button>
           </ActionFeedbackForm>
+
+          <PurgeContactOutboundPanel
+            organizationId={id}
+            organizationName={org.name}
+          />
 
           <DeleteOrganizationPanel
             organizationId={id}

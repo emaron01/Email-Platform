@@ -1,0 +1,42 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import {
+  CONTACT_OUTBOUND_PURGE_CONFIRM_PHRASE,
+  contactOutboundPurgeConfirmSummary,
+} from "@/lib/platform/purge-contact-outbound-shared";
+
+describe("contact outbound purge policy", () => {
+  it("names suppressions in the DELETE list", () => {
+    const summary = contactOutboundPurgeConfirmSummary();
+    expect(
+      summary.deletes.some((line) => /suppression|opt-out/i.test(line)),
+    ).toBe(true);
+    expect(
+      summary.keeps.some((line) => /product|persona/i.test(line)),
+    ).toBe(true);
+    expect(CONTACT_OUTBOUND_PURGE_CONFIRM_PHRASE).toBe("Purge contacts");
+  });
+
+  it("wires platform panel and audit action", () => {
+    const page = readFileSync("src/app/platform/orgs/[id]/page.tsx", "utf8");
+    const actions = readFileSync("src/app/actions/platform-orgs.ts", "utf8");
+    const schema = readFileSync("prisma/schema.prisma", "utf8");
+    expect(page).toContain("PurgeContactOutboundPanel");
+    expect(actions).toContain("purgeContactOutboundDataAction");
+    expect(schema).toContain("PLATFORM_CONTACT_OUTBOUND_PURGED");
+  });
+
+  it("billing copy names opt-out / suppression removal", () => {
+    const billing = readFileSync(
+      "src/app/(app)/settings/billing/page.tsx",
+      "utf8",
+    );
+    expect(billing).toMatch(/opt-out|suppression/i);
+  });
+
+  it("extends credit packs on CANCELED → live sync", () => {
+    const sync = readFileSync("src/lib/billing/sync-subscription.ts", "utf8");
+    expect(sync).toContain("extendCompanyResearchCreditsAfterCancelLapse");
+    expect(sync).toContain('billingStatus === "CANCELED"');
+  });
+});

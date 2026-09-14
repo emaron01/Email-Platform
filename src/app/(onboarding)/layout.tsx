@@ -2,10 +2,12 @@ import Link from "next/link";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { enforceEulaAcceptanceGate } from "@/lib/legal/eula-gate";
+import { enforcePaymentLockGate } from "@/lib/billing/payment-lock-gate";
 
 /**
  * Minimal chrome for post-verify EULA / subscribe — no AppShell / checkout-gate.
  * EULA gate runs here so unpaid users cannot skip terms via /onboarding/subscribe.
+ * Payment-locked orgs are sent to /settings/billing (not the subscribe pitch).
  */
 export default async function OnboardingLayout({
   children,
@@ -14,6 +16,7 @@ export default async function OnboardingLayout({
 }) {
   await requireCurrentUser();
   await enforceEulaAcceptanceGate();
+  await enforcePaymentLockGate();
   const organization = await getCurrentOrganization();
 
   return (
@@ -24,10 +27,10 @@ export default async function OnboardingLayout({
             {organization?.name ?? "Aim Outreach"}
           </p>
           <Link
-            href="/settings/account"
+            href="/settings/billing"
             className="text-xs text-slate-500 hover:text-slate-800"
           >
-            Account
+            Billing
           </Link>
         </div>
       </header>

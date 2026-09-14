@@ -53,7 +53,7 @@ describe("eula gate wiring", () => {
     const paths = readFileSync("src/lib/billing/paths.ts", "utf8");
     expect(paths).toContain('"/onboarding/eula"');
     expect(gate).toContain("ONBOARDING_EULA_PATH");
-    expect(lock).toContain("/onboarding/eula");
+    expect(lock).toContain("/settings/billing");
   });
 
   it("platform console lists EULA for super admins", () => {

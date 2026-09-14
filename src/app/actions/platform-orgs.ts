@@ -14,6 +14,8 @@ import {
   updateOrganizationResearchPolicyAsPlatform,
   createPlatformOrganization,
 } from "@/lib/platform/orgs";
+import { CONTACT_OUTBOUND_PURGE_CONFIRM_PHRASE } from "@/lib/platform/purge-contact-outbound-shared";
+import { purgeOrganizationContactOutboundData } from "@/lib/platform/purge-contact-outbound";
 import {
   changeOrganizationMemberRole,
   createOrganizationInvitationAsPlatform,
@@ -95,6 +97,35 @@ export async function unsuspendOrganizationAction(
 }
 
 const DELETE_ORG_CONFIRM_PHRASE = "Delete";
+
+export async function purgeContactOutboundDataAction(
+  _prev: PlatformOrgActionResult | null,
+  formData: FormData,
+): Promise<PlatformOrgActionResult> {
+  try {
+    const user = await requirePlatformSuperAdmin();
+    const organizationId = requireOrgId(formData);
+    const confirmation = String(formData.get("confirmation") || "");
+    if (confirmation !== CONTACT_OUTBOUND_PURGE_CONFIRM_PHRASE) {
+      return {
+        ok: false,
+        message: `Type "${CONTACT_OUTBOUND_PURGE_CONFIRM_PHRASE}" exactly to confirm.`,
+      };
+    }
+    const counts = await purgeOrganizationContactOutboundData({
+      organizationId,
+      actorUserId: user.id,
+    });
+    revalidatePath(`/platform/orgs/${organizationId}`);
+    revalidatePath(`/platform/orgs/${organizationId}/view`);
+    return {
+      ok: true,
+      message: `Purged contact/outbound data: ${counts.contacts} contacts, ${counts.campaigns} campaigns, ${counts.emailSuppressions} suppressions.`,
+    };
+  } catch (error) {
+    return { ok: false, message: toSafeError(error) };
+  }
+}
 
 export async function deleteOrganizationAction(
   _prev: PlatformOrgActionResult | null,

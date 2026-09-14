@@ -391,6 +391,7 @@ enum AdminAuditAction {
   PLATFORM_SETTING_CHANGED
   EULA_PUBLISHED
   EULA_ACCEPTED
+  PLATFORM_CONTACT_OUTBOUND_PURGED
 }
 
 enum TransactionalEmailTemplateKey {

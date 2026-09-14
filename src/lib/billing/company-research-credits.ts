@@ -189,6 +189,42 @@ export async function grantCompanyResearchCredits(input: {
   }
 }
 
+/**
+ * Option 2: on resubscribe after CANCELED, add locked duration to pack expiry.
+ * Extends packs that still had remaining life at canceledAt (including those that
+ * would have expired during the lapse). Idempotent when only run on CANCELED→live.
+ */
+export async function extendCompanyResearchCreditsAfterCancelLapse(input: {
+  organizationId: string;
+  canceledAt: Date;
+  now?: Date;
+}): Promise<{ extendedPackCount: number; extensionMs: number }> {
+  const now = input.now ?? new Date();
+  const extensionMs = Math.max(0, now.getTime() - input.canceledAt.getTime());
+  if (extensionMs <= 0) {
+    return { extendedPackCount: 0, extensionMs: 0 };
+  }
+
+  const packs = await prisma.companyResearchCredit.findMany({
+    where: {
+      organizationId: input.organizationId,
+      expiresAt: { gt: input.canceledAt },
+    },
+    select: { id: true, expiresAt: true },
+  });
+
+  for (const pack of packs) {
+    await prisma.companyResearchCredit.update({
+      where: { id: pack.id },
+      data: {
+        expiresAt: new Date(pack.expiresAt.getTime() + extensionMs),
+      },
+    });
+  }
+
+  return { extendedPackCount: packs.length, extensionMs };
+}
+
 export {
   companiesFromCreditCheckoutBlocks,
   effectiveCompanyResearchLimit,

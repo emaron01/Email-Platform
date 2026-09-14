@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   isPaymentLocked,
   nextPaymentLockFields,
@@ -190,5 +191,23 @@ describe("paymentLockUserMessage", () => {
         billingStatus: "CANCELED",
       }),
     ).toMatch(/Billing/i);
+  });
+});
+
+describe("payment lock route gate", () => {
+  it("runs in app layout after checkout gate", () => {
+    const layout = readFileSync("src/app/(app)/layout.tsx", "utf8");
+    expect(layout).toContain("enforcePaymentLockGate");
+    expect(layout.indexOf("enforcePaymentLockGate")).toBeGreaterThan(
+      layout.indexOf("enforceSelfServeCheckoutGate"),
+    );
+  });
+
+  it("redirects locked orgs to billing only", () => {
+    const gate = readFileSync("src/lib/billing/payment-lock-gate.ts", "utf8");
+    const lock = readFileSync("src/lib/billing/payment-lock.ts", "utf8");
+    expect(gate).toContain('redirect("/settings/billing")');
+    expect(lock).toContain("PAYMENT_LOCK_ROUTE_EXEMPT_PREFIXES");
+    expect(lock).toContain('"/settings/billing"');
   });
 });

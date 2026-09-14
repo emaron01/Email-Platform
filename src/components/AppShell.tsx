@@ -9,7 +9,13 @@ import {
   type MembershipRoleForMenu,
 } from "@/lib/auth/user-menu";
 
-export async function AppShell({ children }: { children: React.ReactNode }) {
+export async function AppShell({
+  children,
+  paymentLocked = false,
+}: {
+  children: React.ReactNode;
+  paymentLocked?: boolean;
+}) {
   const user = await getCurrentUser();
   const organization = user ? await getCurrentOrganization() : null;
   const membershipCtx =
@@ -25,15 +31,16 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         organizationName: organization?.name ?? null,
         membershipRole:
           (membershipCtx?.membership.role as
-            MembershipRoleForMenu | undefined) ?? null,
+            | MembershipRoleForMenu
+            | undefined) ?? null,
+        paymentLocked,
       })
     : null;
 
   const sidebarItems = buildSidebarNavItems({
     hasOrganization: Boolean(organization),
-    isPlatformOperator: user
-      ? isPlatformOperator(user.platformRole)
-      : false,
+    isPlatformOperator: user ? isPlatformOperator(user.platformRole) : false,
+    paymentLocked,
   });
 
   return (

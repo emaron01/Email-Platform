@@ -1,18 +1,22 @@
 /**
- * Payment-lock policy + enforcement.
+ * Payment-lock policy + evaluation.
  *
  * Trial end with a working card: Stripe auto-converts to active — we sync ACTIVE.
  * Card decline at trial conversion: Stripe → past_due; we mirror PAST_DUE and use the
  * existing 7-day grace + PAYMENT_FAILED lock. Do not build a separate trial-expiry path;
  * BillingLockReason.TRIAL_ENDED is reserved/unused for that flow.
  *
- * When locked:
- * - Login and read of existing product data remain allowed.
- * - AI, research, generation, send, and org-admin invites are blocked.
+ * When locked (route gate):
+ * - Every (app) route redirects to /settings/billing.
+ * - Resubscribe / update payment is the only product action.
+ * - Sign-out remains available from the billing shell user menu.
+ *
+ * Defense-in-depth asserts still block research, generation, send, and invites if a
+ * worker or action bypasses the layout.
  *
  * HARD EXEMPTION — a locked org must still be able to pay us:
- * - Stripe Customer Portal / Checkout paths
- * - Read of local billing STATE only
+ * - Stripe Customer Portal / Checkout API paths
+ * - /settings/billing (local billing state + resubscribe CTAs)
  *
  * Never collect payment PII in-app.
  */
@@ -20,10 +24,14 @@ import type { BillingLockReason } from "@prisma/client";
 import { BILLING_PLAN_COMPED } from "@/lib/billing/plans";
 import { prisma } from "@/lib/prisma-client";
 
+/** Page routes locked orgs may still open (under (app) layout). */
+export const PAYMENT_LOCK_ROUTE_EXEMPT_PREFIXES = [
+  "/settings/billing",
+] as const;
+
+/** Billing pay paths (APIs are outside (app) layout; listed for policy clarity). */
 export const PAYMENT_LOCK_EXEMPT_PATH_PREFIXES = [
   "/settings/billing",
-  "/onboarding/subscribe",
-  "/onboarding/eula",
   "/api/billing/portal",
   "/api/billing/checkout",
   "/api/billing/credits-checkout",
@@ -242,6 +250,26 @@ export async function assertOrganizationNotPaymentLocked(
   organizationId: string,
   now: Date = new Date(),
 ): Promise<void> {
+  const { locked, profile } = await getOrganizationPaymentLockState(
+    organizationId,
+    now,
+  );
+  if (!locked || !profile) return;
+
+  throw new PaymentLockError(
+    paymentLockUserMessage(profile),
+    profile.lockReason ?? profile.billingStatus,
+  );
+}
+
+/** Load + heal lock fields; used by route gate and billing UI. */
+export async function getOrganizationPaymentLockState(
+  organizationId: string,
+  now: Date = new Date(),
+): Promise<{
+  locked: boolean;
+  profile: LockSelect | null;
+}> {
   const profile = await prisma.organizationBillingProfile.findUnique({
     where: { organizationId },
     select: {
@@ -252,13 +280,8 @@ export async function assertOrganizationNotPaymentLocked(
       gracePeriodEndsAt: true,
     },
   });
-  if (!profile) return;
+  if (!profile) return { locked: false, profile: null };
 
   const healed = await healPaymentLockFields(organizationId, profile, now);
-  if (!isPaymentLocked(healed, now)) return;
-
-  throw new PaymentLockError(
-    paymentLockUserMessage(healed),
-    healed.lockReason ?? healed.billingStatus,
-  );
+  return { locked: isPaymentLocked(healed, now), profile: healed };
 }

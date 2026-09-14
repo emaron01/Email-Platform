@@ -168,12 +168,18 @@ export async function syncOrganizationFromStripeSubscription(input: {
       billingStatus: true,
       lockReason: true,
       gracePeriodEndsAt: true,
+      canceledAt: true,
     },
   });
   const lockFields = nextPaymentLockFields({
     previous,
     billingStatus,
   });
+
+  const resubscribeAfterCancel =
+    previous?.billingStatus === "CANCELED" &&
+    (billingStatus === "ACTIVE" || billingStatus === "TRIALING") &&
+    previous.canceledAt != null;
 
   await prisma.organizationBillingProfile.upsert({
     where: { organizationId },
@@ -221,6 +227,16 @@ export async function syncOrganizationFromStripeSubscription(input: {
       gracePeriodEndsAt: lockFields.gracePeriodEndsAt,
     },
   });
+
+  if (resubscribeAfterCancel && previous.canceledAt) {
+    const { extendCompanyResearchCreditsAfterCancelLapse } = await import(
+      "@/lib/billing/company-research-credits"
+    );
+    await extendCompanyResearchCreditsAfterCancelLapse({
+      organizationId,
+      canceledAt: previous.canceledAt,
+    });
+  }
 
   if (
     billingStatus === "TRIALING" ||

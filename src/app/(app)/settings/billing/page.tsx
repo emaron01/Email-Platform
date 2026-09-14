@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { requireOrgAdmin } from "@/lib/org/authz";
+import {
+  canManageOrganizationPolicy,
+  getMembershipForCurrentUser,
+} from "@/lib/org/authz";
 import { prisma } from "@/lib/prisma";
 import {
   BILLING_PLAN_COMPED,
@@ -21,11 +24,16 @@ import {
 } from "@/lib/billing/plans";
 import { loadEffectiveBillingCatalog } from "@/lib/billing/effective-catalog";
 import { resolveCatalogEntitlementsForStatus } from "@/lib/billing/billing-catalog";
+import {
+  getOrganizationPaymentLockState,
+  paymentLockUserMessage,
+} from "@/lib/billing/payment-lock";
 import { BillingCheckoutRefresh } from "@/components/billing/BillingCheckoutRefresh";
 import { BuyCompanyCreditsButton } from "@/components/billing/BuyCompanyCreditsButton";
 import { ConvertTrialNowButton } from "@/components/billing/ConvertTrialNowButton";
 import { OpenCustomerPortalButton } from "@/components/billing/OpenCustomerPortalButton";
 import { ReferralProgramPanel } from "@/components/billing/ReferralProgramPanel";
+import { ResubscribeCheckoutButton } from "@/components/billing/ResubscribeCheckoutButton";
 import { canOfferEarlyTrialConversion } from "@/lib/billing/end-trial-now";
 import { getCompanyResearchCreditBalance } from "@/lib/billing/company-research-credits";
 import { effectiveCreditsAreCheckoutReady } from "@/lib/billing/billing-prices";
@@ -42,13 +50,15 @@ export const dynamic = "force-dynamic";
 /**
  * Manage subscription only (portal, dates, capacity).
  * Unpaid self-serve → /onboarding/subscribe.
+ * Payment-locked orgs land here for resubscribe only.
  */
 export default async function OrganizationBillingSettingsPage({
   searchParams,
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { organization, user } = await requireOrgAdmin();
+  const { organization, user, membership } = await getMembershipForCurrentUser();
+  const isAdmin = canManageOrganizationPolicy(membership.role);
   await ensureOrganizationPolicies(organization.id);
   const params = searchParams ? await searchParams : {};
   const checkoutState =
@@ -56,26 +66,36 @@ export default async function OrganizationBillingSettingsPage({
   const creditsState =
     typeof params.credits === "string" ? params.credits : null;
 
-  const [billing, policy, activeCompanies, canConvertTrialEarly, creditBalance, prices, catalogEffective] =
-    await Promise.all([
-      prisma.organizationBillingProfile.findUnique({
-        where: { organizationId: organization.id },
-      }),
-      getEffectiveUsagePolicy({
-        organizationId: organization.id,
-        userId: user.id,
-      }),
-      countActiveResearchedCompanies(organization.id),
-      canOfferEarlyTrialConversion(organization.id),
-      getCompanyResearchCreditBalance(organization.id),
-      loadEffectiveBillingPrices(),
-      loadEffectiveBillingCatalog(),
-    ]);
+  const [
+    billing,
+    policy,
+    activeCompanies,
+    canConvertTrialEarly,
+    creditBalance,
+    prices,
+    catalogEffective,
+    lockState,
+  ] = await Promise.all([
+    prisma.organizationBillingProfile.findUnique({
+      where: { organizationId: organization.id },
+    }),
+    getEffectiveUsagePolicy({
+      organizationId: organization.id,
+      userId: user.id,
+    }),
+    countActiveResearchedCompanies(organization.id),
+    canOfferEarlyTrialConversion(organization.id),
+    getCompanyResearchCreditBalance(organization.id),
+    loadEffectiveBillingPrices(),
+    loadEffectiveBillingCatalog(),
+    getOrganizationPaymentLockState(organization.id),
+  ]);
 
   if (billing && requiresStripeCheckout(billing)) {
     redirect(ONBOARDING_SUBSCRIBE_PATH);
   }
 
+  const paymentLocked = lockState.locked;
   const planCode = billing?.planCode ?? BILLING_PLAN_COMPED;
   const billingStatus = billing?.billingStatus ?? "FREE";
   const remaining = Math.max(
@@ -99,12 +119,17 @@ export default async function OrganizationBillingSettingsPage({
       billingStatus === "PAST_DUE");
 
   const canOpenPortal = Boolean(billing?.stripeCustomerId);
+  const showPortal = canOpenPortal && (hasLiveSubscription || paymentLocked);
+  const showResubscribe =
+    paymentLocked && isAdmin && !hasLiveSubscription && !isComped;
 
-  const creditsDisabledReason = !effectiveCreditsAreCheckoutReady(prices)
-    ? "Company credit packs are not configured yet."
-    : !hasLiveSubscription
-      ? "Subscribe to Standard before buying extra company capacity."
-      : null;
+  const creditsDisabledReason = !isAdmin
+    ? "Only an organization admin can buy credits."
+    : !effectiveCreditsAreCheckoutReady(prices)
+      ? "Company credit packs are not configured yet."
+      : !hasLiveSubscription
+        ? "Subscribe to Standard before buying extra company capacity."
+        : null;
 
   const discountActive = billing
     ? hasActiveDiscount({
@@ -145,12 +170,14 @@ export default async function OrganizationBillingSettingsPage({
     <div className="mx-auto max-w-3xl space-y-8">
       <BillingCheckoutRefresh checkoutState={checkoutState} />
       <div>
-        <Link
-          href="/settings"
-          className="text-sm text-slate-600 hover:text-slate-900"
-        >
-          ← Settings
-        </Link>
+        {paymentLocked ? null : (
+          <Link
+            href="/settings"
+            className="text-sm text-slate-600 hover:text-slate-900"
+          >
+            ← Settings
+          </Link>
+        )}
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
           Billing
         </h1>
@@ -160,6 +187,50 @@ export default async function OrganizationBillingSettingsPage({
           . Signed in as {user.email}.
         </p>
       </div>
+
+      {paymentLocked && lockState.profile ? (
+        <div
+          role="alert"
+          className="space-y-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          data-testid="billing-payment-lock-banner"
+        >
+          <p className="font-medium">
+            {paymentLockUserMessage(lockState.profile)}
+          </p>
+          {billingStatus === "CANCELED" ? (
+            <>
+              <p>
+                For 30 days from cancellation
+                {billing?.canceledAt
+                  ? ` (${formatBillingDate(billing.canceledAt)})`
+                  : ""}
+                , we keep your contact lists, research, scores, campaigns,
+                drafts, send history, and{" "}
+                <span className="font-medium">opt-out / suppression list</span>.
+                Resubscribe in that window and all of it unlocks with this
+                workspace.
+              </p>
+              <p>
+                After 30 days we permanently delete that contact and outbound
+                data — including suppressions. Your account, products, ICPs,
+                personas, voice, signature, billing, and credit packs stay so you
+                can return and rebuild lists.
+              </p>
+            </>
+          ) : (
+            <p>
+              Your products, ICPs, personas, and account stay on this workspace.
+              Resubscribe or update payment to unlock the product again.
+            </p>
+          )}
+          {!isAdmin ? (
+            <p>
+              Ask an organization admin to update billing — members cannot start
+              Checkout.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {checkoutState === "success" ? (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
@@ -274,8 +345,14 @@ export default async function OrganizationBillingSettingsPage({
             : "Card details stay in Stripe — never stored in this app."}
         </p>
 
-        {hasLiveSubscription && canOpenPortal ? (
-          <OpenCustomerPortalButton />
+        {showResubscribe ? <ResubscribeCheckoutButton /> : null}
+
+        {showPortal && isAdmin ? <OpenCustomerPortalButton /> : null}
+        {showPortal && !isAdmin ? (
+          <p className="text-sm text-slate-600">
+            An organization admin can open Stripe to update the card or
+            resubscribe.
+          </p>
         ) : null}
 
         {isComped && !hasLiveSubscription ? (
@@ -291,8 +368,9 @@ export default async function OrganizationBillingSettingsPage({
         ) : null}
       </section>
 
-      <ReferralProgramPanel />
+      {paymentLocked ? null : <ReferralProgramPanel />}
 
+      {paymentLocked ? null : (
       <section
         className="space-y-3 rounded-lg border border-slate-200 bg-white p-5"
         data-testid="billing-research-capacity"
@@ -322,7 +400,7 @@ export default async function OrganizationBillingSettingsPage({
                 : ""}
               .
             </p>
-            {canConvertTrialEarly ? (
+            {canConvertTrialEarly && isAdmin ? (
               <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
                 <p className="mb-2 text-sm text-slate-700">
                   Need capacity before {trialSummary ?? "trial end"}? Convert
@@ -347,6 +425,7 @@ export default async function OrganizationBillingSettingsPage({
         )}
         <BuyCompanyCreditsButton disabledReason={creditsDisabledReason} />
       </section>
+      )}
     </div>
   );
 }
