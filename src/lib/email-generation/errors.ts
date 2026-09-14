@@ -15,6 +15,7 @@ import {
 } from "@/lib/product-research/synthesis-errors";
 import { isClaimGuardViolationCode } from "@/lib/email-generation/claim-conflicts";
 import { TenantError } from "@/lib/tenant/errors";
+import { PaymentLockError } from "@/lib/billing/payment-lock";
 import { UsageQuotaError } from "@/lib/usage/quota";
 
 export type EmailGenerationErrorInfo = ProductSynthesisErrorInfo;
@@ -28,6 +29,7 @@ export function classifyEmailGenerationError(
 
 export function toSafeEmailGenerationError(error: unknown): string {
   if (error instanceof TenantError) return error.message;
+  if (error instanceof PaymentLockError) return error.message;
   if (error instanceof UsageQuotaError) return error.message;
   if (
     error instanceof Error &&

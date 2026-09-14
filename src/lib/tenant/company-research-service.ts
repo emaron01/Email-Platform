@@ -45,6 +45,7 @@ import {
   assertUsageAllowed,
   UsageQuotaError,
 } from "@/lib/usage/quota-service";
+import { PaymentLockError } from "@/lib/billing/payment-lock";
 import { TenantError } from "@/lib/tenant/errors";
 import { getTenantContext } from "@/lib/tenant/request-context";
 
@@ -824,7 +825,10 @@ export async function researchCompany(
         companyId: company.id,
       });
     } catch (error) {
-      if (error instanceof UsageQuotaError) {
+      if (
+        error instanceof UsageQuotaError ||
+        error instanceof PaymentLockError
+      ) {
         return {
           skipped: true,
           reason: error.message,
@@ -1049,7 +1053,10 @@ export async function updateManualCompanyResearch(input: {
         companyId: company.id,
       });
     } catch (error) {
-      if (error instanceof UsageQuotaError) {
+      if (
+        error instanceof UsageQuotaError ||
+        error instanceof PaymentLockError
+      ) {
         throw new TenantError(error.message);
       }
       throw error;

@@ -8,6 +8,7 @@ import {
   canRenameWorkspace,
   AuthorizationError,
 } from "@/lib/org/authz";
+import { assertOrganizationNotPaymentLocked } from "@/lib/billing/payment-lock";
 import { orgAdminInviteDenialReason } from "@/lib/org/seats";
 import { ensureOrganizationPolicies } from "@/lib/usage/policy";
 
@@ -157,6 +158,8 @@ export async function createOrganizationInvitation(input: {
       "Only OWNER or ADMIN can invite users.",
     );
   }
+
+  await assertOrganizationNotPaymentLocked(input.organizationId);
 
   const [organization, billing] = await Promise.all([
     prisma.organization.findUniqueOrThrow({

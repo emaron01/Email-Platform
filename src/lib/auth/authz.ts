@@ -8,6 +8,7 @@ import {
   resolveActiveOrganization,
 } from "@/lib/auth/session";
 import { assertAccountCapability } from "@/lib/auth/account-policy";
+import { assertOrganizationNotPaymentLocked } from "@/lib/billing/payment-lock";
 import {
   requireOrganization,
   TenantError,
@@ -108,6 +109,7 @@ export async function requirePlatformSuperAdmin(): Promise<User> {
 export async function requireVerifiedForAiSpend(): Promise<User> {
   const user = await requireCurrentUser();
   assertAccountCapability(user, "AI_SPEND");
-  await requireOrganization();
+  const organization = await requireOrganization();
+  await assertOrganizationNotPaymentLocked(organization.id);
   return user;
 }

@@ -6,6 +6,7 @@ import "server-only";
 
 import type Stripe from "stripe";
 import { applyPlanEntitlements } from "@/lib/billing/apply-plan-entitlements";
+import { nextPaymentLockFields } from "@/lib/billing/payment-lock";
 import {
   buildMirroredPriceDiscount,
   type MirroredCoupon,
@@ -161,6 +162,19 @@ export async function syncOrganizationFromStripeSubscription(input: {
       ? subscription.customer
       : subscription.customer.id;
 
+  const previous = await prisma.organizationBillingProfile.findUnique({
+    where: { organizationId },
+    select: {
+      billingStatus: true,
+      lockReason: true,
+      gracePeriodEndsAt: true,
+    },
+  });
+  const lockFields = nextPaymentLockFields({
+    previous,
+    billingStatus,
+  });
+
   await prisma.organizationBillingProfile.upsert({
     where: { organizationId },
     create: {
@@ -182,6 +196,8 @@ export async function syncOrganizationFromStripeSubscription(input: {
       trialEndsAt: unixToDate(subscription.trial_end),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       canceledAt: unixToDate(subscription.canceled_at),
+      lockReason: lockFields.lockReason,
+      gracePeriodEndsAt: lockFields.gracePeriodEndsAt,
     },
     update: {
       planCode,
@@ -201,10 +217,8 @@ export async function syncOrganizationFromStripeSubscription(input: {
       trialEndsAt: unixToDate(subscription.trial_end),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       canceledAt: unixToDate(subscription.canceled_at),
-      // Clear lock when subscription is healthy again (lock enforcement later).
-      ...(billingStatus === "ACTIVE" || billingStatus === "TRIALING"
-        ? { lockReason: null, gracePeriodEndsAt: null }
-        : {}),
+      lockReason: lockFields.lockReason,
+      gracePeriodEndsAt: lockFields.gracePeriodEndsAt,
     },
   });
 
@@ -264,6 +278,8 @@ export async function markSubscriptionCanceled(input: {
       billingStatus: "CANCELED",
       cancelAtPeriodEnd: false,
       canceledAt: new Date(),
+      lockReason: "CANCELED",
+      gracePeriodEndsAt: null,
       stripeDiscountPercentOff: null,
       stripeDiscountAmountOffCents: null,
       stripeCouponId: null,

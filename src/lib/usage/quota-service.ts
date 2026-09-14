@@ -2,6 +2,7 @@
  * Node-safe usage quota enforcement (no server-only).
  */
 import type { UsageResource } from "@prisma/client";
+import { assertOrganizationNotPaymentLocked } from "@/lib/billing/payment-lock";
 import { prisma } from "@/lib/prisma-client";
 import { getEffectiveUsagePolicy } from "@/lib/usage/policy-service";
 import {
@@ -35,6 +36,8 @@ export async function assertUsageAllowed(input: {
   wouldConsumeNewActiveCompanySlot?: boolean;
   companyId?: string;
 }): Promise<{ allowed: true; limit: number; used: number }> {
+  await assertOrganizationNotPaymentLocked(input.organizationId);
+
   const policy = await getEffectiveUsagePolicy({
     organizationId: input.organizationId,
     userId: input.userId,
@@ -246,6 +249,8 @@ export async function reserveDailyEmailSend(input: {
   organizationId: string;
   userId: string;
 }): Promise<DailyEmailSendUsage> {
+  await assertOrganizationNotPaymentLocked(input.organizationId);
+
   const policy = await getEffectiveUsagePolicy(input);
   const org = await prisma.organization.findUniqueOrThrow({
     where: { id: input.organizationId },

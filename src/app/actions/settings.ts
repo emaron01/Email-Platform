@@ -18,6 +18,7 @@ import {
   SignupError,
 } from "@/lib/org/signup";
 import { TenantError } from "@/lib/tenant/errors";
+import { PaymentLockError } from "@/lib/billing/payment-lock";
 
 export type SettingsActionResult = { ok: boolean; message: string };
 
@@ -26,7 +27,8 @@ function toSafeSettingsActionError(error: unknown): string {
     error instanceof AuthorizationError ||
     error instanceof SignupError ||
     error instanceof InvitationError ||
-    error instanceof TenantError
+    error instanceof TenantError ||
+    error instanceof PaymentLockError
   ) {
     return error.message;
   }
