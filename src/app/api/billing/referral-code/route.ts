@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/auth/authz";
+import {
+  PaymentLockError,
+  assertOrganizationNotPaymentLocked,
+} from "@/lib/billing/payment-lock";
 import { ensureOrganizationReferralCode } from "@/lib/billing/referrals";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 
@@ -18,6 +22,7 @@ export async function POST() {
         { status: 400 },
       );
     }
+    await assertOrganizationNotPaymentLocked(organization.id);
     const result = await ensureOrganizationReferralCode({
       organizationId: organization.id,
     });
@@ -39,6 +44,12 @@ export async function POST() {
       rewardPercent: result.rewardPercent,
     });
   } catch (error) {
+    if (error instanceof PaymentLockError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: 403 },
+      );
+    }
     const message =
       error instanceof Error ? error.message : "Referral code unavailable";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentUser } from "@/lib/auth/authz";
 import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
 import { TenantError } from "@/lib/tenant/errors";
+import { PaymentLockError } from "@/lib/billing/payment-lock";
 import { createProduct, updateProduct } from "@/lib/tenant/data";
 import { toOptionalFloat } from "@/lib/utils";
 import { researchAndBuildProduct } from "@/lib/product-research/workflow";
@@ -49,6 +50,7 @@ function revalidateProduct(productId?: string) {
 }
 
 function safeError(error: unknown): string {
+  if (error instanceof PaymentLockError) return error.message;
   if (error instanceof TenantError) return error.message;
   return "Unable to complete product setup. Please try again.";
 }

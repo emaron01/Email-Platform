@@ -9,6 +9,7 @@ import {
   MailboxConnectionError,
 } from "@/lib/mailbox/microsoft-oauth";
 import { requireOrganization } from "@/lib/tenant/getCurrentOrganization";
+import { assertOrganizationNotPaymentLocked } from "@/lib/billing/payment-lock";
 
 export async function GET(request: Request) {
   try {
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
       requireCurrentUser(),
       requireOrganization(),
     ]);
+    await assertOrganizationNotPaymentLocked(organization.id);
     const returnPath = new URL(request.url).searchParams.get("returnTo");
     assertAccountCapability(user, "OUTBOUND_EMAIL");
     const authorizationUrl = await beginMicrosoftMailboxConnection({

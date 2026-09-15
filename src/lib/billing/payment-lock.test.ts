@@ -83,7 +83,7 @@ describe("isPaymentLocked entitlement matrix", () => {
     ).toBe(true);
   });
 
-  it("PAST_DUE grace is read-only: spend blocked, routes open until grace ends", () => {
+  it("PAST_DUE grace is read-only: writes blocked, routes open until grace ends", () => {
     const inGrace = {
       planCode: BILLING_PLAN_STANDARD,
       billingStatus: "PAST_DUE" as const,
@@ -103,7 +103,7 @@ describe("isPaymentLocked entitlement matrix", () => {
     expect(isPaymentLocked(afterGrace, now)).toBe(true);
     expect(isSpendBlocked(afterGrace, now)).toBe(true);
 
-    // Grace not written yet — still in grace (heal starts the clock); spend blocked.
+    // Grace not written yet — still in grace (heal starts the clock); writes blocked.
     const pendingGrace = {
       planCode: BILLING_PLAN_STANDARD,
       billingStatus: "PAST_DUE" as const,
@@ -188,7 +188,7 @@ describe("paymentLockUserMessage", () => {
     ).toMatch(/Billing/i);
   });
 
-  it("describes read-only during PAST_DUE grace", () => {
+  it("describes full read-only during PAST_DUE grace", () => {
     const now = new Date("2026-09-14T12:00:00.000Z");
     expect(
       paymentLockUserMessage(
@@ -199,7 +199,7 @@ describe("paymentLockUserMessage", () => {
         },
         now,
       ),
-    ).toMatch(/view your workspace/i);
+    ).toMatch(/read-only/i);
   });
 });
 
@@ -220,9 +220,22 @@ describe("payment lock route gate", () => {
     expect(lock).toContain('"/settings/billing"');
   });
 
-  it("assert uses spendBlocked so PAST_DUE grace cannot research", () => {
+  it("grace refuses Server Actions without redirecting views", () => {
+    const gate = readFileSync("src/lib/billing/payment-lock-gate.ts", "utf8");
+    const org = readFileSync(
+      "src/lib/tenant/getCurrentOrganization.ts",
+      "utf8",
+    );
+    expect(gate).toContain("NEXT_ACTION_HEADER");
+    expect(gate).toContain("PaymentLockError");
+    expect(org).toContain("NEXT_ACTION_HEADER");
+    expect(org).toContain("assertOrganizationNotPaymentLocked");
+  });
+
+  it("assert uses spendBlocked so PAST_DUE grace cannot write or research", () => {
     const lock = readFileSync("src/lib/billing/payment-lock.ts", "utf8");
     expect(lock).toContain("spendBlocked");
     expect(lock).toContain("isSpendBlocked");
+    expect(lock).toContain("isWritesBlocked");
   });
 });

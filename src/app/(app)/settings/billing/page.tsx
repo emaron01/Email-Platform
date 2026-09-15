@@ -238,10 +238,11 @@ export default async function OrganizationBillingSettingsPage({
             </>
           ) : billingStatus === "PAST_DUE" && !paymentLocked ? (
             <p>
-              You can still open campaigns, contacts, and setup. Research, email
-              generation, and sending stay off until payment succeeds. Stripe may
-              retry the charge automatically; you can also update your card in
-              the billing portal.
+              You can still open campaigns, contacts, and setup pages to view
+              your work, but the workspace is read-only — no setup changes,
+              research, email generation, or sending until payment succeeds.
+              Stripe may retry the charge automatically; you can also update your
+              card in the billing portal.
               {billing?.gracePeriodEndsAt
                 ? ` If payment is still unpaid after ${formatBillingDate(billing.gracePeriodEndsAt)}, access narrows to this billing page only.`
                 : ""}

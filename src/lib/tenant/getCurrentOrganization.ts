@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Organization } from "@prisma/client";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import {
   getCurrentUser,
@@ -8,6 +9,11 @@ import {
   resolveActiveOrganization,
 } from "@/lib/auth/session";
 import { isDevTenantBypassEnabled, getAuthEnv } from "@/lib/auth/config";
+import {
+  NEXT_ACTION_HEADER,
+  assertOrganizationNotPaymentLocked,
+  isPaymentLockPathExempt,
+} from "@/lib/billing/payment-lock";
 import { TenantError } from "@/lib/tenant/errors";
 
 export { TenantError };
@@ -35,6 +41,20 @@ export async function getCurrentOrganization(): Promise<Organization | null> {
   return ctx?.organization ?? null;
 }
 
+/**
+ * Server Actions share the page URL as a POST with `next-action`. Page GETs do
+ * not. Refuse product writes during payment grace/lock without redirecting views.
+ */
+async function assertWritableOnServerAction(
+  organizationId: string,
+): Promise<void> {
+  const h = await headers();
+  if (!h.get(NEXT_ACTION_HEADER)) return;
+  const pathname = h.get("x-pathname")?.trim() || "";
+  if (pathname && isPaymentLockPathExempt(pathname)) return;
+  await assertOrganizationNotPaymentLocked(organizationId);
+}
+
 export async function requireOrganization(): Promise<Organization> {
   const organization = await getCurrentOrganization();
   if (!organization) {
@@ -50,6 +70,7 @@ export async function requireOrganization(): Promise<Organization> {
   if (organization.status === "CANCELLED") {
     throw new TenantError("This workspace is no longer available.");
   }
+  await assertWritableOnServerAction(organization.id);
   return organization;
 }
 
@@ -74,5 +95,6 @@ export async function requireMembershipInOrganization(
       "This workspace is not available for normal operations.",
     );
   }
+  await assertWritableOnServerAction(ctx.organization.id);
   return ctx.organization;
 }

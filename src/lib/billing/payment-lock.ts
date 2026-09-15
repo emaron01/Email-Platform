@@ -5,16 +5,18 @@
  * Card decline at trial conversion: Stripe → past_due; we mirror PAST_DUE.
  *
  * PAST_DUE has two phases:
- * - Grace (read-only): login + all views; research / generation / send blocked.
- *   Billing + Stripe Customer Portal stay open so they can fix the card.
+ * - Grace (read-only): login + all views; every write refused (setup, research,
+ *   generation, send, invites, mailbox connect, etc.). Billing + Stripe Customer
+ *   Portal / Checkout stay open so they can fix the card.
  * - After grace (route lock): every (app) route redirects to /settings/billing.
  *
  * CANCELED and Stripe-mapped UNPAID (has subscription id) are route-locked immediately.
  *
- * Defense-in-depth asserts block research, generation, send, and invites whenever
- * spend is blocked (including PAST_DUE grace).
+ * Defense-in-depth: Server Actions that resolve the org via requireOrganization*
+ * refuse writes whenever spend/writes are blocked (including PAST_DUE grace).
+ * Explicit asserts remain on AI spend paths and mutating non-pay APIs.
  *
- * HARD EXEMPTION — a locked org must still be able to pay us:
+ * HARD EXEMPTION — a locked or grace org must still be able to pay us:
  * - Stripe Customer Portal / Checkout API paths
  * - /settings/billing (local billing state + resubscribe CTAs)
  *
@@ -46,9 +48,12 @@ export type PaymentLockExemptCapability =
 /**
  * Read-only window after PAST_DUE before route lock (billing-only shell).
  * 14 days aligns with Stripe’s recommended Smart Retries horizon (~2 weeks);
- * grace is read-only so a longer window does not give free AI spend.
+ * grace is fully read-only so a longer window does not give free product use.
  */
 export const PAYMENT_LOCK_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** Next.js Server Action request header (see next/dist app-router-headers). */
+export const NEXT_ACTION_HEADER = "next-action";
 
 export class PaymentLockError extends Error {
   readonly code = "PAYMENT_LOCKED";
@@ -74,6 +79,12 @@ function isCompedOrFree(profile: PaymentLockProfile): boolean {
     profile.planCode === BILLING_PLAN_COMPED ||
     profile.planCode === "FREE" ||
     profile.billingStatus === "FREE"
+  );
+}
+
+export function isPaymentLockPathExempt(pathname: string): boolean {
+  return PAYMENT_LOCK_EXEMPT_PATH_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
 }
 
@@ -115,7 +126,7 @@ export function isPaymentLocked(
 }
 
 /**
- * Spend lock: no research, generation, send, or org invites.
+ * Write lock: no setup mutations, research, generation, send, or org invites.
  * True for all PAST_DUE (including grace), CANCELED, and Stripe-mapped UNPAID.
  */
 export function isSpendBlocked(
@@ -140,22 +151,25 @@ export function isSpendBlocked(
   }
 }
 
+/** Alias — grace and lock both mean zero product writes. */
+export const isWritesBlocked = isSpendBlocked;
+
 export function paymentLockUserMessage(
   profile: PaymentLockProfile,
   now: Date = new Date(),
 ): string {
   switch (profile.billingStatus) {
     case "CANCELED":
-      return "Your subscription is canceled. Open Billing to resubscribe before researching, generating, or sending email.";
+      return "Your subscription is canceled. Open Billing to resubscribe before making changes or using research, email generation, or sending.";
     case "PAST_DUE":
       if (isPastDueInGrace(profile, now)) {
-        return "Your payment is past due. You can still view your workspace, but research, email generation, and sending are paused until you update your card.";
+        return "Your payment is past due. You can view your workspace, but it is read-only until you update your card — no setup changes, research, email generation, or sending.";
       }
       return "Your payment is past due. Update billing to restore access to your workspace.";
     case "UNPAID":
       return "Your subscription payment failed. Open Billing to update payment and restore access.";
     default:
-      return "Billing access is locked. Open Billing to restore research, email generation, and sending.";
+      return "Billing access is locked. Open Billing to restore workspace access.";
   }
 }
 
@@ -283,7 +297,10 @@ async function healPaymentLockFields(
   });
 }
 
-/** Throw when the org must not spend (research / generation / send / invites). */
+/**
+ * Throw when the org must not write (setup / research / generation / send / invites).
+ * Same condition for PAST_DUE grace and full lock.
+ */
 export async function assertOrganizationNotPaymentLocked(
   organizationId: string,
   now: Date = new Date(),
@@ -300,6 +317,10 @@ export async function assertOrganizationNotPaymentLocked(
   );
 }
 
+/** @deprecated Prefer assertOrganizationNotPaymentLocked — same write lock. */
+export const assertOrganizationWritesAllowed =
+  assertOrganizationNotPaymentLocked;
+
 /** Load + heal lock fields; used by route gate, asserts, and billing UI. */
 export async function getOrganizationPaymentLockState(
   organizationId: string,
@@ -307,7 +328,10 @@ export async function getOrganizationPaymentLockState(
 ): Promise<{
   /** Billing-only shell (after PAST_DUE grace, or immediate for cancel/unpaid). */
   locked: boolean;
-  /** No research / generation / send (includes PAST_DUE grace). */
+  /**
+   * No product writes (setup included) and no research / generation / send.
+   * Includes PAST_DUE grace.
+   */
   spendBlocked: boolean;
   profile: LockSelect | null;
 }> {

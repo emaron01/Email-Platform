@@ -17,7 +17,7 @@ export async function AppShell({
 }: {
   children: React.ReactNode;
   paymentLocked?: boolean;
-  /** PAST_DUE grace: views allowed, spend blocked. */
+  /** PAST_DUE grace: views allowed, all writes blocked. */
   pastDueReadOnly?: boolean;
 }) {
   const user = await getCurrentUser();
@@ -59,15 +59,16 @@ export async function AppShell({
             data-testid="past-due-readonly-banner"
           >
             <p>
-              Payment is past due — you can view your workspace, but research,
-              email generation, and sending are paused.{" "}
+              Payment is past due — your workspace is read-only. You can view
+              everything, but you cannot change setup data or use research,
+              email generation, or sending.{" "}
               <Link
                 href="/settings/billing"
                 className="font-medium underline underline-offset-2"
               >
                 Update billing
               </Link>{" "}
-              to restore those actions.
+              to restore access.
             </p>
           </div>
         ) : null}
