@@ -70,26 +70,35 @@ export async function seedSmokeFixture(prisma: PrismaClient): Promise<SmokeFixtu
   });
 
   // Published EULA gates (app) routes — accept current version for the fixture user.
-  const { ensureEulaSeeded, getPublishedEulaVersion } = await import(
-    "@/lib/legal/eula"
-  );
-  await ensureEulaSeeded(appUser.id);
-  const publishedEula = await getPublishedEulaVersion();
-  if (publishedEula) {
-    await prisma.userEulaAcceptance.upsert({
-      where: {
-        userId_eulaVersionId: {
-          userId: appUser.id,
-          eulaVersionId: publishedEula.id,
-        },
-      },
-      update: {},
-      create: {
-        userId: appUser.id,
-        eulaVersionId: publishedEula.id,
+  // Do not import @/lib/legal/eula here: it is server-only and throws under plain tsx.
+  let publishedEula = await prisma.eulaVersion.findFirst({
+    where: { publishedAt: { not: null } },
+    orderBy: { versionNumber: "desc" },
+  });
+  if (!publishedEula) {
+    const now = new Date();
+    publishedEula = await prisma.eulaVersion.create({
+      data: {
+        versionNumber: 1,
+        content: `Smoke fixture EULA (${now.toISOString().slice(0, 10)})`,
+        publishedAt: now,
+        createdByUserId: appUser.id,
       },
     });
   }
+  await prisma.userEulaAcceptance.upsert({
+    where: {
+      userId_eulaVersionId: {
+        userId: appUser.id,
+        eulaVersionId: publishedEula.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: appUser.id,
+      eulaVersionId: publishedEula.id,
+    },
+  });
 
   const product = await prisma.product.create({
     data: {
