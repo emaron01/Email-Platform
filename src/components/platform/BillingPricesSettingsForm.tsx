@@ -18,17 +18,29 @@ export function BillingPricesSettingsForm({
   consoleStandardMonthlyPriceId,
   consoleStandardProductId,
   consoleCompanyCreditsPriceId,
+  consoleTeamMonthlyPriceId,
+  consoleTeamProductId,
+  consoleEnterpriseMonthlyPriceId,
+  consoleEnterpriseProductId,
   hasConsoleRow,
   effective,
 }: {
   consoleStandardMonthlyPriceId: string | null;
   consoleStandardProductId: string | null;
   consoleCompanyCreditsPriceId: string | null;
+  consoleTeamMonthlyPriceId: string | null;
+  consoleTeamProductId: string | null;
+  consoleEnterpriseMonthlyPriceId: string | null;
+  consoleEnterpriseProductId: string | null;
   hasConsoleRow: boolean;
   effective: {
     standardMonthlyPriceId: FieldView;
     standardProductId: FieldView;
     companyCreditsPriceId: FieldView;
+    teamMonthlyPriceId: FieldView;
+    teamProductId: FieldView;
+    enterpriseMonthlyPriceId: FieldView;
+    enterpriseProductId: FieldView;
   };
 }) {
   const [state, formAction, pending] = useActionState(
@@ -41,102 +53,129 @@ export function BillingPricesSettingsForm({
       <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
         <p className="font-medium">Effective Stripe IDs (new Checkout)</p>
         <ul className="space-y-1 text-slate-700">
-          <li>
-            <span className="font-medium">Standard monthly price:</span>{" "}
-            <code className="break-all text-xs">
-              {effective.standardMonthlyPriceId.value ?? "—"}
-            </code>
-            <span className="mt-0.5 block text-xs text-slate-500">
-              Source: {effective.standardMonthlyPriceId.sourceLabel}
-              {hasConsoleRow ? "" : " (no console override)"}
-            </span>
-          </li>
-          <li>
-            <span className="font-medium">Standard product:</span>{" "}
-            <code className="break-all text-xs">
-              {effective.standardProductId.value ?? "—"}
-            </code>
-            <span className="mt-0.5 block text-xs text-slate-500">
-              Source: {effective.standardProductId.sourceLabel}
-              {hasConsoleRow ? "" : " (no console override)"}
-            </span>
-          </li>
-          <li>
-            <span className="font-medium">Company credits price:</span>{" "}
-            <code className="break-all text-xs">
-              {effective.companyCreditsPriceId.value ?? "—"}
-            </code>
-            <span className="mt-0.5 block text-xs text-slate-500">
-              Source: {effective.companyCreditsPriceId.sourceLabel}
-              {hasConsoleRow ? "" : " (no console override)"}
-            </span>
-          </li>
+          <EffectiveRow
+            label="Standard monthly price"
+            field={effective.standardMonthlyPriceId}
+            hasConsoleRow={hasConsoleRow}
+          />
+          <EffectiveRow
+            label="Standard product"
+            field={effective.standardProductId}
+            hasConsoleRow={hasConsoleRow}
+          />
+          <EffectiveRow
+            label="Company credits price"
+            field={effective.companyCreditsPriceId}
+            hasConsoleRow={hasConsoleRow}
+          />
+          <EffectiveRow
+            label="Team monthly price"
+            field={effective.teamMonthlyPriceId}
+            hasConsoleRow={hasConsoleRow}
+          />
+          <EffectiveRow
+            label="Team product"
+            field={effective.teamProductId}
+            hasConsoleRow={hasConsoleRow}
+          />
+          <EffectiveRow
+            label="Enterprise monthly price"
+            field={effective.enterpriseMonthlyPriceId}
+            hasConsoleRow={hasConsoleRow}
+          />
+          <EffectiveRow
+            label="Enterprise product"
+            field={effective.enterpriseProductId}
+            hasConsoleRow={hasConsoleRow}
+          />
         </ul>
         <p className="mt-2 text-xs text-slate-500">
           Changes apply only to new Checkout sessions. Existing subscribers keep
-          the Price already stored on their Stripe subscription.
+          the Price already stored on their Stripe subscription. Plan copy and
+          entitlement floors are edited on Plan Catalog — not here.
         </p>
       </div>
 
       <form action={formAction} className="space-y-4">
         <input type="hidden" name="intent" value="save" />
-        <label className="block text-sm">
-          <span className="font-medium text-slate-800">
-            Standard monthly price ID
-          </span>
-          <input
-            type="text"
+        <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
+          <legend className="px-1 text-sm font-medium">Standard</legend>
+          <IdInput
             name="standardMonthlyPriceId"
+            label="Standard monthly price ID"
             required
-            spellCheck={false}
             defaultValue={
               consoleStandardMonthlyPriceId ??
               effective.standardMonthlyPriceId.value ??
               ""
             }
-            placeholder="price_…"
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
           />
-        </label>
-        <label className="block text-sm">
-          <span className="font-medium text-slate-800">
-            Standard product ID
-          </span>
-          <input
-            type="text"
+          <IdInput
             name="standardProductId"
+            label="Standard product ID"
             required
-            spellCheck={false}
             defaultValue={
               consoleStandardProductId ??
               effective.standardProductId.value ??
               ""
             }
-            placeholder="prod_…"
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+            hint="Referral coupons scope to this product via applies_to."
           />
-          <span className="mt-1 block text-xs text-slate-500">
-            Referral coupons scope to this product via applies_to.
-          </span>
-        </label>
-        <label className="block text-sm">
-          <span className="font-medium text-slate-800">
-            Company credits price ID
-          </span>
-          <input
-            type="text"
+          <IdInput
             name="companyCreditsPriceId"
+            label="Company credits price ID"
             required
-            spellCheck={false}
             defaultValue={
               consoleCompanyCreditsPriceId ??
               effective.companyCreditsPriceId.value ??
               ""
             }
-            placeholder="price_…"
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
           />
-        </label>
+        </fieldset>
+
+        <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
+          <legend className="px-1 text-sm font-medium">Team (placeholders OK)</legend>
+          <IdInput
+            name="teamMonthlyPriceId"
+            label="Team monthly price ID"
+            defaultValue={
+              consoleTeamMonthlyPriceId ??
+              effective.teamMonthlyPriceId.value ??
+              ""
+            }
+          />
+          <IdInput
+            name="teamProductId"
+            label="Team product ID"
+            defaultValue={
+              consoleTeamProductId ?? effective.teamProductId.value ?? ""
+            }
+          />
+        </fieldset>
+
+        <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
+          <legend className="px-1 text-sm font-medium">
+            Enterprise (placeholders OK)
+          </legend>
+          <IdInput
+            name="enterpriseMonthlyPriceId"
+            label="Enterprise monthly price ID"
+            defaultValue={
+              consoleEnterpriseMonthlyPriceId ??
+              effective.enterpriseMonthlyPriceId.value ??
+              ""
+            }
+          />
+          <IdInput
+            name="enterpriseProductId"
+            label="Enterprise product ID"
+            defaultValue={
+              consoleEnterpriseProductId ??
+              effective.enterpriseProductId.value ??
+              ""
+            }
+          />
+        </fieldset>
 
         {state ? (
           <p
@@ -166,5 +205,58 @@ export function BillingPricesSettingsForm({
         </form>
       ) : null}
     </div>
+  );
+}
+
+function EffectiveRow({
+  label,
+  field,
+  hasConsoleRow,
+}: {
+  label: string;
+  field: FieldView;
+  hasConsoleRow: boolean;
+}) {
+  return (
+    <li>
+      <span className="font-medium">{label}:</span>{" "}
+      <code className="break-all text-xs">{field.value ?? "—"}</code>
+      <span className="mt-0.5 block text-xs text-slate-500">
+        Source: {field.sourceLabel}
+        {hasConsoleRow ? "" : " (no console override)"}
+      </span>
+    </li>
+  );
+}
+
+function IdInput({
+  name,
+  label,
+  defaultValue,
+  required,
+  hint,
+}: {
+  name: string;
+  label: string;
+  defaultValue: string;
+  required?: boolean;
+  hint?: string;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="font-medium text-slate-800">{label}</span>
+      <input
+        type="text"
+        name={name}
+        required={required}
+        spellCheck={false}
+        defaultValue={defaultValue}
+        placeholder="price_… / prod_…"
+        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+      />
+      {hint ? (
+        <span className="mt-1 block text-xs text-slate-500">{hint}</span>
+      ) : null}
+    </label>
   );
 }

@@ -39,13 +39,14 @@ import { recordUsageEvent } from "@/lib/usage/events-service";
 import {
   companyHasActiveResearchSlot,
   countActiveResearchedCompanies,
+  orgHasAnyCompanyResearch,
 } from "@/lib/usage/active-companies-service";
 import { getResearchPolicy } from "@/lib/usage/policy-service";
 import {
   assertUsageAllowed,
   UsageQuotaError,
 } from "@/lib/usage/quota-service";
-import { PaymentLockError } from "@/lib/billing/payment-lock";
+import { PaymentLockError, assertOrganizationNotPaymentLocked } from "@/lib/billing/payment-lock";
 import { TenantError } from "@/lib/tenant/errors";
 import { getTenantContext } from "@/lib/tenant/request-context";
 
@@ -675,6 +676,51 @@ function bumpStatusCount(
   }
 }
 
+/**
+ * Create a CompanyResearch row under the company intro lock, copying or setting
+ * firstResearchedByUserId immutably.
+ */
+async function createCompanyResearchRowUnderIntroLock(input: {
+  organizationId: string;
+  companyId: string;
+  status: CompanyResearchStatus;
+  researchMethod?: ResearchMethod;
+  researchedByUserId?: string | null;
+  companySummary?: string | null;
+  aovReasoning?: string | null;
+  researchedAt?: Date | null;
+}): Promise<CompanyResearch> {
+  const lockKey = `company-research-intro:${input.organizationId}:${input.companyId}`;
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+    const prior = await tx.companyResearch.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        companyId: input.companyId,
+      },
+      orderBy: { createdAt: "asc" },
+      select: { firstResearchedByUserId: true },
+    });
+    const firstResearchedByUserId = prior
+      ? (prior.firstResearchedByUserId ?? null)
+      : (input.researchedByUserId ?? null);
+
+    return tx.companyResearch.create({
+      data: {
+        organizationId: input.organizationId,
+        companyId: input.companyId,
+        status: input.status,
+        researchMethod: input.researchMethod ?? "AUTOMATED",
+        companySummary: input.companySummary ?? null,
+        aovReasoning: input.aovReasoning ?? null,
+        researchedAt: input.researchedAt ?? null,
+        researchedByUserId: input.researchedByUserId ?? null,
+        firstResearchedByUserId,
+      },
+    });
+  });
+}
+
 export async function saveCompanyResearch(input: {
   companyId: string;
   result: CompanyResearchResult;
@@ -708,42 +754,59 @@ export async function saveCompanyResearch(input: {
 
   const now = new Date();
   const sources = input.result.sources ?? [];
+  const lockKey = `company-research-intro:${organizationId}:${company.id}`;
 
-  return prisma.companyResearch.create({
-    data: {
-      organizationId,
-      companyId: company.id,
-      status: input.status ?? "COMPLETED",
-      researchMethod: input.researchMethod ?? "AUTOMATED",
-      companySummary: input.result.companySummary,
-      whatTheySell: input.result.whatTheySell,
-      customerTypes: input.result.customerTypes,
-      primaryMarkets: input.result.primaryMarkets,
-      businessModel: input.result.businessModel,
-      estimatedAov: input.result.estimatedAov,
-      aovReasoning: input.result.aovReasoning,
-      companySizeContext: input.result.companySizeContext,
-      relevantTechnologies: input.result.relevantTechnologies,
-      buyingSignals: input.result.buyingSignals,
-      riskSignals: input.result.riskSignals,
-      researchConfidence: input.result.confidence,
-      sourceCount: sources.length,
-      researchSources: sources,
-      researchedAt: now,
-      expiresAt: researchExpiresAt(now, researchPolicy.researchFreshnessDays),
-      aiProvider: input.provenance?.aiProvider ?? null,
-      aiModel: input.provenance?.aiModel ?? null,
-      aiModelUrlIdentifier: input.provenance?.aiModelUrlIdentifier ?? null,
-      promptVersion: input.provenance?.promptVersion ?? null,
-      inputTokens: input.usage?.inputTokens ?? null,
-      outputTokens: input.usage?.outputTokens ?? null,
-      webSearchCallCount: input.usage?.webSearchCallCount ?? null,
-      researchDurationMs: input.usage?.researchDurationMs ?? null,
-      searchStagesUsed: input.telemetry?.searchStagesUsed ?? null,
-      researchStoppedReason: input.telemetry?.researchStoppedReason ?? null,
-      researchStageTimings: input.telemetry?.researchStageTimings ?? undefined,
-      researchedByUserId: input.researchedByUserId ?? null,
-    },
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+    const prior = await tx.companyResearch.findFirst({
+      where: { organizationId, companyId: company.id },
+      orderBy: { createdAt: "asc" },
+      select: { firstResearchedByUserId: true },
+    });
+
+    // First row for (org, company) → attribute introducer. Never overwrite later.
+    const firstResearchedByUserId = prior
+      ? (prior.firstResearchedByUserId ?? null)
+      : (input.researchedByUserId ?? null);
+
+    return tx.companyResearch.create({
+      data: {
+        organizationId,
+        companyId: company.id,
+        status: input.status ?? "COMPLETED",
+        researchMethod: input.researchMethod ?? "AUTOMATED",
+        companySummary: input.result.companySummary,
+        whatTheySell: input.result.whatTheySell,
+        customerTypes: input.result.customerTypes,
+        primaryMarkets: input.result.primaryMarkets,
+        businessModel: input.result.businessModel,
+        estimatedAov: input.result.estimatedAov,
+        aovReasoning: input.result.aovReasoning,
+        companySizeContext: input.result.companySizeContext,
+        relevantTechnologies: input.result.relevantTechnologies,
+        buyingSignals: input.result.buyingSignals,
+        riskSignals: input.result.riskSignals,
+        researchConfidence: input.result.confidence,
+        sourceCount: sources.length,
+        researchSources: sources,
+        researchedAt: now,
+        expiresAt: researchExpiresAt(now, researchPolicy.researchFreshnessDays),
+        aiProvider: input.provenance?.aiProvider ?? null,
+        aiModel: input.provenance?.aiModel ?? null,
+        aiModelUrlIdentifier: input.provenance?.aiModelUrlIdentifier ?? null,
+        promptVersion: input.provenance?.promptVersion ?? null,
+        inputTokens: input.usage?.inputTokens ?? null,
+        outputTokens: input.usage?.outputTokens ?? null,
+        webSearchCallCount: input.usage?.webSearchCallCount ?? null,
+        researchDurationMs: input.usage?.researchDurationMs ?? null,
+        searchStagesUsed: input.telemetry?.searchStagesUsed ?? null,
+        researchStoppedReason: input.telemetry?.researchStoppedReason ?? null,
+        researchStageTimings: input.telemetry?.researchStageTimings ?? undefined,
+        researchedByUserId: input.researchedByUserId ?? null,
+        firstResearchedByUserId,
+      },
+    });
   });
 }
 
@@ -813,15 +876,107 @@ export async function researchCompany(
     company.id,
   );
 
-  // Enforce active researched-company entitlement before external API spend.
-  // Refresh / existing active slot does not consume a second slot.
+  // First introducer = no prior CompanyResearch row for this company in the org.
+  // Re-research / stale refresh does not burn a net-new slot.
+  // Advisory lock covers check + claim INSERT so two concurrent firsts cannot both win.
+  const lockKey = `company-research-intro:${organizationId}:${company.id}`;
+  let isFirstIntroducer = false;
   if (user) {
+    try {
+      isFirstIntroducer = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+        const prior = await tx.companyResearch.findFirst({
+          where: { organizationId, companyId: company.id },
+          select: { id: true },
+        });
+        if (prior) return false;
+
+        // Inline quota check under the company lock (avoid nested assertUsageAllowed tx).
+        await assertOrganizationNotPaymentLocked(organizationId);
+        const used = await countActiveResearchedCompanies(
+          organizationId,
+          new Date(),
+          {
+            firstResearchedByUserId: user.id,
+            includeInProgressClaims: true,
+          },
+        );
+        const { getEffectiveUsagePolicy } = await import(
+          "@/lib/usage/policy-service"
+        );
+        const { getEffectiveCompanyResearchAllowance } = await import(
+          "@/lib/billing/company-research-credits"
+        );
+        const policy = await getEffectiveUsagePolicy({
+          organizationId,
+          userId: user.id,
+        });
+        const { effectiveLimit: limit } =
+          await getEffectiveCompanyResearchAllowance({
+            organizationId,
+            baseLimit: policy.activeResearchedCompanyLimit,
+          });
+        if (used >= limit) {
+          const billingProfile =
+            await prisma.organizationBillingProfile.findUnique({
+              where: { organizationId },
+              select: { billingStatus: true, trialEndsAt: true },
+            });
+          const { formatResearchQuotaBlockedMessage } = await import(
+            "@/lib/usage/research-allowance"
+          );
+          throw new UsageQuotaError(
+            formatResearchQuotaBlockedMessage({
+              used,
+              limit,
+              billingStatus: billingProfile?.billingStatus,
+              trialEndsAt: billingProfile?.trialEndsAt,
+            }),
+            "ACTIVE_RESEARCHED_COMPANY",
+            used,
+            limit,
+          );
+        }
+
+        // Claim introducer under the same lock.
+        await tx.companyResearch.create({
+          data: {
+            organizationId,
+            companyId: company.id,
+            status: "IN_PROGRESS",
+            researchMethod: "AUTOMATED",
+            researchedByUserId: user.id,
+            firstResearchedByUserId: user.id,
+          },
+        });
+        return true;
+      });
+    } catch (error) {
+      if (
+        error instanceof UsageQuotaError ||
+        error instanceof PaymentLockError
+      ) {
+        return {
+          skipped: true,
+          reason: error.message,
+          research: priorSuccessful ?? latest,
+          quotaBlocked: true,
+        };
+      }
+      throw error;
+    }
+  } else if (!(await orgHasAnyCompanyResearch(organizationId, company.id))) {
+    isFirstIntroducer = true;
+  }
+
+  // Non-first refresh: payment-lock gate only (no net-new slot).
+  if (user && !isFirstIntroducer) {
     try {
       await assertUsageAllowed({
         organizationId,
         userId: user.id,
         resource: "ACTIVE_RESEARCHED_COMPANY",
-        wouldConsumeNewActiveCompanySlot: !alreadyHasActiveSlot,
+        wouldConsumeNewActiveCompanySlot: false,
         companyId: company.id,
       });
     } catch (error) {
@@ -847,25 +1002,25 @@ export async function researchCompany(
     provider instanceof UnconfiguredCompanyResearchProvider ||
     !isResearchAiConfigured()
   ) {
-    if (!latest) {
-      const pending = await prisma.companyResearch.create({
-        data: {
-          organizationId,
-          companyId: company.id,
-          status: "NOT_STARTED",
-          researchMethod: "AUTOMATED",
-        },
-      });
+    const afterClaim = await getLatestCompanyResearch(company.id);
+    if (afterClaim) {
       return {
         skipped: true,
         reason: "provider_unconfigured",
-        research: pending,
+        research: afterClaim,
       };
     }
+    const pending = await createCompanyResearchRowUnderIntroLock({
+      organizationId,
+      companyId: company.id,
+      status: "NOT_STARTED",
+      researchMethod: "AUTOMATED",
+      researchedByUserId: user?.id ?? null,
+    });
     return {
       skipped: true,
       reason: "provider_unconfigured",
-      research: latest,
+      research: pending,
     };
   }
 
@@ -993,17 +1148,15 @@ export async function researchCompany(
       };
     }
 
-    await prisma.companyResearch.create({
-      data: {
-        organizationId,
-        companyId: company.id,
-        status: "FAILED",
-        researchMethod: "AUTOMATED",
-        companySummary: null,
-        aovReasoning: message.slice(0, 2000),
-        researchedAt: new Date(),
-        researchedByUserId: user?.id ?? null,
-      },
+    await createCompanyResearchRowUnderIntroLock({
+      organizationId,
+      companyId: company.id,
+      status: "FAILED",
+      researchMethod: "AUTOMATED",
+      companySummary: null,
+      aovReasoning: message.slice(0, 2000),
+      researchedAt: new Date(),
+      researchedByUserId: user?.id ?? null,
     });
 
     return {
@@ -1038,12 +1191,12 @@ export async function updateManualCompanyResearch(input: {
   const now = new Date();
   const researchPolicy = await getResearchPolicy(organizationId);
   const user = await resolveResearchUser();
-  const alreadyHasActiveSlot = await companyHasActiveResearchSlot(
+  const isFirstIntroducer = !(await orgHasAnyCompanyResearch(
     organizationId,
     company.id,
-  );
+  ));
 
-  if (user && !alreadyHasActiveSlot) {
+  if (user && isFirstIntroducer) {
     try {
       await assertUsageAllowed({
         organizationId,
@@ -1061,36 +1214,70 @@ export async function updateManualCompanyResearch(input: {
       }
       throw error;
     }
+  } else if (user) {
+    try {
+      await assertUsageAllowed({
+        organizationId,
+        userId: user.id,
+        resource: "ACTIVE_RESEARCHED_COMPANY",
+        wouldConsumeNewActiveCompanySlot: false,
+        companyId: company.id,
+      });
+    } catch (error) {
+      if (
+        error instanceof UsageQuotaError ||
+        error instanceof PaymentLockError
+      ) {
+        throw new TenantError(error.message);
+      }
+      throw error;
+    }
   }
 
-  const data = {
-    organizationId,
-    companyId: company.id,
-    status: "COMPLETED" as CompanyResearchStatus,
-    researchMethod: (latest && latest.researchMethod !== "MANUAL"
-      ? "HYBRID"
-      : "MANUAL") as ResearchMethod,
-    companySummary: input.companySummary?.trim() || null,
-    whatTheySell: input.whatTheySell?.trim() || null,
-    estimatedAov: input.estimatedAov?.trim() || null,
-    aovReasoning: input.aovReasoning?.trim() || null,
-    customerTypes: input.customerTypes ?? [],
-    primaryMarkets: input.primaryMarkets ?? [],
-    businessModel: input.businessModel?.trim() || null,
-    companySizeContext: input.companySizeContext?.trim() || null,
-    relevantTechnologies: input.relevantTechnologies ?? [],
-    buyingSignals: input.buyingSignals ?? [],
-    riskSignals: input.riskSignals ?? [],
-    researchConfidence: input.researchConfidence ?? "MEDIUM",
-    sourceCount: Array.isArray(latest?.researchSources)
-      ? (latest?.researchSources as unknown[]).length
-      : 0,
-    researchSources: (latest?.researchSources as ResearchSource[] | null) ?? [],
-    researchedAt: now,
-    expiresAt: researchExpiresAt(now, researchPolicy.researchFreshnessDays),
-  };
+  const lockKey = `company-research-intro:${organizationId}:${company.id}`;
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+    const prior = await tx.companyResearch.findFirst({
+      where: { organizationId, companyId: company.id },
+      orderBy: { createdAt: "asc" },
+      select: { firstResearchedByUserId: true },
+    });
+    const firstResearchedByUserId = prior
+      ? (prior.firstResearchedByUserId ?? null)
+      : (user?.id ?? null);
 
-  return prisma.companyResearch.create({ data });
+    return tx.companyResearch.create({
+      data: {
+        organizationId,
+        companyId: company.id,
+        status: "COMPLETED" as CompanyResearchStatus,
+        researchMethod: (latest && latest.researchMethod !== "MANUAL"
+          ? "HYBRID"
+          : "MANUAL") as ResearchMethod,
+        companySummary: input.companySummary?.trim() || null,
+        whatTheySell: input.whatTheySell?.trim() || null,
+        estimatedAov: input.estimatedAov?.trim() || null,
+        aovReasoning: input.aovReasoning?.trim() || null,
+        customerTypes: input.customerTypes ?? [],
+        primaryMarkets: input.primaryMarkets ?? [],
+        businessModel: input.businessModel?.trim() || null,
+        companySizeContext: input.companySizeContext?.trim() || null,
+        relevantTechnologies: input.relevantTechnologies ?? [],
+        buyingSignals: input.buyingSignals ?? [],
+        riskSignals: input.riskSignals ?? [],
+        researchConfidence: input.researchConfidence ?? "MEDIUM",
+        sourceCount: Array.isArray(latest?.researchSources)
+          ? (latest?.researchSources as unknown[]).length
+          : 0,
+        researchSources:
+          (latest?.researchSources as ResearchSource[] | null) ?? [],
+        researchedAt: now,
+        expiresAt: researchExpiresAt(now, researchPolicy.researchFreshnessDays),
+        researchedByUserId: user?.id ?? null,
+        firstResearchedByUserId,
+      },
+    });
+  });
 }
 
 export function researchStatusLabel(

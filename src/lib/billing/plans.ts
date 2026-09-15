@@ -4,13 +4,20 @@
  * Dollar amounts live in Stripe; this module never hard-codes list prices.
  *
  * Paths:
- * - Self-serve → STANDARD (UNPAID → Checkout → TRIALING → ACTIVE)
+ * - Self-serve → STANDARD or TEAM (UNPAID → Checkout → TRIALING → ACTIVE)
+ * - ENTERPRISE → contact-sales / platform-provisioned (not self-serve Checkout)
  * - Platform COMPED → durable, no Stripe
- * - Platform billed → STANDARD UNPAID until Checkout
+ * - Legacy PREMIUM code remains for stored rows; display as Team
  */
 
 export const BILLING_PLAN_COMPED = "COMPED" as const;
 export const BILLING_PLAN_STANDARD = "STANDARD" as const;
+/** Active multi-seat self-serve plan (2–10 seats). */
+export const BILLING_PLAN_TEAM = "TEAM" as const;
+/**
+ * Legacy internal code. Prefer BILLING_PLAN_TEAM for new rows.
+ * Display labels map PREMIUM → "Team".
+ */
 export const BILLING_PLAN_PREMIUM = "PREMIUM" as const;
 export const BILLING_PLAN_ENTERPRISE = "ENTERPRISE" as const;
 
@@ -20,6 +27,7 @@ export const BILLING_PLAN_FREE = BILLING_PLAN_COMPED;
 export type KnownBillingPlanCode =
   | typeof BILLING_PLAN_COMPED
   | typeof BILLING_PLAN_STANDARD
+  | typeof BILLING_PLAN_TEAM
   | typeof BILLING_PLAN_PREMIUM
   | typeof BILLING_PLAN_ENTERPRISE;
 
@@ -37,10 +45,24 @@ export type PlanComponent =
     };
 
 export type PlanEntitlements = {
+  /**
+   * STANDARD: org-wide company research limit.
+   * TEAM / ENTERPRISE: per-user companiesPerSeat floor (also mirrored as companiesPerSeat).
+   */
   activeResearchedCompanyLimit: number;
   dailyEmailSendWarningLimit: number;
   monthlyEmailSendLimit: number | null;
   researchFreshnessDays: number;
+};
+
+export type PlanSeatPolicy = {
+  /** Companies researched per seat/user (TEAM/ENTERPRISE). Null = org-level (STANDARD). */
+  companiesPerSeat: number | null;
+  seatMin: number;
+  /** Null = no global hard max (ENTERPRISE; per-org maxSeats). */
+  seatMax: number | null;
+  /** Per-user daily AI generation floor. */
+  dailyAiGenerationLimit: number;
 };
 
 export type PlanDefinition = {
@@ -57,12 +79,34 @@ export type PlanDefinition = {
   trialEntitlements: PlanEntitlements | null;
   components: PlanComponent[];
   entitlements: PlanEntitlements;
+  seats: PlanSeatPolicy;
 };
 
 function envId(name: string): string | null {
   const value = process.env[name]?.trim();
   return value || null;
 }
+
+const TEAM_SEAT_POLICY: PlanSeatPolicy = {
+  companiesPerSeat: 150,
+  seatMin: 2,
+  seatMax: 10,
+  dailyAiGenerationLimit: 500,
+};
+
+const ENTERPRISE_SEAT_POLICY: PlanSeatPolicy = {
+  companiesPerSeat: 150,
+  seatMin: 2,
+  seatMax: null,
+  dailyAiGenerationLimit: 500,
+};
+
+const STANDARD_SEAT_POLICY: PlanSeatPolicy = {
+  companiesPerSeat: null,
+  seatMin: 1,
+  seatMax: 1,
+  dailyAiGenerationLimit: 500,
+};
 
 export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
   {
@@ -78,6 +122,12 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
       dailyEmailSendWarningLimit: 50,
       monthlyEmailSendLimit: null,
       researchFreshnessDays: 90,
+    },
+    seats: {
+      companiesPerSeat: null,
+      seatMin: 1,
+      seatMax: null,
+      dailyAiGenerationLimit: 500,
     },
   },
   {
@@ -104,14 +154,42 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
       monthlyEmailSendLimit: 1000,
       researchFreshnessDays: 90,
     },
+    seats: STANDARD_SEAT_POLICY,
   },
   {
+    planCode: BILLING_PLAN_TEAM,
+    sellable: true,
+    requiresStripe: true,
+    trialDays: 7,
+    trialEntitlements: {
+      activeResearchedCompanyLimit: 150,
+      dailyEmailSendWarningLimit: 50,
+      monthlyEmailSendLimit: 1000,
+      researchFreshnessDays: 90,
+    },
+    components: [
+      {
+        kind: "recurring_base",
+        stripePriceIdEnv: "STRIPE_PRICE_TEAM_MONTHLY",
+        stripeProductIdEnv: "STRIPE_PRODUCT_TEAM",
+      },
+    ],
+    entitlements: {
+      activeResearchedCompanyLimit: 150,
+      dailyEmailSendWarningLimit: 50,
+      monthlyEmailSendLimit: 1000,
+      researchFreshnessDays: 90,
+    },
+    seats: TEAM_SEAT_POLICY,
+  },
+  {
+    // Legacy stub — not sellable. Display as Team; prefer BILLING_PLAN_TEAM.
     planCode: BILLING_PLAN_PREMIUM,
     sellable: false,
     requiresStripe: true,
     trialDays: 7,
     trialEntitlements: {
-      activeResearchedCompanyLimit: 25,
+      activeResearchedCompanyLimit: 150,
       dailyEmailSendWarningLimit: 50,
       monthlyEmailSendLimit: 1000,
       researchFreshnessDays: 90,
@@ -124,11 +202,12 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
       },
     ],
     entitlements: {
-      activeResearchedCompanyLimit: 100,
+      activeResearchedCompanyLimit: 150,
       dailyEmailSendWarningLimit: 50,
       monthlyEmailSendLimit: 1000,
       researchFreshnessDays: 90,
     },
+    seats: TEAM_SEAT_POLICY,
   },
   {
     planCode: BILLING_PLAN_ENTERPRISE,
@@ -144,11 +223,12 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
       },
     ],
     entitlements: {
-      activeResearchedCompanyLimit: 100,
+      activeResearchedCompanyLimit: 150,
       dailyEmailSendWarningLimit: 50,
       monthlyEmailSendLimit: 1000,
       researchFreshnessDays: 90,
     },
+    seats: ENTERPRISE_SEAT_POLICY,
   },
 ] as const;
 
@@ -162,15 +242,28 @@ export const COMPANY_CREDIT_BLOCK: Extract<
   expiryMonths: 12,
 };
 
+/** Normalize legacy PREMIUM → TEAM for entitlement / seat lookups. */
+export function canonicalPlanCode(planCode: string): string {
+  if (planCode === "FREE") return BILLING_PLAN_COMPED;
+  if (planCode === BILLING_PLAN_PREMIUM) return BILLING_PLAN_TEAM;
+  return planCode;
+}
+
+/** True when company research allowance is per-user (not org pool). */
+export function planUsesPerUserCompanyAllowance(planCode: string): boolean {
+  const code = canonicalPlanCode(planCode);
+  return code === BILLING_PLAN_TEAM || code === BILLING_PLAN_ENTERPRISE;
+}
+
+/** True when plan bills / gates by seat quantity. */
+export function planUsesSeatBilling(planCode: string): boolean {
+  return planUsesPerUserCompanyAllowance(planCode);
+}
+
 export function getPlanDefinition(planCode: string): PlanDefinition | null {
-  if (planCode === "FREE") {
-    return (
-      BILLING_PLAN_CATALOG.find((p) => p.planCode === BILLING_PLAN_COMPED) ??
-      null
-    );
-  }
+  const code = planCode === "FREE" ? BILLING_PLAN_COMPED : planCode;
   return (
-    BILLING_PLAN_CATALOG.find((plan) => plan.planCode === planCode) ?? null
+    BILLING_PLAN_CATALOG.find((plan) => plan.planCode === code) ?? null
   );
 }
 

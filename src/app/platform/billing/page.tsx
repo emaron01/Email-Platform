@@ -48,11 +48,12 @@ export default async function PlatformBillingPage() {
           </Link>
         </p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          Billing settings
+          Billing Config
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Trial length and Stripe price IDs for new Checkout. SUPER_ADMIN only.
-          Existing subscriptions keep their Stripe Price and trial end date.
+          Trial length, Stripe price IDs, and webhook-related billing IDs only.
+          Display copy and entitlement floors live on Plan Catalog. SUPER_ADMIN
+          only.
         </p>
       </div>
 
@@ -76,9 +77,9 @@ export default async function PlatformBillingPage() {
       <section className="rounded-lg border border-slate-200 bg-white p-5">
         <h2 className="text-lg font-medium text-slate-900">Stripe price IDs</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Standard monthly Price, Standard Product, and company-credit Price.
-          Validated against Stripe on save. Environment variables remain the
-          fallback when no console override is set.
+          Standard, Team, Enterprise, and company-credit Price/Product IDs.
+          Team and Enterprise may be left blank until live IDs are ready.
+          Validated against Stripe on save when filled.
         </p>
         <div className="mt-4">
           <BillingPricesSettingsForm
@@ -88,6 +89,16 @@ export default async function PlatformBillingPage() {
             consoleStandardProductId={pricesSetting?.standardProductId ?? null}
             consoleCompanyCreditsPriceId={
               pricesSetting?.companyCreditsPriceId ?? null
+            }
+            consoleTeamMonthlyPriceId={
+              pricesSetting?.teamMonthlyPriceId || null
+            }
+            consoleTeamProductId={pricesSetting?.teamProductId || null}
+            consoleEnterpriseMonthlyPriceId={
+              pricesSetting?.enterpriseMonthlyPriceId || null
+            }
+            consoleEnterpriseProductId={
+              pricesSetting?.enterpriseProductId || null
             }
             hasConsoleRow={hasPricesRow}
             effective={{
@@ -102,6 +113,23 @@ export default async function PlatformBillingPage() {
               companyCreditsPriceId: {
                 value: effectivePrices.companyCreditsPriceId.value,
                 sourceLabel: effectivePrices.companyCreditsPriceId.sourceLabel,
+              },
+              teamMonthlyPriceId: {
+                value: effectivePrices.teamMonthlyPriceId.value,
+                sourceLabel: effectivePrices.teamMonthlyPriceId.sourceLabel,
+              },
+              teamProductId: {
+                value: effectivePrices.teamProductId.value,
+                sourceLabel: effectivePrices.teamProductId.sourceLabel,
+              },
+              enterpriseMonthlyPriceId: {
+                value: effectivePrices.enterpriseMonthlyPriceId.value,
+                sourceLabel:
+                  effectivePrices.enterpriseMonthlyPriceId.sourceLabel,
+              },
+              enterpriseProductId: {
+                value: effectivePrices.enterpriseProductId.value,
+                sourceLabel: effectivePrices.enterpriseProductId.sourceLabel,
               },
             }}
           />

@@ -68,8 +68,8 @@ const ROUTE_EXPECTATIONS: Record<string, SmokeExpectation> = {
   "/platform/orgs/new": { mustInclude: "Create account" },
   "/platform/costs": { mustInclude: "Costs" },
   "/platform/email-templates": { mustInclude: "Email templates" },
-  "/platform/billing": { mustInclude: "Billing settings" },
-  "/platform/catalog": { mustInclude: "Product catalog" },
+  "/platform/billing": { mustInclude: "Billing Config" },
+  "/platform/catalog": { mustInclude: "Plan Catalog" },
   "/platform/eula": { mustInclude: "End User License Agreement" },
   "/onboarding/eula": { mustInclude: "onboarding-eula-page" },
 };

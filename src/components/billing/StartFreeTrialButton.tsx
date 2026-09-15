@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { BILLING_PLAN_STANDARD } from "@/lib/billing/plans";
 
 /**
  * Onboarding CTA → Stripe Checkout (same /api/billing/checkout as settings).
@@ -11,10 +12,16 @@ import { useRouter } from "next/navigation";
 export function StartFreeTrialButton({
   disabledReason,
   trialPeriodDays = 7,
+  planCode = BILLING_PLAN_STANDARD,
+  seatQuantity = 1,
+  buttonLabel,
 }: {
   disabledReason?: string | null;
   /** Effective trial days (platform → env); null = trial off for NEW checkouts. */
   trialPeriodDays?: number | null;
+  planCode?: string;
+  seatQuantity?: number;
+  buttonLabel?: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +36,12 @@ export function StartFreeTrialButton({
     );
   }
 
+  const label =
+    buttonLabel ??
+    (trialOff
+      ? "Subscribe to Standard"
+      : "Click Here To Start Your Free Trial");
+
   return (
     <div className="space-y-2" data-testid="onboarding-subscribe-cta">
       <button
@@ -41,7 +54,11 @@ export function StartFreeTrialButton({
             try {
               const res = await fetch("/api/billing/checkout", {
                 method: "POST",
-                headers: { Accept: "application/json" },
+                headers: {
+                  Accept: "application/json",
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ planCode, seatQuantity }),
               });
               const body = (await res.json().catch(() => ({}))) as {
                 url?: string;
@@ -62,11 +79,7 @@ export function StartFreeTrialButton({
           });
         }}
       >
-        {pending
-          ? "Redirecting…"
-          : trialOff
-            ? "Subscribe to Standard"
-            : "Click Here To Start Your Free Trial"}
+        {pending ? "Redirecting…" : label}
       </button>
       <p className="text-center text-base font-bold text-slate-900">
         {trialOff

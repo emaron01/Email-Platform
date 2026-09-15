@@ -7,7 +7,12 @@ import {
   resolveCatalogEntitlementsForStatus,
   PLATFORM_SETTING_BILLING_CATALOG,
 } from "@/lib/billing/billing-catalog";
-import { BILLING_PLAN_STANDARD } from "@/lib/billing/plans";
+import {
+  BILLING_PLAN_STANDARD,
+  BILLING_PLAN_TEAM,
+  BILLING_PLAN_ENTERPRISE,
+} from "@/lib/billing/plans";
+import { billingPlanLabel } from "@/lib/billing/billing-state";
 
 describe("billing.catalog", () => {
   it("seeds Standard with current floors and marketing bullets", () => {
@@ -16,13 +21,25 @@ describe("billing.catalog", () => {
     expect(standard).toBeTruthy();
     expect(standard!.displayName).toBe("Standard");
     expect(standard!.sellable).toBe(true);
-    expect(standard!.stripePriceId).toBeNull();
     expect(standard!.entitlementFloors.trial?.companyResearchLimit).toBe(25);
     expect(standard!.entitlementFloors.paid.companyResearchLimit).toBe(100);
     expect(standard!.entitlementFloors.paid.dailyAiGenerationLimit).toBe(500);
     expect(standard!.companyCredits?.blockSize).toBe(100);
     expect(standard!.featureBullets.length).toBeGreaterThan(2);
     expect(PLATFORM_SETTING_BILLING_CATALOG).toBe("billing.catalog");
+  });
+
+  it("seeds Team and Enterprise with per-seat floors", () => {
+    const catalog = defaultBillingCatalogSetting();
+    const team = findCatalogPlan(catalog, BILLING_PLAN_TEAM);
+    const enterprise = findCatalogPlan(catalog, BILLING_PLAN_ENTERPRISE);
+    expect(team?.sellable).toBe(true);
+    expect(team?.entitlementFloors.paid.companiesPerSeat).toBe(150);
+    expect(team?.entitlementFloors.paid.seatMin).toBe(2);
+    expect(team?.entitlementFloors.paid.seatMax).toBe(10);
+    expect(enterprise?.sellable).toBe(false);
+    expect(enterprise?.entitlementFloors.paid.seatMax).toBeNull();
+    expect(billingPlanLabel("PREMIUM")).toBe("Team");
   });
 
   it("parses a round-tripped default catalog", () => {

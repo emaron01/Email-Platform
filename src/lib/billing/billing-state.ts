@@ -9,10 +9,21 @@
 
 import {
   BILLING_PLAN_COMPED,
+  BILLING_PLAN_ENTERPRISE,
+  BILLING_PLAN_PREMIUM,
   BILLING_PLAN_STANDARD,
+  BILLING_PLAN_TEAM,
+  planUsesSeatBilling,
 } from "@/lib/billing/plans";
+import { formatSeatsUsedLabel } from "@/lib/org/seat-limits";
 
-export { BILLING_PLAN_COMPED, BILLING_PLAN_STANDARD };
+export {
+  BILLING_PLAN_COMPED,
+  BILLING_PLAN_ENTERPRISE,
+  BILLING_PLAN_PREMIUM,
+  BILLING_PLAN_STANDARD,
+  BILLING_PLAN_TEAM,
+};
 /** @deprecated */
 export { BILLING_PLAN_COMPED as BILLING_PLAN_FREE };
 
@@ -60,9 +71,10 @@ export function billingPlanLabel(planCode: string): string {
       return "Comped";
     case BILLING_PLAN_STANDARD:
       return "Standard";
-    case "PREMIUM":
-      return "Premium";
-    case "ENTERPRISE":
+    case BILLING_PLAN_TEAM:
+    case BILLING_PLAN_PREMIUM:
+      return "Team";
+    case BILLING_PLAN_ENTERPRISE:
       return "Enterprise";
     default:
       return planCode;
@@ -218,11 +230,16 @@ export function billingPlanDescription(input: {
   activeResearchedCompanyLimit?: number | null;
   dailyEmailSendWarningLimit?: number | null;
   monthlyEmailSendLimit?: number | null;
+  seatQuantity?: number | null;
+  maxSeats?: number | null;
+  usedSeats?: number | null;
+  companiesPerSeat?: number | null;
 }): string {
   const isTrial = input.billingStatus === "TRIALING";
   const isStandard =
     input.planCode === BILLING_PLAN_STANDARD ||
     input.planCode === "STANDARD";
+  const isTeamOrEnt = planUsesSeatBilling(input.planCode);
   const companies = input.activeResearchedCompanyLimit;
   const daily = input.dailyEmailSendWarningLimit;
   const monthly = input.monthlyEmailSendLimit;
@@ -235,6 +252,17 @@ export function billingPlanDescription(input: {
       return `Comped access: research up to ${companies} companies. Emails send through your own mailbox.`;
     }
     return "Comped access with limits set by your account administrator. Emails send through your own mailbox.";
+  }
+
+  if (isTeamOrEnt) {
+    const seatQuantity = input.seatQuantity ?? 1;
+    const maxSeats = input.maxSeats ?? seatQuantity;
+    const usedSeats = input.usedSeats ?? 0;
+    const perUser = input.companiesPerSeat ?? companies ?? 150;
+    const seatsBit = formatSeatsUsedLabel({ usedSeats, seatQuantity });
+    const capBit =
+      maxSeats !== seatQuantity ? ` (cap ${maxSeats})` : "";
+    return `${seatsBit}${capBit}. ${perUser} companies per user. Emails send through each user's own mailbox.`;
   }
 
   if (isStandard && companies != null && daily != null) {

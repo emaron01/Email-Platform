@@ -511,6 +511,7 @@ model Organization {
   titleSuggestions         TitleSuggestion[]
   productTitleDismissals   ProductTitleDismissal[]
   campaigns                Campaign[]
+  campaignExecutions       CampaignExecution[]
   campaignPersonas         CampaignPersona[]
   campaignContacts         CampaignContact[]
   emailDrafts              EmailDraft[]
@@ -619,6 +620,7 @@ model User {
   qualificationOverrides   QualificationBucketOverride[]
   invitationsSent          OrganizationInvitation[]      @relation("InvitedBy")
   companyResearchInitiated CompanyResearch[]             @relation("ResearchInitiatedBy")
+  companyResearchFirstIntroduced CompanyResearch[]       @relation("ResearchFirstIntroducedBy")
   adminAuditEvents         AdminAuditEvent[]
   transactionalEmailEvents TransactionalEmailEvent[]
   voiceSamples             VoiceSample[]
@@ -635,6 +637,8 @@ model User {
   contactsCreated          Contact[]                     @relation("ContactCreatedBy")
   contactMembershipsAdded  ContactListMembership[]       @relation("ContactMembershipAddedBy")
   sequenceStopsInitiated   CampaignContact[]             @relation("SequenceStoppedBy")
+  ownedCampaigns           Campaign[]                    @relation("CampaignOwner")
+  campaignExecutions       CampaignExecution[]           @relation("CampaignExecutionUser")
   creditGrantsIssued       OrganizationCreditGrant[]     @relation("CreditGrantedBy")
   spendReconciliationsCreated ProviderSpendReconciliation[] @relation("SpendReconciliationCreatedBy")
   /// IANA timezone for digest windows. Falls back to organization timezone when null.
@@ -765,8 +769,8 @@ model OrganizationBillingProfile {
   id                   String             @id @default(cuid())
   organizationId       String             @unique
   billingEmail         String?
-  /// Product plan code. "COMPED" | "STANDARD" | future PREMIUM/ENTERPRISE — string, not enum.
-  /// COMPED = durable platform grant (billingStatus FREE). Self-serve uses STANDARD.
+  /// Product plan code. "COMPED" | "STANDARD" | "TEAM" | "ENTERPRISE" | legacy "PREMIUM" — string, not enum.
+  /// COMPED = durable platform grant (billingStatus FREE). Self-serve uses STANDARD/TEAM.
   planCode             String             @default("FREE")
   billingStatus        BillingStatus      @default(FREE)
   /// Stripe Customer id (cus_…) — null while free / pre-Stripe.
@@ -791,6 +795,10 @@ model OrganizationBillingProfile {
   stripeCouponId       String?
   /// Unit amount after mirrored discounts (cents) — what they effectively pay per interval.
   stripeEffectiveUnitAmountCents Int?
+  /// Purchased / Stripe subscription quantity (seats).
+  seatQuantity         Int                @default(1)
+  /// Invite cap. TEAM defaults to plan max (10). ENTERPRISE overridable by SUPER_ADMIN.
+  maxSeats             Int                @default(1)
   currentPeriodEnd     DateTime?
   trialEndsAt          DateTime?
   /// After payment failure: lock when now >= gracePeriodEndsAt (7-day grace).
@@ -1783,12 +1791,17 @@ model CompanyResearch {
   researchStageTimings Json?
   /// User who initiated this research run (metering). Ownership remains Organization.
   researchedByUserId   String?
+  /// Immutable first introducer of this company into the org research pool.
+  /// Set only when the first CompanyResearch row for (org, company) is created.
+  /// Null on legacy rows = no per-user net-new attribution.
+  firstResearchedByUserId String?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   researchedBy User?        @relation("ResearchInitiatedBy", fields: [researchedByUserId], references: [id], onDelete: SetNull)
+  firstResearchedBy User?   @relation("ResearchFirstIntroducedBy", fields: [firstResearchedByUserId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([organizationId, companyId])
@@ -1796,6 +1809,8 @@ model CompanyResearch {
   @@index([organizationId, status])
   @@index([expiresAt])
   @@index([researchedByUserId])
+  @@index([firstResearchedByUserId])
+  @@index([organizationId, firstResearchedByUserId])
 }
 
 /// Contact-level role research (separate from CompanyResearch). Answers "what are they responsible for?"
@@ -2071,9 +2086,17 @@ model QualificationBucketOverride {
   @@index([overriddenById])
 }
 
+enum CampaignVisibility {
+  PERSONAL
+  SHARED
+}
+
 model Campaign {
-  id                            String         @id @default(cuid())
+  id                            String             @id @default(cuid())
   organizationId                String
+  /// Owning user. Null on legacy rows (treated as org-visible until claimed).
+  ownerUserId                   String?
+  visibility                    CampaignVisibility @default(PERSONAL)
   name                          String
   productId                     String
   icpId                         String
@@ -2086,31 +2109,55 @@ model Campaign {
   offerNotes                    String?
   offerValidationJson           Json?
   offerValidationHash           String?
-  emailLength                   EmailLength    @default(MEDIUM)
+  emailLength                   EmailLength        @default(MEDIUM)
   emailGuidance                 String?
-  status                        CampaignStatus @default(DRAFT)
+  status                        CampaignStatus     @default(DRAFT)
   /// Soft-archive: hidden from home/list by default; history intact, read-only.
   archivedAt                    DateTime?
-  createdAt                     DateTime       @default(now())
-  updatedAt                     DateTime       @updatedAt
+  createdAt                     DateTime           @default(now())
+  updatedAt                     DateTime           @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product      Product           @relation(fields: [productId], references: [id])
-  icp          Icp               @relation(fields: [icpId], references: [id])
-  persona      Persona?          @relation(fields: [personaId], references: [id])
-  offer        Offer?            @relation(fields: [offerId], references: [id])
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User?               @relation("CampaignOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  product      Product             @relation(fields: [productId], references: [id])
+  icp          Icp                 @relation(fields: [icpId], references: [id])
+  persona      Persona?            @relation(fields: [personaId], references: [id])
+  offer        Offer?              @relation(fields: [offerId], references: [id])
   contacts     CampaignContact[]
   personasInPlay CampaignPersona[]
+  executions   CampaignExecution[]
   sourcedScoringRuns ScoringRun[]
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
   @@index([organizationId, status])
   @@index([organizationId, archivedAt])
+  @@index([organizationId, visibility])
+  @@index([ownerUserId])
   @@index([productId])
   @@index([icpId])
   @@index([personaId])
   @@index([offerId])
+}
+
+/// Personal run of a SHARED campaign. Multiple executions per user/campaign allowed (history).
+model CampaignExecution {
+  id             String   @id @default(cuid())
+  organizationId String
+  campaignId     String
+  userId         String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user         User              @relation("CampaignExecutionUser", fields: [userId], references: [id], onDelete: Cascade)
+  contacts     CampaignContact[]
+
+  @@index([organizationId])
+  @@index([campaignId])
+  @@index([userId])
+  @@index([organizationId, campaignId, userId, createdAt])
 }
 
 /// Personas a campaign will email. Empty means all personas for the product.
@@ -2136,6 +2183,8 @@ model CampaignContact {
   id                      String                @id @default(cuid())
   organizationId          String
   campaignId              String
+  /// When set, this contact belongs to a personal SHARED-campaign execution.
+  executionId             String?
   contactId               String
   selected                Boolean               @default(true)
   status                  CampaignContactStatus @default(PENDING)
@@ -2150,18 +2199,22 @@ model CampaignContact {
   createdAt               DateTime              @default(now())
   updatedAt               DateTime              @updatedAt
 
-  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  campaign            Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contact             Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  chosenPersona       Persona?          @relation("CampaignContactChosenPersona", fields: [chosenPersonaId], references: [id], onDelete: SetNull)
-  sequenceStoppedBy   User?             @relation("SequenceStoppedBy", fields: [sequenceStoppedByUserId], references: [id], onDelete: SetNull)
+  organization        Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign            Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  execution           CampaignExecution? @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  contact             Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  chosenPersona       Persona?           @relation("CampaignContactChosenPersona", fields: [chosenPersonaId], references: [id], onDelete: SetNull)
+  sequenceStoppedBy   User?              @relation("SequenceStoppedBy", fields: [sequenceStoppedByUserId], references: [id], onDelete: SetNull)
   emailDrafts         EmailDraft[]
   sendRecords         EmailSendRecord[]
 
-  @@unique([organizationId, campaignId, contactId])
+  /// Uniqueness for owner vs execution contacts is enforced via partial indexes in SQL.
   @@index([organizationId])
   @@index([organizationId, campaignId])
+  @@index([organizationId, campaignId, contactId])
   @@index([campaignId])
+  @@index([executionId])
+  @@index([executionId, contactId])
   @@index([contactId])
   @@index([organizationId, nextDueAt])
   @@index([nextDueAt])

@@ -5,17 +5,39 @@ import { prisma } from "@/lib/prisma-client";
 import { isResearchFresh } from "@/lib/research/freshness";
 import { getResearchPolicy } from "@/lib/usage/policy-service";
 
+export type CountActiveResearchedCompaniesOptions = {
+  /**
+   * TEAM/ENTERPRISE: count fresh companies this user first introduced
+   * (firstResearchedByUserId), not rows they merely re-researched.
+   */
+  firstResearchedByUserId?: string | null;
+  /**
+   * When true (quota claim path), also count IN_PROGRESS introducer claims
+   * so concurrent net-new starts cannot exceed the floor before COMPLETED.
+   */
+  includeInProgressClaims?: boolean;
+};
+
 export async function countActiveResearchedCompanies(
   organizationId: string,
   now: Date = new Date(),
+  options?: CountActiveResearchedCompaniesOptions,
 ): Promise<number> {
   const researchPolicy = await getResearchPolicy(organizationId);
   const freshnessDays = researchPolicy.researchFreshnessDays;
 
+  const statuses: Array<"COMPLETED" | "PARTIAL" | "IN_PROGRESS"> =
+    options?.includeInProgressClaims && options.firstResearchedByUserId
+      ? ["COMPLETED", "PARTIAL", "IN_PROGRESS"]
+      : ["COMPLETED", "PARTIAL"];
+
   const researches = await prisma.companyResearch.findMany({
     where: {
       organizationId,
-      status: { in: ["COMPLETED", "PARTIAL"] },
+      status: { in: statuses },
+      ...(options?.firstResearchedByUserId
+        ? { firstResearchedByUserId: options.firstResearchedByUserId }
+        : {}),
     },
     select: {
       companyId: true,
@@ -37,6 +59,10 @@ export async function countActiveResearchedCompanies(
 
   let count = 0;
   for (const research of latestByCompany.values()) {
+    if (research.status === "IN_PROGRESS") {
+      count += 1;
+      continue;
+    }
     if (isResearchFresh(research, now, freshnessDays)) {
       count += 1;
     }
@@ -60,4 +86,16 @@ export async function companyHasActiveResearchSlot(
     now,
     researchPolicy.researchFreshnessDays,
   );
+}
+
+/** True when the org has never stored any CompanyResearch row for this company. */
+export async function orgHasAnyCompanyResearch(
+  organizationId: string,
+  companyId: string,
+): Promise<boolean> {
+  const row = await prisma.companyResearch.findFirst({
+    where: { organizationId, companyId },
+    select: { id: true },
+  });
+  return Boolean(row);
 }

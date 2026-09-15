@@ -1,20 +1,29 @@
 /**
  * Seat / invite policy for organizations.
  *
- * Today:
- * - INDIVIDUAL Standard (self-serve): 1 user — org-admin invites blocked
- * - COMPED (platform): invites allowed; super admin sets limits deliberately
- * - ENTERPRISE: multi-user invites allowed
- *
- * Future (not built):
- * - PREMIUM: 2–10 seats via Stripe subscription quantity
- *   Use FUTURE_PREMIUM_SEAT_MIN/MAX when wiring Checkout quantity later.
+ * - STANDARD Individual: 1 seat — invites blocked
+ * - COMPED: invites allowed (platform sets limits)
+ * - TEAM / legacy PREMIUM: invites until seatQuantity filled (max 10)
+ * - ENTERPRISE (accountType or plan): invites until seatQuantity / maxSeats
  */
-import { BILLING_PLAN_COMPED } from "@/lib/billing/plans";
+import {
+  BILLING_PLAN_COMPED,
+  BILLING_PLAN_STANDARD,
+  BILLING_PLAN_TEAM,
+  canonicalPlanCode,
+  planUsesSeatBilling,
+} from "@/lib/billing/plans";
+import {
+  SEAT_LIMIT_REACHED_MESSAGE,
+  buildSeatSnapshot,
+} from "@/lib/org/seat-limits";
 
-/** Reserved for Premium seat purchasing (Stripe quantity) — not implemented. */
+/** @deprecated Prefer seat-limits; kept for tests/compat. */
 export const FUTURE_PREMIUM_SEAT_MIN = 2;
+/** @deprecated Prefer seat-limits; kept for tests/compat. */
 export const FUTURE_PREMIUM_SEAT_MAX = 10;
+
+export { SEAT_LIMIT_REACHED_MESSAGE };
 
 export function isCompedPlanCode(planCode: string | null | undefined): boolean {
   return planCode === BILLING_PLAN_COMPED || planCode === "FREE";
@@ -30,31 +39,53 @@ export function individualOrgAdminInviteBlockMessage(): string {
     : "Contact support if you need a team workspace now.";
   return (
     "Individual Standard accounts are limited to one user. " +
-    "Team accounts are coming soon. " +
+    "Choose Team on subscribe, or upgrade from organization settings. " +
     contact
   );
 }
 
 /**
- * Whether org OWNER/ADMIN may create invitations for this workspace.
+ * Whether org OWNER/ADMIN may create invitations when seat capacity remains.
  * Platform invites use a separate path and are not gated here.
  */
 export function orgAdminInvitesAllowed(input: {
   accountType: "INDIVIDUAL" | "ENTERPRISE" | string;
   planCode: string | null | undefined;
+  seatQuantity?: number;
+  maxSeats?: number;
+  usedSeats?: number;
 }): boolean {
-  if (input.accountType === "ENTERPRISE") return true;
-  if (isCompedPlanCode(input.planCode)) return true;
-  // INDIVIDUAL self-serve / billed Standard (and future paid non-comped): one seat.
-  return false;
+  return orgAdminInviteDenialReason(input) == null;
 }
 
 /** Null when invites are allowed; otherwise the user-facing denial message. */
 export function orgAdminInviteDenialReason(input: {
   accountType: "INDIVIDUAL" | "ENTERPRISE" | string;
   planCode: string | null | undefined;
+  seatQuantity?: number;
+  maxSeats?: number;
+  usedSeats?: number;
 }): string | null {
-  return orgAdminInvitesAllowed(input)
-    ? null
-    : individualOrgAdminInviteBlockMessage();
+  if (isCompedPlanCode(input.planCode)) return null;
+
+  const code = canonicalPlanCode(input.planCode ?? BILLING_PLAN_STANDARD);
+
+  if (planUsesSeatBilling(code) || input.accountType === "ENTERPRISE") {
+    const seatQuantity = input.seatQuantity ?? 1;
+    const maxSeats = input.maxSeats ?? seatQuantity;
+    const usedSeats = input.usedSeats ?? 0;
+    const snap = buildSeatSnapshot({
+      planCode: code,
+      seatQuantity,
+      maxSeats,
+      usedSeats,
+    });
+    return snap.inviteDenialReason;
+  }
+
+  // INDIVIDUAL Standard (and other non-seat plans): one seat.
+  if (code === BILLING_PLAN_STANDARD || code === BILLING_PLAN_TEAM) {
+    // TEAM already handled above via planUsesSeatBilling.
+  }
+  return individualOrgAdminInviteBlockMessage();
 }

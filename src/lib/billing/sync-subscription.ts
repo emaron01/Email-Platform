@@ -52,6 +52,7 @@ function extractPrimaryItem(subscription: Stripe.Subscription): {
   currency: string | null;
   interval: string | null;
   currentPeriodEnd: Date | null;
+  quantity: number;
 } {
   const item = subscription.items?.data?.[0];
   const price = item?.price;
@@ -70,6 +71,7 @@ function extractPrimaryItem(subscription: Stripe.Subscription): {
     currency: price?.currency ?? subscription.currency ?? null,
     interval: price?.recurring?.interval ?? null,
     currentPeriodEnd: unixToDate(item?.current_period_end),
+    quantity: item?.quantity ?? 1,
   };
 }
 
@@ -132,35 +134,68 @@ export async function syncOrganizationFromStripeSubscription(input: {
   const { loadFlattenedBillingPrices } = await import(
     "@/lib/billing/effective-prices"
   );
-  const { BILLING_PLAN_STANDARD } = await import("@/lib/billing/plans");
+  const {
+    BILLING_PLAN_STANDARD,
+    BILLING_PLAN_TEAM,
+    BILLING_PLAN_ENTERPRISE,
+  } = await import("@/lib/billing/plans");
+  const { defaultMaxSeatsForPlan } = await import("@/lib/org/seat-limits");
   const prices = await loadFlattenedBillingPrices();
+  const additionalPriceIds: Array<{ planCode: string; priceId: string }> = [];
+  const additionalProductIds: Array<{ planCode: string; productId: string }> =
+    [];
+  if (prices.standardMonthlyPriceId) {
+    additionalPriceIds.push({
+      planCode: BILLING_PLAN_STANDARD,
+      priceId: prices.standardMonthlyPriceId,
+    });
+  }
+  if (prices.standardProductId) {
+    additionalProductIds.push({
+      planCode: BILLING_PLAN_STANDARD,
+      productId: prices.standardProductId,
+    });
+  }
+  if (prices.teamMonthlyPriceId) {
+    additionalPriceIds.push({
+      planCode: BILLING_PLAN_TEAM,
+      priceId: prices.teamMonthlyPriceId,
+    });
+  }
+  if (prices.teamProductId) {
+    additionalProductIds.push({
+      planCode: BILLING_PLAN_TEAM,
+      productId: prices.teamProductId,
+    });
+  }
+  if (prices.enterpriseMonthlyPriceId) {
+    additionalPriceIds.push({
+      planCode: BILLING_PLAN_ENTERPRISE,
+      priceId: prices.enterpriseMonthlyPriceId,
+    });
+  }
+  if (prices.enterpriseProductId) {
+    additionalProductIds.push({
+      planCode: BILLING_PLAN_ENTERPRISE,
+      productId: prices.enterpriseProductId,
+    });
+  }
   const planCode = resolvePlanCodeFromStripeIds({
     priceId: item.priceId,
     productId: item.productId,
     additional: {
-      priceIds: prices.standardMonthlyPriceId
-        ? [
-            {
-              planCode: BILLING_PLAN_STANDARD,
-              priceId: prices.standardMonthlyPriceId,
-            },
-          ]
-        : [],
-      productIds: prices.standardProductId
-        ? [
-            {
-              planCode: BILLING_PLAN_STANDARD,
-              productId: prices.standardProductId,
-            },
-          ]
-        : [],
+      priceIds: additionalPriceIds,
+      productIds: additionalProductIds,
     },
   });
 
-  const customerId =
-    typeof subscription.customer === "string"
-      ? subscription.customer
-      : subscription.customer.id;
+  const metaSeats = Number.parseInt(
+    subscription.metadata?.seatQuantity ?? "",
+    10,
+  );
+  const seatQuantity = Number.isInteger(metaSeats) && metaSeats > 0
+    ? metaSeats
+    : Math.max(1, item.quantity);
 
   const previous = await prisma.organizationBillingProfile.findUnique({
     where: { organizationId },
@@ -169,8 +204,21 @@ export async function syncOrganizationFromStripeSubscription(input: {
       lockReason: true,
       gracePeriodEndsAt: true,
       canceledAt: true,
+      maxSeats: true,
     },
   });
+  const defaultMax = defaultMaxSeatsForPlan(planCode);
+  const maxSeats = Math.max(
+    previous?.maxSeats ?? defaultMax,
+    seatQuantity,
+    defaultMax,
+  );
+
+  const customerId =
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : subscription.customer.id;
+
   const lockFields = nextPaymentLockFields({
     previous,
     billingStatus,
@@ -198,6 +246,8 @@ export async function syncOrganizationFromStripeSubscription(input: {
       stripeDiscountAmountOffCents: mirror.stripeDiscountAmountOffCents,
       stripeCouponId: mirror.stripeCouponId,
       stripeEffectiveUnitAmountCents: mirror.stripeEffectiveUnitAmountCents,
+      seatQuantity,
+      maxSeats,
       currentPeriodEnd: item.currentPeriodEnd,
       trialEndsAt: unixToDate(subscription.trial_end),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
@@ -219,6 +269,9 @@ export async function syncOrganizationFromStripeSubscription(input: {
       stripeDiscountAmountOffCents: mirror.stripeDiscountAmountOffCents,
       stripeCouponId: mirror.stripeCouponId,
       stripeEffectiveUnitAmountCents: mirror.stripeEffectiveUnitAmountCents,
+      seatQuantity,
+      // Never lower a SUPER_ADMIN-raised Enterprise cap on sync.
+      maxSeats: Math.max(maxSeats, previous?.maxSeats ?? 0),
       currentPeriodEnd: item.currentPeriodEnd,
       trialEndsAt: unixToDate(subscription.trial_end),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,

@@ -10,8 +10,14 @@ import {
   removeMemberAction,
 } from "@/app/actions/settings";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
+import { AddSeatButton } from "@/components/billing/AddSeatButton";
 import { requireOrgAdmin } from "@/lib/org/authz";
-import { orgAdminInvitesAllowed, individualOrgAdminInviteBlockMessage } from "@/lib/org/seats";
+import {
+  orgAdminInvitesAllowed,
+  individualOrgAdminInviteBlockMessage,
+} from "@/lib/org/seats";
+import { buildSeatSnapshot, formatSeatsUsedLabel } from "@/lib/org/seat-limits";
+import { planUsesSeatBilling } from "@/lib/billing/plans";
 import { prisma } from "@/lib/prisma";
 import { ensureOrganizationPolicies } from "@/lib/usage/policy";
 
@@ -43,14 +49,31 @@ export default async function OrganizationSettingsPage() {
       }),
       prisma.organizationBillingProfile.findUnique({
         where: { organizationId: organization.id },
-        select: { planCode: true },
+        select: {
+          planCode: true,
+          seatQuantity: true,
+          maxSeats: true,
+          billingStatus: true,
+        },
       }),
     ]);
+
+  const seatSnap = buildSeatSnapshot({
+    planCode: billing?.planCode ?? "STANDARD",
+    seatQuantity: billing?.seatQuantity ?? 1,
+    maxSeats: billing?.maxSeats ?? 1,
+    usedSeats: members.length,
+  });
 
   const canInvite = orgAdminInvitesAllowed({
     accountType: organization.accountType,
     planCode: billing?.planCode ?? null,
+    seatQuantity: seatSnap.seatQuantity,
+    maxSeats: seatSnap.maxSeats,
+    usedSeats: seatSnap.usedSeats,
   });
+
+  const showSeats = planUsesSeatBilling(billing?.planCode ?? "");
 
   const overrideByUser = new Map(
     overrides.map((o) => [o.userId, o] as const),
@@ -271,6 +294,34 @@ export default async function OrganizationSettingsPage() {
         </ul>
       </section>
 
+      {showSeats ? (
+        <section className="space-y-3" data-testid="org-seats-section">
+          <h2 className="text-lg font-medium text-slate-900">Seats</h2>
+          <p className="text-sm text-slate-600">
+            {formatSeatsUsedLabel({
+              usedSeats: seatSnap.usedSeats,
+              seatQuantity: seatSnap.seatQuantity,
+            })}
+            {" · "}
+            Cap {seatSnap.maxSeats}
+            {seatSnap.planCode === "ENTERPRISE"
+              ? " (set by Sales Forecaster)"
+              : ""}
+            .
+          </p>
+          <AddSeatButton
+            disabled={!seatSnap.canAddSeatSelfServe}
+            disabledReason={
+              seatSnap.canAddSeatSelfServe
+                ? null
+                : seatSnap.seatQuantity >= seatSnap.maxSeats
+                  ? "Seat cap reached. Contact support to raise the cap on Enterprise."
+                  : "Self-serve seat adds are available on Team plans with an active subscription."
+            }
+          />
+        </section>
+      ) : null}
+
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-900">Invite user</h2>
         {canInvite ? (
@@ -335,7 +386,8 @@ export default async function OrganizationSettingsPage() {
             className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700"
             data-testid="invite-blocked-individual"
           >
-            {individualOrgAdminInviteBlockMessage()}
+            {seatSnap.inviteDenialReason ??
+              individualOrgAdminInviteBlockMessage()}
           </p>
         )}
       </section>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   FUTURE_PREMIUM_SEAT_MAX,
   FUTURE_PREMIUM_SEAT_MIN,
+  SEAT_LIMIT_REACHED_MESSAGE,
   individualOrgAdminInviteBlockMessage,
   orgAdminInviteDenialReason,
   orgAdminInvitesAllowed,
@@ -21,12 +22,10 @@ describe("org seat / invite policy", () => {
         planCode: "STANDARD",
       }),
     ).toContain("limited to one user");
-    expect(individualOrgAdminInviteBlockMessage()).toContain(
-      "Team accounts are coming soon",
-    );
+    expect(individualOrgAdminInviteBlockMessage()).toContain("Team");
   });
 
-  it("allows COMPED Individual and all ENTERPRISE", () => {
+  it("allows COMPED Individual and seat-capacity ENTERPRISE/TEAM", () => {
     expect(
       orgAdminInvitesAllowed({
         accountType: "INDIVIDUAL",
@@ -43,17 +42,35 @@ describe("org seat / invite policy", () => {
       orgAdminInvitesAllowed({
         accountType: "ENTERPRISE",
         planCode: "STANDARD",
+        seatQuantity: 5,
+        maxSeats: 10,
+        usedSeats: 2,
       }),
     ).toBe(true);
     expect(
       orgAdminInviteDenialReason({
-        accountType: "ENTERPRISE",
-        planCode: "STANDARD",
+        accountType: "INDIVIDUAL",
+        planCode: "TEAM",
+        seatQuantity: 3,
+        maxSeats: 10,
+        usedSeats: 1,
       }),
     ).toBeNull();
   });
 
-  it("reserves Premium seat bounds for later Stripe quantity work", () => {
+  it("blocks TEAM/ENTERPRISE invites at seat capacity", () => {
+    expect(
+      orgAdminInviteDenialReason({
+        accountType: "INDIVIDUAL",
+        planCode: "TEAM",
+        seatQuantity: 3,
+        maxSeats: 10,
+        usedSeats: 3,
+      }),
+    ).toBe(SEAT_LIMIT_REACHED_MESSAGE);
+  });
+
+  it("keeps Team seat bounds at 2–10", () => {
     expect(FUTURE_PREMIUM_SEAT_MIN).toBe(2);
     expect(FUTURE_PREMIUM_SEAT_MAX).toBe(10);
   });
@@ -63,7 +80,6 @@ describe("org seat / invite policy", () => {
     const signup = readFileSync("src/lib/org/signup.ts", "utf8");
     expect(signup).toContain("orgAdminInviteDenialReason");
     expect(signup).toContain("createOrganizationInvitationAsPlatform");
-    // Platform path must not call the org-admin denial helper.
     const platformFn = signup.slice(
       signup.indexOf("createOrganizationInvitationAsPlatform"),
       signup.indexOf("async function issueOrganizationInvitation"),

@@ -18,12 +18,14 @@ const initial: CampaignContactsActionResult | null = null;
 
 export function CampaignContactsManager({
   campaignId,
+  executionId,
   search,
   contacts,
   scoringRuns,
   selectedScoringRunId,
 }: {
   campaignId: string;
+  executionId?: string | null;
   search: string;
   contacts: Array<{
     id: string;
@@ -95,6 +97,9 @@ export function CampaignContactsManager({
           className="space-y-3"
         >
           <input type="hidden" name="campaignId" value={campaignId} />
+          {executionId ? (
+            <input type="hidden" name="executionId" value={executionId} />
+          ) : null}
           <label className="block min-w-72 text-sm">
             <span className="font-medium text-slate-700">Scoring run</span>
             <select
@@ -156,6 +161,9 @@ export function CampaignContactsManager({
           Search existing contacts
         </h3>
         <form method="get" className="mt-3 flex flex-wrap items-end gap-3">
+          {executionId ? (
+            <input type="hidden" name="execution" value={executionId} />
+          ) : null}
           <label className="min-w-64 flex-1 text-sm">
             <span className="font-medium text-slate-700">Search</span>
             <input
@@ -173,7 +181,11 @@ export function CampaignContactsManager({
           </button>
           {search ? (
             <Link
-              href={`/campaigns/${campaignId}`}
+              href={
+                executionId
+                  ? `/campaigns/${campaignId}?execution=${executionId}`
+                  : `/campaigns/${campaignId}`
+              }
               className="px-2 py-2 text-sm text-slate-600 underline"
             >
               Clear
@@ -183,6 +195,9 @@ export function CampaignContactsManager({
 
         <form action={contactAction} className="mt-4 space-y-3">
           <input type="hidden" name="campaignId" value={campaignId} />
+          {executionId ? (
+            <input type="hidden" name="executionId" value={executionId} />
+          ) : null}
           {contactState ? (
             <p
               role="status"

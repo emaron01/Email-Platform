@@ -71,13 +71,13 @@ export default async function PlatformHomePage() {
     },
     {
       href: "/platform/billing",
-      title: "Billing",
+      title: "Billing Config",
       body: "Trial length and Stripe price IDs for new Checkout (console override over environment).",
       superAdminOnly: true,
     },
     {
       href: "/platform/catalog",
-      title: "Product catalog",
+      title: "Plan Catalog",
       body: "Plan names, feature bullets, and entitlement floors for new signups.",
       superAdminOnly: true,
     },

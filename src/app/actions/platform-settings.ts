@@ -154,6 +154,14 @@ export async function updateBillingPricesSettingAction(
         companyCreditsPriceId: String(
           formData.get("companyCreditsPriceId") || "",
         ),
+        teamMonthlyPriceId: String(formData.get("teamMonthlyPriceId") || ""),
+        teamProductId: String(formData.get("teamProductId") || ""),
+        enterpriseMonthlyPriceId: String(
+          formData.get("enterpriseMonthlyPriceId") || "",
+        ),
+        enterpriseProductId: String(
+          formData.get("enterpriseProductId") || "",
+        ),
       });
     } catch (error) {
       return { ok: false, message: toSafeError(error) };
@@ -230,6 +238,9 @@ function floorsFromForm(
     monthlyEmailLimit,
     dailyAiGenerationLimit,
     researchFreshnessDays,
+    companiesPerSeat: null,
+    seatMin: null,
+    seatMax: null,
   };
 }
 
@@ -287,13 +298,22 @@ export async function updateBillingCatalogSettingAction(
       trial = floorsFromForm(formData, "trial");
     }
 
-    const stripePriceIdRaw = String(formData.get("stripePriceId") || "").trim();
-    const stripePriceId =
-      planCode === "STANDARD"
-        ? null
-        : stripePriceIdRaw.length > 0
-          ? stripePriceIdRaw
-          : null;
+    const companiesPerSeat = parseFloorField(
+      formData,
+      "companiesPerSeat",
+      false,
+    );
+    const seatMin = parseFloorField(formData, "seatMin", false);
+    const seatMax = parseFloorField(formData, "seatMax", false);
+
+    paid.companiesPerSeat = companiesPerSeat;
+    paid.seatMin = seatMin;
+    paid.seatMax = seatMax;
+    if (trial) {
+      trial.companiesPerSeat = companiesPerSeat;
+      trial.seatMin = seatMin;
+      trial.seatMax = seatMax;
+    }
 
     const entry: CatalogPlanEntry = {
       planCode,
@@ -307,7 +327,6 @@ export async function updateBillingCatalogSettingAction(
       active:
         String(formData.get("active") || "") === "1" ||
         String(formData.get("active") || "").toLowerCase() === "on",
-      stripePriceId,
       entitlementFloors: { trial, paid },
       companyCredits: null,
     };
@@ -329,20 +348,11 @@ export async function updateBillingCatalogSettingAction(
           message: "Credit block size and expiry must be at least 1.",
         };
       }
-      const creditsStripeRaw = String(
-        formData.get("creditsStripePriceId") || "",
-      ).trim();
       entry.companyCredits = {
         blockSize,
         displayPriceNote: String(
           formData.get("creditsDisplayPriceNote") || "",
         ).trim(),
-        stripePriceId:
-          planCode === "STANDARD"
-            ? null
-            : creditsStripeRaw.length > 0
-              ? creditsStripeRaw
-              : null,
         expiryMonths,
       };
     }

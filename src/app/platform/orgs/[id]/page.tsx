@@ -35,6 +35,7 @@ import {
   unsuspendOrganizationAction,
   updatePlatformUsagePolicyAction,
   updatePlatformResearchPolicyAction,
+  updatePlatformOrgMaxSeatsAction,
 } from "@/app/actions/platform-orgs";
 
 function pct(rate: number): string {
@@ -106,6 +107,38 @@ export default async function PlatformOrgDetailPage({
           </li>
           <li className="rounded-md border border-slate-200 bg-white p-3">
             Status: {billingStatusLabel(billing.billingStatus)}
+          </li>
+          <li className="rounded-md border border-slate-200 bg-white p-3 sm:col-span-2">
+            Seats: {billing.seatQuantity} purchased · cap {billing.maxSeats}
+            {canMutate ? (
+              <ActionFeedbackForm
+                action={updatePlatformOrgMaxSeatsAction}
+                className="mt-3 flex flex-wrap items-end gap-2"
+                testId="platform-org-max-seats-form"
+              >
+                <input type="hidden" name="organizationId" value={id} />
+                <label className="text-xs text-slate-600">
+                  Seat cap (Enterprise override)
+                  <input
+                    name="maxSeats"
+                    type="number"
+                    min={billing.seatQuantity}
+                    defaultValue={billing.maxSeats}
+                    className="mt-1 block w-28 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className={cn(PRIMARY_BUTTON_CLASS, "!px-3", "!py-1.5")}
+                >
+                  Save cap
+                </button>
+              </ActionFeedbackForm>
+            ) : null}
+            <p className="mt-2 text-xs text-slate-500">
+              Changing the cap does not change the Stripe subscription — it only
+              unlocks the invite gate.
+            </p>
           </li>
           <li className="rounded-md border border-slate-200 bg-white p-3 sm:col-span-2">
             Ops contact:{" "}

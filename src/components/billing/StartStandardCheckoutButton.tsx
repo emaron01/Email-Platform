@@ -1,17 +1,20 @@
 "use client";
 import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
+import { BILLING_PLAN_STANDARD } from "@/lib/billing/plans";
 import { cn } from "@/lib/utils";
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * Starts STANDARD Checkout (allow_promotion_codes enabled server-side).
+ * Starts plan Checkout (allow_promotion_codes enabled server-side).
  */
 export function StartStandardCheckoutButton({
   disabledReason,
   buttonLabel = "Start Standard trial",
   trialPeriodDays = 7,
+  planCode = BILLING_PLAN_STANDARD,
+  seatQuantity = 1,
 }: {
   disabledReason?: string | null;
   buttonLabel?: string;
@@ -20,6 +23,8 @@ export function StartStandardCheckoutButton({
    * Display only — Checkout reads the env server-side.
    */
   trialPeriodDays?: number | null;
+  planCode?: string;
+  seatQuantity?: number;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +50,11 @@ export function StartStandardCheckoutButton({
             try {
               const res = await fetch("/api/billing/checkout", {
                 method: "POST",
-                headers: { Accept: "application/json" },
+                headers: {
+                  Accept: "application/json",
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ planCode, seatQuantity }),
               });
               const body = (await res.json().catch(() => ({}))) as {
                 url?: string;

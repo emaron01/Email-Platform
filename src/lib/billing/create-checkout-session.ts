@@ -1,28 +1,44 @@
 /**
- * Create Stripe Checkout Session for STANDARD subscription (trial + promo codes).
+ * Create Stripe Checkout Session for STANDARD or TEAM subscription
+ * (trial + promo codes + seat quantity).
  */
 import "server-only";
 
 import { billingAppBaseUrl } from "@/lib/billing/app-base-url";
-import { effectivePricesAreCheckoutReady } from "@/lib/billing/billing-prices";
+import {
+  effectivePricesAreCheckoutReady,
+  priceIdsForPlan,
+} from "@/lib/billing/billing-prices";
 import { loadEffectiveBillingPrices } from "@/lib/billing/effective-prices";
 import { loadEffectiveTrialPeriod } from "@/lib/billing/effective-trial";
 import {
   BILLING_PLAN_STANDARD,
+  BILLING_PLAN_TEAM,
   getPlanDefinition,
+  planUsesSeatBilling,
 } from "@/lib/billing/plans";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
+import {
+  clampSeatQuantity,
+  defaultMaxSeatsForPlan,
+  defaultSeatQuantityForPlan,
+} from "@/lib/org/seat-limits";
 import { prisma } from "@/lib/prisma";
 
-export type CreateStandardCheckoutResult =
+export type CreatePlanCheckoutResult =
   | { ok: true; url: string }
   | { ok: false; error: string; code: string };
 
-export async function createStandardCheckoutSession(input: {
+/** @deprecated Prefer createPlanCheckoutSession */
+export type CreateStandardCheckoutResult = CreatePlanCheckoutResult;
+
+export async function createPlanCheckoutSession(input: {
   organizationId: string;
   actorUserId: string;
   actorEmail: string;
-}): Promise<CreateStandardCheckoutResult> {
+  planCode?: string;
+  seatQuantity?: number;
+}): Promise<CreatePlanCheckoutResult> {
   if (!stripeConfigured()) {
     return {
       ok: false,
@@ -31,24 +47,46 @@ export async function createStandardCheckoutSession(input: {
     };
   }
 
-  const prices = await loadEffectiveBillingPrices();
-  if (!effectivePricesAreCheckoutReady(prices)) {
+  const planCode =
+    input.planCode === BILLING_PLAN_TEAM
+      ? BILLING_PLAN_TEAM
+      : BILLING_PLAN_STANDARD;
+
+  if (input.planCode === "ENTERPRISE") {
     return {
       ok: false,
-      error: "Standard plan price is not configured.",
+      error: "Enterprise is not available for self-serve checkout. Contact us.",
+      code: "ENTERPRISE_CONTACT_US",
+    };
+  }
+
+  const prices = await loadEffectiveBillingPrices();
+  if (!effectivePricesAreCheckoutReady(prices, planCode)) {
+    return {
+      ok: false,
+      error: `${planCode === BILLING_PLAN_TEAM ? "Team" : "Standard"} plan price is not configured.`,
       code: "PRICE_NOT_CONFIGURED",
     };
   }
 
-  const plan = getPlanDefinition(BILLING_PLAN_STANDARD);
-  const priceId = prices.standardMonthlyPriceId.value;
+  const plan = getPlanDefinition(planCode);
+  const { priceId } = priceIdsForPlan(prices, planCode);
   if (!priceId) {
     return {
       ok: false,
-      error: "Standard plan price is not configured.",
+      error: `${planCode === BILLING_PLAN_TEAM ? "Team" : "Standard"} plan price is not configured.`,
       code: "PRICE_NOT_CONFIGURED",
     };
   }
+
+  const maxSeats = defaultMaxSeatsForPlan(planCode);
+  const quantity = planUsesSeatBilling(planCode)
+    ? clampSeatQuantity({
+        planCode,
+        quantity: input.seatQuantity ?? defaultSeatQuantityForPlan(planCode),
+        maxSeats,
+      })
+    : 1;
 
   const profile = await prisma.organizationBillingProfile.findUnique({
     where: { organizationId: input.organizationId },
@@ -85,6 +123,9 @@ export async function createStandardCheckoutSession(input: {
         organizationId: input.organizationId,
         billingEmail: profile?.billingEmail ?? input.actorEmail,
         stripeCustomerId: customerId,
+        seatQuantity: quantity,
+        maxSeats,
+        planCode,
       },
       update: {
         stripeCustomerId: customerId,
@@ -93,11 +134,9 @@ export async function createStandardCheckoutSession(input: {
     });
   }
 
-  // Trial length + catalog Price: platform console → env. Only applied to NEW
-  // Checkout sessions. Existing Stripe subscriptions keep their Price and trial_end.
   const effective =
     plan?.trialDays != null
-      ? await loadEffectiveTrialPeriod({ planCode: BILLING_PLAN_STANDARD })
+      ? await loadEffectiveTrialPeriod({ planCode })
       : null;
   const trialDays = effective?.days ?? null;
   const baseUrl = billingAppBaseUrl();
@@ -106,23 +145,24 @@ export async function createStandardCheckoutSession(input: {
     mode: "subscription",
     customer: customerId,
     client_reference_id: input.organizationId,
-    line_items: [{ price: priceId, quantity: 1 }],
+    line_items: [{ price: priceId, quantity }],
     allow_promotion_codes: true,
     success_url: `${baseUrl}/settings/billing?checkout=success`,
     cancel_url: `${baseUrl}/onboarding/subscribe?checkout=canceled`,
     metadata: {
       organizationId: input.organizationId,
       actorUserId: input.actorUserId,
-      planCode: BILLING_PLAN_STANDARD,
+      planCode,
+      seatQuantity: String(quantity),
     },
     subscription_data: {
       ...(trialDays != null ? { trial_period_days: trialDays } : {}),
       metadata: {
         organizationId: input.organizationId,
-        planCode: BILLING_PLAN_STANDARD,
+        planCode,
+        seatQuantity: String(quantity),
       },
     },
-    // Required so trial orgs can convert early (trial_end: 'now') with a card on file.
     payment_method_collection: "always",
   });
 
@@ -135,4 +175,16 @@ export async function createStandardCheckoutSession(input: {
   }
 
   return { ok: true, url: session.url };
+}
+
+export async function createStandardCheckoutSession(input: {
+  organizationId: string;
+  actorUserId: string;
+  actorEmail: string;
+}): Promise<CreatePlanCheckoutResult> {
+  return createPlanCheckoutSession({
+    ...input,
+    planCode: BILLING_PLAN_STANDARD,
+    seatQuantity: 1,
+  });
 }

@@ -36,6 +36,10 @@ describe("billing.prices PlatformSetting", () => {
       standardMonthlyPriceId: "price_std",
       standardProductId: "prod_std",
       companyCreditsPriceId: "price_cred",
+      teamMonthlyPriceId: "",
+      teamProductId: "",
+      enterpriseMonthlyPriceId: "",
+      enterpriseProductId: "",
     });
   });
 
@@ -79,6 +83,10 @@ describe("billing.prices PlatformSetting", () => {
         standardMonthlyPriceId: "price_console",
         standardProductId: "prod_console",
         companyCreditsPriceId: "price_cred_console",
+        teamMonthlyPriceId: "",
+        teamProductId: "",
+        enterpriseMonthlyPriceId: "",
+        enterpriseProductId: "",
       },
     });
     expect(effective.standardMonthlyPriceId).toMatchObject({
@@ -101,6 +109,10 @@ describe("billing.prices PlatformSetting", () => {
       standardMonthlyPriceId: "price_abc",
       standardProductId: "prod_abc",
       companyCreditsPriceId: "price_xyz",
+      teamMonthlyPriceId: "",
+      teamProductId: "",
+      enterpriseMonthlyPriceId: "",
+      enterpriseProductId: "",
     });
   });
 

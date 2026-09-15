@@ -161,19 +161,25 @@ export async function createOrganizationInvitation(input: {
 
   await assertOrganizationNotPaymentLocked(input.organizationId);
 
-  const [organization, billing] = await Promise.all([
+  const [organization, billing, usedSeats] = await Promise.all([
     prisma.organization.findUniqueOrThrow({
       where: { id: input.organizationId },
       select: { accountType: true },
     }),
     prisma.organizationBillingProfile.findUnique({
       where: { organizationId: input.organizationId },
-      select: { planCode: true },
+      select: { planCode: true, seatQuantity: true, maxSeats: true },
+    }),
+    prisma.organizationMembership.count({
+      where: { organizationId: input.organizationId },
     }),
   ]);
   const denial = orgAdminInviteDenialReason({
     accountType: organization.accountType,
     planCode: billing?.planCode ?? null,
+    seatQuantity: billing?.seatQuantity ?? 1,
+    maxSeats: billing?.maxSeats ?? billing?.seatQuantity ?? 1,
+    usedSeats,
   });
   if (denial) {
     throw new InvitationError(denial);

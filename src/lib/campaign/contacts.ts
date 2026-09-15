@@ -59,6 +59,7 @@ const campaignDetailInclude = {
       id: true,
       selected: true,
       status: true,
+      executionId: true,
       chosenPersonaId: true,
       sequenceStoppedAt: true,
       sequenceStoppedReason: true,
@@ -590,6 +591,7 @@ async function insertCampaignContacts(input: {
   organizationId: string;
   campaignId: string;
   contactIds: string[];
+  executionId?: string | null;
 }): Promise<number> {
   const contactIds = Array.from(
     new Set(input.contactIds.map((id) => id.trim()).filter(Boolean)),
@@ -654,11 +656,13 @@ async function insertCampaignContacts(input: {
     );
   }
 
+  const executionId = input.executionId?.trim() || null;
   const inserted = await prisma.campaignContact.createMany({
     data: contactIds.map((contactId) => ({
       organizationId: input.organizationId,
       campaignId: input.campaignId,
       contactId,
+      executionId,
       selected: true,
       status: "SELECTED",
     })),
@@ -673,6 +677,9 @@ async function insertCampaignContacts(input: {
         organizationId: input.organizationId,
         campaignId: input.campaignId,
         contactId: { in: contactIds },
+        ...(executionId
+          ? { executionId }
+          : { executionId: null }),
       },
       select: { id: true },
     });
@@ -684,6 +691,7 @@ async function insertCampaignContacts(input: {
 export async function addContactsToCampaign(input: {
   campaignId: string;
   contactIds: string[];
+  executionId?: string | null;
 }): Promise<number> {
   const organizationId = await requireOrganizationId();
   const campaign = await requireCampaignForOrganization(
@@ -694,16 +702,28 @@ export async function addContactsToCampaign(input: {
     "@/lib/suppression/service"
   );
   await assertCampaignNotArchived(organizationId, campaign.id);
+  if (input.executionId) {
+    const { requireCampaignExecution } = await import(
+      "@/lib/campaign/execution"
+    );
+    await requireCampaignExecution({
+      organizationId,
+      executionId: input.executionId,
+      campaignId: campaign.id,
+    });
+  }
   return insertCampaignContacts({
     organizationId,
     campaignId: campaign.id,
     contactIds: input.contactIds,
+    executionId: input.executionId,
   });
 }
 
 export async function addScoringRunContactsToCampaign(input: {
   campaignId: string;
   scoringRunId: string;
+  executionId?: string | null;
   /**
    * When set, only attach contacts whose workflow bucket is in this list.
    * Campaign return uses ["GOOD"] (Ready to include). Manual add omits this
@@ -732,6 +752,17 @@ export async function addScoringRunContactsToCampaign(input: {
     "@/lib/suppression/service"
   );
   await assertCampaignNotArchived(organizationId, campaign.id);
+
+  if (input.executionId) {
+    const { requireCampaignExecution } = await import(
+      "@/lib/campaign/execution"
+    );
+    await requireCampaignExecution({
+      organizationId,
+      executionId: input.executionId,
+      campaignId: campaign.id,
+    });
+  }
 
   const scores = await prisma.contactScore.findMany({
     where: {
@@ -768,5 +799,6 @@ export async function addScoringRunContactsToCampaign(input: {
     organizationId,
     campaignId: campaign.id,
     contactIds,
+    executionId: input.executionId,
   });
 }

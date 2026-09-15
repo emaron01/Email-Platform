@@ -20,6 +20,10 @@ export async function loadFlattenedBillingPrices(): Promise<{
   standardMonthlyPriceId: string | null;
   standardProductId: string | null;
   companyCreditsPriceId: string | null;
+  teamMonthlyPriceId: string | null;
+  teamProductId: string | null;
+  enterpriseMonthlyPriceId: string | null;
+  enterpriseProductId: string | null;
   platformSetting: BillingPricesSettingValue | null;
   effective: EffectiveBillingPrices;
 }> {

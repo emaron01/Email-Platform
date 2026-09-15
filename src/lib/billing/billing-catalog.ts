@@ -2,14 +2,14 @@
  * Platform product catalog (billing.catalog) — marketing copy + entitlement floors
  * for NEW Checkout / Stripe sync. Existing org policies are not rewritten by edits.
  *
- * Standard recurring + credit Price IDs resolve from billing.prices (not duplicated).
- * Premium / Enterprise may store their own stripePriceId when sellable.
+ * Stripe Price IDs live only in billing.prices (/platform/billing) — never here.
  */
 import {
   BILLING_PLAN_COMPED,
   BILLING_PLAN_ENTERPRISE,
   BILLING_PLAN_PREMIUM,
   BILLING_PLAN_STANDARD,
+  BILLING_PLAN_TEAM,
   COMPANY_CREDIT_BLOCK,
   getPlanDefinition,
   type PlanEntitlements,
@@ -19,22 +19,26 @@ import { DEFAULT_USAGE_POLICY_VALUES } from "@/lib/usage/defaults";
 export const PLATFORM_SETTING_BILLING_CATALOG = "billing.catalog";
 
 export type CatalogEntitlementFloors = {
+  /**
+   * STANDARD: org-wide company research limit.
+   * TEAM / ENTERPRISE: per-user companiesPerSeat (same number stored here for apply).
+   */
   companyResearchLimit: number;
   dailyEmailLimit: number;
   monthlyEmailLimit: number | null;
   dailyAiGenerationLimit: number;
   researchFreshnessDays: number;
+  /** Per-user company allowance. Null for STANDARD (org-level). */
+  companiesPerSeat: number | null;
+  seatMin: number | null;
+  /** Null = no global hard max (ENTERPRISE). */
+  seatMax: number | null;
 };
 
 export type CatalogCompanyCredits = {
   blockSize: number;
   /** Display-only note (e.g. "for $30 each"). Empty → subscribe page loads Stripe amount. */
   displayPriceNote: string;
-  /**
-   * null → resolve from billing.prices.companyCreditsPriceId (Standard).
-   * Set for plans that use a different credit Price.
-   */
-  stripePriceId: string | null;
   expiryMonths: number;
 };
 
@@ -46,11 +50,6 @@ export type CatalogPlanEntry = {
   trialNote: string;
   sellable: boolean;
   active: boolean;
-  /**
-   * null for STANDARD → resolve from billing.prices.standardMonthlyPriceId.
-   * Premium / Enterprise store their own when sellable.
-   */
-  stripePriceId: string | null;
   entitlementFloors: {
     trial: CatalogEntitlementFloors | null;
     paid: CatalogEntitlementFloors;
@@ -64,6 +63,9 @@ export type BillingCatalogSettingValue = {
 
 export type ResolvedCatalogEntitlements = PlanEntitlements & {
   dailyAiGenerationLimit: number;
+  companiesPerSeat: number | null;
+  seatMin: number | null;
+  seatMax: number | null;
 };
 
 function asNonNegInt(raw: unknown): number | null {
@@ -97,7 +99,16 @@ function asStringArray(raw: unknown): string[] | null {
   return out;
 }
 
-function parseFloors(raw: unknown): CatalogEntitlementFloors | null {
+function parseOptionalSeatInt(raw: unknown): number | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw == null || raw === "") return null;
+  return asNonNegInt(raw);
+}
+
+function parseFloors(
+  raw: unknown,
+  defaults?: Partial<CatalogEntitlementFloors>,
+): CatalogEntitlementFloors | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
   const companyResearchLimit = asNonNegInt(o.companyResearchLimit);
@@ -119,12 +130,29 @@ function parseFloors(raw: unknown): CatalogEntitlementFloors | null {
     monthlyEmailLimit = asNonNegInt(o.monthlyEmailLimit);
     if (monthlyEmailLimit == null) return null;
   }
+
+  const companiesPerSeatParsed = parseOptionalSeatInt(o.companiesPerSeat);
+  const seatMinParsed = parseOptionalSeatInt(o.seatMin);
+  const seatMaxParsed = parseOptionalSeatInt(o.seatMax);
+
   return {
     companyResearchLimit,
     dailyEmailLimit,
     monthlyEmailLimit,
     dailyAiGenerationLimit,
     researchFreshnessDays,
+    companiesPerSeat:
+      companiesPerSeatParsed === undefined
+        ? (defaults?.companiesPerSeat ?? null)
+        : companiesPerSeatParsed,
+    seatMin:
+      seatMinParsed === undefined
+        ? (defaults?.seatMin ?? null)
+        : seatMinParsed,
+    seatMax:
+      seatMaxParsed === undefined
+        ? (defaults?.seatMax ?? null)
+        : seatMaxParsed,
   };
 }
 
@@ -137,17 +165,20 @@ function parseCompanyCredits(raw: unknown): CatalogCompanyCredits | null {
   if (blockSize == null || expiryMonths == null) return null;
   const displayPriceNote =
     typeof o.displayPriceNote === "string" ? o.displayPriceNote.trim() : "";
-  const stripeRaw = o.stripePriceId;
-  const stripePriceId =
-    stripeRaw == null || stripeRaw === ""
-      ? null
-      : asString(stripeRaw);
-  if (stripeRaw != null && stripeRaw !== "" && !stripePriceId) return null;
   return {
     blockSize,
     displayPriceNote,
-    stripePriceId,
     expiryMonths,
+  };
+}
+
+function seatDefaultsForPlan(planCode: string): Partial<CatalogEntitlementFloors> {
+  const plan = getPlanDefinition(planCode);
+  if (!plan) return { companiesPerSeat: null, seatMin: null, seatMax: null };
+  return {
+    companiesPerSeat: plan.seats.companiesPerSeat,
+    seatMin: plan.seats.seatMin,
+    seatMax: plan.seats.seatMax,
   };
 }
 
@@ -162,23 +193,19 @@ function parsePlanEntry(raw: unknown): CatalogPlanEntry | null {
   const featureBullets = asStringArray(o.featureBullets) ?? [];
   const sellable = o.sellable === true;
   const active = o.active !== false;
-  const stripeRaw = o.stripePriceId;
-  const stripePriceId =
-    stripeRaw == null || stripeRaw === ""
-      ? null
-      : asString(stripeRaw);
-  if (stripeRaw != null && stripeRaw !== "" && !stripePriceId) return null;
+  // stripePriceId intentionally ignored — prices live in billing.prices only.
 
   const floorsRaw = o.entitlementFloors;
   if (!floorsRaw || typeof floorsRaw !== "object" || Array.isArray(floorsRaw)) {
     return null;
   }
   const floorsObj = floorsRaw as Record<string, unknown>;
-  const paid = parseFloors(floorsObj.paid);
+  const seatDefaults = seatDefaultsForPlan(planCode);
+  const paid = parseFloors(floorsObj.paid, seatDefaults);
   if (!paid) return null;
   let trial: CatalogEntitlementFloors | null = null;
   if (floorsObj.trial != null) {
-    trial = parseFloors(floorsObj.trial);
+    trial = parseFloors(floorsObj.trial, seatDefaults);
     if (!trial) return null;
   }
 
@@ -192,7 +219,6 @@ function parsePlanEntry(raw: unknown): CatalogPlanEntry | null {
     trialNote,
     sellable,
     active,
-    stripePriceId,
     entitlementFloors: { trial, paid },
     companyCredits,
   };
@@ -224,9 +250,14 @@ export function buildBillingCatalogSetting(
   return parsed;
 }
 
-function floorsFromPlanEntitlements(
+function floorsFromPlan(
   e: PlanEntitlements,
   dailyAiGenerationLimit: number,
+  seats: {
+    companiesPerSeat: number | null;
+    seatMin: number | null;
+    seatMax: number | null;
+  },
 ): CatalogEntitlementFloors {
   return {
     companyResearchLimit: e.activeResearchedCompanyLimit,
@@ -234,6 +265,9 @@ function floorsFromPlanEntitlements(
     monthlyEmailLimit: e.monthlyEmailSendLimit,
     dailyAiGenerationLimit,
     researchFreshnessDays: e.researchFreshnessDays,
+    companiesPerSeat: seats.companiesPerSeat,
+    seatMin: seats.seatMin,
+    seatMax: seats.seatMax,
   };
 }
 
@@ -243,6 +277,7 @@ function floorsFromPlanEntitlements(
  */
 export function defaultBillingCatalogSetting(): BillingCatalogSettingValue {
   const standard = getPlanDefinition(BILLING_PLAN_STANDARD)!;
+  const team = getPlanDefinition(BILLING_PLAN_TEAM)!;
   const comped = getPlanDefinition(BILLING_PLAN_COMPED)!;
   const premium = getPlanDefinition(BILLING_PLAN_PREMIUM)!;
   const enterprise = getPlanDefinition(BILLING_PLAN_ENTERPRISE)!;
@@ -265,20 +300,79 @@ export function defaultBillingCatalogSetting(): BillingCatalogSettingValue {
           "Research up to 25 companies during your trial (100 on a paid plan). The 50/day sending limit protects your domain's email reputation and deliverability.",
         sellable: true,
         active: true,
-        stripePriceId: null,
         entitlementFloors: {
-          trial: floorsFromPlanEntitlements(
-            standard.trialEntitlements!,
-            aiGen,
-          ),
-          paid: floorsFromPlanEntitlements(standard.entitlements, aiGen),
+          trial: floorsFromPlan(standard.trialEntitlements!, aiGen, {
+            companiesPerSeat: null,
+            seatMin: 1,
+            seatMax: 1,
+          }),
+          paid: floorsFromPlan(standard.entitlements, aiGen, {
+            companiesPerSeat: null,
+            seatMin: 1,
+            seatMax: 1,
+          }),
         },
         companyCredits: {
           blockSize: COMPANY_CREDIT_BLOCK.units,
           displayPriceNote: "",
-          stripePriceId: null,
           expiryMonths: COMPANY_CREDIT_BLOCK.expiryMonths,
         },
+      },
+      {
+        planCode: BILLING_PLAN_TEAM,
+        displayName: "Team",
+        tagline: "For teams of 2-10",
+        featureBullets: [
+          "2–10 seats with self-serve seat adds",
+          "150 researched companies per user",
+          "Same email limits as Standard, per user",
+          "Shared campaigns across the team",
+          "Emails sent through each user's own mailbox",
+        ],
+        trialNote:
+          "Each seat gets 150 company research slots and Standard email limits. Add seats anytime up to 10.",
+        sellable: true,
+        active: true,
+        entitlementFloors: {
+          trial: floorsFromPlan(team.trialEntitlements!, 500, {
+            companiesPerSeat: 150,
+            seatMin: 2,
+            seatMax: 10,
+          }),
+          paid: floorsFromPlan(team.entitlements, 500, {
+            companiesPerSeat: 150,
+            seatMin: 2,
+            seatMax: 10,
+          }),
+        },
+        companyCredits: {
+          blockSize: COMPANY_CREDIT_BLOCK.units,
+          displayPriceNote: "",
+          expiryMonths: COMPANY_CREDIT_BLOCK.expiryMonths,
+        },
+      },
+      {
+        planCode: BILLING_PLAN_ENTERPRISE,
+        displayName: "Enterprise",
+        tagline: "For larger teams",
+        featureBullets: [
+          "Same per-user entitlements as Team",
+          "Seat cap set by Sales Forecaster for your org",
+          "Shared campaigns and admin activity views",
+          "Contact us to get started",
+        ],
+        trialNote: "",
+        sellable: false,
+        active: true,
+        entitlementFloors: {
+          trial: null,
+          paid: floorsFromPlan(enterprise.entitlements, 500, {
+            companiesPerSeat: 150,
+            seatMin: 2,
+            seatMax: null,
+          }),
+        },
+        companyCredits: null,
       },
       {
         planCode: BILLING_PLAN_COMPED,
@@ -288,50 +382,42 @@ export function defaultBillingCatalogSetting(): BillingCatalogSettingValue {
         trialNote: "",
         sellable: false,
         active: true,
-        stripePriceId: null,
         entitlementFloors: {
           trial: null,
-          paid: floorsFromPlanEntitlements(comped.entitlements, aiGen),
+          paid: floorsFromPlan(comped.entitlements, aiGen, {
+            companiesPerSeat: null,
+            seatMin: 1,
+            seatMax: null,
+          }),
         },
         companyCredits: null,
       },
       {
+        // Legacy inactive stub — display as Team; prefer BILLING_PLAN_TEAM.
         planCode: BILLING_PLAN_PREMIUM,
-        displayName: "Premium",
-        tagline: "Coming later",
+        displayName: "Team",
+        tagline: "Legacy plan code (use Team)",
         featureBullets: [],
         trialNote: "",
         sellable: false,
         active: false,
-        stripePriceId: null,
         entitlementFloors: {
-          trial: floorsFromPlanEntitlements(
-            premium.trialEntitlements!,
-            aiGen,
-          ),
-          paid: floorsFromPlanEntitlements(premium.entitlements, aiGen),
+          trial: floorsFromPlan(premium.trialEntitlements!, 500, {
+            companiesPerSeat: 150,
+            seatMin: 2,
+            seatMax: 10,
+          }),
+          paid: floorsFromPlan(premium.entitlements, 500, {
+            companiesPerSeat: 150,
+            seatMin: 2,
+            seatMax: 10,
+          }),
         },
         companyCredits: {
           blockSize: COMPANY_CREDIT_BLOCK.units,
           displayPriceNote: "",
-          stripePriceId: null,
           expiryMonths: COMPANY_CREDIT_BLOCK.expiryMonths,
         },
-      },
-      {
-        planCode: BILLING_PLAN_ENTERPRISE,
-        displayName: "Enterprise",
-        tagline: "Coming later",
-        featureBullets: [],
-        trialNote: "",
-        sellable: false,
-        active: false,
-        stripePriceId: null,
-        entitlementFloors: {
-          trial: null,
-          paid: floorsFromPlanEntitlements(enterprise.entitlements, aiGen),
-        },
-        companyCredits: null,
       },
     ],
   };
@@ -367,6 +453,9 @@ export function catalogFloorsToResolved(
     monthlyEmailSendLimit: floors.monthlyEmailLimit,
     researchFreshnessDays: floors.researchFreshnessDays,
     dailyAiGenerationLimit: floors.dailyAiGenerationLimit,
+    companiesPerSeat: floors.companiesPerSeat,
+    seatMin: floors.seatMin,
+    seatMax: floors.seatMax,
   };
 }
 
@@ -398,7 +487,9 @@ export function resolveCatalogEntitlementsForStatus(input: {
       : plan.entitlements;
   return {
     ...base,
-    dailyAiGenerationLimit:
-      DEFAULT_USAGE_POLICY_VALUES.dailyEmailGenerationLimit,
+    dailyAiGenerationLimit: plan.seats.dailyAiGenerationLimit,
+    companiesPerSeat: plan.seats.companiesPerSeat,
+    seatMin: plan.seats.seatMin,
+    seatMax: plan.seats.seatMax,
   };
 }

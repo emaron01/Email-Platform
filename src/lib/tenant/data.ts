@@ -23,6 +23,14 @@ import {
   snapshotProduct,
 } from "@/lib/scoring/snapshots";
 import { getCurrentUser } from "@/lib/auth/session";
+import { getMembershipForCurrentUser } from "@/lib/auth/authz";
+import {
+  CAMPAIGN_LIST_VIEW_ALL_ACTIVITY,
+  CAMPAIGN_LIST_VIEW_MY,
+  CAMPAIGN_LIST_VIEW_SHARED_ALL,
+  canViewAllActivity,
+  type CampaignListViewMode,
+} from "@/lib/campaign/visibility";
 import { normalizeContactEmail } from "@/lib/contact/identity";
 import { upsertContactIntoList } from "@/lib/contact/upsert";
 import { requireOrganizationId, TenantError } from "@/lib/tenant/getCurrentOrganization";
@@ -745,17 +753,71 @@ export type CampaignWithRelations = Campaign & {
   persona: { id: string; name: string } | null;
   personasInPlay: Array<{ persona: { id: string; name: string } }>;
   offer: { id: string; name: string } | null;
-  _count: { contacts: number };
+  _count: { contacts: number; executions?: number };
+  executions?: Array<{
+    id: string;
+    userId: string;
+    createdAt: Date;
+    user?: { id: string; name: string | null; email: string };
+  }>;
 };
 
 export async function listCampaigns(options?: {
   includeArchived?: boolean;
+  view?: CampaignListViewMode;
+  userId?: string;
 }): Promise<CampaignWithRelations[]> {
   const organizationId = await orgId();
+  const view = options?.view ?? CAMPAIGN_LIST_VIEW_MY;
+  let userId = options?.userId ?? null;
+  if (!userId) {
+    userId = await currentUserId();
+  }
+  if (!userId) {
+    throw new TenantError("Sign in required to list campaigns.");
+  }
+
+  if (view === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY) {
+    const ctx = await getMembershipForCurrentUser(organizationId);
+    if (!canViewAllActivity(ctx.membership.role)) {
+      throw new TenantError(
+        "Only organization admins can view all campaign activity.",
+      );
+    }
+  }
+
+  const archivedFilter = options?.includeArchived
+    ? {}
+    : { archivedAt: null };
+
+  let visibilityWhere: Prisma.CampaignWhereInput = {};
+  if (view === CAMPAIGN_LIST_VIEW_MY) {
+    visibilityWhere = {
+      OR: [
+        { ownerUserId: userId },
+        { ownerUserId: null },
+        {
+          visibility: "SHARED",
+          executions: { some: { userId } },
+        },
+      ],
+    };
+  } else if (view === CAMPAIGN_LIST_VIEW_SHARED_ALL) {
+    visibilityWhere = { visibility: "SHARED" };
+  } else if (view === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY) {
+    visibilityWhere = {
+      visibility: "SHARED",
+      executions: { some: {} },
+    };
+  }
+
+  const includeExecutions = view === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY;
+
   return prisma.campaign.findMany({
     where: {
       organizationId,
-      ...(options?.includeArchived ? {} : { archivedAt: null }),
+      ...archivedFilter,
+      ...visibilityWhere,
     },
     include: {
       product: { select: { id: true, name: true } },
@@ -765,7 +827,28 @@ export async function listCampaigns(options?: {
         include: { persona: { select: { id: true, name: true } } },
       },
       offer: { select: { id: true, name: true } },
-      _count: { select: { contacts: true } },
+      _count: {
+        select: {
+          contacts: true,
+          ...(includeExecutions ? { executions: true } : {}),
+        },
+      },
+      ...(includeExecutions
+        ? {
+            executions: {
+              orderBy: { createdAt: "desc" as const },
+              take: 20,
+              select: {
+                id: true,
+                userId: true,
+                createdAt: true,
+                user: {
+                  select: { id: true, name: true, email: true },
+                },
+              },
+            },
+          }
+        : {}),
     },
     orderBy: { createdAt: "desc" },
   });
@@ -910,10 +993,14 @@ export async function createCampaign(input: {
     }
   }
 
+  const actorUserId = await currentUserId();
+
   return prisma.$transaction(async (tx) => {
     const campaign = await tx.campaign.create({
       data: {
         organizationId,
+        ownerUserId: actorUserId,
+        visibility: "PERSONAL",
         name: input.name,
         productId: product.id,
         icpId: icp.id,

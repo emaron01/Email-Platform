@@ -4,6 +4,7 @@ import { deleteCampaignAction, archiveCampaignAction, unarchiveCampaignAction } 
 import { CampaignContactsManager } from "@/components/CampaignContactsManager";
 import { CampaignEmailSettingsForm } from "@/components/CampaignEmailSettingsForm";
 import { CampaignOfferForm } from "@/components/CampaignOfferForm";
+import { CampaignVisibilityForm } from "@/components/CampaignVisibilityForm";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { UnarchiveForm } from "@/components/UnarchiveForm";
 import { EmailDraftsStage } from "@/components/EmailDraftsStage";
@@ -23,6 +24,11 @@ import {
   listCompatibleScoringRuns,
   searchAvailableCampaignContacts,
 } from "@/lib/campaign/contacts";
+import {
+  canEditCampaignTemplate,
+  canSetShared,
+} from "@/lib/campaign/visibility";
+import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 import { TenantError } from "@/lib/tenant/errors";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { cn, contactDisplayName, formatDate } from "@/lib/utils";
@@ -54,6 +60,7 @@ type PageProps = {
     contact?: string;
     scoringRun?: string;
     attached?: string;
+    execution?: string;
   }>;
 };
 
@@ -95,15 +102,17 @@ export default async function CampaignDetailPage({
     );
   }
 
-  let campaign;
-  let availableContacts;
-  let scoringRuns;
-  let usagePolicy;
-  let mailboxConnection;
-  let dailySendUsage;
-  let qualification;
-  let voiceSamples;
-  let emailSignature;
+  let campaign: Awaited<ReturnType<typeof getCampaignDetail>>;
+  let availableContacts: Awaited<
+    ReturnType<typeof searchAvailableCampaignContacts>
+  >;
+  let scoringRuns: Awaited<ReturnType<typeof listCompatibleScoringRuns>>;
+  let usagePolicy: Awaited<ReturnType<typeof getEffectiveUsagePolicy>>;
+  let mailboxConnection: Awaited<ReturnType<typeof getMailboxConnectionView>>;
+  let dailySendUsage: Awaited<ReturnType<typeof getDailyEmailSendUsage>>;
+  let qualification: Awaited<ReturnType<typeof getCampaignQualificationView>>;
+  let voiceSamples: Awaited<ReturnType<typeof listVoiceSamplesForUser>>;
+  let emailSignature: Awaited<ReturnType<typeof getActiveEmailSignatureBody>>;
   try {
     [
       campaign,
@@ -145,6 +154,47 @@ export default async function CampaignDetailPage({
     if (error instanceof TenantError) notFound();
     throw error;
   }
+
+  const membershipCtx = await getMembershipForCurrentUser(organization.id);
+  const canEditTemplate = canEditCampaignTemplate({
+    userId: user.id,
+    role: membershipCtx.membership.role,
+    campaign,
+  });
+  const canShare = canSetShared(membershipCtx.membership.role);
+  const executionId = query.execution?.trim() || null;
+  if (executionId) {
+    const execution = await prisma.campaignExecution.findFirst({
+      where: {
+        id: executionId,
+        organizationId: organization.id,
+        campaignId: campaign.id,
+      },
+      select: { id: true, userId: true },
+    });
+    if (!execution) notFound();
+    // Non-admins may only open their own executions.
+    if (
+      execution.userId !== user.id &&
+      !canSetShared(membershipCtx.membership.role)
+    ) {
+      notFound();
+    }
+  }
+
+  // Executors see only their run's contacts; template owners see owner-scoped rows.
+  const scopedContacts = campaign.contacts.filter((entry) => {
+    if (executionId) return entry.executionId === executionId;
+    if (
+      campaign.visibility === "SHARED" &&
+      campaign.ownerUserId !== user.id &&
+      !canEditTemplate
+    ) {
+      return false;
+    }
+    return entry.executionId == null;
+  });
+  campaign = { ...campaign, contacts: scopedContacts };
 
   const campaignArchived = campaign.archivedAt != null;
   const suppressedEmails = await listActiveNormalizedEmails(
@@ -545,6 +595,19 @@ export default async function CampaignDetailPage({
               <p className="text-sm text-slate-600">
                 Offer settings are read-only while this campaign is archived.
               </p>
+            ) : !canEditTemplate ? (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-600">
+                  Shared campaign template is read-only. You can still add
+                  contacts on your run.
+                </p>
+                <dl className="grid gap-3 sm:grid-cols-2">
+                  <Meta label="Offer" value={offerName} />
+                  <Meta label="Call to action" value={offerCta} />
+                  <Meta label="Offer description" value={offerDescription} />
+                  <Meta label="Offer notes" value={offerNotes} />
+                </dl>
+              </div>
             ) : (
               <CampaignOfferForm
                 campaignId={campaign.id}
@@ -552,6 +615,15 @@ export default async function CampaignDetailPage({
               />
             )}
           </Panel>
+
+          {canShare && !campaignArchived ? (
+            <Panel title="Sharing">
+              <CampaignVisibilityForm
+                campaignId={campaign.id}
+                visibility={campaign.visibility}
+              />
+            </Panel>
+          ) : null}
 
           <Panel
             title="Email settings"
@@ -561,6 +633,17 @@ export default async function CampaignDetailPage({
               <p className="text-sm text-slate-600">
                 Email settings are read-only while this campaign is archived.
               </p>
+            ) : !canEditTemplate ? (
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <Meta
+                  label="Default email length"
+                  value={campaign.emailLength}
+                />
+                <Meta
+                  label="Email guidance"
+                  value={campaign.emailGuidance}
+                />
+              </dl>
             ) : (
               <CampaignEmailSettingsForm
                 campaignId={campaign.id}
@@ -600,6 +683,17 @@ export default async function CampaignDetailPage({
               <p className="text-sm text-slate-600">
                 Email settings are read-only while this campaign is archived.
               </p>
+            ) : !canEditTemplate ? (
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <Meta
+                  label="Default email length"
+                  value={campaign.emailLength}
+                />
+                <Meta
+                  label="Email guidance"
+                  value={campaign.emailGuidance}
+                />
+              </dl>
             ) : (
               <CampaignEmailSettingsForm
                 campaignId={campaign.id}
@@ -776,6 +870,7 @@ export default async function CampaignDetailPage({
           ) : (
             <CampaignContactsManager
               campaignId={campaign.id}
+              executionId={executionId}
               search={query.q?.trim() ?? ""}
               selectedScoringRunId={selectedScoringRunId}
               contacts={availableContacts.map((contact) => ({

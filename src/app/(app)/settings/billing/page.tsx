@@ -21,6 +21,7 @@ import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
 import {
   BILLING_PLAN_STANDARD,
   getPlanDefinition,
+  planUsesSeatBilling,
 } from "@/lib/billing/plans";
 import { loadEffectiveBillingCatalog } from "@/lib/billing/effective-catalog";
 import { resolveCatalogEntitlementsForStatus } from "@/lib/billing/billing-catalog";
@@ -75,6 +76,7 @@ export default async function OrganizationBillingSettingsPage({
     prices,
     catalogEffective,
     lockState,
+    memberCount,
   ] = await Promise.all([
     prisma.organizationBillingProfile.findUnique({
       where: { organizationId: organization.id },
@@ -89,6 +91,9 @@ export default async function OrganizationBillingSettingsPage({
     loadEffectiveBillingPrices(),
     loadEffectiveBillingCatalog(),
     getOrganizationPaymentLockState(organization.id),
+    prisma.organizationMembership.count({
+      where: { organizationId: organization.id },
+    }),
   ]);
 
   if (billing && requiresStripeCheckout(billing)) {
@@ -278,6 +283,12 @@ export default async function OrganizationBillingSettingsPage({
                   policy.activeResearchedCompanyLimit,
                 dailyEmailSendWarningLimit: policy.dailyEmailSendWarningLimit,
                 monthlyEmailSendLimit: policy.monthlyEmailSendLimit,
+                seatQuantity: billing?.seatQuantity,
+                maxSeats: billing?.maxSeats,
+                usedSeats: memberCount,
+                companiesPerSeat: planUsesSeatBilling(planCode)
+                  ? policy.activeResearchedCompanyLimit
+                  : null,
               })}
             </p>
           </div>

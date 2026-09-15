@@ -65,16 +65,19 @@ export async function fetchSellableCatalogPrices(): Promise<CatalogPricesResult>
       const base = plan.components.find((c) => c.kind === "recurring_base");
       if (!base || base.kind !== "recurring_base") continue;
 
-      // Standard IDs come from platform console → env. Other sellable plans
-      // (future Premium) still need console fields before they go live.
+      // Standard / Team IDs come from platform console → env.
       const priceId =
         plan.planCode === BILLING_PLAN_STANDARD
           ? flattened.standardMonthlyPriceId
-          : null;
+          : plan.planCode === "TEAM"
+            ? flattened.teamMonthlyPriceId
+            : null;
       const productId =
         plan.planCode === BILLING_PLAN_STANDARD
           ? flattened.standardProductId
-          : null;
+          : plan.planCode === "TEAM"
+            ? flattened.teamProductId
+            : null;
       if (!priceId || !productId) continue;
 
       const price = await stripe.prices.retrieve(priceId, {

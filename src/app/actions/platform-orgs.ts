@@ -395,3 +395,45 @@ export async function platformRevokeInvitationAction(
     return { ok: false, message: toSafeError(error) };
   }
 }
+
+export async function updatePlatformOrgMaxSeatsAction(
+  _prev: PlatformOrgActionResult | null,
+  formData: FormData,
+): Promise<PlatformOrgActionResult> {
+  try {
+    await requirePlatformSuperAdmin();
+    const organizationId = requireOrgId(formData);
+    const maxSeats = asPositiveInt(formData.get("maxSeats"), "Seat cap");
+    if (maxSeats < 1) {
+      return { ok: false, message: "Seat cap must be at least 1." };
+    }
+
+    const { prisma } = await import("@/lib/prisma");
+    const profile = await prisma.organizationBillingProfile.findUnique({
+      where: { organizationId },
+      select: { seatQuantity: true },
+    });
+    if (!profile) {
+      return { ok: false, message: "Billing profile not found." };
+    }
+    if (maxSeats < profile.seatQuantity) {
+      return {
+        ok: false,
+        message: `Seat cap cannot be below purchased seats (${profile.seatQuantity}).`,
+      };
+    }
+
+    await prisma.organizationBillingProfile.update({
+      where: { organizationId },
+      data: { maxSeats },
+    });
+    revalidatePath(`/platform/orgs/${organizationId}`);
+    return {
+      ok: true,
+      message:
+        "Seat cap updated. This does not change the Stripe subscription quantity.",
+    };
+  } catch (error) {
+    return { ok: false, message: toSafeError(error) };
+  }
+}

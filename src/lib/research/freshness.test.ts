@@ -63,6 +63,7 @@ describe("research freshness", () => {
       researchStoppedReason: null,
       researchStageTimings: null,
       researchedByUserId: null,
+      firstResearchedByUserId: null,
       createdAt: researchedAt,
       updatedAt: researchedAt,
     };

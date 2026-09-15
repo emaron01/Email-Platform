@@ -114,4 +114,80 @@ export async function validateBillingPricesAgainstStripe(
       `Unable to verify company credits price "${value.companyCreditsPriceId}" with Stripe. Try again.`,
     );
   }
+
+  await validateOptionalPriceProductPair({
+    label: "Team",
+    priceId: value.teamMonthlyPriceId,
+    productId: value.teamProductId,
+  });
+  await validateOptionalPriceProductPair({
+    label: "Enterprise",
+    priceId: value.enterpriseMonthlyPriceId,
+    productId: value.enterpriseProductId,
+  });
+}
+
+async function validateOptionalPriceProductPair(input: {
+  label: string;
+  priceId: string;
+  productId: string;
+}): Promise<void> {
+  const priceId = input.priceId.trim();
+  const productId = input.productId.trim();
+  if (!priceId && !productId) return;
+  if (!priceId || !productId) {
+    throw new TenantError(
+      `${input.label} requires both a Price ID and Product ID, or leave both blank.`,
+    );
+  }
+  if (!stripeConfigured()) {
+    throw new TenantError(
+      "Stripe is not configured (STRIPE_SECRET_KEY). Cannot validate price IDs.",
+    );
+  }
+  const stripe = getStripe();
+  let price;
+  try {
+    price = await stripe.prices.retrieve(priceId, { expand: ["product"] });
+  } catch (error) {
+    if (isStripeMissingResource(error)) {
+      throw new TenantError(stripeNotFoundMessage("price", priceId));
+    }
+    throw new TenantError(
+      `Unable to verify ${input.label} price "${priceId}" with Stripe. Try again.`,
+    );
+  }
+  if (price.deleted) {
+    throw new TenantError(`Stripe price "${priceId}" is deleted.`);
+  }
+  const priceProductId =
+    typeof price.product === "string"
+      ? price.product
+      : price.product &&
+          typeof price.product === "object" &&
+          !("deleted" in price.product && price.product.deleted)
+        ? price.product.id
+        : null;
+  if (!priceProductId) {
+    throw new TenantError(`Stripe price "${priceId}" has no product.`);
+  }
+  if (priceProductId !== productId) {
+    throw new TenantError(
+      `${input.label} monthly price belongs to product "${priceProductId}", not "${productId}". Use matching Price and Product IDs.`,
+    );
+  }
+  try {
+    const product = await stripe.products.retrieve(productId);
+    if (product.deleted) {
+      throw new TenantError(`Stripe product "${productId}" is deleted.`);
+    }
+  } catch (error) {
+    if (error instanceof TenantError) throw error;
+    if (isStripeMissingResource(error)) {
+      throw new TenantError(stripeNotFoundMessage("product", productId));
+    }
+    throw new TenantError(
+      `Unable to verify ${input.label} product "${productId}" with Stripe. Try again.`,
+    );
+  }
 }

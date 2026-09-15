@@ -38,9 +38,13 @@ export async function applyPlanEntitlements(input: {
     },
   });
 
+  // TEAM/ENTERPRISE: store per-user floor on org policy (quota checks scope by user).
+  const companyFloor =
+    entitlements.companiesPerSeat ?? entitlements.activeResearchedCompanyLimit;
+
   const activeResearchedCompanyLimit = Math.max(
     existing?.activeResearchedCompanyLimit ?? 0,
-    entitlements.activeResearchedCompanyLimit,
+    companyFloor,
   );
 
   // Generation ceiling: take catalog floor; never lower an existing higher override.
@@ -80,4 +84,24 @@ export async function applyPlanEntitlements(input: {
       researchFreshnessDays: entitlements.researchFreshnessDays,
     },
   });
+
+  // Seed seat caps from plan when still at Standard defaults.
+  const seatMin = entitlements.seatMin ?? plan.seats.seatMin;
+  const seatMaxDefault =
+    entitlements.seatMax ??
+    plan.seats.seatMax ??
+    (plan.seats.companiesPerSeat != null ? 10 : seatMin);
+  const profile = await prisma.organizationBillingProfile.findUnique({
+    where: { organizationId: input.organizationId },
+    select: { seatQuantity: true, maxSeats: true },
+  });
+  if (profile && plan.seats.companiesPerSeat != null) {
+    await prisma.organizationBillingProfile.update({
+      where: { organizationId: input.organizationId },
+      data: {
+        maxSeats: Math.max(profile.maxSeats, seatMaxDefault, profile.seatQuantity),
+        seatQuantity: Math.max(profile.seatQuantity, seatMin),
+      },
+    });
+  }
 }

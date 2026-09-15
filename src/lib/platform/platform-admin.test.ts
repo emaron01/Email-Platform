@@ -368,7 +368,8 @@ describe("platform console navigation and account creation", () => {
       resolve("src/app/(app)/settings/billing/page.tsx"),
       "utf8",
     );
-    expect(page).toContain("requireOrgAdmin");
+    expect(page).toContain("getMembershipForCurrentUser");
+    expect(page).toContain("canManageOrganizationPolicy");
     expect(page).toContain("billing-stripe-hook");
     expect(page).toMatch(/account is comped/i);
   });

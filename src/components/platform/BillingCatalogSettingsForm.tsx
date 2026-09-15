@@ -15,14 +15,10 @@ export function BillingCatalogSettingsForm({
   plans,
   sourceLabel,
   hasConsoleRow,
-  standardPriceLabel,
-  creditsPriceLabel,
 }: {
   plans: CatalogPlanEntry[];
   sourceLabel: string;
   hasConsoleRow: boolean;
-  standardPriceLabel: string | null;
-  creditsPriceLabel: string | null;
 }) {
   const [state, action, pending] = useActionState(
     updateBillingCatalogSettingAction,
@@ -41,12 +37,17 @@ export function BillingCatalogSettingsForm({
 
   const paid = selected.entitlementFloors.paid;
   const trial = selected.entitlementFloors.trial;
+  const showSeatFields =
+    selected.planCode === "TEAM" ||
+    selected.planCode === "ENTERPRISE" ||
+    selected.planCode === "PREMIUM";
 
   return (
     <div className="space-y-4" data-testid="billing-catalog-form">
       <p className="text-sm text-slate-600">
         Effective source: <span className="font-medium">{sourceLabel}</span>
-        {hasConsoleRow ? " (console row present)" : " (code defaults)"}.
+        {hasConsoleRow ? " (console row present)" : " (code defaults)"}. Stripe
+        Price IDs are edited on Billing Config — not here.
       </p>
 
       <div className="flex flex-wrap gap-2">
@@ -64,6 +65,7 @@ export function BillingCatalogSettingsForm({
             )}
           >
             {p.displayName}
+            {p.planCode === "PREMIUM" ? " (legacy)" : ""}
             {!p.active ? " (inactive)" : ""}
           </button>
         ))}
@@ -72,7 +74,6 @@ export function BillingCatalogSettingsForm({
       <form action={action} className="space-y-4">
         <input type="hidden" name="intent" value="save" />
         <input type="hidden" name="planCode" value={selected.planCode} />
-        {/* Preserve other plans as JSON so one-plan edits do not wipe the catalog. */}
         <input
           type="hidden"
           name="otherPlansJson"
@@ -144,32 +145,39 @@ export function BillingCatalogSettingsForm({
           </label>
         </div>
 
-        {selected.planCode === "STANDARD" ? (
-          <p className="text-sm text-slate-600">
-            Standard Price ID comes from{" "}
-            <span className="font-medium">Billing → Stripe price IDs</span>
-            {standardPriceLabel ? (
-              <>
-                {" "}
-                — currently{" "}
-                <span className="font-medium">{standardPriceLabel}</span>
-              </>
-            ) : (
-              " — not resolved"
-            )}
-            .
-          </p>
+        {showSeatFields ? (
+          <fieldset className="space-y-2 rounded-md border border-slate-200 p-3">
+            <legend className="px-1 text-sm font-medium text-slate-900">
+              Seat policy
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <FloorInput
+                name="companiesPerSeat"
+                label="Companies per seat"
+                defaultValue={paid.companiesPerSeat ?? 150}
+                planCode={selected.planCode}
+              />
+              <FloorInput
+                name="seatMin"
+                label="Seat min"
+                defaultValue={paid.seatMin ?? 2}
+                planCode={selected.planCode}
+              />
+              <FloorInput
+                name="seatMax"
+                label="Seat max (blank = no global cap)"
+                defaultValue={paid.seatMax ?? ""}
+                planCode={selected.planCode}
+                optional
+              />
+            </div>
+          </fieldset>
         ) : (
-          <label className="block text-sm">
-            Stripe Price ID (this plan)
-            <input
-              name="stripePriceId"
-              defaultValue={selected.stripePriceId ?? ""}
-              key={`${selected.planCode}-price`}
-              placeholder="price_…"
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
-            />
-          </label>
+          <>
+            <input type="hidden" name="companiesPerSeat" value="" />
+            <input type="hidden" name="seatMin" value="1" />
+            <input type="hidden" name="seatMax" value="1" />
+          </>
         )}
 
         <fieldset className="space-y-2 rounded-md border border-slate-200 p-3">
@@ -179,7 +187,11 @@ export function BillingCatalogSettingsForm({
           <div className="grid gap-2 sm:grid-cols-2">
             <FloorInput
               name="paidCompanyResearchLimit"
-              label="Company research limit"
+              label={
+                showSeatFields
+                  ? "Company research limit (per user)"
+                  : "Company research limit"
+              }
               defaultValue={paid.companyResearchLimit}
               planCode={selected.planCode}
             />
@@ -303,22 +315,9 @@ export function BillingCatalogSettingsForm({
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </label>
-          {selected.planCode === "STANDARD" ? (
-            <p className="text-xs text-slate-500">
-              Credit Price ID resolves from Billing → Stripe price IDs
-              {creditsPriceLabel ? ` (${creditsPriceLabel})` : ""}.
-            </p>
-          ) : (
-            <label className="block text-sm">
-              Credits Stripe Price ID
-              <input
-                name="creditsStripePriceId"
-                defaultValue={selected.companyCredits?.stripePriceId ?? ""}
-                key={`${selected.planCode}-creditsPrice`}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
-              />
-            </label>
-          )}
+          <p className="text-xs text-slate-500">
+            Credit Price ID is configured on Billing Config.
+          </p>
         </fieldset>
 
         <div className="flex flex-wrap gap-2">

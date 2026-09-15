@@ -20,13 +20,13 @@ const PLATFORM_NAV_ITEMS = [
   },
   {
     href: "/platform/billing",
-    label: "Billing",
+    label: "Billing Config",
     match: "exact" as const,
     superAdminOnly: true,
   },
   {
     href: "/platform/catalog",
-    label: "Catalog",
+    label: "Plan Catalog",
     match: "exact" as const,
     superAdminOnly: true,
   },

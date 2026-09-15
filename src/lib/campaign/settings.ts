@@ -1,10 +1,43 @@
 import "server-only";
 
 import type { EmailLength, Prisma } from "@prisma/client";
+import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 import { EMAIL_GUIDANCE_MAX_CHARS } from "@/lib/campaign/save";
+import { canEditCampaignTemplate } from "@/lib/campaign/visibility";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
+
+async function assertCanEditCampaignTemplate(campaignId: string): Promise<void> {
+  const organizationId = await requireOrganizationId();
+  const [campaign, ctx] = await Promise.all([
+    prisma.campaign.findFirst({
+      where: { id: campaignId, organizationId },
+      select: {
+        id: true,
+        ownerUserId: true,
+        visibility: true,
+      },
+    }),
+    getMembershipForCurrentUser(organizationId),
+  ]);
+  if (!campaign) {
+    throw new TenantError(
+      "Campaign does not belong to the active organization.",
+    );
+  }
+  if (
+    !canEditCampaignTemplate({
+      userId: ctx.user.id,
+      role: ctx.membership.role,
+      campaign,
+    })
+  ) {
+    throw new TenantError(
+      "You cannot edit the shared campaign template. Use this campaign to start your own run.",
+    );
+  }
+}
 
 export async function updateCampaignEmailSettings(input: {
   campaignId: string;
@@ -19,6 +52,8 @@ export async function updateCampaignEmailSettings(input: {
       `Email guidance must be ${EMAIL_GUIDANCE_MAX_CHARS} characters or fewer.`,
     );
   }
+
+  await assertCanEditCampaignTemplate(input.campaignId);
 
   const { assertCampaignNotArchived } = await import(
     "@/lib/suppression/service"
@@ -53,6 +88,8 @@ export async function getCampaignOfferValidationTarget(campaignId: string) {
       organizationId: true,
       productId: true,
       personaId: true,
+      ownerUserId: true,
+      visibility: true,
     },
   });
   if (!campaign) {
@@ -73,6 +110,7 @@ export async function updateCampaignOffer(input: {
   offerValidationHash: string;
 }): Promise<void> {
   const organizationId = await requireOrganizationId();
+  await assertCanEditCampaignTemplate(input.campaignId);
   const { assertCampaignNotArchived } = await import(
     "@/lib/suppression/service"
   );

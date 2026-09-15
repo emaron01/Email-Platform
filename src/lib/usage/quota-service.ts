@@ -50,16 +50,37 @@ export async function assertUsageAllowed(input: {
     const { getEffectiveCompanyResearchAllowance } = await import(
       "@/lib/billing/company-research-credits"
     );
+    const { planUsesPerUserCompanyAllowance } = await import(
+      "@/lib/billing/plans"
+    );
+    const billingProfile = await prisma.organizationBillingProfile.findUnique({
+      where: { organizationId: input.organizationId },
+      select: { planCode: true, billingStatus: true, trialEndsAt: true },
+    });
+    const perUser = planUsesPerUserCompanyAllowance(
+      billingProfile?.planCode ?? "",
+    );
     const baseLimit = policy.activeResearchedCompanyLimit;
     const { effectiveLimit: limit } = await getEffectiveCompanyResearchAllowance({
       organizationId: input.organizationId,
       baseLimit,
     });
-    const lockKey = `active-research-slot:${input.organizationId}`;
+    const lockKey = perUser
+      ? `active-research-slot:${input.organizationId}:${input.userId}`
+      : `active-research-slot:${input.organizationId}`;
 
     const used = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
-      return countActiveResearchedCompanies(input.organizationId);
+      return countActiveResearchedCompanies(
+        input.organizationId,
+        new Date(),
+        perUser
+          ? {
+              firstResearchedByUserId: input.userId,
+              includeInProgressClaims: true,
+            }
+          : undefined,
+      );
     });
 
     if (input.wouldConsumeNewActiveCompanySlot === false) {
@@ -67,16 +88,12 @@ export async function assertUsageAllowed(input: {
     }
 
     if (used >= limit) {
-      const billing = await prisma.organizationBillingProfile.findUnique({
-        where: { organizationId: input.organizationId },
-        select: { billingStatus: true, trialEndsAt: true },
-      });
       throw new UsageQuotaError(
         formatResearchQuotaBlockedMessage({
           used,
           limit,
-          billingStatus: billing?.billingStatus,
-          trialEndsAt: billing?.trialEndsAt,
+          billingStatus: billingProfile?.billingStatus,
+          trialEndsAt: billingProfile?.trialEndsAt,
         }),
         "ACTIVE_RESEARCHED_COMPANY",
         used,
@@ -366,11 +383,25 @@ export async function getActiveResearchedCompanyUsage(input: {
   const { getEffectiveCompanyResearchAllowance } = await import(
     "@/lib/billing/company-research-credits"
   );
+  const { planUsesPerUserCompanyAllowance } = await import(
+    "@/lib/billing/plans"
+  );
   const policy = await getEffectiveUsagePolicy({
     organizationId: input.organizationId,
     userId: input.userId,
   });
-  const used = await countActiveResearchedCompanies(input.organizationId);
+  const billingProfile = await prisma.organizationBillingProfile.findUnique({
+    where: { organizationId: input.organizationId },
+    select: { planCode: true },
+  });
+  const perUser = planUsesPerUserCompanyAllowance(
+    billingProfile?.planCode ?? "",
+  );
+  const used = await countActiveResearchedCompanies(
+    input.organizationId,
+    new Date(),
+    perUser ? { firstResearchedByUserId: input.userId } : undefined,
+  );
   const { effectiveLimit } = await getEffectiveCompanyResearchAllowance({
     organizationId: input.organizationId,
     baseLimit: policy.activeResearchedCompanyLimit,
