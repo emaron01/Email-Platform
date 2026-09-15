@@ -3,6 +3,10 @@
  * Effective allowance = plan base (UsagePolicy.activeResearchedCompanyLimit)
  * + sum(quantity) for rows with expiresAt > now.
  *
+ * Standard: packs are organization-scoped (userId null).
+ * Team/Enterprise: packs are attributed to a user and stack on that user's
+ * first-introducer allowance only.
+ *
  * Node-safe (no server-only). Research workers evaluate allowance here;
  * must use prisma-client, never the Next-only `@/lib/prisma` wrapper.
  */
@@ -23,6 +27,7 @@ export type CompanyResearchCreditRow = {
   quantity: number;
   grantedAt: Date;
   expiresAt: Date;
+  userId: string | null;
 };
 
 export type CompanyResearchCreditBalance = {
@@ -39,12 +44,14 @@ function toRow(existing: {
   quantity: number;
   grantedAt: Date;
   expiresAt: Date;
+  userId?: string | null;
 }): CompanyResearchCreditRow {
   return {
     id: existing.id,
     quantity: existing.quantity,
     grantedAt: existing.grantedAt,
     expiresAt: existing.expiresAt,
+    userId: existing.userId ?? null,
   };
 }
 
@@ -57,14 +64,28 @@ function isUniqueViolation(error: unknown): boolean {
   );
 }
 
+/**
+ * Active packs for an org. When `userId` is set, only that user's packs.
+ * When `userId` is null, only organization-scoped packs (Standard).
+ * Omit `userId` to include every pack on the org (platform listing).
+ */
 export async function listActiveCompanyResearchCredits(
   organizationId: string,
   now: Date = new Date(),
+  options?: { userId?: string | null },
 ): Promise<CompanyResearchCreditRow[]> {
+  const userFilter =
+    options && "userId" in options
+      ? options.userId
+        ? { userId: options.userId }
+        : { userId: null }
+      : {};
+
   const rows = await prisma.companyResearchCredit.findMany({
     where: {
       organizationId,
       expiresAt: { gt: now },
+      ...userFilter,
     },
     orderBy: { expiresAt: "asc" },
     select: {
@@ -72,16 +93,22 @@ export async function listActiveCompanyResearchCredits(
       quantity: true,
       grantedAt: true,
       expiresAt: true,
+      userId: true,
     },
   });
-  return rows;
+  return rows.map(toRow);
 }
 
 export async function getCompanyResearchCreditBalance(
   organizationId: string,
   now: Date = new Date(),
+  options?: { userId?: string | null },
 ): Promise<CompanyResearchCreditBalance> {
-  const packs = await listActiveCompanyResearchCredits(organizationId, now);
+  const packs = await listActiveCompanyResearchCredits(
+    organizationId,
+    now,
+    options,
+  );
   return {
     activeCreditCompanies: sumActiveCreditCompanies(packs, now),
     packs,
@@ -92,10 +119,12 @@ export async function getCompanyResearchCreditBalance(
 /**
  * Plan base slots + unexpired purchased credit companies.
  * Does not mutate UsagePolicy — credits are layered on top.
+ * Pass `userId` for Team/Enterprise personal packs; omit/null for Standard org pool.
  */
 export async function getEffectiveCompanyResearchAllowance(input: {
   organizationId: string;
   baseLimit: number;
+  userId?: string | null;
   now?: Date;
 }): Promise<{
   baseLimit: number;
@@ -107,6 +136,7 @@ export async function getEffectiveCompanyResearchAllowance(input: {
   const balance = await getCompanyResearchCreditBalance(
     input.organizationId,
     now,
+    "userId" in input ? { userId: input.userId ?? null } : { userId: null },
   );
   return {
     baseLimit: input.baseLimit,
@@ -124,9 +154,11 @@ export async function getEffectiveCompanyResearchAllowance(input: {
  * Idempotent grant after a successful one-time Checkout/PaymentIntent.
  * `quantity` is company slots (e.g. 300 for 3×100 blocks), not block count.
  * Duplicate Stripe ids return the existing row without adding capacity twice.
+ * Set `userId` for Team/Enterprise personal attribution; leave null for Standard.
  */
 export async function grantCompanyResearchCredits(input: {
   organizationId: string;
+  userId?: string | null;
   quantity?: number;
   grantedAt?: Date;
   stripeCheckoutSessionId?: string | null;
@@ -138,6 +170,7 @@ export async function grantCompanyResearchCredits(input: {
     grantedAt,
     COMPANY_CREDIT_BLOCK.expiryMonths,
   );
+  const userId = input.userId?.trim() || null;
 
   if (input.stripeCheckoutSessionId) {
     const existing = await prisma.companyResearchCredit.findUnique({
@@ -160,6 +193,7 @@ export async function grantCompanyResearchCredits(input: {
     const created = await prisma.companyResearchCredit.create({
       data: {
         organizationId: input.organizationId,
+        userId,
         quantity,
         grantedAt,
         expiresAt,
@@ -216,9 +250,7 @@ export async function extendCompanyResearchCreditsAfterCancelLapse(input: {
   for (const pack of packs) {
     await prisma.companyResearchCredit.update({
       where: { id: pack.id },
-      data: {
-        expiresAt: new Date(pack.expiresAt.getTime() + extensionMs),
-      },
+      data: { expiresAt: new Date(pack.expiresAt.getTime() + extensionMs) },
     });
   }
 
@@ -230,5 +262,4 @@ export {
   effectiveCompanyResearchLimit,
   nextCreditExpiry,
   sumActiveCreditCompanies,
-} from "@/lib/billing/company-research-credits-math";
-export { creditExpiryDate } from "@/lib/billing/plans";
+};

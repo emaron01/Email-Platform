@@ -27,6 +27,7 @@ import { DeleteOrganizationPanel } from "@/components/platform/DeleteOrganizatio
 import { PurgeContactOutboundPanel } from "@/components/platform/PurgeContactOutboundPanel";
 import {
   grantOrganizationCreditAction,
+  grantCompanyResearchCreditsAction,
   platformChangeMemberRoleAction,
   platformInviteUserAction,
   platformRemoveMemberAction,
@@ -37,6 +38,7 @@ import {
   updatePlatformResearchPolicyAction,
   updatePlatformOrgMaxSeatsAction,
 } from "@/app/actions/platform-orgs";
+import { planUsesPerUserCompanyAllowance, COMPANY_CREDIT_BLOCK } from "@/lib/billing/plans";
 
 function pct(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
@@ -67,6 +69,9 @@ export default async function PlatformOrgDetailPage({
   const catalogPrices = await loadFlattenedBillingPrices();
   const canMutate = canMutatePlatform(user.platformRole);
   const { organization: org, usage, health, usagePolicy, researchPolicy, billing } = detail;
+  const perUserCompanyCredits = planUsesPerUserCompanyAllowance(
+    billing.planCode ?? "",
+  );
 
   return (
     <div className="space-y-8">
@@ -534,6 +539,29 @@ export default async function PlatformOrgDetailPage({
         </ul>
       </section>
 
+      <section className="space-y-2">
+        <h2 className="text-lg font-medium">Company research credit packs</h2>
+        <ul className="divide-y divide-slate-100 rounded-md border border-slate-200 bg-white text-sm">
+          {detail.companyResearchCredits.length === 0 ? (
+            <li className="px-3 py-2 text-slate-500">None yet.</li>
+          ) : (
+            detail.companyResearchCredits.map((pack) => (
+              <li key={pack.id} className="px-3 py-2">
+                {pack.quantity} companies
+                {pack.user
+                  ? ` · ${pack.user.email}`
+                  : " · organization pool"}
+                {" · "}
+                granted {pack.grantedAt.toISOString().slice(0, 10)}
+                {" · expires "}
+                {pack.expiresAt.toISOString().slice(0, 10)}
+                {pack.stripeCheckoutSessionId ? " · Stripe" : " · platform"}
+              </li>
+            ))
+          )}
+        </ul>
+      </section>
+
       {canMutate ? (
         <section className="space-y-6 border-t border-slate-200 pt-6">
           <h2 className="text-lg font-medium">SUPER_ADMIN actions</h2>
@@ -692,6 +720,68 @@ export default async function PlatformOrgDetailPage({
               className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
             >
               Grant credit
+            </button>
+          </ActionFeedbackForm>
+
+          <ActionFeedbackForm
+            action={grantCompanyResearchCreditsAction}
+            className="grid max-w-md gap-3"
+            testId="platform-company-research-credits-form"
+          >
+            <input type="hidden" name="organizationId" value={id} />
+            <p className="text-sm text-slate-600">
+              Company research packs: {COMPANY_CREDIT_BLOCK.units} companies
+              per block (same Stripe price as Standard).{" "}
+              {perUserCompanyCredits
+                ? "Team/Enterprise packs apply to the selected user's personal allowance."
+                : "Standard packs add to the organization pool."}
+            </p>
+            {perUserCompanyCredits ? (
+              <label className="block text-sm">
+                User
+                <select
+                  name="userId"
+                  required
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    Select member…
+                  </option>
+                  {detail.members.map((m) => (
+                    <option key={m.user.id} value={m.user.id}>
+                      {m.user.email}
+                      {m.user.name ? ` (${m.user.name})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <label className="block text-sm">
+              Blocks ({COMPANY_CREDIT_BLOCK.units} companies each)
+              <input
+                name="blocks"
+                type="number"
+                min={1}
+                step={1}
+                defaultValue={1}
+                required
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm">
+              Reason
+              <input
+                name="reason"
+                required
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+              />
+            </label>
+            <button
+              type="submit"
+              className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
+            >
+              Grant company research credits
             </button>
           </ActionFeedbackForm>
 

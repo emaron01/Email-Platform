@@ -467,6 +467,14 @@ describe.skipIf(!hasDatabase)(
       where: { id: organization.id },
       data: { accountType: "ENTERPRISE" },
     });
+    await prisma.organizationBillingProfile.update({
+      where: { organizationId: organization.id },
+      data: {
+        planCode: "ENTERPRISE",
+        seatQuantity: 5,
+        maxSeats: 10,
+      },
+    });
 
     await renameOrganizationWorkspace({
       organizationId: organization.id,

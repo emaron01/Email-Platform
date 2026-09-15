@@ -17,7 +17,7 @@ export type CampaignSharingActionResult = CampaignActionResult;
 
 export async function useSharedCampaignAction(
   formData: FormData,
-): Promise<void> {
+): Promise<CampaignActionResult> {
   const { organization, user } = await getMembershipForCurrentUser();
   const campaignId = String(formData.get("campaignId") || "").trim();
   if (!campaignId) throw new TenantError("Campaign is required.");

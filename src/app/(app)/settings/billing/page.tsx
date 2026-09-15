@@ -21,6 +21,7 @@ import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
 import {
   BILLING_PLAN_STANDARD,
   getPlanDefinition,
+  planUsesPerUserCompanyAllowance,
   planUsesSeatBilling,
 } from "@/lib/billing/plans";
 import { loadEffectiveBillingCatalog } from "@/lib/billing/effective-catalog";
@@ -70,9 +71,7 @@ export default async function OrganizationBillingSettingsPage({
   const [
     billing,
     policy,
-    activeCompanies,
     canConvertTrialEarly,
-    creditBalance,
     prices,
     catalogEffective,
     lockState,
@@ -85,9 +84,7 @@ export default async function OrganizationBillingSettingsPage({
       organizationId: organization.id,
       userId: user.id,
     }),
-    countActiveResearchedCompanies(organization.id),
     canOfferEarlyTrialConversion(organization.id),
-    getCompanyResearchCreditBalance(organization.id),
     loadEffectiveBillingPrices(),
     loadEffectiveBillingCatalog(),
     getOrganizationPaymentLockState(organization.id),
@@ -104,6 +101,21 @@ export default async function OrganizationBillingSettingsPage({
   const spendBlocked = lockState.spendBlocked;
   const planCode = billing?.planCode ?? BILLING_PLAN_COMPED;
   const billingStatus = billing?.billingStatus ?? "FREE";
+  const perUserCredits = planUsesPerUserCompanyAllowance(planCode);
+
+  const [activeCompanies, creditBalance] = await Promise.all([
+    countActiveResearchedCompanies(
+      organization.id,
+      new Date(),
+      perUserCredits
+        ? { firstResearchedByUserId: user.id }
+        : undefined,
+    ),
+    getCompanyResearchCreditBalance(organization.id, new Date(), {
+      userId: perUserCredits ? user.id : null,
+    }),
+  ]);
+
   const remaining = Math.max(
     0,
     policy.activeResearchedCompanyLimit +
@@ -135,7 +147,7 @@ export default async function OrganizationBillingSettingsPage({
     : !effectiveCreditsAreCheckoutReady(prices)
       ? "Company credit packs are not configured yet."
       : !hasLiveSubscription
-        ? "Subscribe to Standard before buying extra company capacity."
+        ? "Subscribe before buying extra company capacity."
         : null;
 
   const discountActive = billing
@@ -443,7 +455,11 @@ export default async function OrganizationBillingSettingsPage({
             One slot per distinct company with fresh research. Refreshing a
             company you already researched does not use another slot. Plan base
             is {policy.activeResearchedCompanyLimit}; credit packs stack on top
-            for 12 months.
+            for 12 months
+            {perUserCredits
+              ? " and apply to your personal researched-company allowance"
+              : ""}
+            .
           </p>
         )}
         <BuyCompanyCreditsButton disabledReason={creditsDisabledReason} />

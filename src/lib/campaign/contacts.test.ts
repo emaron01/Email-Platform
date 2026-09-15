@@ -150,6 +150,21 @@ describe.skipIf(!hasDatabase)(
       orgAId = orgA.id;
       orgBId = orgB.id;
 
+      const owner = await prisma.user.create({
+        data: {
+          email: `campaign-contacts-owner-${suffix}@example.test`,
+          emailNormalized: `campaign-contacts-owner-${suffix}@example.test`,
+          name: "Campaign Contacts Owner",
+        },
+      });
+      await prisma.organizationMembership.create({
+        data: {
+          organizationId: orgAId,
+          userId: owner.id,
+          role: "OWNER",
+        },
+      });
+
       const product = await prisma.product.create({
         data: { organizationId: orgAId, name: "Product A" },
       });

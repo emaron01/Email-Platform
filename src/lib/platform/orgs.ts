@@ -312,6 +312,21 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
           },
         },
       },
+      companyResearchCredits: {
+        orderBy: { grantedAt: "desc" },
+        take: 50,
+        select: {
+          id: true,
+          quantity: true,
+          grantedAt: true,
+          expiresAt: true,
+          userId: true,
+          stripeCheckoutSessionId: true,
+          user: {
+            select: { id: true, email: true, name: true },
+          },
+        },
+      },
     },
   });
 
@@ -392,6 +407,7 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
     campaigns: org.campaigns,
     contactLists: org.contactLists,
     creditGrants: org.creditGrants,
+    companyResearchCredits: org.companyResearchCredits,
     usage: {
       today: usageToday,
       last7d: usage7d,
@@ -707,6 +723,86 @@ export async function grantOrganizationCredit(input: {
       reason,
     },
   });
+}
+
+/**
+ * Grant company research credit packs (100 companies / block).
+ * Standard: omit userId (org pool). Team/Enterprise: require userId (personal allowance).
+ */
+export async function grantCompanyResearchCreditsAsPlatform(input: {
+  organizationId: string;
+  actorUserId: string;
+  /** Target member for Team/Enterprise; null for Standard org pool. */
+  userId?: string | null;
+  /** Number of 100-company blocks. */
+  blocks: number;
+  reason: string;
+}): Promise<{ companiesGranted: number; userId: string | null }> {
+  const reason = input.reason.trim();
+  if (!reason) throw new Error("Credit grant reason is required.");
+  const blocks = Math.floor(input.blocks);
+  if (!Number.isFinite(blocks) || blocks < 1) {
+    throw new Error("Blocks must be a positive integer.");
+  }
+
+  const billing = await prisma.organizationBillingProfile.findUnique({
+    where: { organizationId: input.organizationId },
+    select: { planCode: true },
+  });
+  const { planUsesPerUserCompanyAllowance, COMPANY_CREDIT_BLOCK } =
+    await import("@/lib/billing/plans");
+  const perUser = planUsesPerUserCompanyAllowance(billing?.planCode ?? "");
+  const userId = input.userId?.trim() || null;
+
+  if (perUser && !userId) {
+    throw new Error(
+      "Select a user — Team and Enterprise company credits apply to a personal allowance.",
+    );
+  }
+  if (!perUser && userId) {
+    throw new Error(
+      "Standard company credits are organization-scoped; do not select a user.",
+    );
+  }
+  if (userId) {
+    const membership = await prisma.organizationMembership.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: input.organizationId,
+          userId,
+        },
+      },
+      select: { id: true },
+    });
+    if (!membership) {
+      throw new Error("Selected user is not a member of this organization.");
+    }
+  }
+
+  const { grantCompanyResearchCredits } = await import(
+    "@/lib/billing/company-research-credits"
+  );
+  const quantity = blocks * COMPANY_CREDIT_BLOCK.units;
+  await grantCompanyResearchCredits({
+    organizationId: input.organizationId,
+    userId: perUser ? userId : null,
+    quantity,
+  });
+
+  await recordAdminAuditEvent({
+    action: "COMPANY_RESEARCH_CREDIT_GRANTED",
+    actorUserId: input.actorUserId,
+    organizationId: input.organizationId,
+    targetUserId: userId,
+    metadata: {
+      blocks,
+      quantity,
+      reason,
+      userId,
+    },
+  });
+
+  return { companiesGranted: quantity, userId };
 }
 
 function slugifyOrgName(input: string): string {

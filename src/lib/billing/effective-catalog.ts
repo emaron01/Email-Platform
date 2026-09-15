@@ -29,7 +29,7 @@ export async function loadEffectiveBillingCatalog(): Promise<EffectiveBillingCat
   const parsed = parseBillingCatalogSetting(raw);
   if (parsed) {
     return {
-      catalog: parsed,
+      catalog: backfillCatalogCompanyCredits(parsed),
       source: "platform",
       sourceLabel: "Platform console",
     };
@@ -38,6 +38,21 @@ export async function loadEffectiveBillingCatalog(): Promise<EffectiveBillingCat
     catalog: defaultBillingCatalogSetting(),
     source: "code",
     sourceLabel: "Code defaults (plans.ts)",
+  };
+}
+
+/** Fill missing companyCredits from code defaults (e.g. Enterprise after Team launch). */
+function backfillCatalogCompanyCredits(
+  catalog: BillingCatalogSettingValue,
+): BillingCatalogSettingValue {
+  const defaults = defaultBillingCatalogSetting();
+  return {
+    plans: catalog.plans.map((plan) => {
+      if (plan.companyCredits) return plan;
+      const fromDefault = findCatalogPlan(defaults, plan.planCode)?.companyCredits;
+      if (!fromDefault) return plan;
+      return { ...plan, companyCredits: fromDefault };
+    }),
   };
 }
 

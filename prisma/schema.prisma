@@ -392,6 +392,7 @@ enum AdminAuditAction {
   EULA_PUBLISHED
   EULA_ACCEPTED
   PLATFORM_CONTACT_OUTBOUND_PURGED
+  COMPANY_RESEARCH_CREDIT_GRANTED
 }
 
 enum TransactionalEmailTemplateKey {
@@ -640,6 +641,7 @@ model User {
   ownedCampaigns           Campaign[]                    @relation("CampaignOwner")
   campaignExecutions       CampaignExecution[]           @relation("CampaignExecutionUser")
   creditGrantsIssued       OrganizationCreditGrant[]     @relation("CreditGrantedBy")
+  companyResearchCredits   CompanyResearchCredit[]       @relation("CompanyResearchCreditUser")
   spendReconciliationsCreated ProviderSpendReconciliation[] @relation("SpendReconciliationCreatedBy")
   /// IANA timezone for digest windows. Falls back to organization timezone when null.
   timezone                 String?
@@ -880,9 +882,12 @@ model ReferralRedemption {
 
 /// One-time company research capacity packs ($30 / 100). Expire 12 months after grant.
 /// Never store card/PII — Stripe payment/checkout ids only for idempotent grant.
+/// Standard: userId null (org pool). Team/Enterprise: userId set (personal allowance).
 model CompanyResearchCredit {
   id                       String    @id @default(cuid())
   organizationId           String
+  /// When set, packs apply only to this user's first-introducer allowance (TEAM/ENTERPRISE).
+  userId                   String?
   /// Companies added to the effective research allowance while unexpired.
   quantity                 Int
   grantedAt                DateTime  @default(now())
@@ -895,9 +900,12 @@ model CompanyResearchCredit {
   createdAt                DateTime  @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation("CompanyResearchCreditUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([organizationId, expiresAt])
+  @@index([organizationId, userId])
+  @@index([userId])
 }
 
 /// Webhook idempotency ledger. Store event id + type only — never the raw payload.

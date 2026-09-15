@@ -45,6 +45,20 @@ describe.skipIf(!hasDatabase)(
           },
         });
         orgA = org.id;
+        const owner = await prisma.user.create({
+          data: {
+            email: `camp-arch-owner-${suffix}@example.test`,
+            emailNormalized: `camp-arch-owner-${suffix}@example.test`,
+            name: "Camp Arch Owner",
+          },
+        });
+        await prisma.organizationMembership.create({
+          data: {
+            organizationId: orgA,
+            userId: owner.id,
+            role: "OWNER",
+          },
+        });
         process.env.ALLOW_DEV_TENANT_BYPASS = "true";
         process.env.DEV_ORGANIZATION_ID = orgA;
         ready = true;

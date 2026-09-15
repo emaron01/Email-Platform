@@ -372,7 +372,11 @@ export function defaultBillingCatalogSetting(): BillingCatalogSettingValue {
             seatMax: null,
           }),
         },
-        companyCredits: null,
+        companyCredits: {
+          blockSize: COMPANY_CREDIT_BLOCK.units,
+          displayPriceNote: "",
+          expiryMonths: COMPANY_CREDIT_BLOCK.expiryMonths,
+        },
       },
       {
         planCode: BILLING_PLAN_COMPED,

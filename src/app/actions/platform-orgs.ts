@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth/authz";
 import {
   grantOrganizationCredit,
+  grantCompanyResearchCreditsAsPlatform,
   suspendOrganization,
   unsuspendOrganization,
   deleteOrganization,
@@ -236,6 +237,36 @@ export async function grantOrganizationCreditAction(
     });
     revalidatePath(`/platform/orgs/${organizationId}`);
     return { ok: true, message: "Credit grant recorded." };
+  } catch (error) {
+    return { ok: false, message: toSafeError(error) };
+  }
+}
+
+export async function grantCompanyResearchCreditsAction(
+  _prev: PlatformOrgActionResult | null,
+  formData: FormData,
+): Promise<PlatformOrgActionResult> {
+  try {
+    const user = await requirePlatformSuperAdmin();
+    const organizationId = requireOrgId(formData);
+    const blocks = asPositiveInt(formData.get("blocks"), "Blocks");
+    if (blocks < 1) throw new Error("Blocks must be at least 1.");
+    const reason = String(formData.get("reason") || "").trim();
+    const userIdRaw = String(formData.get("userId") || "").trim();
+    const result = await grantCompanyResearchCreditsAsPlatform({
+      organizationId,
+      actorUserId: user.id,
+      userId: userIdRaw || null,
+      blocks,
+      reason,
+    });
+    revalidatePath(`/platform/orgs/${organizationId}`);
+    return {
+      ok: true,
+      message: result.userId
+        ? `Granted ${result.companiesGranted} company research credits to the selected user.`
+        : `Granted ${result.companiesGranted} company research credits to the organization.`,
+    };
   } catch (error) {
     return { ok: false, message: toSafeError(error) };
   }

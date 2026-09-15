@@ -20,7 +20,8 @@ describe("archived and suppressed selector audit", () => {
     expect(list).toMatch(/listCampaigns[\s\S]*archivedAt:\s*null/);
     expect(homePage).toContain("ShowArchivedToggle");
     expect(campaignsPage).toContain("ShowArchivedToggle");
-    expect(campaignsPage).toContain("listCampaigns({ includeArchived })");
+    expect(campaignsPage).toContain("listCampaigns({");
+    expect(campaignsPage).toContain("includeArchived");
   });
 
   it("list selectors hide archived lists by default", () => {

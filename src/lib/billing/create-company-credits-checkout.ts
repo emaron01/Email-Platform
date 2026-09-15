@@ -58,7 +58,7 @@ export async function createCompanyCreditsCheckoutSession(input: {
     return {
       ok: false,
       error:
-        "Subscribe to Standard first so we have a Stripe customer for this organization.",
+        "Subscribe first so we have a Stripe customer for this organization.",
       code: "NO_STRIPE_CUSTOMER",
     };
   }
@@ -109,6 +109,7 @@ export async function createCompanyCreditsCheckoutSession(input: {
     payment_intent_data: {
       metadata: {
         organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
         purpose: "company_research_credits",
       },
     },

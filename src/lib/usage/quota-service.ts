@@ -64,6 +64,7 @@ export async function assertUsageAllowed(input: {
     const { effectiveLimit: limit } = await getEffectiveCompanyResearchAllowance({
       organizationId: input.organizationId,
       baseLimit,
+      userId: perUser ? input.userId : null,
     });
     const lockKey = perUser
       ? `active-research-slot:${input.organizationId}:${input.userId}`
@@ -405,6 +406,7 @@ export async function getActiveResearchedCompanyUsage(input: {
   const { effectiveLimit } = await getEffectiveCompanyResearchAllowance({
     organizationId: input.organizationId,
     baseLimit: policy.activeResearchedCompanyLimit,
+    userId: perUser ? input.userId : null,
   });
   return toActiveResearchedCompanyUsageView({
     used,

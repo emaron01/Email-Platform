@@ -39,6 +39,8 @@ describe("billing.catalog", () => {
     expect(team?.entitlementFloors.paid.seatMax).toBe(10);
     expect(enterprise?.sellable).toBe(false);
     expect(enterprise?.entitlementFloors.paid.seatMax).toBeNull();
+    expect(team?.companyCredits?.blockSize).toBe(100);
+    expect(enterprise?.companyCredits?.blockSize).toBe(100);
     expect(billingPlanLabel("PREMIUM")).toBe("Team");
   });
 

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { StartFreeTrialButton } from "@/components/billing/StartFreeTrialButton";
+import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
 import {
   BILLING_PLAN_ENTERPRISE,
   BILLING_PLAN_STANDARD,
@@ -167,7 +168,7 @@ export function OnboardingPlanSelector({
         {planCode === BILLING_PLAN_ENTERPRISE ? (
           <a
             href={ENTERPRISE_CONTACT}
-            className="inline-flex w-full items-center justify-center rounded-md bg-slate-900 px-4 py-3 text-sm font-medium text-white"
+            className={cn(PRIMARY_BUTTON_CLASS, "w-full !px-4 !py-3")}
             data-testid="onboarding-enterprise-contact"
           >
             Contact us

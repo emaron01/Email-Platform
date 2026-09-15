@@ -135,8 +135,23 @@ export async function grantCreditsFromCheckoutSession(
     return { ok: false, reason: "zero_quantity" };
   }
 
+  const actorUserId = session.metadata?.actorUserId?.trim() || null;
+  const billing = await prisma.organizationBillingProfile.findUnique({
+    where: { organizationId },
+    select: { planCode: true },
+  });
+  const { planUsesPerUserCompanyAllowance } = await import(
+    "@/lib/billing/plans"
+  );
+  const attributeToUser =
+    actorUserId &&
+    planUsesPerUserCompanyAllowance(billing?.planCode ?? "")
+      ? actorUserId
+      : null;
+
   const result = await grantCompanyResearchCredits({
     organizationId,
+    userId: attributeToUser,
     quantity: companiesGranted,
     stripeCheckoutSessionId: session.id,
     stripePaymentIntentId: paymentIntentIdFromSession(session),
