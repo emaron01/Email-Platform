@@ -158,6 +158,16 @@ export function SignupPlanSelector({
         </ul>
 
         {planCode === BILLING_PLAN_ENTERPRISE ? (
+          <p className="text-sm text-slate-600">Contact us to get started.</p>
+        ) : (
+          <p className="text-sm text-slate-600">
+            {selected.trialDays != null
+              ? "Cancel anytime before your trial ends and you won\u2019t be charged. Once your subscription starts, you may cancel at any time. Active billing ends at the end of the most current billing cycle."
+              : "Once your subscription starts, you may cancel at any time. Active billing ends at the end of the most current billing cycle."}
+          </p>
+        )}
+
+        {planCode === BILLING_PLAN_ENTERPRISE ? (
           <a
             href={ENTERPRISE_CONTACT}
             className={cn(PRIMARY_BUTTON_CLASS, "w-full !px-4 !py-3")}

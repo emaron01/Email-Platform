@@ -21,7 +21,7 @@ export const PENDING_INVITE_COOKIE = "pending_invite_token";
 async function AcceptInviteBody({ token }: { token: string | null }) {
   if (!token) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+      <div className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
           Invalid invitation
         </h1>
@@ -49,7 +49,7 @@ async function AcceptInviteBody({ token }: { token: string | null }) {
     });
     const next = `/invite/accept?token=${encodeURIComponent(token)}`;
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+      <div className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
           Accept invitation
         </h1>
@@ -86,7 +86,7 @@ async function AcceptInviteBody({ token }: { token: string | null }) {
         ? error.message
         : "Unable to accept this invitation.";
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+      <div className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
           Invitation problem
         </h1>

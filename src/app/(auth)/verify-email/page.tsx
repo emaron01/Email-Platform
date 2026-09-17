@@ -45,7 +45,7 @@ function VerifyEmailInner() {
 
   return (
     <div
-      className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm"
+      className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm"
       data-testid="verify-email-page"
     >
       <h1 className="text-2xl font-semibold tracking-tight text-slate-900">

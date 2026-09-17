@@ -78,7 +78,7 @@ export default async function SignupPlanPage() {
   )!;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6" data-testid="signup-plan-page">
+    <div className="mx-auto w-full space-y-6" data-testid="signup-plan-page">
       <div className="space-y-2 text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
           Choose your plan

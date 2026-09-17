@@ -13,7 +13,8 @@ export default function AuthLayout({
         </Link>
       </header>
       <main className="flex flex-1 items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md">{children}</div>
+        {/* Wide enough for plan picker + body copy; forms keep their own max-w-md */}
+        <div className="w-full max-w-3xl">{children}</div>
       </main>
     </div>
   );
