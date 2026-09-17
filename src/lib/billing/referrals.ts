@@ -17,6 +17,7 @@ import {
   selfReferralBlockReason,
 } from "@/lib/billing/referral-identity";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
+import { planAllowsReferrals } from "@/lib/billing/plans";
 import { prisma } from "@/lib/prisma";
 
 function readableReferralCode(): string {
@@ -50,10 +51,21 @@ export async function ensureOrganizationReferralCode(input: {
 
   const org = await prisma.organization.findUnique({
     where: { id: input.organizationId },
-    select: { id: true },
+    select: {
+      id: true,
+      billingProfile: { select: { planCode: true } },
+    },
   });
   if (!org) {
     return { ok: false, error: "Organization not found.", code: "NOT_FOUND" };
+  }
+
+  if (!planAllowsReferrals(org.billingProfile?.planCode)) {
+    return {
+      ok: false,
+      error: "Referrals are available on the Standard plan only.",
+      code: "PLAN_NOT_ELIGIBLE",
+    };
   }
 
   const existing = await prisma.organizationReferralCode.findUnique({

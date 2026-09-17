@@ -255,6 +255,15 @@ export function planUsesPerUserCompanyAllowance(planCode: string): boolean {
   return code === BILLING_PLAN_TEAM || code === BILLING_PLAN_ENTERPRISE;
 }
 
+/**
+ * Referral program is Standard-only (nav + Billing UI + code creation).
+ * Team / Enterprise / legacy Premium / Comped are excluded.
+ */
+export function planAllowsReferrals(planCode: string | null | undefined): boolean {
+  if (!planCode?.trim()) return false;
+  return canonicalPlanCode(planCode) === BILLING_PLAN_STANDARD;
+}
+
 /** True when plan bills / gates by seat quantity. */
 export function planUsesSeatBilling(planCode: string): boolean {
   return planUsesPerUserCompanyAllowance(planCode);

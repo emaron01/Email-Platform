@@ -4,8 +4,11 @@ import type { UserMenuModel } from "@/lib/auth/user-menu";
 
 export function TopBar({
   menuModel,
+  showReferrals = false,
 }: {
   menuModel: UserMenuModel | null;
+  /** Standard plan only — Team / Enterprise hide Refer a Friend. */
+  showReferrals?: boolean;
 }) {
   return (
     <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-6 print:hidden">
@@ -19,7 +22,7 @@ export function TopBar({
       <div className="flex items-center gap-3">
         {menuModel ? (
           <>
-            <ReferAFriendButton />
+            {showReferrals ? <ReferAFriendButton /> : null}
             <UserMenu model={menuModel} />
           </>
         ) : (

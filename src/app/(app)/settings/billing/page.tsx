@@ -21,6 +21,7 @@ import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
 import {
   BILLING_PLAN_STANDARD,
   getPlanDefinition,
+  planAllowsReferrals,
   planUsesPerUserCompanyAllowance,
   planUsesSeatBilling,
 } from "@/lib/billing/plans";
@@ -404,7 +405,11 @@ export default async function OrganizationBillingSettingsPage({
         ) : null}
       </section>
 
-      {paymentLocked ? null : <ReferralProgramPanel />}
+      {paymentLocked || !planAllowsReferrals(billing?.planCode)
+        ? null
+        : (
+            <ReferralProgramPanel />
+          )}
 
       {paymentLocked ? null : (
       <section

@@ -146,6 +146,7 @@ describe("referral wiring contracts", () => {
     expect(nav).toContain("refer-a-friend-modal");
     expect(nav).toContain("useReferralShare(open)");
     expect(topBar).toContain("ReferAFriendButton");
+    expect(topBar).toContain("showReferrals");
     expect(topBar).toContain("UserMenu");
   });
 
@@ -166,9 +167,12 @@ describe("referral wiring contracts", () => {
     );
     expect(referrals).not.toContain("NOT_INDIVIDUAL");
     expect(referrals).not.toContain('accountType !== "INDIVIDUAL"');
+    expect(referrals).toContain("planAllowsReferrals");
+    expect(referrals).toContain("PLAN_NOT_ELIGIBLE");
     expect(route).not.toContain("NOT_INDIVIDUAL");
     expect(route).toContain("requireCurrentUser");
-    expect(billing).toContain("<ReferralProgramPanel />");
+    expect(billing).toContain("ReferralProgramPanel");
+    expect(billing).toContain("planAllowsReferrals");
     expect(billing).not.toContain('accountType === "INDIVIDUAL"');
     expect(share).toContain("if (!active || code) return");
     expect(share).toContain('method: "POST"');

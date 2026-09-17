@@ -9,6 +9,8 @@ import {
   buildUserMenuModel,
   type MembershipRoleForMenu,
 } from "@/lib/auth/user-menu";
+import { planAllowsReferrals } from "@/lib/billing/plans";
+import { prisma } from "@/lib/prisma";
 
 export async function AppShell({
   children,
@@ -24,6 +26,15 @@ export async function AppShell({
   const organization = user ? await getCurrentOrganization() : null;
   const membershipCtx =
     user && organization ? await resolveActiveOrganization(user) : null;
+
+  const billingPlanCode = organization
+    ? (
+        await prisma.organizationBillingProfile.findUnique({
+          where: { organizationId: organization.id },
+          select: { planCode: true },
+        })
+      )?.planCode
+    : null;
 
   const menuModel = user
     ? buildUserMenuModel({
@@ -51,7 +62,10 @@ export async function AppShell({
     <div className="flex min-h-screen bg-white text-slate-900">
       <Sidebar items={sidebarItems} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar menuModel={menuModel} />
+        <TopBar
+          menuModel={menuModel}
+          showReferrals={planAllowsReferrals(billingPlanCode)}
+        />
         {pastDueReadOnly && !paymentLocked ? (
           <div
             role="status"
