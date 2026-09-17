@@ -26,7 +26,8 @@ export function OnboardingPlanSelector({
   standard,
   team,
   enterprise,
-  trialPeriodDays,
+  standardTrialDays,
+  teamTrialDays,
   standardCheckoutReady,
   teamCheckoutReady,
   globalDisabledReason,
@@ -34,20 +35,30 @@ export function OnboardingPlanSelector({
   standard: OnboardingPlanOption;
   team: OnboardingPlanOption;
   enterprise: OnboardingPlanOption;
-  trialPeriodDays: number | null;
+  /** null = trial off for new Standard Checkout */
+  standardTrialDays: number | null;
+  /** null = trial off for new Team Checkout */
+  teamTrialDays: number | null;
   standardCheckoutReady: boolean;
   teamCheckoutReady: boolean;
   globalDisabledReason?: string | null;
 }) {
   const [planCode, setPlanCode] = useState<string>(BILLING_PLAN_STANDARD);
   const [seatQuantity, setSeatQuantity] = useState(2);
-  const trialOff = trialPeriodDays == null;
 
   const selected = useMemo(() => {
     if (planCode === BILLING_PLAN_TEAM) return team;
     if (planCode === BILLING_PLAN_ENTERPRISE) return enterprise;
     return standard;
   }, [enterprise, planCode, standard, team]);
+
+  const selectedTrialDays =
+    planCode === BILLING_PLAN_TEAM
+      ? teamTrialDays
+      : planCode === BILLING_PLAN_ENTERPRISE
+        ? null
+        : standardTrialDays;
+  const trialOff = selectedTrialDays == null;
 
   const planDisabledReason =
     globalDisabledReason ??
@@ -108,9 +119,11 @@ export function OnboardingPlanSelector({
           <p className="text-lg font-medium text-slate-900">
             {selected.displayName}
           </p>
-          <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
-            {selected.priceLabel ?? "See pricing at checkout"}
-          </p>
+          {selected.priceLabel ? (
+            <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+              {selected.priceLabel}
+            </p>
+          ) : null}
           {selected.tagline ? (
             <p className="mt-1 text-sm text-slate-600">{selected.tagline}</p>
           ) : null}
@@ -152,8 +165,20 @@ export function OnboardingPlanSelector({
               <li>{selected.creditsBulletNote}</li>
             ) : null}
           </ul>
-          {selected.trialNote ? (
-            <p className="mt-3 text-xs text-slate-500">{selected.trialNote}</p>
+          {!trialOff && planCode !== BILLING_PLAN_ENTERPRISE ? (
+            <div
+              className="mt-4 rounded-md border-2 border-emerald-500 bg-emerald-50 px-4 py-3"
+              data-testid="onboarding-free-trial-banner"
+            >
+              <p className="text-lg font-extrabold tracking-wide text-emerald-700 sm:text-xl">
+                FREE TRIAL — {selectedTrialDays} days
+              </p>
+              {selected.trialNote ? (
+                <p className="mt-1 text-base font-semibold text-emerald-800">
+                  {selected.trialNote}
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </div>
 
@@ -176,7 +201,7 @@ export function OnboardingPlanSelector({
         ) : (
           <StartFreeTrialButton
             disabledReason={planDisabledReason}
-            trialPeriodDays={trialPeriodDays}
+            trialPeriodDays={selectedTrialDays}
             planCode={planCode}
             seatQuantity={
               planCode === BILLING_PLAN_TEAM ? seatQuantity : 1

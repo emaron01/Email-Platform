@@ -76,23 +76,31 @@ export default async function OnboardingSubscribePage({
   }
 
   const defaults = defaultBillingCatalogSetting();
-  const [priceCatalog, prices, trial, standardLoad, teamLoad, enterpriseLoad] =
-    await Promise.all([
-      fetchSellableCatalogPrices(),
-      loadEffectiveBillingPrices(),
-      loadEffectiveTrialPeriod({ planCode: BILLING_PLAN_STANDARD }),
-      loadCatalogPlan(BILLING_PLAN_STANDARD).catch(() => ({
-        plan: defaults.plans.find((p) => p.planCode === BILLING_PLAN_STANDARD)!,
-      })),
-      loadCatalogPlan(BILLING_PLAN_TEAM).catch(() => ({
-        plan: defaults.plans.find((p) => p.planCode === BILLING_PLAN_TEAM)!,
-      })),
-      loadCatalogPlan(BILLING_PLAN_ENTERPRISE).catch(() => ({
-        plan: defaults.plans.find(
-          (p) => p.planCode === BILLING_PLAN_ENTERPRISE,
-        )!,
-      })),
-    ]);
+  const [
+    priceCatalog,
+    prices,
+    standardTrial,
+    teamTrial,
+    standardLoad,
+    teamLoad,
+    enterpriseLoad,
+  ] = await Promise.all([
+    fetchSellableCatalogPrices(),
+    loadEffectiveBillingPrices(),
+    loadEffectiveTrialPeriod({ planCode: BILLING_PLAN_STANDARD }),
+    loadEffectiveTrialPeriod({ planCode: BILLING_PLAN_TEAM }),
+    loadCatalogPlan(BILLING_PLAN_STANDARD).catch(() => ({
+      plan: defaults.plans.find((p) => p.planCode === BILLING_PLAN_STANDARD)!,
+    })),
+    loadCatalogPlan(BILLING_PLAN_TEAM).catch(() => ({
+      plan: defaults.plans.find((p) => p.planCode === BILLING_PLAN_TEAM)!,
+    })),
+    loadCatalogPlan(BILLING_PLAN_ENTERPRISE).catch(() => ({
+      plan: defaults.plans.find(
+        (p) => p.planCode === BILLING_PLAN_ENTERPRISE,
+      )!,
+    })),
+  ]);
 
   const fallbackStandard = defaults.plans.find(
     (p) => p.planCode === BILLING_PLAN_STANDARD,
@@ -152,19 +160,19 @@ export default async function OnboardingSubscribePage({
       "Checkout is not configured yet. Contact support if this persists.";
   }
 
-  const trialPeriodDays = trial.days;
-  const trialOff = trialPeriodDays == null;
+  const anyTrialOn =
+    standardTrial.days != null || teamTrial.days != null;
 
   return (
     <div className="space-y-8" data-testid="onboarding-subscribe-page">
       <div className="space-y-2 text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-          {trialOff ? "Choose a plan" : "Start Your Free Trial"}
+          {anyTrialOn ? "Start Your Free Trial" : "Choose a plan"}
         </h1>
         <p className="text-base text-slate-600">
-          {trialOff
-            ? "Billing starts when Checkout completes. Cancel anytime."
-            : "No charge until your trial ends. Cancel anytime."}
+          {anyTrialOn
+            ? "No charge until your trial ends. Cancel anytime."
+            : "Billing starts when Checkout completes. Cancel anytime."}
         </p>
       </div>
 
@@ -178,7 +186,8 @@ export default async function OnboardingSubscribePage({
         standard={standard}
         team={team}
         enterprise={enterprise}
-        trialPeriodDays={trialPeriodDays}
+        standardTrialDays={standardTrial.days}
+        teamTrialDays={teamTrial.days}
         standardCheckoutReady={effectivePricesAreCheckoutReady(
           prices,
           BILLING_PLAN_STANDARD,

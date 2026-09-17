@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BILLING_PLAN_PREMIUM,
   BILLING_PLAN_STANDARD,
+  BILLING_PLAN_TEAM,
 } from "@/lib/billing/plans";
 import {
   DEFAULT_TRIAL_PERIOD_DAYS,
@@ -11,6 +12,7 @@ import {
   parseBillingTrialSetting,
   resolveEffectiveTrialPeriod,
   resolveTrialPeriodDays,
+  trialPlanFormState,
 } from "@/lib/billing/trial-period";
 
 describe("resolveTrialPeriodDays", () => {
@@ -83,7 +85,27 @@ describe("parseBillingTrialSetting / buildBillingTrialSetting", () => {
     });
   });
 
-  it("rejects enabled without days or byPlan", () => {
+  it("accepts independent Standard / Team plans", () => {
+    expect(
+      parseBillingTrialSetting({
+        enabled: true,
+        days: 7,
+        plans: {
+          STANDARD: { enabled: true, days: 7 },
+          TEAM: { enabled: false },
+        },
+      }),
+    ).toEqual({
+      enabled: true,
+      days: 7,
+      plans: {
+        STANDARD: { enabled: true, days: 7 },
+        TEAM: { enabled: false },
+      },
+    });
+  });
+
+  it("rejects enabled without days, byPlan, or plans", () => {
     expect(parseBillingTrialSetting({ enabled: true })).toBeNull();
   });
 
@@ -92,17 +114,21 @@ describe("parseBillingTrialSetting / buildBillingTrialSetting", () => {
     expect(parseBillingTrialSetting({ enabled: true, days: 91 })).toBeNull();
   });
 
-  it("preserves byPlan when building global controls", () => {
+  it("builds per-plan controls and preserves unrelated byPlan keys", () => {
     expect(
       buildBillingTrialSetting({
-        enabled: true,
-        days: 21,
-        existingByPlan: { PREMIUM: 30 },
+        standard: { enabled: true, days: 7 },
+        team: { enabled: false, days: 14 },
+        existingByPlan: { PREMIUM: 30, TEAM: 99 },
       }),
     ).toEqual({
       enabled: true,
-      days: 21,
+      days: 7,
       byPlan: { PREMIUM: 30 },
+      plans: {
+        STANDARD: { enabled: true, days: 7 },
+        TEAM: { enabled: false },
+      },
     });
   });
 });
@@ -164,6 +190,27 @@ describe("resolveEffectiveTrialPeriod", () => {
     ).toBe(14);
   });
 
+  it("allows Team trial off while Standard stays on", () => {
+    const setting = buildBillingTrialSetting({
+      standard: { enabled: true, days: 7 },
+      team: { enabled: false, days: 7 },
+    });
+    expect(
+      resolveEffectiveTrialPeriod({
+        planCode: BILLING_PLAN_STANDARD,
+        platformSetting: setting,
+        envRaw: "14",
+      }).days,
+    ).toBe(7);
+    expect(
+      resolveEffectiveTrialPeriod({
+        planCode: BILLING_PLAN_TEAM,
+        platformSetting: setting,
+        envRaw: "14",
+      }).days,
+    ).toBeNull();
+  });
+
   it("platform enabled:false turns trial off without reading env", () => {
     const result = resolveEffectiveTrialPeriod({
       planCode: BILLING_PLAN_STANDARD,
@@ -183,5 +230,40 @@ describe("resolveEffectiveTrialPeriod", () => {
     expect(checkout).toContain("loadEffectiveTrialPeriod");
     expect(checkout).toContain("trial_period_days");
     expect(checkout).not.toContain("plan?.trialDays ?? 7");
+  });
+});
+
+describe("trialPlanFormState", () => {
+  it("maps legacy global row onto both plans", () => {
+    expect(
+      trialPlanFormState({
+        platformSetting: { enabled: true, days: 10 },
+        standardEffectiveDays: 10,
+        teamEffectiveDays: 10,
+      }),
+    ).toEqual({
+      standard: { enabled: true, days: 10 },
+      team: { enabled: true, days: 10 },
+    });
+  });
+
+  it("reads independent plans when present", () => {
+    expect(
+      trialPlanFormState({
+        platformSetting: {
+          enabled: true,
+          days: 7,
+          plans: {
+            STANDARD: { enabled: true, days: 7 },
+            TEAM: { enabled: false },
+          },
+        },
+        standardEffectiveDays: 7,
+        teamEffectiveDays: null,
+      }),
+    ).toEqual({
+      standard: { enabled: true, days: 7 },
+      team: { enabled: false, days: 7 },
+    });
   });
 });

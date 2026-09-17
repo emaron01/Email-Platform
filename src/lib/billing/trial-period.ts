@@ -1,15 +1,19 @@
 /**
- * Trial length for NEW STANDARD (and future sellable) Checkout sessions.
+ * Trial length for NEW sellable Checkout sessions (Standard / Team).
  *
  * Resolution order for a plan:
- *   1. PlatformSetting "billing.trial" (console) — byPlan[plan] → days → off
- *   2. BILLING_TRIAL_PERIOD_DAYS env (fallback when no console row)
- *   3. Default 7 / off tokens
+ *   1. PlatformSetting "billing.trial" plans[plan] (per-plan on/off + days)
+ *   2. Legacy console: byPlan[plan] → global days → off
+ *   3. BILLING_TRIAL_PERIOD_DAYS env (fallback when no console row)
+ *   4. Default 7 / off tokens
  *
  * Does not change subscriptions already created in Stripe.
  */
 
-import { BILLING_PLAN_STANDARD } from "@/lib/billing/plans";
+import {
+  BILLING_PLAN_STANDARD,
+  BILLING_PLAN_TEAM,
+} from "@/lib/billing/plans";
 
 export const DEFAULT_TRIAL_PERIOD_DAYS = 7;
 /** Inclusive bounds for an active trial — thousand-day misconfigs fall back. */
@@ -22,16 +26,25 @@ const ENV_NAME = "BILLING_TRIAL_PERIOD_DAYS";
 
 const OFF_TOKENS = new Set(["0", "off", "false", "none", "disabled"]);
 
+export type BillingTrialPlanConfig = {
+  enabled: boolean;
+  /** Required when enabled. */
+  days?: number;
+};
+
 /**
  * Console payload for billing.trial.
- * Global `days` applies to all plans; optional byPlan overrides (future Premium UI).
+ * Prefer `plans` for independent Standard / Team toggles.
+ * Legacy `enabled` + `days` + `byPlan` still parse for older rows.
  */
 export type BillingTrialSettingValue = {
   enabled: boolean;
-  /** Global days when enabled; required when enabled and no byPlan-only use. */
+  /** Global days when enabled (legacy); also mirrored from Standard on save. */
   days?: number;
-  /** Optional per-plan overrides, e.g. { PREMIUM: 30 }. */
+  /** Optional per-plan day overrides (legacy), e.g. { PREMIUM: 30 }. */
   byPlan?: Record<string, number>;
+  /** Per-plan on/off + days (Standard / Team). Takes precedence when set. */
+  plans?: Partial<Record<string, BillingTrialPlanConfig>>;
 };
 
 export type TrialPeriodSource = "platform" | "environment";
@@ -50,6 +63,17 @@ function isValidTrialDays(n: unknown): n is number {
     n >= MIN_TRIAL_PERIOD_DAYS &&
     n <= MAX_TRIAL_PERIOD_DAYS
   );
+}
+
+function parsePlanConfig(raw: unknown): BillingTrialPlanConfig | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.enabled !== "boolean") return null;
+  if (!obj.enabled) {
+    return { enabled: false };
+  }
+  if (!isValidTrialDays(obj.days)) return null;
+  return { enabled: true, days: obj.days };
 }
 
 /**
@@ -89,46 +113,158 @@ export function parseBillingTrialSetting(
     result.byPlan = byPlan;
   }
 
-  if (result.enabled && result.days == null && !result.byPlan) {
+  if (obj.plans !== undefined) {
+    if (
+      !obj.plans ||
+      typeof obj.plans !== "object" ||
+      Array.isArray(obj.plans)
+    ) {
+      return null;
+    }
+    const plans: Record<string, BillingTrialPlanConfig> = {};
+    for (const [plan, cfg] of Object.entries(
+      obj.plans as Record<string, unknown>,
+    )) {
+      if (!plan.trim()) return null;
+      const parsed = parsePlanConfig(cfg);
+      if (!parsed) return null;
+      plans[plan] = parsed;
+    }
+    result.plans = plans;
+  }
+
+  const hasPlans = Boolean(result.plans && Object.keys(result.plans).length > 0);
+  if (
+    result.enabled &&
+    result.days == null &&
+    !result.byPlan &&
+    !hasPlans
+  ) {
     return null;
   }
 
   return result;
 }
 
-/** Build a validated payload for upsert from the global console controls. */
-export function buildBillingTrialSetting(input: {
+function planConfigFromForm(input: {
   enabled: boolean;
   days: number;
-  /** Preserve existing byPlan when saving global controls. */
-  existingByPlan?: Record<string, number>;
-}): BillingTrialSettingValue {
-  if (!input.enabled) {
-    const value: BillingTrialSettingValue = { enabled: false };
-    if (input.existingByPlan && Object.keys(input.existingByPlan).length > 0) {
-      value.byPlan = input.existingByPlan;
-    }
-    return value;
-  }
+}): BillingTrialPlanConfig {
+  if (!input.enabled) return { enabled: false };
   if (!isValidTrialDays(input.days)) {
     throw new Error(
       `Trial days must be an integer from ${MIN_TRIAL_PERIOD_DAYS} to ${MAX_TRIAL_PERIOD_DAYS}.`,
     );
   }
+  return { enabled: true, days: input.days };
+}
+
+/**
+ * Build console payload from independent Standard / Team controls.
+ * Also writes legacy `enabled` / `days` so older readers stay coherent.
+ */
+export function buildBillingTrialSetting(input: {
+  standard: { enabled: boolean; days: number };
+  team: { enabled: boolean; days: number };
+  /** Preserve legacy byPlan keys other than STANDARD/TEAM when re-saving. */
+  existingByPlan?: Record<string, number>;
+}): BillingTrialSettingValue {
+  const standard = planConfigFromForm(input.standard);
+  const team = planConfigFromForm(input.team);
+  const anyEnabled = standard.enabled || team.enabled;
+
   const value: BillingTrialSettingValue = {
-    enabled: true,
-    days: input.days,
+    enabled: anyEnabled,
+    plans: {
+      [BILLING_PLAN_STANDARD]: standard,
+      [BILLING_PLAN_TEAM]: team,
+    },
   };
-  if (input.existingByPlan && Object.keys(input.existingByPlan).length > 0) {
-    value.byPlan = input.existingByPlan;
+
+  if (standard.enabled && standard.days != null) {
+    value.days = standard.days;
+  } else if (team.enabled && team.days != null) {
+    value.days = team.days;
   }
+
+  if (input.existingByPlan && Object.keys(input.existingByPlan).length > 0) {
+    const preserved: Record<string, number> = {};
+    for (const [plan, days] of Object.entries(input.existingByPlan)) {
+      if (plan === BILLING_PLAN_STANDARD || plan === BILLING_PLAN_TEAM) continue;
+      preserved[plan] = days;
+    }
+    if (Object.keys(preserved).length > 0) {
+      value.byPlan = preserved;
+    }
+  }
+
   return value;
+}
+
+/**
+ * Form defaults for Standard / Team from console row + effective resolution.
+ */
+export function trialPlanFormState(input: {
+  platformSetting: BillingTrialSettingValue | null;
+  standardEffectiveDays: number | null;
+  teamEffectiveDays: number | null;
+}): {
+  standard: { enabled: boolean; days: number };
+  team: { enabled: boolean; days: number };
+} {
+  const setting = input.platformSetting;
+  const fallbackDays = (days: number | null) =>
+    days != null && days > 0 ? days : DEFAULT_TRIAL_PERIOD_DAYS;
+
+  function fromPlans(
+    planCode: string,
+    effectiveDays: number | null,
+  ): { enabled: boolean; days: number } {
+    const cfg = setting?.plans?.[planCode];
+    if (cfg) {
+      return {
+        enabled: cfg.enabled,
+        days: cfg.enabled
+          ? (cfg.days ?? fallbackDays(effectiveDays))
+          : fallbackDays(effectiveDays),
+      };
+    }
+    if (!setting) {
+      return {
+        enabled: effectiveDays != null,
+        days: fallbackDays(effectiveDays),
+      };
+    }
+    // Legacy row without plans[plan]: mirror global enabled + days / byPlan.
+    if (!setting.enabled) {
+      return { enabled: false, days: fallbackDays(effectiveDays) };
+    }
+    const override = setting.byPlan?.[planCode];
+    if (override != null) {
+      return { enabled: true, days: override };
+    }
+    return {
+      enabled: true,
+      days: setting.days ?? fallbackDays(effectiveDays),
+    };
+  }
+
+  return {
+    standard: fromPlans(BILLING_PLAN_STANDARD, input.standardEffectiveDays),
+    team: fromPlans(BILLING_PLAN_TEAM, input.teamEffectiveDays),
+  };
 }
 
 function resolveFromPlatformSetting(
   setting: BillingTrialSettingValue,
   planCode: string,
 ): number | null | "invalid" {
+  const planCfg = setting.plans?.[planCode];
+  if (planCfg) {
+    if (!planCfg.enabled) return null;
+    return isValidTrialDays(planCfg.days) ? planCfg.days : "invalid";
+  }
+
   if (!setting.enabled) return null;
 
   const planOverride = setting.byPlan?.[planCode];

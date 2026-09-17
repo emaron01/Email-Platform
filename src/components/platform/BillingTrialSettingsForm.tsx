@@ -13,90 +13,56 @@ import { PrimaryButton, SecondaryButton } from "@/components/ui";
 
 const initial: PlatformSettingsActionResult | null = null;
 
-export function BillingTrialSettingsForm({
-  consoleEnabled,
-  consoleDays,
-  hasConsoleRow,
-  effectiveDays,
-  sourceLabel,
-}: {
-  /** Current console row (null fields when no row). */
-  consoleEnabled: boolean | null;
-  consoleDays: number | null;
-  hasConsoleRow: boolean;
+type PlanTrialView = {
+  enabled: boolean;
+  days: number;
   effectiveDays: number | null;
   sourceLabel: string;
+};
+
+export function BillingTrialSettingsForm({
+  standard,
+  team,
+  hasConsoleRow,
+}: {
+  standard: PlanTrialView;
+  team: PlanTrialView;
+  hasConsoleRow: boolean;
 }) {
   const [state, formAction, pending] = useActionState(
     updateBillingTrialSettingAction,
     initial,
   );
 
-  const defaultEnabled = consoleEnabled ?? true;
-  const defaultDays =
-    consoleDays ??
-    (effectiveDays != null && effectiveDays > 0 ? effectiveDays : 7);
-
-  const effectiveLabel =
-    effectiveDays == null
-      ? "Trial off for new Checkout"
-      : `${effectiveDays}-day trial on new Checkout`;
-
   return (
     <div className="space-y-4" data-testid="billing-trial-settings">
-      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
-        <p className="font-medium">{effectiveLabel}</p>
-        <p className="mt-0.5 text-slate-600">
-          Source: {sourceLabel}
-          {hasConsoleRow ? "" : " (no console override)"}
-        </p>
-        <p className="mt-2 text-xs text-slate-500">
-          Changes apply only to new Checkout sessions. Orgs already on a trial
-          keep their Stripe trial end date.
-        </p>
-      </div>
+      <p className="text-xs text-slate-500">
+        Changes apply only to new Checkout sessions. Orgs already on a trial
+        keep their Stripe trial end date.
+      </p>
 
-      <form action={formAction} className="space-y-4">
+      <form action={formAction} className="space-y-5">
         <input type="hidden" name="intent" value="save" />
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium text-slate-800">
-            Trial for new Standard Checkout
-          </legend>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="radio"
-              name="enabled"
-              value="1"
-              defaultChecked={defaultEnabled}
-            />
-            On
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="radio"
-              name="enabled"
-              value="0"
-              defaultChecked={!defaultEnabled}
-            />
-            Off
-          </label>
-        </fieldset>
 
-        <label className="block text-sm">
-          <span className="font-medium text-slate-800">Duration (days)</span>
-          <input
-            type="number"
-            name="days"
-            min={MIN_TRIAL_PERIOD_DAYS}
-            max={MAX_TRIAL_PERIOD_DAYS}
-            defaultValue={defaultDays}
-            className="mt-1 w-32 rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-          <span className="mt-1 block text-xs text-slate-500">
-            Required when trial is on ({MIN_TRIAL_PERIOD_DAYS}–
-            {MAX_TRIAL_PERIOD_DAYS}).
-          </span>
-        </label>
+        <PlanTrialFields
+          planLabel="Standard"
+          namePrefix="standard"
+          defaultEnabled={standard.enabled}
+          defaultDays={standard.days}
+          effectiveDays={standard.effectiveDays}
+          sourceLabel={standard.sourceLabel}
+          hasConsoleRow={hasConsoleRow}
+        />
+
+        <PlanTrialFields
+          planLabel="Team"
+          namePrefix="team"
+          defaultEnabled={team.enabled}
+          defaultDays={team.days}
+          effectiveDays={team.effectiveDays}
+          sourceLabel={team.sourceLabel}
+          hasConsoleRow={hasConsoleRow}
+        />
 
         {state ? (
           <p
@@ -112,7 +78,7 @@ export function BillingTrialSettingsForm({
 
         <div className="flex flex-wrap gap-2">
           <PrimaryButton type="submit" disabled={pending}>
-            {pending ? "Saving…" : "Save trial setting"}
+            {pending ? "Saving…" : "Save trial settings"}
           </PrimaryButton>
         </div>
       </form>
@@ -126,5 +92,81 @@ export function BillingTrialSettingsForm({
         </form>
       ) : null}
     </div>
+  );
+}
+
+function PlanTrialFields({
+  planLabel,
+  namePrefix,
+  defaultEnabled,
+  defaultDays,
+  effectiveDays,
+  sourceLabel,
+  hasConsoleRow,
+}: {
+  planLabel: string;
+  namePrefix: "standard" | "team";
+  defaultEnabled: boolean;
+  defaultDays: number;
+  effectiveDays: number | null;
+  sourceLabel: string;
+  hasConsoleRow: boolean;
+}) {
+  const effectiveLabel =
+    effectiveDays == null
+      ? `Trial off for new ${planLabel} Checkout`
+      : `${effectiveDays}-day trial on new ${planLabel} Checkout`;
+
+  return (
+    <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
+      <legend className="px-1 text-sm font-medium text-slate-900">
+        {planLabel} free trial
+      </legend>
+
+      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+        <p className="font-medium">{effectiveLabel}</p>
+        <p className="mt-0.5 text-slate-600">
+          Source: {sourceLabel}
+          {hasConsoleRow ? "" : " (no console override)"}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="radio"
+            name={`${namePrefix}Enabled`}
+            value="1"
+            defaultChecked={defaultEnabled}
+          />
+          On
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="radio"
+            name={`${namePrefix}Enabled`}
+            value="0"
+            defaultChecked={!defaultEnabled}
+          />
+          Off
+        </label>
+      </div>
+
+      <label className="block text-sm">
+        <span className="font-medium text-slate-800">Duration (days)</span>
+        <input
+          type="number"
+          name={`${namePrefix}Days`}
+          min={MIN_TRIAL_PERIOD_DAYS}
+          max={MAX_TRIAL_PERIOD_DAYS}
+          defaultValue={defaultDays}
+          className="mt-1 w-32 rounded-md border border-slate-300 px-3 py-2 text-sm"
+        />
+        <span className="mt-1 block text-xs text-slate-500">
+          Required when trial is on ({MIN_TRIAL_PERIOD_DAYS}–
+          {MAX_TRIAL_PERIOD_DAYS}).
+        </span>
+      </label>
+    </fieldset>
   );
 }

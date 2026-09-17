@@ -82,8 +82,15 @@ export function PlanSelector({
               ))}
             </ul>
           ) : null}
-          {selectedPlan.trialNote ? (
-            <p className="text-sm text-slate-600">{selectedPlan.trialNote}</p>
+          {selectedPlan.trialNote && selected !== "ENTERPRISE" ? (
+            <div className="mt-3 rounded-md border-2 border-emerald-500 bg-emerald-50 px-4 py-3">
+              <p className="text-lg font-extrabold tracking-wide text-emerald-700 sm:text-xl">
+                FREE TRIAL
+              </p>
+              <p className="mt-1 text-base font-semibold text-emerald-800">
+                {selectedPlan.trialNote}
+              </p>
+            </div>
           ) : null}
 
           {selected === "TEAM" ? (

@@ -4,10 +4,14 @@ import {
   PLATFORM_SETTING_BILLING_PRICES,
   resolveEffectiveBillingPrices,
 } from "@/lib/billing/billing-prices";
-import { BILLING_PLAN_STANDARD } from "@/lib/billing/plans";
+import {
+  BILLING_PLAN_STANDARD,
+  BILLING_PLAN_TEAM,
+} from "@/lib/billing/plans";
 import {
   PLATFORM_SETTING_BILLING_TRIAL,
   resolveEffectiveTrialPeriod,
+  trialPlanFormState,
 } from "@/lib/billing/trial-period";
 import {
   getBillingPricesPlatformSetting,
@@ -31,9 +35,18 @@ export default async function PlatformBillingPage() {
     getBillingPricesPlatformSetting(),
     hasPlatformSetting(PLATFORM_SETTING_BILLING_PRICES),
   ]);
-  const effectiveTrial = resolveEffectiveTrialPeriod({
+  const effectiveStandardTrial = resolveEffectiveTrialPeriod({
     planCode: BILLING_PLAN_STANDARD,
     platformSetting: trialSetting,
+  });
+  const effectiveTeamTrial = resolveEffectiveTrialPeriod({
+    planCode: BILLING_PLAN_TEAM,
+    platformSetting: trialSetting,
+  });
+  const trialForm = trialPlanFormState({
+    platformSetting: trialSetting,
+    standardEffectiveDays: effectiveStandardTrial.days,
+    teamEffectiveDays: effectiveTeamTrial.days,
   });
   const effectivePrices = resolveEffectiveBillingPrices({
     platformSetting: pricesSetting,
@@ -60,16 +73,24 @@ export default async function PlatformBillingPage() {
       <section className="rounded-lg border border-slate-200 bg-white p-5">
         <h2 className="text-lg font-medium text-slate-900">Free trial</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Global default for all sellable plans. Per-plan overrides can be
-          stored in the same setting later without a schema change.
+          Independent on/off and duration for Standard and Team. Enterprise has
+          no self-serve Checkout trial.
         </p>
         <div className="mt-4">
           <BillingTrialSettingsForm
-            consoleEnabled={trialSetting?.enabled ?? null}
-            consoleDays={trialSetting?.days ?? null}
             hasConsoleRow={hasTrialRow}
-            effectiveDays={effectiveTrial.days}
-            sourceLabel={effectiveTrial.sourceLabel}
+            standard={{
+              enabled: trialForm.standard.enabled,
+              days: trialForm.standard.days,
+              effectiveDays: effectiveStandardTrial.days,
+              sourceLabel: effectiveStandardTrial.sourceLabel,
+            }}
+            team={{
+              enabled: trialForm.team.enabled,
+              days: trialForm.team.days,
+              effectiveDays: effectiveTeamTrial.days,
+              sourceLabel: effectiveTeamTrial.sourceLabel,
+            }}
           />
         </div>
       </section>

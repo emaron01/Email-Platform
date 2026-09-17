@@ -82,28 +82,44 @@ export async function updateBillingTrialSettingAction(
       };
     }
 
-    const enabledRaw = String(formData.get("enabled") || "").trim();
-    const enabled = enabledRaw === "1" || enabledRaw.toLowerCase() === "on";
-    const daysRaw = String(formData.get("days") || "").trim();
-    const days = Number.parseInt(daysRaw, 10);
-
-    if (enabled) {
-      if (
-        !Number.isInteger(days) ||
-        days < MIN_TRIAL_PERIOD_DAYS ||
-        days > MAX_TRIAL_PERIOD_DAYS
-      ) {
-        return {
-          ok: false,
-          message: `When trial is on, days must be an integer from ${MIN_TRIAL_PERIOD_DAYS} to ${MAX_TRIAL_PERIOD_DAYS}.`,
-        };
+    function parsePlanToggle(
+      enabledKey: string,
+      daysKey: string,
+      label: string,
+    ): { ok: true; enabled: boolean; days: number } | { ok: false; message: string } {
+      const enabledRaw = String(formData.get(enabledKey) || "").trim();
+      const enabled =
+        enabledRaw === "1" || enabledRaw.toLowerCase() === "on";
+      const daysRaw = String(formData.get(daysKey) || "").trim();
+      const days = Number.parseInt(daysRaw, 10);
+      if (enabled) {
+        if (
+          !Number.isInteger(days) ||
+          days < MIN_TRIAL_PERIOD_DAYS ||
+          days > MAX_TRIAL_PERIOD_DAYS
+        ) {
+          return {
+            ok: false,
+            message: `When ${label} trial is on, days must be an integer from ${MIN_TRIAL_PERIOD_DAYS} to ${MAX_TRIAL_PERIOD_DAYS}.`,
+          };
+        }
       }
+      return {
+        ok: true,
+        enabled,
+        days: Number.isInteger(days) ? days : MIN_TRIAL_PERIOD_DAYS,
+      };
     }
+
+    const standard = parsePlanToggle("standardEnabled", "standardDays", "Standard");
+    if (!standard.ok) return { ok: false, message: standard.message };
+    const team = parsePlanToggle("teamEnabled", "teamDays", "Team");
+    if (!team.ok) return { ok: false, message: team.message };
 
     const existing = await getBillingTrialPlatformSetting();
     const value = buildBillingTrialSetting({
-      enabled,
-      days: enabled ? days : MIN_TRIAL_PERIOD_DAYS,
+      standard: { enabled: standard.enabled, days: standard.days },
+      team: { enabled: team.enabled, days: team.days },
       existingByPlan: existing?.byPlan,
     });
 
@@ -112,11 +128,19 @@ export async function updateBillingTrialSettingAction(
       actorUserId: user.id,
     });
     revalidateBillingConsole();
+
+    const parts: string[] = [];
+    parts.push(
+      standard.enabled
+        ? `Standard: ${standard.days}-day trial`
+        : "Standard: trial off",
+    );
+    parts.push(
+      team.enabled ? `Team: ${team.days}-day trial` : "Team: trial off",
+    );
     return {
       ok: true,
-      message: enabled
-        ? `Trial set to ${days} days for new Checkout sessions.`
-        : "Trial turned off for new Checkout sessions.",
+      message: `Saved — ${parts.join("; ")}. Applies to new Checkout only.`,
     };
   } catch (error) {
     return { ok: false, message: toSafeError(error) };

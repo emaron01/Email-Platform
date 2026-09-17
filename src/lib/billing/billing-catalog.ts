@@ -297,7 +297,7 @@ export function defaultBillingCatalogSetting(): BillingCatalogSettingValue {
           "Add Company Research Credits in blocks of 100",
         ],
         trialNote:
-          "Research up to 25 companies during your trial (100 on a paid plan). The 50/day sending limit protects your domain's email reputation and deliverability.",
+          "FREE TRIAL: research up to 25 companies during your trial (100 on a paid plan). The 50/day sending limit protects your domain's email reputation and deliverability.",
         sellable: true,
         active: true,
         entitlementFloors: {
@@ -330,7 +330,7 @@ export function defaultBillingCatalogSetting(): BillingCatalogSettingValue {
           "Emails sent through each user's own mailbox",
         ],
         trialNote:
-          "Each seat gets 150 company research slots and Standard email limits. Add seats anytime up to 10.",
+          "FREE TRIAL: each seat gets 150 company research slots and Standard email limits. Add seats anytime up to 10.",
         sellable: true,
         active: true,
         entitlementFloors: {
