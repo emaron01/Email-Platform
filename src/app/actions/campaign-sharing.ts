@@ -1,15 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getMembershipForCurrentUser } from "@/lib/org/authz";
+import { redirect } from "next/navigation";
+import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 import { createCampaignExecution } from "@/lib/campaign/execution";
+import { duplicateSharedCampaign } from "@/lib/campaign/duplicate";
 import {
   canEditCampaignTemplate,
   canSetCampaignShared,
 } from "@/lib/campaign/visibility";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
-import { redirect } from "next/navigation";
 
 export type CampaignActionResult = { ok: boolean; message: string };
 /** Alias for CampaignVisibilityForm. */
@@ -29,6 +30,27 @@ export async function useSharedCampaignAction(
   });
   revalidatePath("/campaigns");
   redirect(`/campaigns/${campaignId}?execution=${executionId}`);
+}
+
+/**
+ * Copy SHARED campaign config into a new PERSONAL campaign owned by the actor.
+ */
+export async function duplicateSharedCampaignAction(
+  formData: FormData,
+): Promise<CampaignActionResult> {
+  const { organization, user, membership } =
+    await getMembershipForCurrentUser();
+  const campaignId = String(formData.get("campaignId") || "").trim();
+  if (!campaignId) throw new TenantError("Campaign is required.");
+
+  const { campaignId: newId } = await duplicateSharedCampaign({
+    organizationId: organization.id,
+    sourceCampaignId: campaignId,
+    actorUserId: user.id,
+    actorRole: membership.role,
+  });
+  revalidatePath("/campaigns");
+  redirect(`/campaigns/${newId}`);
 }
 
 export async function setCampaignVisibilityAction(
@@ -77,7 +99,7 @@ export async function setCampaignVisibilityAction(
       ok: true,
       message:
         visibility === "SHARED"
-          ? "Campaign is shared with the organization."
+          ? "Campaign is shared. Teammates can Use this campaign (run on the template) or Duplicate as mine (personal copy)."
           : "Campaign is personal again.",
     };
   } catch (error) {

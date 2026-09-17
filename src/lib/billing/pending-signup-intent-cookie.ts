@@ -1,7 +1,8 @@
 /**
  * Cookie read/write for pending self-serve signup intent.
+ * No `server-only`: Better Auth (CLI-safe graph) dynamically imports this.
+ * `cookies()` still requires a Next request; callers catch failures.
  */
-import "server-only";
 
 import { cookies } from "next/headers";
 import { BILLING_PLAN_STANDARD } from "@/lib/billing/plans";

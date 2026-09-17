@@ -1,19 +1,108 @@
 import { NextResponse } from "next/server";
-import { requireOrgAdmin } from "@/lib/auth/authz";
-import { addSeatToSubscription } from "@/lib/billing/add-seat";
+import { requireOrgOwner } from "@/lib/auth/authz";
+import {
+  addSeatToSubscription,
+  previewSeatChange,
+  removeSeatFromSubscription,
+  type SeatChangeDirection,
+} from "@/lib/billing/add-seat";
 import {
   PaymentLockError,
   assertOrganizationNotPaymentLocked,
 } from "@/lib/billing/payment-lock";
+import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
-export async function POST() {
+async function usedSeatCount(organizationId: string): Promise<number> {
+  return prisma.organizationMembership.count({
+    where: { organizationId },
+  });
+}
+
+/**
+ * GET ?direction=add|remove — preview proration / new total (OWNER).
+ * POST { direction, confirm: true } — apply seat change (OWNER).
+ */
+export async function GET(request: Request) {
   try {
-    const { organization } = await requireOrgAdmin();
+    const { organization } = await requireOrgOwner();
     await assertOrganizationNotPaymentLocked(organization.id);
-    const result = await addSeatToSubscription({
+    const url = new URL(request.url);
+    const directionRaw = url.searchParams.get("direction") || "add";
+    const direction: SeatChangeDirection =
+      directionRaw === "remove" ? "remove" : "add";
+    const usedSeats = await usedSeatCount(organization.id);
+    const result = await previewSeatChange({
       organizationId: organization.id,
+      direction,
+      usedSeats,
     });
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error, code: result.code },
+        { status: 400 },
+      );
+    }
+    return NextResponse.json({ preview: result.preview });
+  } catch (error) {
+    if (error instanceof PaymentLockError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: 403 },
+      );
+    }
+    const message =
+      error instanceof Error ? error.message : "Unable to preview seat change";
+    const status =
+      typeof error === "object" &&
+      error &&
+      "status" in error &&
+      typeof (error as { status?: unknown }).status === "number"
+        ? (error as { status: number }).status
+        : 401;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const { organization } = await requireOrgOwner();
+    await assertOrganizationNotPaymentLocked(organization.id);
+
+    let direction: SeatChangeDirection = "add";
+    let confirm = false;
+    try {
+      const body = (await request.json()) as {
+        direction?: string;
+        confirm?: boolean;
+      };
+      if (body.direction === "remove") direction = "remove";
+      confirm = body.confirm === true;
+    } catch {
+      // Legacy: empty POST = add without confirm body (blocked — require confirm)
+    }
+
+    if (!confirm) {
+      return NextResponse.json(
+        {
+          error: "Seat changes require confirmation.",
+          code: "CONFIRM_REQUIRED",
+        },
+        { status: 400 },
+      );
+    }
+
+    const usedSeats = await usedSeatCount(organization.id);
+    const result =
+      direction === "remove"
+        ? await removeSeatFromSubscription({
+            organizationId: organization.id,
+            usedSeats,
+          })
+        : await addSeatToSubscription({
+            organizationId: organization.id,
+            usedSeats,
+          });
 
     if (!result.ok) {
       return NextResponse.json(
@@ -33,7 +122,7 @@ export async function POST() {
       );
     }
     const message =
-      error instanceof Error ? error.message : "Unable to add seat";
+      error instanceof Error ? error.message : "Unable to change seats";
     const status =
       typeof error === "object" &&
       error &&

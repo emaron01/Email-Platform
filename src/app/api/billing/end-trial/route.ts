@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireOrgAdmin } from "@/lib/auth/authz";
+import { requireOrgOwner } from "@/lib/auth/authz";
 import { endTrialNow } from "@/lib/billing/end-trial-now";
 
 /**
@@ -9,7 +9,7 @@ import { endTrialNow } from "@/lib/billing/end-trial-now";
  */
 export async function POST() {
   try {
-    const { organization } = await requireOrgAdmin();
+    const { organization } = await requireOrgOwner();
     const result = await endTrialNow({ organizationId: organization.id });
 
     if (!result.ok) {

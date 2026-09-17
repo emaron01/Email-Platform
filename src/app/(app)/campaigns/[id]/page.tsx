@@ -26,6 +26,7 @@ import {
 } from "@/lib/campaign/contacts";
 import {
   canEditCampaignTemplate,
+  canOpenCampaignDetail,
   canSetShared,
 } from "@/lib/campaign/visibility";
 import { getMembershipForCurrentUser } from "@/lib/auth/authz";
@@ -156,6 +157,15 @@ export default async function CampaignDetailPage({
   }
 
   const membershipCtx = await getMembershipForCurrentUser(organization.id);
+  if (
+    !canOpenCampaignDetail({
+      role: membershipCtx.membership.role,
+      userId: user.id,
+      campaign,
+    })
+  ) {
+    notFound();
+  }
   const canEditTemplate = canEditCampaignTemplate({
     userId: user.id,
     role: membershipCtx.membership.role,

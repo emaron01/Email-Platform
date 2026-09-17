@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireOrgAdmin } from "@/lib/auth/authz";
+import { requireOrgOwner } from "@/lib/auth/authz";
 import { createPlanCheckoutSession } from "@/lib/billing/create-checkout-session";
 import { BILLING_PLAN_STANDARD, BILLING_PLAN_TEAM } from "@/lib/billing/plans";
 
 export async function POST(request: Request) {
   try {
-    const { organization, user } = await requireOrgAdmin();
+    const { organization, user } = await requireOrgOwner();
     let planCode: string = BILLING_PLAN_STANDARD;
     let seatQuantity = 1;
     try {

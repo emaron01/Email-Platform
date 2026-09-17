@@ -48,7 +48,13 @@ export async function getCurrentOrganization(): Promise<Organization | null> {
 async function assertWritableOnServerAction(
   organizationId: string,
 ): Promise<void> {
-  const h = await headers();
+  let h: Awaited<ReturnType<typeof headers>>;
+  try {
+    h = await headers();
+  } catch {
+    // Outside a Next request (unit/integration tests, workers) — no action gate.
+    return;
+  }
   if (!h.get(NEXT_ACTION_HEADER)) return;
   const pathname = h.get("x-pathname")?.trim() || "";
   if (pathname && isPaymentLockPathExempt(pathname)) return;

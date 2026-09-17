@@ -10,7 +10,6 @@ import {
   removeMemberAction,
 } from "@/app/actions/settings";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
-import { AddSeatButton } from "@/components/billing/AddSeatButton";
 import { requireOrgAdmin } from "@/lib/org/authz";
 import {
   orgAdminInvitesAllowed,
@@ -309,16 +308,16 @@ export default async function OrganizationSettingsPage() {
               : ""}
             .
           </p>
-          <AddSeatButton
-            disabled={!seatSnap.canAddSeatSelfServe}
-            disabledReason={
-              seatSnap.canAddSeatSelfServe
-                ? null
-                : seatSnap.seatQuantity >= seatSnap.maxSeats
-                  ? "Seat cap reached. Contact support to raise the cap on Enterprise."
-                  : "Self-serve seat adds are available on Team plans with an active subscription."
-            }
-          />
+          <p className="text-sm text-slate-600">
+            Add or remove seats from{" "}
+            <Link
+              href="/settings/billing"
+              className="font-medium text-slate-900 underline"
+            >
+              Billing
+            </Link>
+            . Seat changes update your subscription and require confirmation.
+          </p>
         </section>
       ) : null}
 

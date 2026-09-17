@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canEditCampaignTemplate,
+  canOpenCampaignDetail,
   canSetCampaignShared,
   parseCampaignListViewMode,
   shouldUseSharedCampaign,
@@ -41,6 +42,30 @@ describe("campaign visibility", () => {
       shouldUseSharedCampaign({
         userId: "u2",
         campaign: { ownerUserId: "u1", visibility: "SHARED" },
+      }),
+    ).toBe(true);
+  });
+
+  it("blocks opening another member's PERSONAL campaign by URL", () => {
+    expect(
+      canOpenCampaignDetail({
+        role: "MEMBER",
+        userId: "u2",
+        campaign: { ownerUserId: "u1", visibility: "PERSONAL" },
+      }),
+    ).toBe(false);
+    expect(
+      canOpenCampaignDetail({
+        role: "MEMBER",
+        userId: "u2",
+        campaign: { ownerUserId: "u1", visibility: "SHARED" },
+      }),
+    ).toBe(true);
+    expect(
+      canOpenCampaignDetail({
+        role: "ADMIN",
+        userId: "u2",
+        campaign: { ownerUserId: "u1", visibility: "PERSONAL" },
       }),
     ).toBe(true);
   });

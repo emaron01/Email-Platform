@@ -132,6 +132,15 @@ export async function stopSequenceAction(
     if (!membership) {
       return { ok: false, message: "No active organization membership was found." };
     }
+    const { assertCanManageContactCadence } = await import(
+      "@/lib/cadence/cadence-authz"
+    );
+    await assertCanManageContactCadence({
+      campaignContactId,
+      organizationId: organization.id,
+      userId: user.id,
+      role: membership.role,
+    });
     await stopSequenceForContact({
       campaignContactId,
       organizationId: organization.id,
@@ -149,8 +158,21 @@ export async function restoreSequenceAction(
   campaignContactId: string,
 ): Promise<CadenceActionResult> {
   try {
-    await requireCurrentUser();
+    const user = await requireCurrentUser();
     const organization = await requireOrganization();
+    const { membership } = await getMembershipForCurrentUser(organization.id);
+    if (!membership) {
+      return { ok: false, message: "No active organization membership was found." };
+    }
+    const { assertCanManageContactCadence } = await import(
+      "@/lib/cadence/cadence-authz"
+    );
+    await assertCanManageContactCadence({
+      campaignContactId,
+      organizationId: organization.id,
+      userId: user.id,
+      role: membership.role,
+    });
     await restoreSequenceForContact({
       campaignContactId,
       organizationId: organization.id,

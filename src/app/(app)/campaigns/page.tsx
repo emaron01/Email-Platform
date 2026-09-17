@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { useSharedCampaignAction } from "@/app/actions/campaign-sharing";
 import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
+import { SharedCampaignActions } from "@/components/SharedCampaignActions";
 import { EmptyState, PageHeader, PRIMARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import { getMembershipForCurrentUser } from "@/lib/auth/authz";
@@ -266,19 +266,7 @@ export default async function CampaignsPage({
                       {useShared &&
                       effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL &&
                       !campaign.archivedAt ? (
-                        <form action={useSharedCampaignAction}>
-                          <input
-                            type="hidden"
-                            name="campaignId"
-                            value={campaign.id}
-                          />
-                          <button
-                            type="submit"
-                            className={cn(PRIMARY_BUTTON_CLASS, "!px-3 !py-1.5")}
-                          >
-                            Use this campaign
-                          </button>
-                        </form>
+                        <SharedCampaignActions campaignId={campaign.id} />
                       ) : useShared ? null : (
                         <Link
                           href={`/campaigns/${campaign.id}`}

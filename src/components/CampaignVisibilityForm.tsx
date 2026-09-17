@@ -45,8 +45,10 @@ export function CampaignVisibilityForm({
           Campaign sharing
         </legend>
         <p className="mt-1 text-xs text-slate-500">
-          Shared campaigns appear under All Campaigns. Teammates start their own
-          run with Use this campaign.
+          Shared campaigns appear under All Campaigns. Teammates choose{" "}
+          <span className="font-medium">Use this campaign</span> (run on this
+          template) or <span className="font-medium">Duplicate as mine</span>{" "}
+          (personal copy of the setup, empty of contacts).
         </p>
         <div className="mt-3 flex flex-wrap gap-4 text-sm">
           <label className="inline-flex items-center gap-2">

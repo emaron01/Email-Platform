@@ -41,6 +41,23 @@ export function canViewAllActivity(role: string): boolean {
   return canSetCampaignShared(role);
 }
 
+/**
+ * Open campaign detail by URL.
+ * MEMBER may open: own PERSONAL, SHARED (template/execution), legacy null-owner.
+ * Not another member's PERSONAL campaign.
+ */
+export function canOpenCampaignDetail(input: {
+  role: string;
+  userId: string;
+  campaign: CampaignVisibilityRow;
+}): boolean {
+  if (canViewAllActivity(input.role)) return true;
+  if (input.campaign.ownerUserId == null) return true;
+  if (input.campaign.ownerUserId === input.userId) return true;
+  if (input.campaign.visibility === "SHARED") return true;
+  return false;
+}
+
 /** Template fields (product, ICP, persona, offer, length, guidance). */
 export function canEditCampaignTemplate(input: {
   role: string;

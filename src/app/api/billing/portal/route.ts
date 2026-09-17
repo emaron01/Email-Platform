@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireOrgAdmin } from "@/lib/auth/authz";
+import { requireOrgOwner } from "@/lib/auth/authz";
 import { createBillingPortalSession } from "@/lib/billing/create-portal-session";
 
 /**
@@ -8,7 +8,7 @@ import { createBillingPortalSession } from "@/lib/billing/create-portal-session"
  */
 export async function POST() {
   try {
-    const { organization } = await requireOrgAdmin();
+    const { organization } = await requireOrgOwner();
     const result = await createBillingPortalSession({
       organizationId: organization.id,
     });

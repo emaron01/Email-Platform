@@ -27,6 +27,16 @@ export function canManageOrganizationPolicy(role: MembershipRole): boolean {
   return role === "OWNER" || role === "ADMIN";
 }
 
+/** View Billing settings (plan, amount). Not spend mutations. */
+export function canViewBilling(role: MembershipRole): boolean {
+  return role === "OWNER" || role === "ADMIN";
+}
+
+/** Seat adds/removes, portal, checkout, credits, early trial conversion. */
+export function canManageBillingSpend(role: MembershipRole): boolean {
+  return role === "OWNER";
+}
+
 /** Destructive Product / ICP / Persona delete or archive. */
 export function canDeleteSetupEntities(role: MembershipRole): boolean {
   return role === "OWNER" || role === "ADMIN";
@@ -73,6 +83,18 @@ export async function requireOrgAdmin(organizationId?: string) {
   if (!canManageOrganizationPolicy(ctx.membership.role)) {
     throw new AuthorizationError(
       "Organization administrator permission required.",
+    );
+  }
+  assertAccountCapability(ctx.user, "CHANGE_ORG_POLICY");
+  return ctx;
+}
+
+/** OWNER only — subscription spend / seats / Stripe portal. */
+export async function requireOrgOwner(organizationId?: string) {
+  const ctx = await getMembershipForCurrentUser(organizationId);
+  if (!canManageBillingSpend(ctx.membership.role)) {
+    throw new AuthorizationError(
+      "Organization owner permission required for billing changes.",
     );
   }
   assertAccountCapability(ctx.user, "CHANGE_ORG_POLICY");

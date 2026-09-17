@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
+  canManageBillingSpend,
   canManageOrganizationPolicy,
+  canViewBilling,
   getMembershipForCurrentUser,
 } from "@/lib/org/authz";
 import { prisma } from "@/lib/prisma";
@@ -11,9 +13,10 @@ import {
   billingPlanLabel,
   billingStatusLabel,
   formatBillingDate,
-  formatCustomerPayingAmount,
   formatDiscountSummary,
+  formatStripeMoney,
   formatTrialEndsSummary,
+  formatPriceInterval,
   requiresStripeCheckout,
 } from "@/lib/billing/billing-state";
 import { ONBOARDING_SUBSCRIBE_PATH } from "@/lib/billing/paths";
@@ -37,6 +40,7 @@ import { ConvertTrialNowButton } from "@/components/billing/ConvertTrialNowButto
 import { OpenCustomerPortalButton } from "@/components/billing/OpenCustomerPortalButton";
 import { ReferralProgramPanel } from "@/components/billing/ReferralProgramPanel";
 import { ResubscribeCheckoutButton } from "@/components/billing/ResubscribeCheckoutButton";
+import { SeatManagementPanel } from "@/components/billing/SeatManagementPanel";
 import { canOfferEarlyTrialConversion } from "@/lib/billing/end-trial-now";
 import { getCompanyResearchCreditBalance } from "@/lib/billing/company-research-credits";
 import { effectiveCreditsAreCheckoutReady } from "@/lib/billing/billing-prices";
@@ -46,6 +50,8 @@ import {
   ensureOrganizationPolicies,
   getEffectiveUsagePolicy,
 } from "@/lib/usage/policy";
+import { buildSeatSnapshot } from "@/lib/org/seat-limits";
+import { defaultMaxSeatsForPlan } from "@/lib/org/seat-limits";
 
 /** Always read live billing state — never serve a pre-checkout RSC snapshot. */
 export const dynamic = "force-dynamic";
@@ -62,6 +68,8 @@ export default async function OrganizationBillingSettingsPage({
 }) {
   const { organization, user, membership } = await getMembershipForCurrentUser();
   const isAdmin = canManageOrganizationPolicy(membership.role);
+  const isOwner = canManageBillingSpend(membership.role);
+  const mayViewBilling = canViewBilling(membership.role);
   await ensureOrganizationPolicies(organization.id);
   const params = searchParams ? await searchParams : {};
   const checkoutState =
@@ -94,12 +102,36 @@ export default async function OrganizationBillingSettingsPage({
     }),
   ]);
 
+  const paymentLocked = lockState.locked;
+  const spendBlocked = lockState.spendBlocked;
+
+  if (!mayViewBilling) {
+    if (paymentLocked || spendBlocked) {
+      return (
+        <div className="mx-auto max-w-lg space-y-4" data-testid="billing-member-lock">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+            Billing
+          </h1>
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            Your workspace billing needs attention. Contact your organization
+            owner to update the payment method. Team members cannot manage
+            billing.
+          </p>
+          <p className="text-sm text-slate-600">
+            <Link href="/" className="underline">
+              Return home
+            </Link>
+          </p>
+        </div>
+      );
+    }
+    redirect("/settings");
+  }
+
   if (billing && requiresStripeCheckout(billing)) {
     redirect(ONBOARDING_SUBSCRIBE_PATH);
   }
 
-  const paymentLocked = lockState.locked;
-  const spendBlocked = lockState.spendBlocked;
   const planCode = billing?.planCode ?? BILLING_PLAN_COMPED;
   const billingStatus = billing?.billingStatus ?? "FREE";
   const perUserCredits = planUsesPerUserCompanyAllowance(planCode);
@@ -141,10 +173,10 @@ export default async function OrganizationBillingSettingsPage({
   const showPortal =
     canOpenPortal && (hasLiveSubscription || paymentLocked || spendBlocked);
   const showResubscribe =
-    paymentLocked && isAdmin && !hasLiveSubscription && !isComped;
+    paymentLocked && isOwner && !hasLiveSubscription && !isComped;
 
-  const creditsDisabledReason = !isAdmin
-    ? "Only an organization admin can buy credits."
+  const creditsDisabledReason = !isOwner
+    ? "Only the organization owner can buy credits."
     : !effectiveCreditsAreCheckoutReady(prices)
       ? "Company credit packs are not configured yet."
       : !hasLiveSubscription
@@ -344,18 +376,41 @@ export default async function OrganizationBillingSettingsPage({
             </dd>
           </div>
           {billing?.stripePriceId ? (
-            <div>
+            <div className="sm:col-span-2">
               <dt className="text-xs uppercase tracking-wide text-slate-500">
                 Amount
               </dt>
-              <dd className="mt-1 font-medium text-slate-900">
-                {formatCustomerPayingAmount({
-                  effectiveUnitAmountCents:
-                    billing.stripeEffectiveUnitAmountCents,
-                  listUnitAmountCents: billing.stripePriceUnitAmountCents,
-                  currency: billing.stripePriceCurrency,
-                  interval: billing.stripePriceInterval,
-                })}
+              <dd className="mt-1 space-y-1 font-medium text-slate-900">
+                {(() => {
+                  const unit =
+                    billing.stripeEffectiveUnitAmountCents ??
+                    billing.stripePriceUnitAmountCents;
+                  const seats = Math.max(1, billing.seatQuantity ?? 1);
+                  const currency = billing.stripePriceCurrency;
+                  const interval = formatPriceInterval(
+                    billing.stripePriceInterval,
+                  );
+                  if (unit == null) return <span>—</span>;
+                  if (planUsesSeatBilling(planCode)) {
+                    return (
+                      <>
+                        <p>
+                          {seats} seats × {formatStripeMoney(unit, currency)} /{" "}
+                          {interval} per seat
+                        </p>
+                        <p className="text-lg font-semibold text-slate-900">
+                          Total {formatStripeMoney(unit * seats, currency)} /{" "}
+                          {interval}
+                        </p>
+                      </>
+                    );
+                  }
+                  return (
+                    <p>
+                      {formatStripeMoney(unit, currency)} / {interval}
+                    </p>
+                  );
+                })()}
               </dd>
             </div>
           ) : null}
@@ -384,15 +439,15 @@ export default async function OrganizationBillingSettingsPage({
 
         {showResubscribe ? <ResubscribeCheckoutButton /> : null}
 
-        {showPortal && isAdmin ? <OpenCustomerPortalButton /> : null}
-        {showPortal && !isAdmin ? (
+        {showPortal && isOwner ? <OpenCustomerPortalButton /> : null}
+        {showPortal && !isOwner ? (
           <p className="text-sm text-slate-600">
-            An organization admin can open Stripe to update the card or
-            resubscribe.
+            Only the organization owner can open Stripe to update the card or
+            manage the subscription.
           </p>
         ) : null}
 
-        {isComped && !hasLiveSubscription ? (
+        {isComped && !hasLiveSubscription && isOwner ? (
           <p className="text-sm text-slate-600">
             <Link
               href={ONBOARDING_SUBSCRIBE_PATH}
@@ -404,6 +459,45 @@ export default async function OrganizationBillingSettingsPage({
           </p>
         ) : null}
       </section>
+
+      {!paymentLocked &&
+      planUsesSeatBilling(planCode) &&
+      hasLiveSubscription ? (
+        <section
+          className="space-y-3 rounded-lg border border-slate-200 bg-white p-5"
+          data-testid="billing-seats-section"
+        >
+          <h2 className="text-lg font-medium text-slate-900">Seats</h2>
+          <SeatManagementPanel
+            canManage={isOwner}
+            canAdd={
+              buildSeatSnapshot({
+                planCode,
+                seatQuantity: billing?.seatQuantity ?? 1,
+                maxSeats:
+                  billing?.maxSeats ??
+                  defaultMaxSeatsForPlan(planCode),
+                usedSeats: memberCount,
+              }).canAddSeatSelfServe
+            }
+            canRemove={(billing?.seatQuantity ?? 1) > memberCount &&
+              (billing?.seatQuantity ?? 1) >
+                (getPlanDefinition(planCode)?.seats.seatMin ?? 2)}
+            seatLabel={`${memberCount} of ${billing?.seatQuantity ?? 1} seats used`}
+            addDisabledReason={
+              (billing?.seatQuantity ?? 1) >=
+              (billing?.maxSeats ?? defaultMaxSeatsForPlan(planCode))
+                ? "Seat cap reached."
+                : null
+            }
+            removeDisabledReason={
+              (billing?.seatQuantity ?? 1) <= memberCount
+                ? "Remove members before reducing seats."
+                : null
+            }
+          />
+        </section>
+      ) : null}
 
       {paymentLocked || !planAllowsReferrals(billing?.planCode)
         ? null
@@ -441,7 +535,7 @@ export default async function OrganizationBillingSettingsPage({
                 : ""}
               .
             </p>
-            {canConvertTrialEarly && isAdmin ? (
+            {canConvertTrialEarly && isOwner ? (
               <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
                 <p className="mb-2 text-sm text-slate-700">
                   Need capacity before {trialSummary ?? "trial end"}? Convert

@@ -11,9 +11,7 @@ import {
 async function main() {
   const report = await runSmokeSuite();
   printSmokeReport(report);
-  if (report.failed > 0) {
-    process.exit(1);
-  }
+  process.exit(report.failed > 0 ? 1 : 0);
 }
 
 main().catch((error) => {

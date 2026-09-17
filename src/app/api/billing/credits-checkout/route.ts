@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireOrgAdmin } from "@/lib/auth/authz";
+import { requireOrgOwner } from "@/lib/auth/authz";
 import { createCompanyCreditsCheckoutSession } from "@/lib/billing/create-company-credits-checkout";
 
 /**
@@ -8,7 +8,7 @@ import { createCompanyCreditsCheckoutSession } from "@/lib/billing/create-compan
  */
 export async function POST(request: Request) {
   try {
-    const { organization, user } = await requireOrgAdmin();
+    const { organization, user } = await requireOrgOwner();
     let initialBlocks = 1;
     try {
       const body = (await request.json()) as { blocks?: unknown };
