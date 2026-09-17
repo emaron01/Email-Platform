@@ -157,17 +157,51 @@ export default async function OnboardingSubscribePage({
   let globalDisabledReason: string | null = null;
   if (!stripeConfigured()) {
     globalDisabledReason =
-      "Checkout is not configured yet. Contact support if this persists.";
+      "Checkout is not configured yet. Contact support if this persists."
   }
 
+  const { readPendingSignupIntent } = await import(
+    "@/lib/billing/pending-signup-intent-cookie"
+  );
+  const intent = await readPendingSignupIntent();
+  const profilePlan = billing?.planCode?.trim() || null;
+  const lockedPlanCode =
+    intent?.planCode === BILLING_PLAN_TEAM ||
+    intent?.planCode === BILLING_PLAN_STANDARD
+      ? intent.planCode
+      : profilePlan === BILLING_PLAN_TEAM || profilePlan === BILLING_PLAN_STANDARD
+        ? profilePlan
+        : null;
+  const lockedSeatQuantity =
+    intent?.seatQuantity ??
+    (billing?.seatQuantity && billing.seatQuantity > 1
+      ? billing.seatQuantity
+      : lockedPlanCode === BILLING_PLAN_TEAM
+        ? 2
+        : 1);
+  const lockSelection = Boolean(lockedPlanCode);
+  const selectedTrialDays =
+    lockedPlanCode === BILLING_PLAN_TEAM
+      ? teamTrial.days
+      : lockedPlanCode === BILLING_PLAN_STANDARD
+        ? standardTrial.days
+        : standardTrial.days ?? teamTrial.days;
   const anyTrialOn =
-    standardTrial.days != null || teamTrial.days != null;
+    lockSelection
+      ? selectedTrialDays != null
+      : standardTrial.days != null || teamTrial.days != null;
 
   return (
     <div className="space-y-8" data-testid="onboarding-subscribe-page">
       <div className="space-y-2 text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-          {anyTrialOn ? "Start Your Free Trial" : "Choose a plan"}
+          {lockSelection
+            ? anyTrialOn
+              ? "Start Your Free Trial"
+              : "Complete checkout"
+            : anyTrialOn
+              ? "Start Your Free Trial"
+              : "Choose a plan"}
         </h1>
         <p className="text-base text-slate-600">
           {anyTrialOn
@@ -197,6 +231,9 @@ export default async function OnboardingSubscribePage({
           BILLING_PLAN_TEAM,
         )}
         globalDisabledReason={globalDisabledReason}
+        initialPlanCode={lockedPlanCode ?? BILLING_PLAN_STANDARD}
+        initialSeatQuantity={lockedSeatQuantity}
+        lockSelection={lockSelection}
       />
     </div>
   );

@@ -183,11 +183,45 @@ export const auth = betterAuth({
             (user as { firstName?: string }).firstName?.trim() || "User";
           const lastName =
             (user as { lastName?: string }).lastName?.trim() || "";
+
+          let companyName: string | undefined;
+          let planCode: string | undefined;
+          let seatQuantity: number | undefined;
+          let maxSeats: number | undefined;
+          try {
+            const { readPendingSignupIntent } = await import(
+              "@/lib/billing/pending-signup-intent-cookie"
+            );
+            const {
+              defaultMaxSeatsForPlan,
+            } = await import("@/lib/org/seat-limits");
+            const intent = await readPendingSignupIntent();
+            if (intent?.companyName) {
+              companyName = intent.companyName;
+            }
+            if (intent?.planCode) {
+              planCode = intent.planCode;
+              seatQuantity = intent.seatQuantity;
+              maxSeats = defaultMaxSeatsForPlan(intent.planCode);
+            }
+          } catch (error) {
+            console.error("[auth] pending signup intent read failed", {
+              message:
+                error instanceof Error
+                  ? error.message.slice(0, 300)
+                  : "unknown",
+            });
+          }
+
           const provisioned = await provisionIndividualWorkspace({
             authUserId: user.id,
             email: user.email,
             firstName,
             lastName,
+            companyName,
+            planCode,
+            seatQuantity,
+            maxSeats,
           });
 
           // Welcome is sent after verification (see session / verify hooks below)

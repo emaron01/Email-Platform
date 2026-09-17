@@ -90,7 +90,7 @@ function LoginForm() {
       </p>
       <p className="mt-2 text-sm text-slate-600">
         No account?{" "}
-        <Link href="/signup" className="font-medium underline">
+        <Link href="/signup/plan" className="font-medium underline">
           Sign up
         </Link>
       </p>

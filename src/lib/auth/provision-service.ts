@@ -65,6 +65,9 @@ async function createTenantWorkspaceForUser(
     email: string;
     workspaceName: string;
     timezone?: string;
+    planCode?: string;
+    seatQuantity?: number;
+    maxSeats?: number;
   },
 ): Promise<{ organization: Organization; membershipRole: MembershipRole }> {
   const slug = await uniqueSlug(tx, slugify(input.workspaceName));
@@ -106,6 +109,11 @@ async function createTenantWorkspaceForUser(
       organizationId: organization.id,
       billingEmail: input.email,
       ...SELF_SERVE_BILLING_DEFAULTS,
+      ...(input.planCode ? { planCode: input.planCode } : {}),
+      ...(input.seatQuantity != null
+        ? { seatQuantity: input.seatQuantity }
+        : {}),
+      ...(input.maxSeats != null ? { maxSeats: input.maxSeats } : {}),
     },
   });
 
@@ -132,6 +140,11 @@ export async function provisionIndividualWorkspace(input: {
   firstName: string;
   lastName: string;
   timezone?: string;
+  /** Organization / company display name. Falls back to "{firstName}'s Workspace". */
+  companyName?: string | null;
+  planCode?: string | null;
+  seatQuantity?: number | null;
+  maxSeats?: number | null;
 }): Promise<{
   user: User;
   organization: Organization | null;
@@ -143,12 +156,24 @@ export async function provisionIndividualWorkspace(input: {
   const lastName = input.lastName.trim() || "";
   const displayName = [firstName, lastName].filter(Boolean).join(" ");
   const isVitest = Boolean(process.env.VITEST);
+  const trimmedCompany = input.companyName?.trim() || "";
   const workspaceName = isVitest
-    ? `[TEST] ${firstName}'s Workspace`
-    : `${firstName}'s Workspace`;
+    ? `[TEST] ${trimmedCompany || `${firstName}'s Workspace`}`
+    : trimmedCompany || `${firstName}'s Workspace`;
   const userDisplayName = isVitest
     ? `[TEST] ${displayName || firstName}`
     : displayName;
+  const workspaceBilling = {
+    planCode: input.planCode?.trim() || undefined,
+    seatQuantity:
+      input.seatQuantity != null && Number.isFinite(input.seatQuantity)
+        ? Math.floor(input.seatQuantity)
+        : undefined,
+    maxSeats:
+      input.maxSeats != null && Number.isFinite(input.maxSeats)
+        ? Math.floor(input.maxSeats)
+        : undefined,
+  };
 
   const existingByAuth = await prisma.user.findUnique({
     where: { authUserId: input.authUserId },
@@ -191,6 +216,7 @@ export async function provisionIndividualWorkspace(input: {
         email,
         workspaceName,
         timezone: input.timezone,
+        ...workspaceBilling,
       });
       const user = await tx.user.findUniqueOrThrow({
         where: { id: existingByAuth.id },
@@ -247,6 +273,7 @@ export async function provisionIndividualWorkspace(input: {
             email,
             workspaceName,
             timezone: input.timezone,
+            ...workspaceBilling,
           });
           return {
             user,
@@ -304,6 +331,7 @@ export async function provisionIndividualWorkspace(input: {
       email,
       workspaceName,
       timezone: input.timezone,
+      ...workspaceBilling,
     });
 
     const updatedUser = await tx.user.findUniqueOrThrow({

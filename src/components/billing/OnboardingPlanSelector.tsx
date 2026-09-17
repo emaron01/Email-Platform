@@ -31,6 +31,9 @@ export function OnboardingPlanSelector({
   standardCheckoutReady,
   teamCheckoutReady,
   globalDisabledReason,
+  initialPlanCode = BILLING_PLAN_STANDARD,
+  initialSeatQuantity = 2,
+  lockSelection = false,
 }: {
   standard: OnboardingPlanOption;
   team: OnboardingPlanOption;
@@ -42,9 +45,20 @@ export function OnboardingPlanSelector({
   standardCheckoutReady: boolean;
   teamCheckoutReady: boolean;
   globalDisabledReason?: string | null;
+  initialPlanCode?: string;
+  initialSeatQuantity?: number;
+  /** When true, plan/seats were chosen at /signup/plan — confirm + checkout only. */
+  lockSelection?: boolean;
 }) {
-  const [planCode, setPlanCode] = useState<string>(BILLING_PLAN_STANDARD);
-  const [seatQuantity, setSeatQuantity] = useState(2);
+  const [planCode, setPlanCode] = useState<string>(
+    initialPlanCode === BILLING_PLAN_TEAM ||
+      initialPlanCode === BILLING_PLAN_ENTERPRISE
+      ? initialPlanCode
+      : BILLING_PLAN_STANDARD,
+  );
+  const [seatQuantity, setSeatQuantity] = useState(
+    Math.max(2, Math.min(10, Math.floor(initialSeatQuantity) || 2)),
+  );
 
   const selected = useMemo(() => {
     if (planCode === BILLING_PLAN_TEAM) return team;
@@ -70,58 +84,64 @@ export function OnboardingPlanSelector({
 
   return (
     <div className="space-y-6" data-testid="onboarding-plan-selector">
-      <div className="grid gap-3 md:grid-cols-3">
-        {(
-          [
-            {
-              code: BILLING_PLAN_STANDARD,
-              label: "Standard",
-              blurb: "For individual salespeople",
-            },
-            {
-              code: BILLING_PLAN_TEAM,
-              label: "Team",
-              blurb: "For teams of 2-10",
-            },
-            {
-              code: BILLING_PLAN_ENTERPRISE,
-              label: "Enterprise",
-              blurb: "For larger teams",
-            },
-          ] as const
-        ).map((plan) => (
-          <button
-            key={plan.code}
-            type="button"
-            onClick={() => setPlanCode(plan.code)}
-            className={cn(
-              "rounded-lg border px-4 py-4 text-left transition",
-              planCode === plan.code
-                ? "border-slate-900 bg-slate-900 text-white"
-                : "border-slate-200 bg-white text-slate-900 hover:border-slate-400",
-            )}
-          >
-            <p className="text-base font-semibold">{plan.label}</p>
-            <p
+      {lockSelection ? null : (
+        <div className="grid gap-3 md:grid-cols-3">
+          {(
+            [
+              {
+                code: BILLING_PLAN_STANDARD,
+                label: "Standard",
+                blurb: "For individual salespeople",
+              },
+              {
+                code: BILLING_PLAN_TEAM,
+                label: "Team",
+                blurb: "For teams of 2-10",
+              },
+              {
+                code: BILLING_PLAN_ENTERPRISE,
+                label: "Enterprise",
+                blurb: "For larger teams",
+              },
+            ] as const
+          ).map((plan) => (
+            <button
+              key={plan.code}
+              type="button"
+              onClick={() => setPlanCode(plan.code)}
               className={cn(
-                "mt-1 text-sm",
-                planCode === plan.code ? "text-slate-200" : "text-slate-600",
+                "rounded-lg border px-4 py-4 text-left transition",
+                planCode === plan.code
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-200 bg-white text-slate-900 hover:border-slate-400",
               )}
             >
-              {plan.blurb}
-            </p>
-          </button>
-        ))}
-      </div>
+              <p className="text-base font-semibold">{plan.label}</p>
+              <p
+                className={cn(
+                  "mt-1 text-sm",
+                  planCode === plan.code ? "text-slate-200" : "text-slate-600",
+                )}
+              >
+                {plan.blurb}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
 
       <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6">
         <div>
           <p className="text-lg font-medium text-slate-900">
             {selected.displayName}
+            {planCode === BILLING_PLAN_TEAM
+              ? ` · ${seatQuantity} users`
+              : null}
           </p>
           {selected.priceLabel ? (
             <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
               {selected.priceLabel}
+              {planCode === BILLING_PLAN_TEAM ? " / user / month" : null}
             </p>
           ) : null}
           {selected.tagline ? (
@@ -129,9 +149,11 @@ export function OnboardingPlanSelector({
           ) : null}
         </div>
 
-        {planCode === BILLING_PLAN_TEAM ? (
+        {planCode === BILLING_PLAN_TEAM && !lockSelection ? (
           <label className="block max-w-xs text-sm">
-            <span className="font-medium text-slate-700">Seats</span>
+            <span className="font-medium text-slate-700">
+              How many users? (minimum 2)
+            </span>
             <select
               className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2"
               value={seatQuantity}
@@ -142,12 +164,22 @@ export function OnboardingPlanSelector({
               {Array.from({ length: 9 }, (_, index) => index + 2).map(
                 (seats) => (
                   <option key={seats} value={seats}>
-                    {seats} seats
+                    {seats} users
                   </option>
                 ),
               )}
             </select>
+            <span className="mt-1 block text-xs text-slate-500">
+              You can add users anytime after signup.
+            </span>
           </label>
+        ) : null}
+
+        {planCode === BILLING_PLAN_TEAM && lockSelection ? (
+          <p className="text-sm text-slate-600">
+            Starting with {seatQuantity} users. You can add users anytime from
+            organization settings.
+          </p>
         ) : null}
 
         <div>
@@ -184,10 +216,10 @@ export function OnboardingPlanSelector({
 
         <p className="text-sm text-slate-600">
           {planCode === BILLING_PLAN_ENTERPRISE
-            ? "Enterprise is provisioned with Sales Forecaster. Contact us to get started."
+            ? "Contact us to get started."
             : trialOff
-              ? "Cancel anytime. Cancellations take effect at the end of the current billing cycle."
-              : "Cancel anytime before your trial ends and you won\u2019t be charged. Cancellations take effect at the end of the current billing cycle."}
+              ? "Once your subscription starts, you may cancel at any time. Active billing ends at the end of the most current billing cycle."
+              : "Cancel anytime before your trial ends and you won\u2019t be charged. Once your subscription starts, you may cancel at any time. Active billing ends at the end of the most current billing cycle."}
         </p>
 
         {planCode === BILLING_PLAN_ENTERPRISE ? (

@@ -117,22 +117,26 @@ export async function createPlanCheckoutSession(input: {
       },
     });
     customerId = customer.id;
-    await prisma.organizationBillingProfile.upsert({
-      where: { organizationId: input.organizationId },
-      create: {
-        organizationId: input.organizationId,
-        billingEmail: profile?.billingEmail ?? input.actorEmail,
-        stripeCustomerId: customerId,
-        seatQuantity: quantity,
-        maxSeats,
-        planCode,
-      },
-      update: {
-        stripeCustomerId: customerId,
-        billingEmail: profile?.billingEmail ?? input.actorEmail,
-      },
-    });
   }
+
+  await prisma.organizationBillingProfile.upsert({
+    where: { organizationId: input.organizationId },
+    create: {
+      organizationId: input.organizationId,
+      billingEmail: profile?.billingEmail ?? input.actorEmail,
+      stripeCustomerId: customerId,
+      seatQuantity: quantity,
+      maxSeats,
+      planCode,
+    },
+    update: {
+      stripeCustomerId: customerId,
+      billingEmail: profile?.billingEmail ?? input.actorEmail,
+      seatQuantity: quantity,
+      maxSeats,
+      planCode,
+    },
+  });
 
   const effective =
     plan?.trialDays != null

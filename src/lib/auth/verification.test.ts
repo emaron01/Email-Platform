@@ -40,7 +40,7 @@ describe("verification URL helpers", () => {
 
   it("signup uses /post-verify callback; verify-email is public", async () => {
     const signup = await import("node:fs").then((fs) =>
-      fs.readFileSync("src/app/(auth)/signup/page.tsx", "utf8"),
+      fs.readFileSync("src/components/auth/SignupForm.tsx", "utf8"),
     );
     const mw = await import("node:fs").then((fs) =>
       fs.readFileSync("src/middleware.ts", "utf8"),

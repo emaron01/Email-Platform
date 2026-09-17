@@ -41,6 +41,15 @@ export async function POST(request: Request) {
       );
     }
 
+    try {
+      const { clearPendingSignupIntent } = await import(
+        "@/lib/billing/pending-signup-intent-cookie"
+      );
+      await clearPendingSignupIntent();
+    } catch {
+      // Non-fatal — checkout URL is already created.
+    }
+
     return NextResponse.json({ url: result.url });
   } catch (error) {
     const message =

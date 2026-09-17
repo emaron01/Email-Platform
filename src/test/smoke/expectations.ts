@@ -8,6 +8,7 @@ export type SmokeExpectation = {
 const PUBLIC_PREFIXES = [
   "/login",
   "/signup",
+  "/signup/plan",
   "/verify-email",
   "/post-verify",
   "/forgot-password",
@@ -23,7 +24,11 @@ export function isPublicSmokeRoute(pathname: string): boolean {
 
 const ROUTE_EXPECTATIONS: Record<string, SmokeExpectation> = {
   "/login": { mustInclude: "Sign in", public: true },
-  "/signup": { mustInclude: "Create account", public: true },
+  "/signup": {
+    mustInclude: ["Create account", "Choose your plan"],
+    public: true,
+  },
+  "/signup/plan": { mustInclude: "Choose your plan", public: true },
   "/verify-email": { mustInclude: "verify-email-page", public: true },
   "/post-verify": {
     mustInclude: [
