@@ -134,10 +134,15 @@ export function OnboardingPlanSelector({
         <div>
           <p className="text-lg font-medium text-slate-900">
             {selected.displayName}
-            {planCode === BILLING_PLAN_TEAM
-              ? ` · ${seatQuantity} users`
-              : null}
           </p>
+          {planCode === BILLING_PLAN_TEAM ? (
+            <p
+              className="mt-2 text-xl font-extrabold tracking-tight text-emerald-600 sm:text-2xl"
+              data-testid="onboarding-team-seats-selected"
+            >
+              You Have Selected {seatQuantity} Users For Your Team Account
+            </p>
+          ) : null}
           {selected.priceLabel ? (
             <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
               {selected.priceLabel}
@@ -177,8 +182,7 @@ export function OnboardingPlanSelector({
 
         {planCode === BILLING_PLAN_TEAM && lockSelection ? (
           <p className="text-sm text-slate-600">
-            Starting with {seatQuantity} users. You can add users anytime from
-            organization settings.
+            You can add users anytime from organization settings.
           </p>
         ) : null}
 
