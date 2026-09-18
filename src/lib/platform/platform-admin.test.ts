@@ -283,14 +283,21 @@ describe("platform org delete purges orphaned identities", () => {
 });
 
 describe("invite accept page", () => {
-  it("exists and references acceptOrganizationInvitation", () => {
+  it("exists and wires accept through AcceptInviteClient + Server Action", () => {
     const src = readFileSync(
       resolve("src/app/(auth)/invite/accept/page.tsx"),
       "utf8",
     );
-    expect(src).toContain("acceptOrganizationInvitation");
+    expect(src).toContain("AcceptInviteClient");
     expect(src).toContain("/invite/accept");
-    expect(src).toContain("rawToken");
+    const client = readFileSync(
+      resolve("src/app/(auth)/invite/accept/AcceptInviteClient.tsx"),
+      "utf8",
+    );
+    expect(client).toContain("acceptInviteAction");
+    const action = readFileSync(resolve("src/app/actions/invite.ts"), "utf8");
+    expect(action).toContain("acceptOrganizationInvitation");
+    expect(action).toContain("rawToken");
   });
 });
 
@@ -492,13 +499,17 @@ describe("invite accept sets active org and retires empty personal workspace", (
     expect(src).toContain("keepOrganizationId");
   });
 
-  it("logged-out invite accept page sets pending invite cookie", () => {
+  it("logged-out invite accept page preserves token in next= and does not set cookies during render", () => {
     const page = readFileSync(
       resolve("src/app/(auth)/invite/accept/page.tsx"),
       "utf8",
     );
-    expect(page).toContain("PENDING_INVITE_COOKIE");
-    expect(page).toContain("pending_invite_token");
-    expect(page).toContain("cookies()");
+    expect(page).toContain("next=${encodeURIComponent(next)}");
+    expect(page).not.toMatch(/\bcookies\s*\(/);
+    expect(page).not.toContain("pending_invite_token");
+    expect(page).toContain("AcceptInviteClient");
+    const action = readFileSync(resolve("src/app/actions/invite.ts"), "utf8");
+    expect(action).toContain("acceptInviteAction");
+    expect(action).toContain("acceptOrganizationInvitation");
   });
 });

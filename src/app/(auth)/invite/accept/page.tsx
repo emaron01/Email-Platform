@@ -1,22 +1,22 @@
 import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/auth/session";
-import {
-  acceptOrganizationInvitation,
-  InvitationError,
-} from "@/lib/org/signup";
 import { AcceptInviteClient } from "./AcceptInviteClient";
-
-export const PENDING_INVITE_COOKIE = "pending_invite_token";
 
 /**
  * Invitation accept landing for `/invite/accept?token=...`.
- * Public route (middleware allowlist). Logged-in users accept immediately;
- * others are prompted to log in / sign up and return with the token.
+ * Public route (middleware allowlist).
+ *
+ * Order of work on this page (RSC render only — no cookie writes, no accept):
+ *  1. Read `token` from searchParams
+ *  2. Resolve session via getCurrentUser()
+ *  3. Logged out → sign-in / sign-up links with `next` preserving the token
+ *  4. Logged in → client form POSTs acceptInviteAction (Server Action)
+ *
+ * Do not mutate the cookie jar during this RSC render — Next only allows that
+ * in a Server Action or Route Handler. The token lives in the URL (and login next=).
  */
 async function AcceptInviteBody({ token }: { token: string | null }) {
   if (!token) {
@@ -40,13 +40,6 @@ async function AcceptInviteBody({ token }: { token: string | null }) {
 
   const user = await getCurrentUser();
   if (!user) {
-    const jar = await cookies();
-    jar.set(PENDING_INVITE_COOKIE, token, {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
     const next = `/invite/accept?token=${encodeURIComponent(token)}`;
     return (
       <div className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -75,35 +68,16 @@ async function AcceptInviteBody({ token }: { token: string | null }) {
     );
   }
 
-  try {
-    await acceptOrganizationInvitation({
-      rawToken: token,
-      acceptingUserId: user.id,
-    });
-  } catch (error) {
-    const message =
-      error instanceof InvitationError
-        ? error.message
-        : "Unable to accept this invitation.";
-    return (
-      <div className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-          Invitation problem
-        </h1>
-        <p className="mt-2 text-sm text-red-600" role="alert">
-          {message}
-        </p>
-        <p className="mt-4 text-sm">
-          <Link href="/" className="underline">
-            Go home
-          </Link>
-        </p>
+  return (
+    <div className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+        Accept invitation
+      </h1>
+      <div className="mt-4">
         <AcceptInviteClient token={token} />
       </div>
-    );
-  }
-
-  redirect("/");
+    </div>
+  );
 }
 
 export default async function InviteAcceptPage({
