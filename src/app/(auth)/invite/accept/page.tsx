@@ -1,4 +1,4 @@
-import { PRIMARY_BUTTON_CLASS } from "@/components/ui";
+import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -14,8 +14,8 @@ import { AcceptInviteClient } from "./AcceptInviteClient";
  *  1. Read `token` from searchParams
  *  2. Preview invitation (email + org) by token hash
  *  3. Resolve session via getCurrentUser()
- *  4. Logged out → sign-in / sign-up links with `next` preserving the token
- *  5. Logged in → show match/mismatch UI; accept only via Server Action POST
+ *  4. Logged out → Create account (primary) / Sign in (secondary)
+ *  5. Logged in → match/mismatch UI; accept only via Server Action POST
  */
 async function AcceptInviteBody({ token }: { token: string | null }) {
   if (!token) {
@@ -53,36 +53,38 @@ async function AcceptInviteBody({ token }: { token: string | null }) {
   }
 
   const next = `/invite/accept?token=${encodeURIComponent(token)}`;
+  const signupHref = `/signup?next=${encodeURIComponent(next)}&email=${encodeURIComponent(preview.email)}&company=${encodeURIComponent(preview.organizationName)}`;
   const user = await getCurrentUser();
 
   if (!user) {
     return (
       <div className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-          Accept invitation
+          Join {preview.organizationName}
         </h1>
         <p className="mt-2 text-sm text-slate-600">
           You were invited as{" "}
-          <span className="font-medium text-slate-900">{preview.email}</span> to
-          join{" "}
+          <span className="font-medium text-slate-900">{preview.email}</span>.
+          Create a password and you will join{" "}
           <span className="font-medium text-slate-900">
             {preview.organizationName}
           </span>
-          . Sign in with that email, or create an account (you will set a new
-          password).
+          .
         </p>
-        <div className="mt-6 flex flex-wrap gap-3 text-sm">
+        <div className="mt-6 flex flex-col gap-3 text-sm">
           <Link
-            href={`/login?next=${encodeURIComponent(next)}`}
-            className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
-          >
-            Sign in as {preview.email}
-          </Link>
-          <Link
-            href={`/signup?next=${encodeURIComponent(next)}&email=${encodeURIComponent(preview.email)}`}
-            className="rounded-md border border-slate-300 px-3 py-2 font-medium text-slate-800"
+            href={signupHref}
+            className={cn(PRIMARY_BUTTON_CLASS, "!px-3", "text-center")}
+            data-testid="invite-create-account"
           >
             Create account
+          </Link>
+          <Link
+            href={`/login?next=${encodeURIComponent(next)}`}
+            className={cn(SECONDARY_BUTTON_CLASS, "!px-3", "text-center")}
+            data-testid="invite-sign-in"
+          >
+            Already have an account? Sign in
           </Link>
         </div>
       </div>
@@ -96,7 +98,7 @@ async function AcceptInviteBody({ token }: { token: string | null }) {
   return (
     <div className="mx-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
       <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-        Accept invitation
+        Join {preview.organizationName}
       </h1>
       <div className="mt-4">
         <AcceptInviteClient

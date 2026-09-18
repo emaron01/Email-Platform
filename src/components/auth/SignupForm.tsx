@@ -13,16 +13,28 @@ export function SignupForm({
   planSummary,
   requirePlan,
   defaultEmail = "",
+  defaultCompanyName = "",
+  workspaceName = null,
+  inviteMode = false,
 }: {
   next: string;
   planSummary: string | null;
   requirePlan: boolean;
   /** Prefill when joining via invite link. */
   defaultEmail?: string;
+  /** Prefill company / workspace name (invite: org name, read-only). */
+  defaultCompanyName?: string;
+  /** Invite: org display name for copy. */
+  workspaceName?: string | null;
+  /** Invite join — no plan cookie, locked email/company, verify back to invite. */
+  inviteMode?: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const lockedEmail = inviteMode && defaultEmail.trim().length > 0;
+  const lockedCompany = inviteMode && defaultCompanyName.trim().length > 0;
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -30,8 +42,12 @@ export function SignupForm({
     const fd = new FormData(e.currentTarget);
     const firstName = String(fd.get("firstName") || "").trim();
     const lastName = String(fd.get("lastName") || "").trim();
-    const companyName = String(fd.get("companyName") || "").trim();
-    const email = String(fd.get("email") || "").trim();
+    const companyName = lockedCompany
+      ? defaultCompanyName.trim()
+      : String(fd.get("companyName") || "").trim();
+    const email = lockedEmail
+      ? defaultEmail.trim()
+      : String(fd.get("email") || "").trim();
     const password = String(fd.get("password") || "");
     const confirm = String(fd.get("confirmPassword") || "");
 
@@ -50,12 +66,21 @@ export function SignupForm({
 
     setLoading(true);
     try {
-      const prepared = await prepareSignupCompanyAction({ companyName });
-      if (!prepared.ok) {
-        setError(prepared.message);
-        setLoading(false);
-        return;
+      // Self-serve only — invitees must not write a plan / Checkout cookie.
+      if (!inviteMode) {
+        const prepared = await prepareSignupCompanyAction({ companyName });
+        if (!prepared.ok) {
+          setError(prepared.message);
+          setLoading(false);
+          return;
+        }
       }
+
+      // Invite: land on the invite link after verify (skip subscribe onboarding).
+      const callbackURL =
+        inviteMode && next.startsWith("/invite/accept")
+          ? next
+          : "/post-verify";
 
       const res = await fetch("/api/auth/sign-up/email", {
         method: "POST",
@@ -66,7 +91,7 @@ export function SignupForm({
           name: `${firstName} ${lastName}`.trim(),
           firstName,
           lastName,
-          callbackURL: "/post-verify",
+          callbackURL,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -100,12 +125,14 @@ export function SignupForm({
       data-testid="signup-form"
     >
       <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-        Create your account
+        {inviteMode ? "Join the workspace" : "Create your account"}
       </h1>
       <p className="mt-1 text-sm text-slate-600">
-        {planSummary
-          ? `Selected: ${planSummary}. Enter your details to continue.`
-          : "Enter your details to join the workspace."}
+        {inviteMode && workspaceName
+          ? `Create a password and you will join ${workspaceName}.`
+          : planSummary
+            ? `Selected: ${planSummary}. Enter your details to continue.`
+            : "Enter your details to continue."}
       </p>
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         <div className="grid grid-cols-2 gap-3">
@@ -129,14 +156,19 @@ export function SignupForm({
           </label>
         </div>
         <label className="block text-sm">
-          Company name
+          {inviteMode ? "Workspace" : "Company name"}
           <input
             name="companyName"
-            required
+            required={!lockedCompany}
             minLength={2}
             maxLength={120}
             autoComplete="organization"
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+            defaultValue={defaultCompanyName}
+            readOnly={lockedCompany}
+            className={cn(
+              "mt-1 w-full rounded-md border border-slate-300 px-3 py-2",
+              lockedCompany ? "bg-slate-50 text-slate-700" : "",
+            )}
           />
         </label>
         <label className="block text-sm">
@@ -144,10 +176,14 @@ export function SignupForm({
           <input
             name="email"
             type="email"
-            required
+            required={!lockedEmail}
             defaultValue={defaultEmail}
+            readOnly={lockedEmail}
             autoComplete="email"
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+            className={cn(
+              "mt-1 w-full rounded-md border border-slate-300 px-3 py-2",
+              lockedEmail ? "bg-slate-50 text-slate-700" : "",
+            )}
           />
         </label>
         <label className="block text-sm">
@@ -182,7 +218,11 @@ export function SignupForm({
           disabled={loading || (requirePlan && !planSummary)}
           className={cn(PRIMARY_BUTTON_CLASS, "w-full", "!px-3")}
         >
-          {loading ? "Creating account…" : "Create account"}
+          {loading
+            ? "Creating account…"
+            : inviteMode
+              ? "Create password and join"
+              : "Create account"}
         </button>
       </form>
       <p className="mt-4 text-sm text-slate-600">
@@ -198,7 +238,7 @@ export function SignupForm({
           Sign in
         </Link>
       </p>
-      {!next ? (
+      {!next && !inviteMode ? (
         <p className="mt-2 text-sm text-slate-600">
           Want a different plan?{" "}
           <Link href="/signup/plan" className="font-medium underline">

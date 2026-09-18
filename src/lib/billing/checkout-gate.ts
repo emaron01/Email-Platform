@@ -23,6 +23,7 @@ const CHECKOUT_EXEMPT_PREFIXES = [
   "/api/billing/checkout",
   "/api/billing/portal",
   "/no-workspace",
+  "/invite",
 ] as const;
 
 function isCheckoutExempt(pathname: string): boolean {

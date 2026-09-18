@@ -50,9 +50,9 @@ export function AcceptInviteClient({
           <span className="font-medium text-slate-900">{signedInEmail}</span>.
         </p>
         <p className="text-sm text-slate-600">
-          Sign out, then sign in or create an account with{" "}
-          <span className="font-medium">{invitedEmail}</span>. Use a new password
-          on sign-up if you do not already have an account for that email.
+          Sign out, then create an account (or sign in) as{" "}
+          <span className="font-medium">{invitedEmail}</span> to join{" "}
+          <span className="font-medium">{organizationName}</span>.
         </p>
         <form action={logoutForInviteAction} className="flex flex-wrap gap-2">
           <input type="hidden" name="next" value={returnTo} />
@@ -65,14 +65,14 @@ export function AcceptInviteClient({
           </button>
         </form>
         <p className="text-sm text-slate-600">
-          Or{" "}
+          After sign-out, choose{" "}
           <Link
-            href={`/signup?next=${encodeURIComponent(returnTo)}&email=${encodeURIComponent(invitedEmail)}`}
+            href={`/signup?next=${encodeURIComponent(returnTo)}&email=${encodeURIComponent(invitedEmail)}&company=${encodeURIComponent(organizationName)}`}
             className="font-medium underline"
           >
-            create an account as {invitedEmail}
+            Create account
           </Link>{" "}
-          after signing out.
+          if you are new, or Sign in if you already use {invitedEmail}.
         </p>
       </div>
     );

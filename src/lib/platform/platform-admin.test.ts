@@ -499,11 +499,14 @@ describe("invite accept sets active org and retires empty personal workspace", (
     expect(src).toContain("keepOrganizationId");
   });
 
-  it("logged-out invite accept page preserves token in next= and does not set cookies during render", () => {
+  it("logged-out invite accept page leads with Create account and preserves token", () => {
     const page = readFileSync(
       resolve("src/app/(auth)/invite/accept/page.tsx"),
       "utf8",
     );
+    expect(page).toContain("Create account");
+    expect(page).toContain("Already have an account? Sign in");
+    expect(page).toContain("Create a password and you will join");
     expect(page).toContain("next=${encodeURIComponent(next)}");
     expect(page).not.toMatch(/\bcookies\s*\(/);
     expect(page).not.toContain("pending_invite_token");
@@ -511,5 +514,12 @@ describe("invite accept sets active org and retires empty personal workspace", (
     const action = readFileSync(resolve("src/app/actions/invite.ts"), "utf8");
     expect(action).toContain("acceptInviteAction");
     expect(action).toContain("acceptOrganizationInvitation");
+    const signup = readFileSync(
+      resolve("src/components/auth/SignupForm.tsx"),
+      "utf8",
+    );
+    expect(signup).toContain("inviteMode");
+    expect(signup).toContain("readOnly={lockedEmail}");
+    expect(signup).toContain("Create a password and you will join");
   });
 });

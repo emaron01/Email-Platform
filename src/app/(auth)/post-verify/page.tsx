@@ -12,17 +12,26 @@ import { userNeedsEulaAcceptance } from "@/lib/legal/eula";
  * callbackURL for verification emails should be `/post-verify` so:
  * - success → smart redirect (eula / subscribe / workspace / platform / no-workspace)
  * - failure → `/post-verify?error=INVALID_TOKEN` → verify-email UX (not Dashboard)
+ *
+ * Invite signups set callbackURL to `/invite/accept?token=…` so they skip
+ * self-serve Checkout. If `next` is an invite path, prefer it before subscribe.
  */
 export default async function PostVerifyPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ error?: string }>;
+  searchParams?: Promise<{ error?: string; next?: string }>;
 }) {
   const params = searchParams ? await searchParams : {};
   const error = params.error?.trim();
   if (error) {
     redirect(`/verify-email?error=${encodeURIComponent(error)}`);
   }
+
+  const nextRaw = params.next?.trim() || "";
+  const inviteNext =
+    nextRaw.startsWith("/invite/accept") && !nextRaw.includes("//")
+      ? nextRaw
+      : null;
 
   const user = await getCurrentUser();
   if (!user) {
@@ -40,6 +49,11 @@ export default async function PostVerifyPage({
       firstName: user.firstName?.trim() || "User",
       lastName: user.lastName?.trim() || "",
     });
+  }
+
+  // Invitees join a paid org — do not send them through self-serve Checkout.
+  if (inviteNext) {
+    redirect(inviteNext);
   }
 
   const eula = await userNeedsEulaAcceptance(user.id);
