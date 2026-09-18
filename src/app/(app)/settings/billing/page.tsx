@@ -22,7 +22,6 @@ import {
 import { ONBOARDING_SUBSCRIBE_PATH } from "@/lib/billing/paths";
 import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
 import {
-  BILLING_PLAN_STANDARD,
   getPlanDefinition,
   planAllowsReferrals,
   planUsesPerUserCompanyAllowance,
@@ -206,17 +205,29 @@ export default async function OrganizationBillingSettingsPage({
   // Trial allowance = what this org actually has stored.
   const trialAllowance = policy.activeResearchedCompanyLimit;
 
-  // Paid Standard floor = live billing.catalog, else plans.ts.
-  const standardPaidFromCatalog = resolveCatalogEntitlementsForStatus({
+  // Paid company capacity after early convert (catalog floors, else plans.ts).
+  const paidEntitlements = resolveCatalogEntitlementsForStatus({
     catalog: catalogEffective.catalog,
-    planCode: BILLING_PLAN_STANDARD,
+    planCode,
     billingStatus: "ACTIVE",
-  })?.activeResearchedCompanyLimit;
-  const standardPaidFloor =
-    standardPaidFromCatalog ??
-    getPlanDefinition(BILLING_PLAN_STANDARD)?.entitlements
-      .activeResearchedCompanyLimit ??
+  });
+  const planDef = getPlanDefinition(planCode);
+  const companiesPerSeat =
+    paidEntitlements?.companiesPerSeat ??
+    planDef?.seats.companiesPerSeat ??
     null;
+  const paidCompanyFloor =
+    paidEntitlements?.activeResearchedCompanyLimit ??
+    planDef?.entitlements.activeResearchedCompanyLimit ??
+    null;
+  const seatQty = Math.max(1, billing?.seatQuantity ?? 1);
+  const paidCompanyCapacityLabel = planUsesSeatBilling(planCode)
+    ? companiesPerSeat != null
+      ? `${companiesPerSeat * seatQty} companies`
+      : null
+    : paidCompanyFloor != null
+      ? `${paidCompanyFloor} companies`
+      : null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -447,6 +458,28 @@ export default async function OrganizationBillingSettingsPage({
           </p>
         ) : null}
 
+        {canConvertTrialEarly && isOwner ? (
+          <div
+            className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3"
+            data-testid="billing-convert-trial"
+          >
+            <p className="mb-2 text-sm text-slate-700">
+              Need Full Company Research capacity before{" "}
+              {trialSummary ?? "trial end"}? Convert now and get FULL ACCESS —
+              we charge your card today and start the{" "}
+              {billingPlanLabel(planCode)} billing cycle immediately
+              {paidCompanyCapacityLabel
+                ? ` (${paidCompanyCapacityLabel})`
+                : ""}
+              .
+            </p>
+            <ConvertTrialNowButton
+              planLabel={billingPlanLabel(planCode)}
+              paidCompanyCapacityLabel={paidCompanyCapacityLabel}
+            />
+          </div>
+        ) : null}
+
         {isComped && !hasLiveSubscription && isOwner ? (
           <p className="text-sm text-slate-600">
             <Link
@@ -527,29 +560,16 @@ export default async function OrganizationBillingSettingsPage({
             : ""}
         </p>
         {billingStatus === "TRIALING" && trialAllowance != null ? (
-          <div className="space-y-3">
-            <p className="text-sm text-slate-600">
-              Trial allowance is {trialAllowance} companies
-              {standardPaidFloor != null
-                ? `; Standard is ${standardPaidFloor} after conversion`
-                : ""}
-              .
-            </p>
-            {canConvertTrialEarly && isOwner ? (
-              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
-                <p className="mb-2 text-sm text-slate-700">
-                  Need capacity before {trialSummary ?? "trial end"}? Convert
-                  now — we charge your card today and start the Standard
-                  billing cycle immediately
-                  {standardPaidFloor != null
-                    ? ` (${standardPaidFloor} companies)`
-                    : ""}
-                  .
-                </p>
-                <ConvertTrialNowButton />
-              </div>
-            ) : null}
-          </div>
+          <p className="text-sm text-slate-600">
+            Trial allowance is {trialAllowance} companies
+            {planUsesSeatBilling(planCode)
+              ? " per user"
+              : ""}
+            {paidCompanyCapacityLabel
+              ? `; paid ${billingPlanLabel(planCode)} is ${paidCompanyCapacityLabel}`
+              : ""}
+            .
+          </p>
         ) : (
           <p className="text-sm text-slate-600">
             One slot per distinct company with fresh research. Refreshing a

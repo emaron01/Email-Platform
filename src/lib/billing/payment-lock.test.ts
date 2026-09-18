@@ -218,6 +218,8 @@ describe("payment lock route gate", () => {
     expect(gate).toContain('redirect("/settings/billing")');
     expect(lock).toContain("PAYMENT_LOCK_ROUTE_EXEMPT_PREFIXES");
     expect(lock).toContain('"/settings/billing"');
+    // Must stay open while locked or billing↔EULA redirect-loops.
+    expect(lock).toContain('"/onboarding/eula"');
   });
 
   it("grace refuses Server Actions without redirecting views", () => {

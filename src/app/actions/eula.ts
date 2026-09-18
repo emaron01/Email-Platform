@@ -26,6 +26,14 @@ export type AcceptEulaActionResult = {
 async function resolvePostEulaDestination(): Promise<string> {
   const organization = await getCurrentOrganization();
   if (organization) {
+    const { getOrganizationPaymentLockState } = await import(
+      "@/lib/billing/payment-lock"
+    );
+    const lock = await getOrganizationPaymentLockState(organization.id);
+    if (lock.locked) {
+      return "/settings/billing";
+    }
+
     const billing = await prisma.organizationBillingProfile.findUnique({
       where: { organizationId: organization.id },
       select: {

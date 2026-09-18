@@ -10,8 +10,14 @@ import { useRouter } from "next/navigation";
  */
 export function ConvertTrialNowButton({
   className,
+  planLabel = "Standard",
+  paidCompanyCapacityLabel = null,
 }: {
   className?: string;
+  /** Display name of the plan billing starts on (e.g. Team, Standard). */
+  planLabel?: string;
+  /** e.g. "300 companies" or "100 companies" — shown in confirm copy. */
+  paidCompanyCapacityLabel?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -37,21 +43,21 @@ export function ConvertTrialNowButton({
         data-testid="convert-trial-confirm"
       >
         <p className="text-sm font-medium text-amber-950">
-          Convert to Standard now?
+          Convert to {planLabel} now?
         </p>
         <p className="text-sm text-amber-950">
           This ends your trial immediately, charges your card today, and starts
-          your Standard billing cycle now. You get 100 company research slots
+          your {planLabel} billing cycle now
+          {paidCompanyCapacityLabel
+            ? ` with FULL ACCESS (${paidCompanyCapacityLabel})`
+            : " with FULL ACCESS"}{" "}
           once Stripe confirms — usually a few seconds.
         </p>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             disabled={pending}
-            className={
-              className ??
-              PRIMARY_BUTTON_CLASS
-            }
+            className={className ?? PRIMARY_BUTTON_CLASS}
             onClick={() => {
               setError(null);
               startTransition(async () => {
@@ -70,7 +76,7 @@ export function ConvertTrialNowButton({
                   }
                   setSuccess(
                     body.message ??
-                      "Trial ended. Standard billing starts today.",
+                      `Trial ended. ${planLabel} billing starts today.`,
                   );
                   setConfirming(false);
                   window.setTimeout(() => router.refresh(), 2_500);
@@ -103,20 +109,18 @@ export function ConvertTrialNowButton({
         type="button"
         disabled={pending}
         data-testid="convert-trial-now"
-        className={
-          className ??
-          PRIMARY_BUTTON_CLASS
-        }
+        className={className ?? PRIMARY_BUTTON_CLASS}
         onClick={() => {
           setError(null);
           setConfirming(true);
         }}
       >
-        Convert to Standard now
+        Convert to {planLabel} now
       </button>
       <p className="text-xs text-slate-600">
-        Charges your card today and starts the Standard billing cycle
-        immediately.
+        Charges your card today and starts the {planLabel} billing cycle
+        immediately
+        {paidCompanyCapacityLabel ? ` (${paidCompanyCapacityLabel})` : ""}.
       </p>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
     </div>

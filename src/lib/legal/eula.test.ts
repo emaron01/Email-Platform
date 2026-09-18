@@ -54,6 +54,7 @@ describe("eula gate wiring", () => {
     expect(paths).toContain('"/onboarding/eula"');
     expect(gate).toContain("ONBOARDING_EULA_PATH");
     expect(lock).toContain("/settings/billing");
+    expect(lock).toContain("/onboarding/eula");
   });
 
   it("platform console lists EULA for super admins", () => {

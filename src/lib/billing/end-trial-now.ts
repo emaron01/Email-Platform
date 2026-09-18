@@ -1,10 +1,14 @@
 /**
  * End a Stripe trial immediately (trial_end: 'now').
  * Does NOT apply entitlements here — customer.subscription.updated webhook
- * runs syncOrganizationFromStripeSubscription → applyPlanEntitlements (100 companies).
+ * runs syncOrganizationFromStripeSubscription → applyPlanEntitlements.
  */
 import "server-only";
 
+import { resolveCatalogEntitlementsForStatus } from "@/lib/billing/billing-catalog";
+import { billingPlanLabel } from "@/lib/billing/billing-state";
+import { loadEffectiveBillingCatalog } from "@/lib/billing/effective-catalog";
+import { getPlanDefinition, planUsesSeatBilling } from "@/lib/billing/plans";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
 import { prisma } from "@/lib/prisma";
 
@@ -49,7 +53,7 @@ export async function customerHasCardOnFile(input: {
   return methods.data.length > 0;
 }
 
-/** Whether the research UI may offer early Standard conversion. */
+/** Whether the research UI may offer early trial conversion. */
 export async function canOfferEarlyTrialConversion(
   organizationId: string,
 ): Promise<boolean> {
@@ -83,6 +87,33 @@ export async function canOfferEarlyTrialConversion(
   }
 }
 
+async function paidCapacityMessage(input: {
+  planCode: string;
+  seatQuantity: number;
+}): Promise<string> {
+  const planLabel = billingPlanLabel(input.planCode);
+  const { catalog } = await loadEffectiveBillingCatalog();
+  const paid = resolveCatalogEntitlementsForStatus({
+    catalog,
+    planCode: input.planCode,
+    billingStatus: "ACTIVE",
+  });
+  const planDef = getPlanDefinition(input.planCode);
+  const perSeat =
+    paid?.companiesPerSeat ?? planDef?.seats.companiesPerSeat ?? null;
+  if (planUsesSeatBilling(input.planCode) && perSeat != null) {
+    const total = perSeat * Math.max(1, input.seatQuantity);
+    return `${planLabel} billing starts today with FULL ACCESS (${total} companies; ${perSeat} per seat).`;
+  }
+  const floor =
+    paid?.activeResearchedCompanyLimit ??
+    planDef?.entitlements.activeResearchedCompanyLimit;
+  if (floor != null) {
+    return `${planLabel} billing starts today with FULL ACCESS (${floor} companies).`;
+  }
+  return `${planLabel} billing starts today.`;
+}
+
 /**
  * Stripe: subscriptions.update({ trial_end: 'now' }).
  * Entitlements update only via webhook sync — do not call applyPlanEntitlements here.
@@ -104,6 +135,8 @@ export async function endTrialNow(input: {
       billingStatus: true,
       stripeCustomerId: true,
       stripeSubscriptionId: true,
+      planCode: true,
+      seatQuantity: true,
     },
   });
 
@@ -130,8 +163,7 @@ export async function endTrialNow(input: {
   if (!hasCard) {
     return {
       ok: false,
-      error:
-        "Add a card in Billing before converting. Standard billing starts when you convert.",
+      error: `Add a card in Billing before converting. ${billingPlanLabel(profile.planCode)} billing starts when you convert.`,
       code: "NO_PAYMENT_METHOD",
     };
   }
@@ -155,11 +187,14 @@ export async function endTrialNow(input: {
 
   // Intentionally no local billingStatus / entitlement write.
   // customer.subscription.updated → syncOrganizationFromStripeSubscription
-  // → applyPlanEntitlements (ACTIVE Standard = 100 companies).
+  // → applyPlanEntitlements.
+  const capacityBit = await paidCapacityMessage({
+    planCode: profile.planCode,
+    seatQuantity: profile.seatQuantity,
+  });
   return {
     ok: true,
     subscriptionId: profile.stripeSubscriptionId,
-    message:
-      "Trial ended. Stripe will charge your card and start Standard billing today. Your 100-company allowance appears once Stripe confirms (usually a few seconds).",
+    message: `Trial ended. Stripe will charge your card and start ${capacityBit} Your allowance appears once Stripe confirms (usually a few seconds).`,
   };
 }

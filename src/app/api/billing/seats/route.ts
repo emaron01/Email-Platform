@@ -20,8 +20,9 @@ async function usedSeatCount(organizationId: string): Promise<number> {
 }
 
 /**
- * GET ?direction=add|remove — preview proration / new total (OWNER).
+ * GET ?direction=add|remove — preview (add: proration today; remove: next-bill delta).
  * POST { direction, confirm: true } — apply seat change (OWNER).
+ * Add uses create_prorations; remove uses proration_behavior none (no mid-cycle credit).
  */
 export async function GET(request: Request) {
   try {

@@ -1,10 +1,14 @@
 /**
  * Increment / decrement seat quantity on Team Stripe subscription,
- * with confirmation preview (monthly total + estimated proration).
+ * with confirmation preview (monthly total + estimated proration on add).
+ *
+ * Add: immediate with create_prorations (charge today for remaining period).
+ * Remove: quantity updates now with proration_behavior none — no mid-cycle
+ * credit (prevents refund-via-seat-delete). Lower charge applies on next bill.
  */
 import "server-only";
 
-import { BILLING_PLAN_TEAM, planUsesSeatBilling } from "@/lib/billing/plans";
+import { BILLING_PLAN_TEAM, getPlanDefinition, planUsesSeatBilling } from "@/lib/billing/plans";
 import { formatStripeMoney } from "@/lib/billing/billing-state";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
 import { retrieveSubscriptionExpanded } from "@/lib/billing/sync-subscription";
@@ -26,8 +30,13 @@ export type SeatChangePreview = {
   interval: string;
   /** Recurring total after change (list/effective per seat × seats). */
   nextMonthlyTotalCents: number;
-  /** Estimated charge (add) or credit (remove) due now from proration. */
+  /**
+   * Add: estimated charge due now from proration (positive).
+   * Remove: always 0 — no mid-cycle credit; reduction hits next bill.
+   */
   prorationAmountCents: number;
+  /** Full seat unit amount removed from the next invoice (remove only; else 0). */
+  nextBillDeltaCents: number;
   currentPeriodEnd: Date | null;
   summaryLines: string[];
 };
@@ -51,6 +60,54 @@ function periodFraction(input: {
   const total = Math.max(1, endMs - startMs);
   const remaining = Math.max(0, endMs - now);
   return Math.min(1, remaining / total);
+}
+
+/** Accounting-style negative money: ($12.00) */
+export function formatMoneyParenthetical(
+  amountCents: number,
+  currency: string,
+): string {
+  return `(${formatStripeMoney(Math.abs(amountCents), currency)})`;
+}
+
+/** Pure preview copy — kept testable without Stripe. */
+export function buildSeatChangeSummaryLines(input: {
+  direction: SeatChangeDirection;
+  nextSeats: number;
+  unitAmountCents: number;
+  nextMonthlyTotalCents: number;
+  /** Add only: prorated charge today. Ignored for remove. */
+  prorationAmountCents: number;
+  currency: string;
+  interval: string;
+  periodEnd: Date | null;
+  /** TEAM: companies researched per seat/user. */
+  companiesPerSeat?: number | null;
+}): string[] {
+  const money = (cents: number) => formatStripeMoney(cents, input.currency);
+  const renewalLabel = input.periodEnd
+    ? input.periodEnd.toISOString().slice(0, 10)
+    : "next cycle";
+
+  if (input.direction === "add") {
+    return [
+      `New monthly total: ${money(input.nextMonthlyTotalCents)} / ${input.interval} (${input.nextSeats} seats × ${money(input.unitAmountCents)}).`,
+      `Estimated charge today (proration): ${money(Math.max(0, input.prorationAmountCents))}.`,
+      `At renewal (${renewalLabel}): ${money(input.nextMonthlyTotalCents)}.`,
+      ...(input.companiesPerSeat != null
+        ? [
+            `Each seat includes ${input.companiesPerSeat} company research slots for that user (${input.companiesPerSeat * input.nextSeats} total across ${input.nextSeats} seats).`,
+          ]
+        : []),
+    ];
+  }
+
+  return [
+    `New monthly total: ${money(input.nextMonthlyTotalCents)} / ${input.interval} (${input.nextSeats} seats × ${money(input.unitAmountCents)}).`,
+    `Seat charge will be removed from next bill: ${formatMoneyParenthetical(input.unitAmountCents, input.currency)}.`,
+    `No credit today — this billing period stays as already charged.`,
+    `At renewal (${renewalLabel}): ${money(input.nextMonthlyTotalCents)}.`,
+  ];
 }
 
 async function loadSeatChangeContext(organizationId: string) {
@@ -174,25 +231,11 @@ export async function previewSeatChange(input: {
   });
   if (!nextRes.ok) return nextRes;
 
-  const delta = nextRes.next - current;
-  const fraction = periodFraction({
-    periodStart:
-      // Stripe API: period fields may live on the item (newer) or subscription.
-      (ctx.item as { current_period_start?: number }).current_period_start ??
-      (ctx.subscription as { current_period_start?: number })
-        .current_period_start ??
-      Math.floor(Date.now() / 1000) - 30 * 24 * 3600,
-    periodEnd:
-      (ctx.item as { current_period_end?: number }).current_period_end ??
-      (ctx.subscription as { current_period_end?: number }).current_period_end ??
-      Math.floor(
-        (ctx.profile.currentPeriodEnd?.getTime() ?? Date.now()) / 1000,
-      ),
-  });
-  const prorationAmountCents = Math.round(
-    ctx.unitAmountCents * delta * fraction,
-  );
-  const nextMonthlyTotalCents = ctx.unitAmountCents * nextRes.next;
+  const periodStart =
+    (ctx.item as { current_period_start?: number }).current_period_start ??
+    (ctx.subscription as { current_period_start?: number })
+      .current_period_start ??
+    Math.floor(Date.now() / 1000) - 30 * 24 * 3600;
   const periodEndUnix =
     (ctx.item as { current_period_end?: number }).current_period_end ??
     (ctx.subscription as { current_period_end?: number }).current_period_end ??
@@ -201,19 +244,42 @@ export async function previewSeatChange(input: {
     ? new Date(periodEndUnix * 1000)
     : ctx.profile.currentPeriodEnd;
 
-  const money = (cents: number) => formatStripeMoney(cents, ctx.currency);
-  const summaryLines =
+  const nextMonthlyTotalCents = ctx.unitAmountCents * nextRes.next;
+
+  // Add: prorate remaining period. Remove: no mid-cycle credit.
+  const prorationAmountCents =
     input.direction === "add"
-      ? [
-          `New monthly total: ${money(nextMonthlyTotalCents)} / ${ctx.interval} (${nextRes.next} seats × ${money(ctx.unitAmountCents)}).`,
-          `Estimated charge today (proration): ${money(Math.max(0, prorationAmountCents))}.`,
-          `At renewal (${periodEnd ? periodEnd.toISOString().slice(0, 10) : "next cycle"}): ${money(nextMonthlyTotalCents)}.`,
-        ]
-      : [
-          `New monthly total: ${money(nextMonthlyTotalCents)} / ${ctx.interval} (${nextRes.next} seats × ${money(ctx.unitAmountCents)}).`,
-          `Estimated credit today (proration): ${money(Math.abs(Math.min(0, prorationAmountCents)))}.`,
-          `At renewal (${periodEnd ? periodEnd.toISOString().slice(0, 10) : "next cycle"}): ${money(nextMonthlyTotalCents)}.`,
-        ];
+      ? Math.round(
+          ctx.unitAmountCents *
+            (nextRes.next - current) *
+            periodFraction({
+              periodStart,
+              periodEnd:
+                periodEndUnix ??
+                Math.floor(
+                  (ctx.profile.currentPeriodEnd?.getTime() ?? Date.now()) /
+                    1000,
+                ),
+            }),
+        )
+      : 0;
+  const nextBillDeltaCents =
+    input.direction === "remove" ? -ctx.unitAmountCents : 0;
+
+  const companiesPerSeat =
+    getPlanDefinition(ctx.profile.planCode)?.seats.companiesPerSeat ?? null;
+
+  const summaryLines = buildSeatChangeSummaryLines({
+    direction: input.direction,
+    nextSeats: nextRes.next,
+    unitAmountCents: ctx.unitAmountCents,
+    nextMonthlyTotalCents,
+    prorationAmountCents,
+    currency: ctx.currency,
+    interval: ctx.interval,
+    periodEnd,
+    companiesPerSeat,
+  });
 
   return {
     ok: true,
@@ -226,6 +292,7 @@ export async function previewSeatChange(input: {
       interval: ctx.interval,
       nextMonthlyTotalCents,
       prorationAmountCents,
+      nextBillDeltaCents,
       currentPeriodEnd: periodEnd,
       summaryLines,
     },
@@ -235,6 +302,7 @@ export async function previewSeatChange(input: {
 async function applySeatQuantity(input: {
   organizationId: string;
   nextSeats: number;
+  direction: SeatChangeDirection;
 }): Promise<SeatChangeResult> {
   const ctx = await loadSeatChangeContext(input.organizationId);
   if (!ctx.ok) return ctx;
@@ -242,7 +310,9 @@ async function applySeatQuantity(input: {
   const stripe = getStripe();
   await stripe.subscriptions.update(ctx.profile.stripeSubscriptionId!, {
     items: [{ id: ctx.item.id, quantity: input.nextSeats }],
-    proration_behavior: "create_prorations",
+    // Add: charge remaining period now. Remove: no credit; next invoice is lower.
+    proration_behavior:
+      input.direction === "add" ? "create_prorations" : "none",
     metadata: {
       ...ctx.subscription.metadata,
       seatQuantity: String(input.nextSeats),
@@ -272,6 +342,7 @@ export async function addSeatToSubscription(input: {
   return applySeatQuantity({
     organizationId: input.organizationId,
     nextSeats: preview.preview.nextSeats,
+    direction: "add",
   });
 }
 
@@ -288,5 +359,6 @@ export async function removeSeatFromSubscription(input: {
   return applySeatQuantity({
     organizationId: input.organizationId,
     nextSeats: preview.preview.nextSeats,
+    direction: "remove",
   });
 }

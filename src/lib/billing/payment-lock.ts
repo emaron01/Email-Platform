@@ -19,6 +19,7 @@
  * HARD EXEMPTION — a locked or grace org must still be able to pay us:
  * - Stripe Customer Portal / Checkout API paths
  * - /settings/billing (local billing state + resubscribe CTAs)
+ * - /onboarding/eula (must accept terms before billing; otherwise billing↔eula loop)
  *
  * Never collect payment PII in-app.
  */
@@ -26,14 +27,16 @@ import type { BillingLockReason } from "@prisma/client";
 import { BILLING_PLAN_COMPED } from "@/lib/billing/plans";
 import { prisma } from "@/lib/prisma-client";
 
-/** Page routes route-locked orgs may still open (under (app) layout). */
+/** Page routes route-locked orgs may still open (under (app) / onboarding layouts). */
 export const PAYMENT_LOCK_ROUTE_EXEMPT_PREFIXES = [
   "/settings/billing",
+  "/onboarding/eula",
 ] as const;
 
 /** Billing pay paths (APIs are outside (app) layout; listed for policy clarity). */
 export const PAYMENT_LOCK_EXEMPT_PATH_PREFIXES = [
   "/settings/billing",
+  "/onboarding/eula",
   "/api/billing/portal",
   "/api/billing/checkout",
   "/api/billing/credits-checkout",
