@@ -49,6 +49,33 @@ function hashToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");
 }
 
+/** Read-only preview of an invite for the accept page UI (no status mutation). */
+export async function getInvitationPreviewByRawToken(rawToken: string): Promise<{
+  email: string;
+  status: string;
+  organizationName: string;
+  expiresAt: Date;
+} | null> {
+  const token = rawToken.trim();
+  if (!token) return null;
+  const invitation = await prisma.organizationInvitation.findUnique({
+    where: { tokenHash: hashToken(token) },
+    select: {
+      email: true,
+      status: true,
+      expiresAt: true,
+      organization: { select: { name: true } },
+    },
+  });
+  if (!invitation) return null;
+  return {
+    email: invitation.email,
+    status: invitation.status,
+    organizationName: invitation.organization.name,
+    expiresAt: invitation.expiresAt,
+  };
+}
+
 /**
  * Individual signup provisioning (shared by auth hooks and tests).
  * Creates User + Organization + OWNER membership + policies + billing profile.

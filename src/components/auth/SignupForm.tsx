@@ -12,10 +12,13 @@ export function SignupForm({
   next,
   planSummary,
   requirePlan,
+  defaultEmail = "",
 }: {
   next: string;
   planSummary: string | null;
   requirePlan: boolean;
+  /** Prefill when joining via invite link. */
+  defaultEmail?: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +145,7 @@ export function SignupForm({
             name="email"
             type="email"
             required
+            defaultValue={defaultEmail}
             autoComplete="email"
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
           />

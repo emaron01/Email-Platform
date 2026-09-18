@@ -19,6 +19,8 @@ export default async function SignupPage({
   const params = searchParams ? await searchParams : {};
   const nextRaw = params.next;
   const next = typeof nextRaw === "string" ? nextRaw : "";
+  const emailRaw = params.email;
+  const defaultEmail = typeof emailRaw === "string" ? emailRaw.trim() : "";
   const invite = isInviteSignupNext(next);
   const intent = invite ? null : await readPendingSignupIntent();
 
@@ -39,6 +41,7 @@ export default async function SignupPage({
       next={next}
       planSummary={planSummary}
       requirePlan={!invite}
+      defaultEmail={defaultEmail}
     />
   );
 }

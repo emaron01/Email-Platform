@@ -1,7 +1,10 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth/server";
 import { requireCurrentUser } from "@/lib/auth/session";
+import { recordAdminAuditEvent } from "@/lib/auth/audit";
 import {
   acceptOrganizationInvitation,
   InvitationError,
@@ -43,4 +46,29 @@ export async function acceptInviteAction(
   }
 
   redirect("/");
+}
+
+/**
+ * Sign out and return to login with `next` pointing back at the invite link,
+ * so the invited person can sign in (or sign up) as the invited email.
+ */
+export async function logoutForInviteAction(formData: FormData): Promise<void> {
+  const nextRaw = String(formData.get("next") || "").trim();
+  const next =
+    nextRaw.startsWith("/invite/accept") && !nextRaw.includes("//")
+      ? nextRaw
+      : "/invite/accept";
+
+  const user = await requireCurrentUser().catch(() => null);
+  await auth.api.signOut({
+    headers: await headers(),
+  });
+  if (user) {
+    await recordAdminAuditEvent({
+      action: "LOGOUT",
+      actorUserId: user.id,
+      organizationId: user.activeOrganizationId,
+    });
+  }
+  redirect(`/login?next=${encodeURIComponent(next)}`);
 }
