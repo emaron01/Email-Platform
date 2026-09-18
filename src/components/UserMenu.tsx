@@ -3,12 +3,14 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { logoutAction } from "@/app/actions/account";
+import { switchActiveOrganizationAction } from "@/app/actions/workspace";
 import type { UserMenuModel } from "@/lib/auth/user-menu";
 
 export function UserMenu({ model }: { model: UserMenuModel }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
+  const showSwitcher = model.workspaces.length > 1;
 
   useEffect(() => {
     if (!open) return;
@@ -84,6 +86,52 @@ export function UserMenu({ model }: { model: UserMenuModel }) {
               </p>
             ) : null}
           </div>
+
+          {showSwitcher ? (
+            <div
+              className="border-b border-slate-100 py-1"
+              data-testid="workspace-switcher"
+            >
+              <p className="px-4 py-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">
+                Workspaces
+              </p>
+              {model.workspaces.map((ws) =>
+                ws.isActive ? (
+                  <div
+                    key={ws.organizationId}
+                    role="menuitem"
+                    aria-current="true"
+                    data-testid={`workspace-option-${ws.organizationId}`}
+                    className="flex items-center justify-between px-4 py-2 text-sm text-slate-900"
+                  >
+                    <span className="truncate font-medium">{ws.name}</span>
+                    <span className="ml-2 shrink-0 text-xs text-slate-500">
+                      Current
+                    </span>
+                  </div>
+                ) : (
+                  <form
+                    key={ws.organizationId}
+                    action={switchActiveOrganizationAction}
+                  >
+                    <input
+                      type="hidden"
+                      name="organizationId"
+                      value={ws.organizationId}
+                    />
+                    <button
+                      type="submit"
+                      role="menuitem"
+                      data-testid={`workspace-option-${ws.organizationId}`}
+                      className="w-full truncate px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      {ws.name}
+                    </button>
+                  </form>
+                ),
+              )}
+            </div>
+          ) : null}
 
           <div className="py-1">
             {model.links

@@ -93,6 +93,22 @@ describe("buildUserMenuModel", () => {
     expect(model.showPlatformAdmin).toBe(false);
     expect(model.links.some((l) => l.id === "platform_admin")).toBe(false);
     expect(model.links.some((l) => l.id === "log_out")).toBe(true);
+    expect(model.workspaces).toEqual([]);
+  });
+
+  it("passes through workspaces for the switcher", () => {
+    const model = buildUserMenuModel({
+      email: "user@acme.test",
+      platformRole: "NONE",
+      organizationName: "Acme",
+      membershipRole: "OWNER",
+      workspaces: [
+        { organizationId: "a", name: "Acme", isActive: true },
+        { organizationId: "b", name: "Team", isActive: false },
+      ],
+    });
+    expect(model.workspaces).toHaveLength(2);
+    expect(model.workspaces[0]?.isActive).toBe(true);
   });
 });
 

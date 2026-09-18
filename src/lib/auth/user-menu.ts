@@ -23,6 +23,12 @@ export type UserMenuLink = {
     "account_settings" | "organization_settings" | "platform_admin" | "log_out";
 };
 
+export type UserMenuWorkspaceOption = {
+  organizationId: string;
+  name: string;
+  isActive: boolean;
+};
+
 export type UserMenuModel = {
   displayName: string | null;
   email: string;
@@ -33,6 +39,11 @@ export type UserMenuModel = {
   /** Avatar / header initial — never invents an org name */
   avatarInitial: string;
   links: UserMenuLink[];
+  /**
+   * Workspaces for the switcher. Empty or a single entry means hide the
+   * switcher (only shown when the user belongs to more than one org).
+   */
+  workspaces: UserMenuWorkspaceOption[];
 };
 
 export type SidebarNavItem = {
@@ -72,7 +83,10 @@ function isPlatformOperatorRole(role: string): boolean {
  * Logout is always included when the menu is shown.
  */
 export function buildUserMenuModel(
-  input: AuthenticatedNavInput & { paymentLocked?: boolean },
+  input: AuthenticatedNavInput & {
+    paymentLocked?: boolean;
+    workspaces?: UserMenuWorkspaceOption[];
+  },
 ): UserMenuModel {
   const displayName = displayNameFromUser(input);
   const organizationName = input.organizationName?.trim() || null;
@@ -130,6 +144,7 @@ export function buildUserMenuModel(
     showPlatformAdmin,
     avatarInitial: avatarSource.slice(0, 1).toUpperCase(),
     links,
+    workspaces: input.workspaces ?? [],
   };
 }
 

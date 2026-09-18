@@ -1,4 +1,8 @@
 import Link from "next/link";
+import {
+  readDismissedPersonalBillingOrgIds,
+} from "@/app/actions/workspace";
+import { PersonalBillingNoticeBanner } from "@/components/billing/PersonalBillingNoticeBanner";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
@@ -9,7 +13,12 @@ import {
   buildUserMenuModel,
   type MembershipRoleForMenu,
 } from "@/lib/auth/user-menu";
+import { billingPlanLabel } from "@/lib/billing/billing-state";
 import { planAllowsReferrals } from "@/lib/billing/plans";
+import {
+  listOwnedBilledOrganizationsAsideFrom,
+  listWorkspacesForUser,
+} from "@/lib/org/workspaces";
 import { prisma } from "@/lib/prisma";
 
 export async function AppShell({
@@ -36,6 +45,13 @@ export async function AppShell({
       )?.planCode
     : null;
 
+  const workspaces = user
+    ? await listWorkspacesForUser({
+        userId: user.id,
+        activeOrganizationId: user.activeOrganizationId,
+      })
+    : [];
+
   const menuModel = user
     ? buildUserMenuModel({
         email: user.email,
@@ -49,6 +65,11 @@ export async function AppShell({
             | MembershipRoleForMenu
             | undefined) ?? null,
         paymentLocked,
+        workspaces: workspaces.map((w) => ({
+          organizationId: w.organizationId,
+          name: w.name,
+          isActive: w.isActive,
+        })),
       })
     : null;
 
@@ -57,6 +78,28 @@ export async function AppShell({
     isPlatformOperator: user ? isPlatformOperator(user.platformRole) : false,
     paymentLocked,
   });
+
+  let personalBillingNoticeOrgs: Array<{
+    organizationId: string;
+    name: string;
+    planLabel: string;
+  }> = [];
+  if (user && organization) {
+    const owned = await listOwnedBilledOrganizationsAsideFrom({
+      userId: user.id,
+      excludeOrganizationId: organization.id,
+    });
+    if (owned.length > 0) {
+      const dismissed = await readDismissedPersonalBillingOrgIds();
+      personalBillingNoticeOrgs = owned
+        .filter((o) => !dismissed.has(o.organizationId))
+        .map((o) => ({
+          organizationId: o.organizationId,
+          name: o.name,
+          planLabel: billingPlanLabel(o.planCode),
+        }));
+    }
+  }
 
   return (
     <div className="flex min-h-screen bg-white text-slate-900">
@@ -85,6 +128,9 @@ export async function AppShell({
               to restore access.
             </p>
           </div>
+        ) : null}
+        {personalBillingNoticeOrgs.length > 0 ? (
+          <PersonalBillingNoticeBanner orgs={personalBillingNoticeOrgs} />
         ) : null}
         <main className="flex-1 overflow-auto bg-slate-50/60 p-4 sm:p-6">
           <div className="mx-auto w-full max-w-7xl">{children}</div>
