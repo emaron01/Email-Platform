@@ -232,6 +232,9 @@ describe("payment lock route gate", () => {
     expect(gate).toContain("PaymentLockError");
     expect(org).toContain("NEXT_ACTION_HEADER");
     expect(org).toContain("assertOrganizationNotPaymentLocked");
+    // headers() catch only swallows out-of-request-scope, not all errors.
+    expect(org).toContain("outside a request scope");
+    expect(org).toContain("throw error");
   });
 
   it("assert uses spendBlocked so PAST_DUE grace cannot write or research", () => {

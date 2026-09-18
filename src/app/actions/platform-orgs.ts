@@ -11,6 +11,7 @@ import {
   suspendOrganization,
   unsuspendOrganization,
   deleteOrganization,
+  convertOrganizationToComped,
   updateOrganizationUsagePolicyAsPlatform,
   updateOrganizationResearchPolicyAsPlatform,
   createPlatformOrganization,
@@ -98,6 +99,51 @@ export async function unsuspendOrganizationAction(
 }
 
 const DELETE_ORG_CONFIRM_PHRASE = "Delete";
+const CONVERT_TO_COMPED_CONFIRM_PHRASE = "COMPED";
+
+export async function convertOrganizationToCompedAction(
+  _prev: PlatformOrgActionResult | null,
+  formData: FormData,
+): Promise<PlatformOrgActionResult> {
+  try {
+    const user = await requirePlatformSuperAdmin();
+    const organizationId = requireOrgId(formData);
+    const confirmation = String(formData.get("confirmation") || "");
+    if (confirmation !== CONVERT_TO_COMPED_CONFIRM_PHRASE) {
+      return {
+        ok: false,
+        message: `Type "${CONVERT_TO_COMPED_CONFIRM_PHRASE}" exactly to confirm.`,
+      };
+    }
+    const monthlyRaw = String(formData.get("monthlyEmailSendLimit") || "").trim();
+    const monthlyEmailSendLimit =
+      monthlyRaw === ""
+        ? null
+        : asPositiveInt(formData.get("monthlyEmailSendLimit"), "Monthly email send limit");
+
+    const result = await convertOrganizationToComped({
+      organizationId,
+      actorUserId: user.id,
+      activeResearchedCompanyLimit: asPositiveInt(
+        formData.get("activeResearchedCompanyLimit"),
+        "Active researched company limit",
+      ),
+      dailyEmailSendWarningLimit: asPositiveInt(
+        formData.get("dailyEmailSendWarningLimit"),
+        "Daily send advisory",
+      ),
+      monthlyEmailSendLimit,
+    });
+    revalidatePath("/platform/orgs");
+    revalidatePath(`/platform/orgs/${organizationId}`);
+    return {
+      ok: true,
+      message: `Converted from ${result.previousPlanCode}/${result.previousBillingStatus} to Comped. Stripe subscription canceled before local COMPED write.`,
+    };
+  } catch (error) {
+    return { ok: false, message: toSafeError(error) };
+  }
+}
 
 export async function purgeContactOutboundDataAction(
   _prev: PlatformOrgActionResult | null,

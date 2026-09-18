@@ -347,7 +347,7 @@ export async function syncSubscriptionById(input: {
   };
 }
 
-/** Prefer full syncOrganizationFromStripeSubscription; this is a fallback. */
+/** Mark local billing canceled without re-mirroring plan/price from Stripe. */
 export async function markSubscriptionCanceled(input: {
   organizationId: string;
   subscriptionId: string;

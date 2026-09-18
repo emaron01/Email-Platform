@@ -51,9 +51,17 @@ async function assertWritableOnServerAction(
   let h: Awaited<ReturnType<typeof headers>>;
   try {
     h = await headers();
-  } catch {
+  } catch (error) {
     // Outside a Next request (unit/integration tests, workers) — no action gate.
-    return;
+    // Re-throw anything else so real header failures are not treated as unguarded.
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      /outside a request scope/i.test(message) ||
+      /next-dynamic-api-wrong-context/i.test(message)
+    ) {
+      return;
+    }
+    throw error;
   }
   if (!h.get(NEXT_ACTION_HEADER)) return;
   const pathname = h.get("x-pathname")?.trim() || "";

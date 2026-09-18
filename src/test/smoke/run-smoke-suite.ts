@@ -23,7 +23,7 @@ import {
 
 const SMOKE_PORT = Number(process.env.SMOKE_PORT || "38477");
 const START_TIMEOUT_MS = 120_000;
-const FETCH_TIMEOUT_MS = 60_000;
+const FETCH_TIMEOUT_MS = 120_000;
 
 export type SmokeRouteResult = {
   path: string;

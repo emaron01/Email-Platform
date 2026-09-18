@@ -3,8 +3,8 @@
  * with confirmation preview (monthly total + estimated proration on add).
  *
  * Add: immediate with create_prorations (charge today for remaining period).
- * Remove: quantity updates now with proration_behavior none — no mid-cycle
- * credit (prevents refund-via-seat-delete). Lower charge applies on next bill.
+ * Remove: quantity and invite capacity drop immediately; proration_behavior
+ * none — no mid-cycle credit. Lower charge applies on the next invoice.
  */
 import "server-only";
 
@@ -103,10 +103,9 @@ export function buildSeatChangeSummaryLines(input: {
   }
 
   return [
-    `New monthly total: ${money(input.nextMonthlyTotalCents)} / ${input.interval} (${input.nextSeats} seats × ${money(input.unitAmountCents)}).`,
-    `Seat charge will be removed from next bill: ${formatMoneyParenthetical(input.unitAmountCents, input.currency)}.`,
-    `No credit today — this billing period stays as already charged.`,
-    `At renewal (${renewalLabel}): ${money(input.nextMonthlyTotalCents)}.`,
+    `This seat and its invite capacity end immediately (${input.nextSeats + 1} → ${input.nextSeats} seats).`,
+    `No credit for the rest of this billing period — you already paid for this seat through ${renewalLabel}.`,
+    `Next invoice (${renewalLabel}): ${money(input.nextMonthlyTotalCents)} / ${input.interval} (${input.nextSeats} seats × ${money(input.unitAmountCents)}; seat charge removed ${formatMoneyParenthetical(input.unitAmountCents, input.currency)}).`,
   ];
 }
 
@@ -221,7 +220,15 @@ export async function previewSeatChange(input: {
   const ctx = await loadSeatChangeContext(input.organizationId);
   if (!ctx.ok) return ctx;
 
-  const current = ctx.profile.seatQuantity;
+  // Stripe quantity is source of truth; heal a drifted local row for the preview.
+  const current = Math.max(1, ctx.item.quantity ?? ctx.profile.seatQuantity);
+  if (current !== ctx.profile.seatQuantity) {
+    await prisma.organizationBillingProfile.update({
+      where: { organizationId: input.organizationId },
+      data: { seatQuantity: current },
+    });
+  }
+
   const nextRes = resolveNextSeats({
     direction: input.direction,
     current,
@@ -299,31 +306,80 @@ export async function previewSeatChange(input: {
   };
 }
 
+/**
+ * Claim the next seatQuantity in DB (optimistic lock), then update Stripe.
+ * Concurrent changes lose the claim and return CONCURRENT_SEAT_CHANGE.
+ * Stripe failure rolls the claim back so local stays aligned.
+ */
 async function applySeatQuantity(input: {
   organizationId: string;
   nextSeats: number;
   direction: SeatChangeDirection;
+  expectedCurrentSeats: number;
 }): Promise<SeatChangeResult> {
   const ctx = await loadSeatChangeContext(input.organizationId);
   if (!ctx.ok) return ctx;
 
-  const stripe = getStripe();
-  await stripe.subscriptions.update(ctx.profile.stripeSubscriptionId!, {
-    items: [{ id: ctx.item.id, quantity: input.nextSeats }],
-    // Add: charge remaining period now. Remove: no credit; next invoice is lower.
-    proration_behavior:
-      input.direction === "add" ? "create_prorations" : "none",
-    metadata: {
-      ...ctx.subscription.metadata,
-      seatQuantity: String(input.nextSeats),
-      planCode: ctx.profile.planCode || BILLING_PLAN_TEAM,
-    },
-  });
+  const stripeQty = Math.max(1, ctx.item.quantity ?? ctx.profile.seatQuantity);
+  if (stripeQty !== input.expectedCurrentSeats) {
+    if (ctx.profile.seatQuantity !== stripeQty) {
+      await prisma.organizationBillingProfile.update({
+        where: { organizationId: input.organizationId },
+        data: { seatQuantity: stripeQty },
+      });
+    }
+    return {
+      ok: false,
+      error: "Seat count changed. Refresh and try again.",
+      code: "CONCURRENT_SEAT_CHANGE",
+    };
+  }
 
-  await prisma.organizationBillingProfile.update({
-    where: { organizationId: input.organizationId },
+  const claimed = await prisma.organizationBillingProfile.updateMany({
+    where: {
+      organizationId: input.organizationId,
+      seatQuantity: input.expectedCurrentSeats,
+      stripeSubscriptionId: ctx.profile.stripeSubscriptionId,
+    },
     data: { seatQuantity: input.nextSeats },
   });
+  if (claimed.count !== 1) {
+    return {
+      ok: false,
+      error: "Seat count changed. Refresh and try again.",
+      code: "CONCURRENT_SEAT_CHANGE",
+    };
+  }
+
+  const stripe = getStripe();
+  try {
+    await stripe.subscriptions.update(ctx.profile.stripeSubscriptionId!, {
+      items: [{ id: ctx.item.id, quantity: input.nextSeats }],
+      // Add: charge remaining period now. Remove: no credit; next invoice is lower.
+      proration_behavior:
+        input.direction === "add" ? "create_prorations" : "none",
+      metadata: {
+        ...ctx.subscription.metadata,
+        seatQuantity: String(input.nextSeats),
+        planCode: ctx.profile.planCode || BILLING_PLAN_TEAM,
+      },
+    });
+  } catch (error) {
+    await prisma.organizationBillingProfile.updateMany({
+      where: {
+        organizationId: input.organizationId,
+        seatQuantity: input.nextSeats,
+      },
+      data: { seatQuantity: input.expectedCurrentSeats },
+    });
+    const message =
+      error instanceof Error ? error.message : "Stripe could not update seats.";
+    return {
+      ok: false,
+      error: message,
+      code: "STRIPE_UPDATE_FAILED",
+    };
+  }
 
   return { ok: true, seatQuantity: input.nextSeats };
 }
@@ -343,6 +399,7 @@ export async function addSeatToSubscription(input: {
     organizationId: input.organizationId,
     nextSeats: preview.preview.nextSeats,
     direction: "add",
+    expectedCurrentSeats: preview.preview.currentSeats,
   });
 }
 
@@ -360,5 +417,6 @@ export async function removeSeatFromSubscription(input: {
     organizationId: input.organizationId,
     nextSeats: preview.preview.nextSeats,
     direction: "remove",
+    expectedCurrentSeats: preview.preview.currentSeats,
   });
 }

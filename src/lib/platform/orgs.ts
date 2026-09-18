@@ -622,9 +622,12 @@ export async function cancelStripeSubscriptionForOrgDelete(
 /**
  * Hard-delete an organization and all cascading tenant data.
  * Cancels the Stripe subscription first when one is linked (failsafe); already
- * canceled / missing subs still proceed. Audit is written so the event retains
- * org id/name after the row is gone. Then purge org-only tenant Users and their
- * Better Auth identities so the email can be reused on a clean signup.
+ * canceled / missing subs still proceed. The Stripe Customer (cus_…) is left
+ * in place on purpose — accumulating customers is harmless and avoids wiping
+ * Stripe history; only the subscription is canceled. Audit is written so the
+ * event retains org id/name after the row is gone. Then purge org-only tenant
+ * Users and their Better Auth identities so the email can be reused on a clean
+ * signup.
  */
 export async function deleteOrganization(input: {
   organizationId: string;
@@ -907,6 +910,197 @@ async function uniqueOrganizationSlug(base: string): Promise<string> {
   }
   const stamp = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
   return `${candidate}-${stamp}`.slice(0, 60);
+}
+
+function stripeErrorCode(error: unknown): string {
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+  ) {
+    return (error as { code: string }).code;
+  }
+  return "";
+}
+
+const LIVE_STRIPE_SUBSCRIPTION_STATUSES = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "unpaid",
+  "incomplete",
+  "paused",
+]);
+
+/**
+ * Assert a subscription id is not billable anymore (canceled or missing).
+ * Throws if Stripe still shows a live status — used before applying COMPED.
+ */
+async function assertStripeSubscriptionNotLive(
+  subscriptionId: string,
+): Promise<void> {
+  if (!stripeConfigured()) {
+    throw new Error(
+      "Cannot convert to Comped: a Stripe subscription is linked but STRIPE_SECRET_KEY is not configured. Configure Stripe (or cancel the subscription in the Stripe Dashboard) before converting.",
+    );
+  }
+  const stripe = getStripe();
+  try {
+    const sub = await stripe.subscriptions.retrieve(subscriptionId);
+    if (LIVE_STRIPE_SUBSCRIPTION_STATUSES.has(sub.status)) {
+      throw new Error(
+        `Cannot convert to Comped: Stripe subscription ${subscriptionId} is still "${sub.status}". Cancel it in Stripe before converting.`,
+      );
+    }
+  } catch (error) {
+    if (stripeErrorCode(error) === "resource_missing") return;
+    throw error;
+  }
+}
+
+/**
+ * SUPER_ADMIN: cancel any live Stripe subscription, then set COMPED + FREE and
+ * platform limits. Refuses to write COMPED while a live subscription remains.
+ * Stripe Customer ids may remain in Stripe (same as org delete); local profile
+ * clears customer/subscription pointers.
+ */
+export async function convertOrganizationToComped(input: {
+  organizationId: string;
+  actorUserId: string;
+  activeResearchedCompanyLimit: number;
+  dailyEmailSendWarningLimit: number;
+  monthlyEmailSendLimit: number | null;
+}): Promise<{
+  organizationId: string;
+  previousPlanCode: string;
+  previousBillingStatus: string;
+  stripeCancel: Awaited<ReturnType<typeof cancelStripeSubscriptionForOrgDelete>>;
+}> {
+  if (
+    !Number.isFinite(input.activeResearchedCompanyLimit) ||
+    input.activeResearchedCompanyLimit < 0
+  ) {
+    throw new Error("Company research limit must be a non-negative number.");
+  }
+  if (
+    !Number.isFinite(input.dailyEmailSendWarningLimit) ||
+    input.dailyEmailSendWarningLimit < 0
+  ) {
+    throw new Error("Daily send advisory must be a non-negative number.");
+  }
+
+  const org = await prisma.organization.findUnique({
+    where: { id: input.organizationId },
+    select: {
+      id: true,
+      name: true,
+      billingProfile: {
+        select: {
+          planCode: true,
+          billingStatus: true,
+          stripeCustomerId: true,
+          stripeSubscriptionId: true,
+        },
+      },
+    },
+  });
+  if (!org?.billingProfile) {
+    throw new Error("Organization not found.");
+  }
+
+  const profile = org.billingProfile;
+  if (
+    profile.planCode === COMPED_BILLING_DEFAULTS.planCode &&
+    profile.billingStatus === COMPED_BILLING_DEFAULTS.billingStatus &&
+    !profile.stripeSubscriptionId
+  ) {
+    throw new Error("Organization is already Comped with no Stripe subscription.");
+  }
+
+  const stripeCancel = await cancelStripeSubscriptionForOrgDelete(
+    profile.stripeSubscriptionId,
+  );
+
+  if (profile.stripeSubscriptionId) {
+    await assertStripeSubscriptionNotLive(profile.stripeSubscriptionId);
+  }
+
+  // Extra safety: any other live subs on the same Stripe Customer must go too.
+  if (profile.stripeCustomerId && stripeConfigured()) {
+    const stripe = getStripe();
+    const listed = await stripe.subscriptions.list({
+      customer: profile.stripeCustomerId,
+      status: "all",
+      limit: 20,
+    });
+    for (const sub of listed.data) {
+      if (!LIVE_STRIPE_SUBSCRIPTION_STATUSES.has(sub.status)) continue;
+      await cancelStripeSubscriptionForOrgDelete(sub.id);
+      await assertStripeSubscriptionNotLive(sub.id);
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.organizationBillingProfile.update({
+      where: { organizationId: org.id },
+      data: {
+        ...COMPED_BILLING_DEFAULTS,
+        stripePriceUnitAmountCents: null,
+        stripePriceCurrency: null,
+        stripePriceInterval: null,
+        stripeDiscountPercentOff: null,
+        stripeDiscountAmountOffCents: null,
+        stripeCouponId: null,
+        stripeEffectiveUnitAmountCents: null,
+      },
+    });
+    await tx.organizationUsagePolicy.update({
+      where: { organizationId: org.id },
+      data: {
+        activeResearchedCompanyLimit: input.activeResearchedCompanyLimit,
+        dailyEmailSendWarningLimit: input.dailyEmailSendWarningLimit,
+        monthlyEmailSendLimit: input.monthlyEmailSendLimit,
+      },
+    });
+  });
+
+  // Final guard: never leave COMPED applied if the known sub became live again.
+  if (profile.stripeSubscriptionId) {
+    try {
+      await assertStripeSubscriptionNotLive(profile.stripeSubscriptionId);
+    } catch (error) {
+      throw new Error(
+        `Comped local write completed but Stripe still reports a live subscription — investigate immediately. ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  await recordAdminAuditEvent({
+    action: "PLATFORM_ORGANIZATION_CONVERTED_TO_COMPED",
+    actorUserId: input.actorUserId,
+    organizationId: org.id,
+    metadata: {
+      organizationName: org.name,
+      previousPlanCode: profile.planCode,
+      previousBillingStatus: profile.billingStatus,
+      previousStripeCustomerId: profile.stripeCustomerId,
+      previousStripeSubscriptionId: profile.stripeSubscriptionId,
+      stripeCancel,
+      activeResearchedCompanyLimit: input.activeResearchedCompanyLimit,
+      dailyEmailSendWarningLimit: input.dailyEmailSendWarningLimit,
+      monthlyEmailSendLimit: input.monthlyEmailSendLimit,
+    },
+  });
+
+  return {
+    organizationId: org.id,
+    previousPlanCode: profile.planCode,
+    previousBillingStatus: profile.billingStatus,
+    stripeCancel,
+  };
 }
 
 /**

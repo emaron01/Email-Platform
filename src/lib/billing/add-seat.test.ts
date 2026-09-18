@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   buildSeatChangeSummaryLines,
   formatMoneyParenthetical,
@@ -30,7 +31,7 @@ describe("seat change confirmation copy", () => {
     ]);
   });
 
-  it("remove-seat shows next-bill reduction with (), no credit today", () => {
+  it("remove-seat says capacity ends now, no credit, lower next invoice", () => {
     const lines = buildSeatChangeSummaryLines({
       direction: "remove",
       nextSeats: 3,
@@ -42,11 +43,19 @@ describe("seat change confirmation copy", () => {
       periodEnd: new Date("2026-10-01T00:00:00.000Z"),
     });
     expect(lines).toEqual([
-      "New monthly total: $297.00 / month (3 seats × $99.00).",
-      "Seat charge will be removed from next bill: ($99.00).",
-      "No credit today — this billing period stays as already charged.",
-      "At renewal (2026-10-01): $297.00.",
+      "This seat and its invite capacity end immediately (4 → 3 seats).",
+      "No credit for the rest of this billing period — you already paid for this seat through 2026-10-01.",
+      "Next invoice (2026-10-01): $297.00 / month (3 seats × $99.00; seat charge removed ($99.00)).",
     ]);
     expect(lines.join("\n")).not.toMatch(/proration|Estimated credit/i);
+  });
+
+  it("apply path claims local seatQuantity before Stripe and rolls back on failure", () => {
+    const lib = readFileSync("src/lib/billing/add-seat.ts", "utf8");
+    expect(lib).toContain("updateMany");
+    expect(lib).toContain("CONCURRENT_SEAT_CHANGE");
+    expect(lib).toContain("expectedCurrentSeats");
+    expect(lib).toMatch(/seatQuantity: input\.expectedCurrentSeats/);
+    expect(lib).toContain("STRIPE_UPDATE_FAILED");
   });
 });

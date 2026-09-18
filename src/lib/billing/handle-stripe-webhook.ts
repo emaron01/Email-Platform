@@ -88,24 +88,18 @@ export async function handleStripeWebhookEvent(
       break;
     }
     case "customer.subscription.deleted": {
+      // Explicit cancel — do not run the general upsert sync (that can re-apply
+      // planCode / price mirrors from a canceled subscription's line item).
       const subscription = event.data.object as Stripe.Subscription;
-      const result = await syncSubscriptionById({
-        subscriptionId: subscription.id,
-        organizationId: subscription.metadata?.organizationId ?? null,
+      const organizationId = await findOrganizationIdForSubscription({
+        subscription,
       });
-      if (!result) {
-        const organizationId = await findOrganizationIdForSubscription({
-          subscription,
+      if (organizationId) {
+        await markSubscriptionCanceled({
+          organizationId,
+          subscriptionId: subscription.id,
+          canceledAt: subscription.canceled_at,
         });
-        if (organizationId) {
-          await markSubscriptionCanceled({
-            organizationId,
-            subscriptionId: subscription.id,
-            canceledAt: subscription.canceled_at,
-          });
-          synced = true;
-        }
-      } else {
         synced = true;
       }
       break;

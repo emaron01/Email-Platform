@@ -84,13 +84,19 @@ describe("stripe sync after org hard-delete", () => {
     expect(state.syncUpsert).not.toHaveBeenCalled();
   });
 
-  it("webhook deleted path is wired through syncSubscriptionById", () => {
+  it("webhook deleted path uses markSubscriptionCanceled, not full sync upsert", () => {
     const webhook = readFileSync(
       "src/lib/billing/handle-stripe-webhook.ts",
       "utf8",
     );
     expect(webhook).toContain('case "customer.subscription.deleted"');
-    expect(webhook).toContain("syncSubscriptionById");
+    expect(webhook).toContain("markSubscriptionCanceled");
+    const deletedBlock = webhook.slice(
+      webhook.indexOf('case "customer.subscription.deleted"'),
+      webhook.indexOf("default:"),
+    );
+    expect(deletedBlock).not.toContain("syncSubscriptionById");
+    expect(deletedBlock).toContain("findOrganizationIdForSubscription");
     const sync = readFileSync("src/lib/billing/sync-subscription.ts", "utf8");
     expect(sync).toContain("Stale Checkout/subscription metadata");
   });

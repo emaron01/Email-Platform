@@ -24,6 +24,7 @@ import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
 import { loadFlattenedBillingPrices } from "@/lib/billing/effective-prices";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import { DeleteOrganizationPanel } from "@/components/platform/DeleteOrganizationPanel";
+import { ConvertOrganizationToCompedPanel } from "@/components/platform/ConvertOrganizationToCompedPanel";
 import { PurgeContactOutboundPanel } from "@/components/platform/PurgeContactOutboundPanel";
 import {
   grantOrganizationCreditAction,
@@ -38,7 +39,7 @@ import {
   updatePlatformResearchPolicyAction,
   updatePlatformOrgMaxSeatsAction,
 } from "@/app/actions/platform-orgs";
-import { planUsesPerUserCompanyAllowance, COMPANY_CREDIT_BLOCK } from "@/lib/billing/plans";
+import { BILLING_PLAN_COMPED, planUsesPerUserCompanyAllowance, COMPANY_CREDIT_BLOCK } from "@/lib/billing/plans";
 
 function pct(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
@@ -789,6 +790,24 @@ export default async function PlatformOrgDetailPage({
             organizationId={id}
             organizationName={org.name}
           />
+
+          {billing.planCode !== BILLING_PLAN_COMPED ||
+          billing.billingStatus !== "FREE" ||
+          billing.stripeSubscriptionId ? (
+            <ConvertOrganizationToCompedPanel
+              organizationId={id}
+              organizationName={org.name}
+              defaultCompanyLimit={
+                usagePolicy?.activeResearchedCompanyLimit ?? 50
+              }
+              defaultDailySendWarning={
+                usagePolicy?.dailyEmailSendWarningLimit ?? 50
+              }
+              defaultMonthlyEmailLimit={
+                usagePolicy?.monthlyEmailSendLimit ?? null
+              }
+            />
+          ) : null}
 
           <DeleteOrganizationPanel
             organizationId={id}
