@@ -39,8 +39,18 @@ describe("cancelStripeSubscriptionForOrgDelete", () => {
     stripeState.configured = false;
     await expect(
       cancelStripeSubscriptionForOrgDelete("sub_123"),
-    ).resolves.toMatchObject({ skipped: true, subscriptionId: "sub_123" });
+    ).rejects.toThrow(/STRIPE_SECRET_KEY is not configured/);
     expect(stripeState.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("still skips when there is no subscription id even if Stripe is off", async () => {
+    stripeState.configured = false;
+    await expect(cancelStripeSubscriptionForOrgDelete(null)).resolves.toEqual({
+      skipped: true,
+      canceled: false,
+      alreadyCanceled: false,
+      subscriptionId: null,
+    });
   });
 
   it("treats already-canceled as success without cancel call", async () => {

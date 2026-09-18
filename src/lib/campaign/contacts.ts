@@ -414,6 +414,8 @@ async function requireCampaignForOrganization(
   productId: string;
   icpId: string;
   personaId: string | null;
+  ownerUserId: string | null;
+  visibility: "PERSONAL" | "SHARED";
 }> {
   const campaign = await prisma.campaign.findFirst({
     where: { id: campaignId, organizationId },
@@ -422,12 +424,63 @@ async function requireCampaignForOrganization(
       productId: true,
       icpId: true,
       personaId: true,
+      ownerUserId: true,
+      visibility: true,
     },
   });
   if (!campaign) {
     throw new TenantError("Campaign was not found in the active organization.");
   }
   return campaign;
+}
+
+/**
+ * Attach contacts either to the caller's SHARED execution or to the template
+ * (executionId null). Template attach requires canEditCampaignTemplate.
+ * Execution attach requires owning the execution (OWNER/ADMIN may any).
+ */
+async function assertCanAttachCampaignContacts(input: {
+  organizationId: string;
+  campaign: {
+    id: string;
+    ownerUserId: string | null;
+    visibility: "PERSONAL" | "SHARED";
+  };
+  executionId?: string | null;
+}): Promise<void> {
+  const { getMembershipForCurrentUser } = await import("@/lib/auth/authz");
+  const { canEditCampaignTemplate, canViewAllActivity } = await import(
+    "@/lib/campaign/visibility"
+  );
+  const ctx = await getMembershipForCurrentUser(input.organizationId);
+  const executionId = input.executionId?.trim() || null;
+
+  if (executionId) {
+    const { requireCampaignExecution } = await import(
+      "@/lib/campaign/execution"
+    );
+    await requireCampaignExecution({
+      organizationId: input.organizationId,
+      executionId,
+      campaignId: input.campaign.id,
+      ...(canViewAllActivity(ctx.membership.role)
+        ? {}
+        : { userId: ctx.user.id }),
+    });
+    return;
+  }
+
+  if (
+    !canEditCampaignTemplate({
+      userId: ctx.user.id,
+      role: ctx.membership.role,
+      campaign: input.campaign,
+    })
+  ) {
+    throw new TenantError(
+      "You cannot add contacts to the shared campaign template. Use this campaign to start your own run.",
+    );
+  }
 }
 
 async function compatibleScoringRunWhere(
@@ -702,16 +755,11 @@ export async function addContactsToCampaign(input: {
     "@/lib/suppression/service"
   );
   await assertCampaignNotArchived(organizationId, campaign.id);
-  if (input.executionId) {
-    const { requireCampaignExecution } = await import(
-      "@/lib/campaign/execution"
-    );
-    await requireCampaignExecution({
-      organizationId,
-      executionId: input.executionId,
-      campaignId: campaign.id,
-    });
-  }
+  await assertCanAttachCampaignContacts({
+    organizationId,
+    campaign,
+    executionId: input.executionId,
+  });
   return insertCampaignContacts({
     organizationId,
     campaignId: campaign.id,
@@ -752,17 +800,11 @@ export async function addScoringRunContactsToCampaign(input: {
     "@/lib/suppression/service"
   );
   await assertCampaignNotArchived(organizationId, campaign.id);
-
-  if (input.executionId) {
-    const { requireCampaignExecution } = await import(
-      "@/lib/campaign/execution"
-    );
-    await requireCampaignExecution({
-      organizationId,
-      executionId: input.executionId,
-      campaignId: campaign.id,
-    });
-  }
+  await assertCanAttachCampaignContacts({
+    organizationId,
+    campaign,
+    executionId: input.executionId,
+  });
 
   const scores = await prisma.contactScore.findMany({
     where: {

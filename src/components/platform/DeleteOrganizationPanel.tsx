@@ -76,8 +76,9 @@ export function DeleteOrganizationPanel({
           <p className="text-sm text-slate-700">
             This will cancel any Stripe subscription for this organization,
             then permanently delete the organization and all associated data.
-            Already-canceled Stripe subscriptions are skipped. This cannot be
-            undone.
+            Already-canceled Stripe subscriptions are skipped. If Stripe is not
+            configured and a subscription is still linked, delete is refused.
+            This cannot be undone.
           </p>
           <form action={formAction} className="space-y-3">
             <input type="hidden" name="organizationId" value={organizationId} />

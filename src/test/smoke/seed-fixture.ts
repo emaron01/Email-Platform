@@ -17,20 +17,33 @@ export type SmokeFixture = SmokeRouteIds & {
 const SMOKE_PASSWORD = "SmokeTestPass123!";
 
 export async function seedSmokeFixture(prisma: PrismaClient): Promise<SmokeFixture> {
+  // signUpEmail runs outside a Next request — no plan cookie. Opt into skip so
+  // we do not fail loud (production HTTP signup still requires the cookie).
+  const previousIntentSkip = process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP;
+  process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP = "1";
+
   const suffix = randomUUID().slice(0, 8);
   const email = `smoke-${suffix}@example.test`;
   const password = SMOKE_PASSWORD;
 
   let signUpResult: unknown;
-  signUpResult = await auth.api.signUpEmail({
-    body: {
-      email,
-      password,
-      name: testEntityName("Smoke User"),
-      firstName: "Smoke",
-      lastName: "Tester",
-    },
-  });
+  try {
+    signUpResult = await auth.api.signUpEmail({
+      body: {
+        email,
+        password,
+        name: testEntityName("Smoke User"),
+        firstName: "Smoke",
+        lastName: "Tester",
+      },
+    });
+  } finally {
+    if (previousIntentSkip == null) {
+      delete process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP;
+    } else {
+      process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP = previousIntentSkip;
+    }
+  }
 
   const authUserId =
     signUpResult &&

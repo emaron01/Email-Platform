@@ -211,14 +211,27 @@ export default async function OrganizationBillingSettingsPage({
     planCode,
     billingStatus: "ACTIVE",
   });
+  const trialEntitlements = resolveCatalogEntitlementsForStatus({
+    catalog: catalogEffective.catalog,
+    planCode,
+    billingStatus: "TRIALING",
+  });
   const planDef = getPlanDefinition(planCode);
   const companiesPerSeat =
     paidEntitlements?.companiesPerSeat ??
     planDef?.seats.companiesPerSeat ??
     null;
+  const trialCompaniesPerSeat =
+    trialEntitlements?.companiesPerSeat ??
+    planDef?.seats.companiesPerSeat ??
+    null;
   const paidCompanyFloor =
     paidEntitlements?.activeResearchedCompanyLimit ??
     planDef?.entitlements.activeResearchedCompanyLimit ??
+    null;
+  const trialCompanyFloor =
+    trialEntitlements?.activeResearchedCompanyLimit ??
+    planDef?.trialEntitlements?.activeResearchedCompanyLimit ??
     null;
   const seatQty = Math.max(1, billing?.seatQuantity ?? 1);
   const paidCompanyCapacityLabel = planUsesSeatBilling(planCode)
@@ -228,6 +241,14 @@ export default async function OrganizationBillingSettingsPage({
     : paidCompanyFloor != null
       ? `${paidCompanyFloor} companies`
       : null;
+  // Team trial/paid are both 150/seat — converting only starts billing.
+  const capacityIncreasesOnConvert = planUsesSeatBilling(planCode)
+    ? companiesPerSeat != null &&
+      trialCompaniesPerSeat != null &&
+      companiesPerSeat > trialCompaniesPerSeat
+    : paidCompanyFloor != null &&
+      trialCompanyFloor != null &&
+      paidCompanyFloor > trialCompanyFloor;
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -464,18 +485,38 @@ export default async function OrganizationBillingSettingsPage({
             data-testid="billing-convert-trial"
           >
             <p className="mb-2 text-sm text-slate-700">
-              Need Full Company Research capacity before{" "}
-              {trialSummary ?? "trial end"}? Convert now and get FULL ACCESS —
-              we charge your card today and start the{" "}
-              {billingPlanLabel(planCode)} billing cycle immediately
-              {paidCompanyCapacityLabel
-                ? ` (${paidCompanyCapacityLabel})`
-                : ""}
-              .
+              {capacityIncreasesOnConvert ? (
+                <>
+                  Need Full Company Research capacity before{" "}
+                  {trialSummary ?? "trial end"}? Convert now and get FULL ACCESS
+                  — we charge your card today and start the{" "}
+                  {billingPlanLabel(planCode)} billing cycle immediately
+                  {paidCompanyCapacityLabel
+                    ? ` (${paidCompanyCapacityLabel})`
+                    : ""}
+                  .
+                </>
+              ) : (
+                <>
+                  Want to end your trial before {trialSummary ?? "trial end"}?
+                  Convert now — we charge your card today and start the{" "}
+                  {billingPlanLabel(planCode)} billing cycle. Company research
+                  capacity stays the same
+                  {planUsesSeatBilling(planCode) && companiesPerSeat != null
+                    ? ` (${companiesPerSeat} per seat)`
+                    : paidCompanyFloor != null
+                      ? ` (${paidCompanyFloor} companies)`
+                      : ""}
+                  .
+                </>
+              )}
             </p>
             <ConvertTrialNowButton
               planLabel={billingPlanLabel(planCode)}
-              paidCompanyCapacityLabel={paidCompanyCapacityLabel}
+              paidCompanyCapacityLabel={
+                capacityIncreasesOnConvert ? paidCompanyCapacityLabel : null
+              }
+              capacityIncreasesOnConvert={capacityIncreasesOnConvert}
             />
           </div>
         ) : null}
@@ -562,12 +603,12 @@ export default async function OrganizationBillingSettingsPage({
         {billingStatus === "TRIALING" && trialAllowance != null ? (
           <p className="text-sm text-slate-600">
             Trial allowance is {trialAllowance} companies
-            {planUsesSeatBilling(planCode)
-              ? " per user"
-              : ""}
-            {paidCompanyCapacityLabel
+            {planUsesSeatBilling(planCode) ? " per user" : ""}
+            {capacityIncreasesOnConvert && paidCompanyCapacityLabel
               ? `; paid ${billingPlanLabel(planCode)} is ${paidCompanyCapacityLabel}`
-              : ""}
+              : !capacityIncreasesOnConvert
+                ? `; paid ${billingPlanLabel(planCode)} keeps the same company research floor`
+                : ""}
             .
           </p>
         ) : (

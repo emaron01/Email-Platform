@@ -1,7 +1,10 @@
 /**
  * Cookie read/write for pending self-serve signup intent.
  * No `server-only`: Better Auth (CLI-safe graph) dynamically imports this.
- * `cookies()` still requires a Next request; callers catch failures.
+ *
+ * Cookie read must succeed during HTTP signup so Team seats / company name apply.
+ * Outside a Next request (smoke seed, CLI), set ALLOW_PENDING_SIGNUP_INTENT_SKIP=1
+ * to opt into a null intent — never silently default in production signup.
  */
 
 import { cookies } from "next/headers";
@@ -16,8 +19,39 @@ import { defaultSeatQuantityForPlan } from "@/lib/org/seat-limits";
 
 const COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 7;
 
+export class PendingSignupIntentCookieError extends Error {
+  readonly code = "PENDING_SIGNUP_INTENT_COOKIE";
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "PendingSignupIntentCookieError";
+  }
+}
+
+function allowIntentSkipOutsideRequest(): boolean {
+  return process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP === "1";
+}
+
 export async function readPendingSignupIntent(): Promise<PendingSignupIntent | null> {
-  const jar = await cookies();
+  let jar: Awaited<ReturnType<typeof cookies>>;
+  try {
+    jar = await cookies();
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message.slice(0, 300) : "unknown";
+    if (allowIntentSkipOutsideRequest()) {
+      console.warn(
+        "[billing] pending signup intent skipped (ALLOW_PENDING_SIGNUP_INTENT_SKIP=1):",
+        detail,
+      );
+      return null;
+    }
+    throw new PendingSignupIntentCookieError(
+      `Pending signup plan cookie could not be read (${detail}). Team/Standard seat count and company name cannot be applied — sign up again from /signup/plan in the browser so the cookie is available during account creation.`,
+      { cause: error },
+    );
+  }
+
   const raw = jar.get(PENDING_SIGNUP_COOKIE)?.value;
   if (!raw) return null;
   try {
@@ -49,7 +83,10 @@ export async function mergePendingSignupIntent(
 ): Promise<PendingSignupIntent | null> {
   const existing = await readPendingSignupIntent();
   const planCode =
-    patch.planCode ?? existing?.planCode ?? BILLING_PLAN_STANDARD;
+    patch.planCode === BILLING_PLAN_STANDARD || patch.planCode === "TEAM"
+      ? patch.planCode
+      : existing?.planCode;
+  if (!planCode) return null;
   const seatQuantity =
     patch.seatQuantity ??
     existing?.seatQuantity ??
@@ -58,12 +95,12 @@ export async function mergePendingSignupIntent(
     patch.companyName !== undefined
       ? patch.companyName
       : existing?.companyName;
-  const next = buildPendingSignupIntent({
+  const intent = buildPendingSignupIntent({
     planCode,
     seatQuantity,
     companyName,
   });
-  if (!next) return null;
-  await writePendingSignupIntent(next);
-  return next;
+  if (!intent) return null;
+  await writePendingSignupIntent(intent);
+  return intent;
 }

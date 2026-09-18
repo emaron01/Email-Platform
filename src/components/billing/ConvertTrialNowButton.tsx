@@ -6,18 +6,25 @@ import { useRouter } from "next/navigation";
 
 /**
  * POST /api/billing/end-trial — Stripe trial_end: 'now'.
- * Capacity unlocks after webhook sync, not from this client response alone.
+ * Webhook sync updates local status; capacity only increases when paid floors
+ * are higher than trial (pass capacityIncreasesOnConvert).
  */
 export function ConvertTrialNowButton({
   className,
   planLabel = "Standard",
   paidCompanyCapacityLabel = null,
+  capacityIncreasesOnConvert = false,
 }: {
   className?: string;
   /** Display name of the plan billing starts on (e.g. Team, Standard). */
   planLabel?: string;
-  /** e.g. "300 companies" or "100 companies" — shown in confirm copy. */
+  /** e.g. "300 companies" or "100 companies" — only when capacity increases. */
   paidCompanyCapacityLabel?: string | null;
+  /**
+   * True when paid company floors are higher than trial (Standard).
+   * False for Team (150/seat trial and paid) — do not imply an unlock.
+   */
+  capacityIncreasesOnConvert?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -30,7 +37,7 @@ export function ConvertTrialNowButton({
       <div className="space-y-1" data-testid="convert-trial-success">
         <p className="text-sm font-medium text-slate-900">{success}</p>
         <p className="text-xs text-slate-600">
-          Refresh if capacity does not update within a minute.
+          Refresh if billing status does not update within a minute.
         </p>
       </div>
     );
@@ -46,12 +53,22 @@ export function ConvertTrialNowButton({
           Convert to {planLabel} now?
         </p>
         <p className="text-sm text-amber-950">
-          This ends your trial immediately, charges your card today, and starts
-          your {planLabel} billing cycle now
-          {paidCompanyCapacityLabel
-            ? ` with FULL ACCESS (${paidCompanyCapacityLabel})`
-            : " with FULL ACCESS"}{" "}
-          once Stripe confirms — usually a few seconds.
+          {capacityIncreasesOnConvert ? (
+            <>
+              This ends your trial immediately, charges your card today, and
+              starts your {planLabel} billing cycle now
+              {paidCompanyCapacityLabel
+                ? ` with FULL ACCESS (${paidCompanyCapacityLabel})`
+                : " with FULL ACCESS"}{" "}
+              once Stripe confirms — usually a few seconds.
+            </>
+          ) : (
+            <>
+              This ends your trial immediately, charges your card today, and
+              starts your {planLabel} billing cycle once Stripe confirms —
+              usually a few seconds. Company research capacity does not change.
+            </>
+          )}
         </p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -118,9 +135,11 @@ export function ConvertTrialNowButton({
         Convert to {planLabel} now
       </button>
       <p className="text-xs text-slate-600">
-        Charges your card today and starts the {planLabel} billing cycle
-        immediately
-        {paidCompanyCapacityLabel ? ` (${paidCompanyCapacityLabel})` : ""}.
+        {capacityIncreasesOnConvert
+          ? `Charges your card today and starts the ${planLabel} billing cycle immediately${
+              paidCompanyCapacityLabel ? ` (${paidCompanyCapacityLabel})` : ""
+            }.`
+          : `Ends the trial and starts ${planLabel} billing today. Research capacity stays the same.`}
       </p>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
     </div>

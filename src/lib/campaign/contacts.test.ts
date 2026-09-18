@@ -58,6 +58,8 @@ describe("campaign contact management seams", () => {
     expect(contactsLib).toContain("scoringRunPersonaWhere");
     expect(contactsLib).toContain("qualificationBuckets");
     expect(contactsLib).toContain("scoreLabelToBucket");
+    expect(contactsLib).toContain("assertCanAttachCampaignContacts");
+    expect(contactsLib).toContain("canEditCampaignTemplate");
     expect(contactsLib).not.toMatch(
       /personaId:\s*campaign\.personaId/,
     );

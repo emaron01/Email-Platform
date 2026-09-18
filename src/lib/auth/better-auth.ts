@@ -188,29 +188,21 @@ export const auth = betterAuth({
           let planCode: string | undefined;
           let seatQuantity: number | undefined;
           let maxSeats: number | undefined;
-          try {
-            const { readPendingSignupIntent } = await import(
-              "@/lib/billing/pending-signup-intent-cookie"
-            );
-            const {
-              defaultMaxSeatsForPlan,
-            } = await import("@/lib/org/seat-limits");
-            const intent = await readPendingSignupIntent();
-            if (intent?.companyName) {
-              companyName = intent.companyName;
-            }
-            if (intent?.planCode) {
-              planCode = intent.planCode;
-              seatQuantity = intent.seatQuantity;
-              maxSeats = defaultMaxSeatsForPlan(intent.planCode);
-            }
-          } catch (error) {
-            console.error("[auth] pending signup intent read failed", {
-              message:
-                error instanceof Error
-                  ? error.message.slice(0, 300)
-                  : "unknown",
-            });
+          // Loud on cookie failure — do not provision Team/Standard with silent defaults.
+          const { readPendingSignupIntent } = await import(
+            "@/lib/billing/pending-signup-intent-cookie"
+          );
+          const { defaultMaxSeatsForPlan } = await import(
+            "@/lib/org/seat-limits"
+          );
+          const intent = await readPendingSignupIntent();
+          if (intent?.companyName) {
+            companyName = intent.companyName;
+          }
+          if (intent?.planCode) {
+            planCode = intent.planCode;
+            seatQuantity = intent.seatQuantity;
+            maxSeats = defaultMaxSeatsForPlan(intent.planCode);
           }
 
           const provisioned = await provisionIndividualWorkspace({

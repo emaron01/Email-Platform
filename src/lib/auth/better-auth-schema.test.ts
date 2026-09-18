@@ -168,6 +168,8 @@ describe.skipIf(!hasDatabase)(
 
       // Avoid creating a customer org during this schema probe.
       beginPlatformSuperAdminProvisioning();
+      const previousIntentSkip = process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP;
+      process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP = "1";
       let signUpResult: unknown;
       try {
         signUpResult = await auth.api.signUpEmail({
@@ -181,6 +183,11 @@ describe.skipIf(!hasDatabase)(
         });
       } finally {
         endPlatformSuperAdminProvisioning();
+        if (previousIntentSkip == null) {
+          delete process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP;
+        } else {
+          process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP = previousIntentSkip;
+        }
       }
 
       const authUserId =

@@ -1,6 +1,15 @@
 /**
- * Stripe webhook idempotency — claim event id before side effects.
+ * Stripe webhook idempotency — persist event id only after side effects succeed.
  * Never persist the raw Stripe payload.
+ *
+ * Flow:
+ * 1. isStripeWebhookEventClaimed → if yes, skip (successful prior delivery)
+ * 2. Run handler side effects (must be idempotent)
+ * 3. claimStripeWebhookEvent → record success
+ *
+ * A failed handler leaves the event unclaimed so Stripe retries re-apply.
+ * Concurrent in-flight deliveries may both apply once; upserts / unique
+ * grant keys make that safe; the second claim hits P2002 and is treated as OK.
  */
 import "server-only";
 
@@ -10,23 +19,25 @@ export type WebhookClaimResult =
   | { ok: true; duplicate: false }
   | { ok: true; duplicate: true };
 
+/** Read-only: true when a prior delivery already completed successfully. */
+export async function isStripeWebhookEventClaimed(
+  stripeEventId: string,
+): Promise<boolean> {
+  const existing = await prisma.stripeWebhookEvent.findUnique({
+    where: { stripeEventId },
+    select: { id: true },
+  });
+  return Boolean(existing);
+}
+
 /**
- * Inserts stripeEventId. Already claimed ⇒ duplicate (safe no-op).
- * Prefers a read before create so Stripe retries do not spam prisma:error logs
- * for the unique constraint (P2002 is still caught for races).
+ * Record that this event finished successfully.
+ * P2002 = concurrent twin already claimed after its own successful apply.
  */
 export async function claimStripeWebhookEvent(input: {
   stripeEventId: string;
   type: string;
 }): Promise<WebhookClaimResult> {
-  const existing = await prisma.stripeWebhookEvent.findUnique({
-    where: { stripeEventId: input.stripeEventId },
-    select: { id: true },
-  });
-  if (existing) {
-    return { ok: true, duplicate: true };
-  }
-
   try {
     await prisma.stripeWebhookEvent.create({
       data: {

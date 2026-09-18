@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getMembershipForCurrentUser } from "@/lib/auth/authz";
+import { assertOrganizationNotPaymentLocked } from "@/lib/billing/payment-lock";
 import { createCampaignExecution } from "@/lib/campaign/execution";
 import { duplicateSharedCampaign } from "@/lib/campaign/duplicate";
 import {
@@ -20,6 +21,7 @@ export async function useSharedCampaignAction(
   formData: FormData,
 ): Promise<CampaignActionResult> {
   const { organization, user } = await getMembershipForCurrentUser();
+  await assertOrganizationNotPaymentLocked(organization.id);
   const campaignId = String(formData.get("campaignId") || "").trim();
   if (!campaignId) throw new TenantError("Campaign is required.");
 
@@ -40,6 +42,7 @@ export async function duplicateSharedCampaignAction(
 ): Promise<CampaignActionResult> {
   const { organization, user, membership } =
     await getMembershipForCurrentUser();
+  await assertOrganizationNotPaymentLocked(organization.id);
   const campaignId = String(formData.get("campaignId") || "").trim();
   if (!campaignId) throw new TenantError("Campaign is required.");
 
@@ -60,6 +63,7 @@ export async function setCampaignVisibilityAction(
   try {
     const { organization, user, membership } =
       await getMembershipForCurrentUser();
+    await assertOrganizationNotPaymentLocked(organization.id);
     if (!canSetCampaignShared(membership.role)) {
       return {
         ok: false,

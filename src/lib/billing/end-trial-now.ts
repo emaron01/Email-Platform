@@ -87,6 +87,11 @@ export async function canOfferEarlyTrialConversion(
   }
 }
 
+/**
+ * Success copy after trial_end:now. Only mention a capacity unlock when paid
+ * floors are actually higher than trial (e.g. Standard 25→100). Team trial and
+ * paid are both 150/seat — say billing starts, not "FULL ACCESS".
+ */
 async function paidCapacityMessage(input: {
   planCode: string;
   seatQuantity: number;
@@ -98,18 +103,36 @@ async function paidCapacityMessage(input: {
     planCode: input.planCode,
     billingStatus: "ACTIVE",
   });
+  const trial = resolveCatalogEntitlementsForStatus({
+    catalog,
+    planCode: input.planCode,
+    billingStatus: "TRIALING",
+  });
   const planDef = getPlanDefinition(input.planCode);
-  const perSeat =
+  const paidPerSeat =
     paid?.companiesPerSeat ?? planDef?.seats.companiesPerSeat ?? null;
-  if (planUsesSeatBilling(input.planCode) && perSeat != null) {
-    const total = perSeat * Math.max(1, input.seatQuantity);
-    return `${planLabel} billing starts today with FULL ACCESS (${total} companies; ${perSeat} per seat).`;
+  const trialPerSeat =
+    trial?.companiesPerSeat ?? planDef?.seats.companiesPerSeat ?? null;
+
+  if (planUsesSeatBilling(input.planCode) && paidPerSeat != null) {
+    if (trialPerSeat != null && paidPerSeat <= trialPerSeat) {
+      return `${planLabel} billing starts today (company research stays ${paidPerSeat} per seat).`;
+    }
+    const total = paidPerSeat * Math.max(1, input.seatQuantity);
+    return `${planLabel} billing starts today with FULL ACCESS (${total} companies; ${paidPerSeat} per seat).`;
   }
-  const floor =
+
+  const paidFloor =
     paid?.activeResearchedCompanyLimit ??
     planDef?.entitlements.activeResearchedCompanyLimit;
-  if (floor != null) {
-    return `${planLabel} billing starts today with FULL ACCESS (${floor} companies).`;
+  const trialFloor =
+    trial?.activeResearchedCompanyLimit ??
+    planDef?.trialEntitlements?.activeResearchedCompanyLimit;
+  if (paidFloor != null) {
+    if (trialFloor != null && paidFloor <= trialFloor) {
+      return `${planLabel} billing starts today (company research stays ${paidFloor} companies).`;
+    }
+    return `${planLabel} billing starts today with FULL ACCESS (${paidFloor} companies).`;
   }
   return `${planLabel} billing starts today.`;
 }

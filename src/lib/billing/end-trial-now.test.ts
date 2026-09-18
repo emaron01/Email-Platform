@@ -53,4 +53,39 @@ describe("early trial conversion (trial_end: now)", () => {
       })?.activeResearchedCompanyLimit,
     ).toBe(25);
   });
+
+  it("Team trial and paid company floors match (convert copy must not imply unlock)", async () => {
+    const {
+      getPlanDefinition,
+      resolveEntitlementsForStatus,
+      BILLING_PLAN_TEAM,
+    } = await import("@/lib/billing/plans");
+    const plan = getPlanDefinition(BILLING_PLAN_TEAM);
+    expect(plan?.seats.companiesPerSeat).toBe(150);
+    const trial = resolveEntitlementsForStatus({
+      planCode: BILLING_PLAN_TEAM,
+      billingStatus: "TRIALING",
+    });
+    const paid = resolveEntitlementsForStatus({
+      planCode: BILLING_PLAN_TEAM,
+      billingStatus: "ACTIVE",
+    });
+    expect(trial?.activeResearchedCompanyLimit).toBe(150);
+    expect(paid?.activeResearchedCompanyLimit).toBe(150);
+    expect(trial?.activeResearchedCompanyLimit).toBe(
+      paid?.activeResearchedCompanyLimit,
+    );
+
+    const button = readFileSync(
+      "src/components/billing/ConvertTrialNowButton.tsx",
+      "utf8",
+    );
+    expect(button).toContain("capacityIncreasesOnConvert");
+    expect(button).toContain(
+      "Company research capacity does not change",
+    );
+
+    const lib = readFileSync("src/lib/billing/end-trial-now.ts", "utf8");
+    expect(lib).toContain("company research stays");
+  });
 });

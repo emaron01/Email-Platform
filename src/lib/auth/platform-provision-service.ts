@@ -584,6 +584,9 @@ export async function signUpEmailViaBetterAuth(input: {
   lastName: string;
 }): Promise<{ userId: string }> {
   const { formatSafeErrorForLog } = await import("@/lib/auth/safe-error");
+  // CLI / Node — no Next request cookie jar. Not a browser Team signup.
+  const previousIntentSkip = process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP;
+  process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP = "1";
   try {
     const { auth } = await import("@/lib/auth/better-auth");
     const result = await auth.api.signUpEmail({
@@ -623,5 +626,11 @@ export async function signUpEmailViaBetterAuth(input: {
     throw new PlatformProvisionError(
       `Better Auth identity creation failed: ${formatSafeErrorForLog(error)}`,
     );
+  } finally {
+    if (previousIntentSkip == null) {
+      delete process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP;
+    } else {
+      process.env.ALLOW_PENDING_SIGNUP_INTENT_SKIP = previousIntentSkip;
+    }
   }
 }

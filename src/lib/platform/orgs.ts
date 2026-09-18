@@ -554,7 +554,9 @@ export async function unsuspendOrganization(input: {
 /**
  * Failsafe: cancel Stripe subscription before org hard-delete.
  * Already-canceled / missing subscriptions are treated as success.
- * No subscription id or Stripe not configured → skip (local / Comped orgs).
+ * No subscription id → skip (Comped / never billed).
+ * Stripe not configured while a subscription id exists → refuse (do not
+ * delete locally while Stripe may keep billing).
  */
 export async function cancelStripeSubscriptionForOrgDelete(
   stripeSubscriptionId: string | null | undefined,
@@ -573,12 +575,9 @@ export async function cancelStripeSubscriptionForOrgDelete(
     };
   }
   if (!stripeConfigured()) {
-    return {
-      skipped: true,
-      canceled: false,
-      alreadyCanceled: false,
-      subscriptionId: stripeSubscriptionId,
-    };
+    throw new Error(
+      "Cannot delete this organization: a Stripe subscription is linked but STRIPE_SECRET_KEY is not configured. Configure Stripe (or cancel the subscription in the Stripe Dashboard) before deleting.",
+    );
   }
 
   const stripe = getStripe();

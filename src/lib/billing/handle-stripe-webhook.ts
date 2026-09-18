@@ -1,6 +1,10 @@
 /**
- * Stripe webhook dispatcher — claim event id, then sync subscription / credit grants.
+ * Stripe webhook dispatcher — run sync / grants, then claim event id.
  * Never persist the raw event payload.
+ *
+ * Claim-after-success: failures leave the event unclaimed so Stripe retries
+ * re-apply. Successful retries hit isStripeWebhookEventClaimed and no-op.
+ * Side effects are idempotent (billing upsert, credit unique keys, referrals).
  */
 import "server-only";
 
@@ -10,7 +14,10 @@ import {
   attributeReferralFromCheckoutSession,
   countReferralIfActive,
 } from "@/lib/billing/referrals";
-import { claimStripeWebhookEvent } from "@/lib/billing/stripe-webhook-idempotency";
+import {
+  claimStripeWebhookEvent,
+  isStripeWebhookEventClaimed,
+} from "@/lib/billing/stripe-webhook-idempotency";
 import { revalidateBillingUi } from "@/lib/billing/revalidate-billing-ui";
 import {
   findOrganizationIdForSubscription,
@@ -21,11 +28,7 @@ import {
 export async function handleStripeWebhookEvent(
   event: Stripe.Event,
 ): Promise<{ duplicate: boolean; handled: boolean }> {
-  const claim = await claimStripeWebhookEvent({
-    stripeEventId: event.id,
-    type: event.type,
-  });
-  if (claim.duplicate) {
+  if (await isStripeWebhookEventClaimed(event.id)) {
     return { duplicate: true, handled: true };
   }
 
@@ -110,6 +113,13 @@ export async function handleStripeWebhookEvent(
     default:
       break;
   }
+
+  // Claim only after side effects succeed (or intentional no-op for unknown types).
+  // If anything above threw, we never reach here — Stripe retries with event unclaimed.
+  await claimStripeWebhookEvent({
+    stripeEventId: event.id,
+    type: event.type,
+  });
 
   if (synced) {
     revalidateBillingUi();
