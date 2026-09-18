@@ -64,12 +64,24 @@ export async function markEmailDraftSent(input: {
       sequenceNumber: true,
       status: true,
       sentAt: true,
-      campaignContact: { select: { campaignId: true, contactId: true, contact: { select: { email: true } } } },
+      campaignContact: {
+        select: {
+          campaignId: true,
+          contactId: true,
+          contact: { select: { email: true } },
+          campaign: { select: { ownerUserId: true } },
+        },
+      },
     },
   });
   if (!draft) {
     throw new TenantError(
       "Email draft does not belong to the active organization.",
+    );
+  }
+  if (draft.campaignContact.campaign.ownerUserId !== input.userId) {
+    throw new TenantError(
+      "This campaign is read-only because it belongs to another user.",
     );
   }
   if (draft.status === "SENT" && draft.sentAt) {
@@ -207,12 +219,22 @@ export async function updateEmailDraftContent(input: {
       body: true,
       generatedBody: true,
       claimConflictsJson: true,
-      campaignContact: { select: { campaignId: true } },
+      campaignContact: {
+        select: {
+          campaignId: true,
+          campaign: { select: { ownerUserId: true } },
+        },
+      },
     },
   });
   if (!draft) {
     throw new TenantError(
       "Email draft does not belong to the active organization.",
+    );
+  }
+  if (draft.campaignContact.campaign.ownerUserId !== input.userId) {
+    throw new TenantError(
+      "This campaign is read-only because it belongs to another user.",
     );
   }
   if (draft.status === "SENT" || draft.sentAt) {
@@ -322,6 +344,7 @@ export async function recordEmailClientIntent(input: {
           campaignId: true,
           contactId: true,
           contact: { select: { email: true } },
+          campaign: { select: { ownerUserId: true } },
         },
       },
     },
@@ -329,6 +352,11 @@ export async function recordEmailClientIntent(input: {
   if (!draft) {
     throw new TenantError(
       "Email draft does not belong to the active organization.",
+    );
+  }
+  if (draft.campaignContact.campaign.ownerUserId !== input.userId) {
+    throw new TenantError(
+      "This campaign is read-only because it belongs to another user.",
     );
   }
   const recipient = draft.campaignContact.contact.email?.trim();

@@ -35,7 +35,10 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
-import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
+import {
+  assertCanModifyOwnedWork,
+  getWorkActor,
+} from "@/lib/work/ownership";
 
 type Tx = Prisma.TransactionClient;
 
@@ -185,16 +188,18 @@ export async function archiveContactList(id: string): Promise<{
   message: string;
   cascadedContactCount: number;
 }> {
-  const organizationId = await requireOrganizationId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const existing = await prisma.contactList.findFirst({
     where: { id, organizationId },
-    select: { id: true, archivedAt: true },
+    select: { id: true, ownerUserId: true, archivedAt: true },
   });
   if (!existing) {
     throw new TenantError(
       "Contact list not found in the active organization.",
     );
   }
+  assertCanModifyOwnedWork(actor, existing.ownerUserId, "Contact list");
   if (existing.archivedAt) {
     return {
       mode: "archived",
@@ -226,16 +231,18 @@ export async function unarchiveContactList(id: string): Promise<{
   message: string;
   restoredContactCount: number;
 }> {
-  const organizationId = await requireOrganizationId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const existing = await prisma.contactList.findFirst({
     where: { id, organizationId },
-    select: { id: true, archivedAt: true },
+    select: { id: true, ownerUserId: true, archivedAt: true },
   });
   if (!existing) {
     throw new TenantError(
       "Contact list not found in the active organization.",
     );
   }
+  assertCanModifyOwnedWork(actor, existing.ownerUserId, "Contact list");
   if (!existing.archivedAt) {
     return {
       mode: "unarchived",
@@ -436,16 +443,18 @@ export async function deleteOrArchiveContactList(id: string): Promise<{
   message: string;
   impact: ListLifecycleImpact;
 }> {
-  const organizationId = await requireOrganizationId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const existing = await prisma.contactList.findFirst({
     where: { id, organizationId },
-    select: { id: true, archivedAt: true },
+    select: { id: true, ownerUserId: true, archivedAt: true },
   });
   if (!existing) {
     throw new TenantError(
       "Contact list not found in the active organization.",
     );
   }
+  assertCanModifyOwnedWork(actor, existing.ownerUserId, "Contact list");
 
   const impact = await getListLifecycleImpact(organizationId, existing.id);
   const decision = decideListDelete(impact);

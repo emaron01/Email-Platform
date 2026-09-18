@@ -52,6 +52,7 @@ export function QualificationBuckets({
   emptyTitle,
   emptyActionHref,
   emptyActionLabel,
+  readOnly = false,
 }: {
   campaignId: string;
   scoringRunId: string | null;
@@ -59,6 +60,7 @@ export function QualificationBuckets({
   emptyTitle: string;
   emptyActionHref: string;
   emptyActionLabel: string;
+  readOnly?: boolean;
 }) {
   const [rows, setRows] = useState(initialRows);
   const [message, setMessage] = useState<string | null>(null);
@@ -72,7 +74,7 @@ export function QualificationBuckets({
   }
 
   function canActOnRow(row: QualificationBucketRow): boolean {
-    return Boolean(runIdForRow(row));
+    return !readOnly && Boolean(runIdForRow(row));
   }
 
   function canActOnRows(targetRows: QualificationBucketRow[]): boolean {

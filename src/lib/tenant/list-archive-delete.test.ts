@@ -114,6 +114,7 @@ describe.skipIf(!hasDatabase)(
     let prisma: import("@prisma/client").PrismaClient;
     let ready = false;
     let orgA = "";
+    let ownerId = "";
     const suffix = Date.now().toString(36);
     const previousBypass = process.env.ALLOW_DEV_TENANT_BYPASS;
     const previousOrg = process.env.DEV_ORGANIZATION_ID;
@@ -131,6 +132,16 @@ describe.skipIf(!hasDatabase)(
           },
         });
         orgA = org.id;
+        const owner = await prisma.user.create({
+          data: {
+            email: `list-archive-owner-${suffix}@example.test`,
+            emailNormalized: `list-archive-owner-${suffix}@example.test`,
+          },
+        });
+        ownerId = owner.id;
+        await prisma.organizationMembership.create({
+          data: { organizationId: orgA, userId: ownerId, role: "OWNER" },
+        });
         process.env.ALLOW_DEV_TENANT_BYPASS = "true";
         process.env.DEV_ORGANIZATION_ID = orgA;
         ready = true;
@@ -175,7 +186,11 @@ describe.skipIf(!hasDatabase)(
       if (!ready) return;
       const { product, icp, persona } = await seedProduct();
       const list = await prisma.contactList.create({
-        data: { organizationId: orgA, name: `Archived list ${suffix}` },
+        data: {
+          organizationId: orgA,
+          ownerUserId: ownerId,
+          name: `Archived list ${suffix}`,
+        },
       });
       const contact = await seedContactOnList(prisma, {
         organizationId: orgA,
@@ -187,6 +202,7 @@ describe.skipIf(!hasDatabase)(
       const campaign = await prisma.campaign.create({
         data: {
           organizationId: orgA,
+          ownerUserId: ownerId,
           name: `Stage5 ${suffix}`,
           productId: product.id,
           icpId: icp.id,
@@ -272,10 +288,18 @@ describe.skipIf(!hasDatabase)(
     it("archives contacts only when every list is archived and no active campaign", async () => {
       if (!ready) return;
       const listA = await prisma.contactList.create({
-        data: { organizationId: orgA, name: `Cascade A ${suffix}` },
+        data: {
+          organizationId: orgA,
+          ownerUserId: ownerId,
+          name: `Cascade A ${suffix}`,
+        },
       });
       const listB = await prisma.contactList.create({
-        data: { organizationId: orgA, name: `Cascade B ${suffix}` },
+        data: {
+          organizationId: orgA,
+          ownerUserId: ownerId,
+          name: `Cascade B ${suffix}`,
+        },
       });
       const onlyA = await seedContactOnList(prisma, {
         organizationId: orgA,
@@ -303,6 +327,7 @@ describe.skipIf(!hasDatabase)(
       await prisma.campaign.create({
         data: {
           organizationId: orgA,
+          ownerUserId: ownerId,
           name: `Keep active ${suffix}`,
           productId: product.id,
           icpId: icp.id,
@@ -369,7 +394,11 @@ describe.skipIf(!hasDatabase)(
       if (!ready) return;
       const { product, icp, persona } = await seedProduct();
       const list = await prisma.contactList.create({
-        data: { organizationId: orgA, name: `Scored list ${suffix}` },
+        data: {
+          organizationId: orgA,
+          ownerUserId: ownerId,
+          name: `Scored list ${suffix}`,
+        },
       });
       const contact = await seedContactOnList(prisma, {
         organizationId: orgA,
@@ -409,7 +438,11 @@ describe.skipIf(!hasDatabase)(
       if (!ready) return;
       const { product, icp, persona } = await seedProduct();
       const list = await prisma.contactList.create({
-        data: { organizationId: orgA, name: `Active-campaign list ${suffix}` },
+        data: {
+          organizationId: orgA,
+          ownerUserId: ownerId,
+          name: `Active-campaign list ${suffix}`,
+        },
       });
       const contact = await seedContactOnList(prisma, {
         organizationId: orgA,
@@ -419,6 +452,7 @@ describe.skipIf(!hasDatabase)(
       const campaign = await prisma.campaign.create({
         data: {
           organizationId: orgA,
+          ownerUserId: ownerId,
           name: `Active ${suffix}`,
           productId: product.id,
           icpId: icp.id,
@@ -459,7 +493,11 @@ describe.skipIf(!hasDatabase)(
       if (!ready) return;
       const { product, icp, persona } = await seedProduct();
       const disposable = await prisma.contactList.create({
-        data: { organizationId: orgA, name: `Disposable ${suffix}` },
+        data: {
+          organizationId: orgA,
+          ownerUserId: ownerId,
+          name: `Disposable ${suffix}`,
+        },
       });
       const disposableContact = await seedContactOnList(prisma, {
         organizationId: orgA,
@@ -467,7 +505,11 @@ describe.skipIf(!hasDatabase)(
         email: `disposable-${suffix}@example.test`,
       });
       const referenced = await prisma.contactList.create({
-        data: { organizationId: orgA, name: `Referenced ${suffix}` },
+        data: {
+          organizationId: orgA,
+          ownerUserId: ownerId,
+          name: `Referenced ${suffix}`,
+        },
       });
       const referencedContact = await seedContactOnList(prisma, {
         organizationId: orgA,
@@ -477,6 +519,7 @@ describe.skipIf(!hasDatabase)(
       const campaign = await prisma.campaign.create({
         data: {
           organizationId: orgA,
+          ownerUserId: ownerId,
           name: `Keep ${suffix}`,
           productId: product.id,
           icpId: icp.id,
@@ -535,7 +578,11 @@ describe.skipIf(!hasDatabase)(
     it("deleting a Contact does not clear EmailSuppression for that address", async () => {
       if (!ready) return;
       const list = await prisma.contactList.create({
-        data: { organizationId: orgA, name: `Supp contact ${suffix}` },
+        data: {
+          organizationId: orgA,
+          ownerUserId: ownerId,
+          name: `Supp contact ${suffix}`,
+        },
       });
       const email = `supp-contact-${suffix}@example.test`;
       const contact = await seedContactOnList(prisma, {

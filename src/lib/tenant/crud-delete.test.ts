@@ -192,6 +192,7 @@ describe.skipIf(!hasDatabase)(
     let ready = false;
     let orgA = "";
     let orgB = "";
+    let ownerAId = "";
     const suffix = Date.now().toString(36);
 
     beforeAll(async () => {
@@ -207,6 +208,16 @@ describe.skipIf(!hasDatabase)(
         });
         orgA = a.id;
         orgB = b.id;
+        const owner = await prisma.user.create({
+          data: {
+            email: `crud-owner-${suffix}@example.test`,
+            emailNormalized: `crud-owner-${suffix}@example.test`,
+          },
+        });
+        ownerAId = owner.id;
+        await prisma.organizationMembership.create({
+          data: { organizationId: orgA, userId: ownerAId, role: "OWNER" },
+        });
         ready = true;
       } catch (e) {
         console.warn("Skipping CRUD delete DB tests — run db:deploy:", e);
@@ -299,7 +310,11 @@ describe.skipIf(!hasDatabase)(
         },
       });
       const list = await prisma.contactList.create({
-        data: { organizationId: orgA, name: `List ${suffix}` },
+        data: {
+          organizationId: orgA,
+          ownerUserId: ownerAId,
+          name: `List ${suffix}`,
+        },
       });
       await prisma.scoringRun.create({
         data: {
@@ -636,7 +651,11 @@ describe.skipIf(!hasDatabase)(
         },
       });
       const list = await prisma.contactList.create({
-        data: { organizationId: orgA, name: `Arch list ${suffix}` },
+        data: {
+          organizationId: orgA,
+          ownerUserId: ownerAId,
+          name: `Arch list ${suffix}`,
+        },
       });
       const icp = await prisma.icp.create({
         data: {

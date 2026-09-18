@@ -38,14 +38,20 @@ describe("verification URL helpers", () => {
     );
   });
 
-  it("signup uses /post-verify callback; verify-email is public", async () => {
+  it("signup verifies back to an invite, otherwise /post-verify; verify-email is public", async () => {
     const signup = await import("node:fs").then((fs) =>
       fs.readFileSync("src/components/auth/SignupForm.tsx", "utf8"),
     );
     const mw = await import("node:fs").then((fs) =>
       fs.readFileSync("src/middleware.ts", "utf8"),
     );
-    expect(signup).toContain('callbackURL: "/post-verify"');
+    expect(signup).toContain(
+      'inviteMode && next.startsWith("/invite/accept")',
+    );
+    expect(signup).toMatch(
+      /const callbackURL =[\s\S]*\? next[\s\S]*: "\/post-verify"/,
+    );
+    expect(signup).toContain("callbackURL,");
     expect(mw).toContain('"/post-verify"');
     expect(mw).toContain('"/verify-email"');
     expect(VERIFICATION_CALLBACK_PATH).toBe("/post-verify");

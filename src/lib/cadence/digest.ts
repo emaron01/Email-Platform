@@ -258,6 +258,7 @@ export async function runCadenceDigestJob(
 
     const dueCount = await countDueContactsForUser({
       organizationId: organization.id,
+      userId: user.id,
     });
     if (dueCount === 0) {
       bumpSkip(result, "no_due_contacts", {

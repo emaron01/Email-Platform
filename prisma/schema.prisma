@@ -636,6 +636,8 @@ model User {
   emailSuppressionsReleased EmailSuppression[]           @relation("EmailReleasedBy")
   contactListsCreated      ContactList[]                 @relation("ContactListCreatedBy")
   contactsCreated          Contact[]                     @relation("ContactCreatedBy")
+  ownedContactLists        ContactList[]                 @relation("ContactListOwner")
+  ownedContacts            Contact[]                     @relation("ContactOwner")
   contactMembershipsAdded  ContactListMembership[]       @relation("ContactMembershipAddedBy")
   sequenceStopsInitiated   CampaignContact[]             @relation("SequenceStoppedBy")
   ownedCampaigns           Campaign[]                    @relation("CampaignOwner")
@@ -1608,6 +1610,7 @@ model PersonaCriterion {
 model ContactList {
   id               String            @id @default(cuid())
   organizationId   String
+  ownerUserId      String
   name             String
   sourceType       ContactListSource @default(UPLOAD)
   originalFilename String?
@@ -1620,6 +1623,7 @@ model ContactList {
   updatedAt        DateTime          @updatedAt
 
   organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner                  User                    @relation("ContactListOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
   createdBy    User?                   @relation("ContactListCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   memberships  ContactListMembership[]
   scoringRuns  ScoringRun[]
@@ -1628,6 +1632,7 @@ model ContactList {
   contactsArchivedByThis Contact[] @relation("ContactArchivedByList")
 
   @@index([organizationId])
+  @@index([organizationId, ownerUserId])
   @@index([organizationId, createdAt])
   @@index([organizationId, sourceType])
   @@index([organizationId, archivedAt])
@@ -1640,6 +1645,7 @@ model ContactList {
 model Contact {
   id              String    @id @default(cuid())
   organizationId  String
+  ownerUserId     String
   /// Suppression/dedupe key. Null when the row has no usable email.
   normalizedEmail String?
   createdByUserId String?
@@ -1671,6 +1677,7 @@ model Contact {
   updatedAt       DateTime  @updatedAt
 
   organization     Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner            User                    @relation("ContactOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
   createdBy        User?                   @relation("ContactCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   companyRecord    Company?                @relation(fields: [companyId], references: [id], onDelete: SetNull)
   archivedByList   ContactList?            @relation("ContactArchivedByList", fields: [archivedByListId], references: [id], onDelete: SetNull)
@@ -1679,8 +1686,9 @@ model Contact {
   campaignContacts CampaignContact[]
   contactResearch  ContactResearch[]
 
-  @@unique([organizationId, normalizedEmail])
+  @@unique([organizationId, ownerUserId, normalizedEmail])
   @@index([organizationId])
+  @@index([organizationId, ownerUserId])
   @@index([organizationId, createdAt])
   @@index([organizationId, email])
   @@index([organizationId, archivedAt])
@@ -2101,8 +2109,8 @@ enum CampaignVisibility {
 model Campaign {
   id                            String             @id @default(cuid())
   organizationId                String
-  /// Owning user. Null on legacy rows (treated as org-visible until claimed).
-  ownerUserId                   String?
+  /// Owning user. Managers may inspect another user's campaign but only its owner may modify it.
+  ownerUserId                   String
   visibility                    CampaignVisibility @default(PERSONAL)
   name                          String
   productId                     String
@@ -2125,7 +2133,7 @@ model Campaign {
   updatedAt                     DateTime           @updatedAt
 
   organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  owner        User?               @relation("CampaignOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  owner        User                @relation("CampaignOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
   product      Product             @relation(fields: [productId], references: [id])
   icp          Icp                 @relation(fields: [icpId], references: [id])
   persona      Persona?            @relation(fields: [personaId], references: [id])

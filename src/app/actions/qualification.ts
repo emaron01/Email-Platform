@@ -7,6 +7,7 @@ import type {
 import { revalidatePath } from "next/cache";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
+import { assertCanModifyOwnedWork } from "@/lib/work/ownership";
 import { requireOrganization } from "@/lib/tenant/getCurrentOrganization";
 
 export type QualificationOverrideActionResult = {
@@ -85,11 +86,19 @@ export async function overrideQualificationBucketAction(input: {
     ]);
     const run = await prisma.scoringRun.findFirst({
       where: { id: input.scoringRunId, organizationId: organization.id },
-      select: { id: true },
+      select: {
+        id: true,
+        contactList: { select: { ownerUserId: true } },
+      },
     });
     if (!run) {
       return { ok: false, message: "Qualification run was not found." };
     }
+    assertCanModifyOwnedWork(
+      { userId: user.id },
+      run.contactList.ownerUserId,
+      "Scoring run",
+    );
     const targetExists =
       input.targetType === "CONTACT"
         ? await prisma.contactScore.count({
@@ -163,11 +172,19 @@ export async function bulkRestoreQualificationAction(input: {
     ]);
     const run = await prisma.scoringRun.findFirst({
       where: { id: input.scoringRunId, organizationId: organization.id },
-      select: { id: true },
+      select: {
+        id: true,
+        contactList: { select: { ownerUserId: true } },
+      },
     });
     if (!run) {
       return { ok: false, message: "Qualification run was not found." };
     }
+    assertCanModifyOwnedWork(
+      { userId: user.id },
+      run.contactList.ownerUserId,
+      "Scoring run",
+    );
     let restoredCount = 0;
     for (const targetId of targetIds) {
       const targetExists =

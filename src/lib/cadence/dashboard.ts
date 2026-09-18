@@ -37,10 +37,13 @@ export async function getDueContactsForUser(input: {
   const rows = await prisma.campaignContact.findMany({
     where: {
       organizationId: input.organizationId,
+      campaign: {
+        ownerUserId: input.userId,
+        ...(input.includeArchived ? {} : { archivedAt: null }),
+      },
       nextDueAt: { not: null },
       sequenceStoppedAt: null,
       status: { not: "EXCLUDED" },
-      campaign: input.includeArchived ? {} : { archivedAt: null },
     },
     select: {
       id: true,
@@ -128,6 +131,7 @@ export async function getDueContactsForUser(input: {
 
 export async function countDueContactsForUser(input: {
   organizationId: string;
+  userId: string;
 }): Promise<number> {
   const now = new Date();
   const count = await prisma.campaignContact.count({
@@ -136,7 +140,10 @@ export async function countDueContactsForUser(input: {
       nextDueAt: { lte: now },
       sequenceStoppedAt: null,
       status: { not: "EXCLUDED" },
-      campaign: { archivedAt: null },
+      campaign: {
+        ownerUserId: input.userId,
+        archivedAt: null,
+      },
     },
   });
   return count;

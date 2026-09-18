@@ -1285,6 +1285,7 @@ describe.skipIf(!hasDatabase)(
       const list = await prisma.contactList.create({
         data: {
           organizationId,
+          ownerUserId: userAId,
           name: "Email generation contacts",
           sourceType: "PASTE",
           totalContacts: 1,
@@ -1303,6 +1304,7 @@ describe.skipIf(!hasDatabase)(
       const campaign = await prisma.campaign.create({
         data: {
           organizationId,
+          ownerUserId: userAId,
           name: "CRO campaign",
           productId: product.id,
           icpId: icp.id,
@@ -1391,6 +1393,7 @@ describe.skipIf(!hasDatabase)(
       const foreignList = await prisma.contactList.create({
         data: {
           organizationId: foreign.organization.id,
+          ownerUserId: foreign.user.id,
           name: "Foreign list",
           totalContacts: 1,
         },
@@ -1403,6 +1406,7 @@ describe.skipIf(!hasDatabase)(
       const foreignCampaign = await prisma.campaign.create({
         data: {
           organizationId: foreign.organization.id,
+          ownerUserId: foreign.user.id,
           name: "Foreign campaign",
           productId: foreignProduct.id,
           icpId: foreignIcp.id,

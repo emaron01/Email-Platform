@@ -15,4 +15,5 @@ function run(command, args) {
  * The research background worker never runs migrations — only this path does.
  */
 run("node", ["scripts/db-safety-check.mjs"]);
+run("node", ["scripts/report-personal-work-ownership.mjs"]);
 run("npx", ["prisma", "migrate", "deploy"]);

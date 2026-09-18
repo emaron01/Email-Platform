@@ -220,6 +220,7 @@ describe.skipIf(!hasDatabase)(
     });
 
     async function seedCampaign(organizationId: string, email: string) {
+      const ownerUserId = organizationId === orgA ? userAId : userBId;
       const product = await prisma.product.create({
         data: { organizationId, name: `Product ${email}` },
       });
@@ -231,7 +232,7 @@ describe.skipIf(!hasDatabase)(
         },
       });
       const list = await prisma.contactList.create({
-        data: { organizationId, name: `List ${email}` },
+        data: { organizationId, ownerUserId, name: `List ${email}` },
       });
       const contact = await seedContactOnList(prisma, {
         organizationId,
@@ -243,6 +244,7 @@ describe.skipIf(!hasDatabase)(
       const campaign = await prisma.campaign.create({
         data: {
           organizationId,
+          ownerUserId,
           name: `Campaign ${email}`,
           productId: product.id,
           icpId: icp.id,

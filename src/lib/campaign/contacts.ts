@@ -15,6 +15,7 @@ import { readExclusionDetails } from "@/lib/scoring/exclusion-detail";
 import { scoringRunPersonaWhere } from "@/lib/campaign/personas";
 
 const campaignDetailInclude = {
+  owner: { select: { id: true, name: true, email: true } },
   product: {
     select: {
       id: true,
@@ -413,7 +414,7 @@ async function requireCampaignForOrganization(
   productId: string;
   icpId: string;
   personaId: string | null;
-  ownerUserId: string | null;
+  ownerUserId: string;
   visibility: "PERSONAL" | "SHARED";
 }> {
   const campaign = await prisma.campaign.findFirst({
@@ -441,7 +442,7 @@ async function assertCanAttachCampaignContacts(input: {
   organizationId: string;
   campaign: {
     id: string;
-    ownerUserId: string | null;
+    ownerUserId: string;
     visibility: "PERSONAL" | "SHARED";
   };
 }): Promise<void> {
@@ -470,6 +471,7 @@ async function compatibleScoringRunWhere(
     productId: string;
     icpId: string;
     personaId: string | null;
+    ownerUserId: string;
   },
   organizationId: string,
 ): Promise<Prisma.ScoringRunWhereInput> {
@@ -492,7 +494,10 @@ async function compatibleScoringRunWhere(
     productId: campaign.productId,
     icpId: campaign.icpId,
     status: { in: ["COMPLETED", "PARTIAL"] },
-    contactList: { archivedAt: null },
+    contactList: {
+      archivedAt: null,
+      ownerUserId: campaign.ownerUserId,
+    },
     OR: scoringRunPersonaWhere({
       campaignFallbackPersonaId: campaign.personaId,
       campaignInPlayPersonaIds: inPlay.map((row) => row.personaId),
@@ -520,7 +525,10 @@ export async function searchAvailableCampaignContacts(
   search?: string,
 ): Promise<AvailableCampaignContact[]> {
   const organizationId = await requireOrganizationId();
-  await requireCampaignForOrganization(campaignId, organizationId);
+  const campaign = await requireCampaignForOrganization(
+    campaignId,
+    organizationId,
+  );
   const query = search?.trim() || undefined;
 
   const { listActiveNormalizedEmails, contactMatchesSuppressionSet } =
@@ -529,10 +537,16 @@ export async function searchAvailableCampaignContacts(
   const rows = await prisma.contact.findMany({
     where: {
       organizationId,
+      ownerUserId: campaign.ownerUserId,
       archivedAt: null,
       normalizedEmail: { not: null },
       memberships: {
-        some: { contactList: { archivedAt: null } },
+        some: {
+          contactList: {
+            archivedAt: null,
+            ownerUserId: campaign.ownerUserId,
+          },
+        },
       },
       campaignContacts: {
         none: { organizationId, campaignId },
@@ -624,6 +638,7 @@ export async function listCompatibleScoringRuns(
 async function insertCampaignContacts(input: {
   organizationId: string;
   campaignId: string;
+  ownerUserId: string;
   contactIds: string[];
 }): Promise<number> {
   const contactIds = Array.from(
@@ -636,6 +651,7 @@ async function insertCampaignContacts(input: {
   const contacts = await prisma.contact.findMany({
     where: {
       organizationId: input.organizationId,
+      ownerUserId: input.ownerUserId,
       id: { in: contactIds },
       archivedAt: null,
     },
@@ -736,6 +752,7 @@ export async function addContactsToCampaign(input: {
   return insertCampaignContacts({
     organizationId,
     campaignId: campaign.id,
+    ownerUserId: campaign.ownerUserId,
     contactIds: input.contactIds,
   });
 }
@@ -760,11 +777,19 @@ export async function addScoringRunContactsToCampaign(input: {
       id: input.scoringRunId,
       ...(await compatibleScoringRunWhere(campaign, organizationId)),
     },
-    select: { id: true },
+    select: {
+      id: true,
+      contactList: { select: { ownerUserId: true } },
+    },
   });
   if (!run) {
     throw new TenantError(
       "Scoring run does not match this campaign in the active organization.",
+    );
+  }
+  if (run.contactList.ownerUserId !== campaign.ownerUserId) {
+    throw new TenantError(
+      "The scoring run and campaign belong to different users.",
     );
   }
   const { assertCampaignNotArchived } = await import(
@@ -810,6 +835,7 @@ export async function addScoringRunContactsToCampaign(input: {
   return insertCampaignContacts({
     organizationId,
     campaignId: campaign.id,
+    ownerUserId: campaign.ownerUserId,
     contactIds,
   });
 }

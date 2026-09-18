@@ -65,7 +65,10 @@ export default async function CampaignsPage({
       view: effectiveView,
       userId: user.id,
     }),
-    getHomeWorkflow(organization.id),
+    getHomeWorkflow(organization.id, {
+      userId: user.id,
+      canViewAllRepWork: canManageCampaigns,
+    }),
   ]);
 
   const canCreate = workflow.campaignProducts.length > 0;

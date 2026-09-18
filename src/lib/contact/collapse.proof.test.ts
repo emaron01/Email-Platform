@@ -85,6 +85,7 @@ describe.skipIf(!hasDatabase)(
       const list1 = await prisma.contactList.create({
         data: {
           organizationId: orgId,
+          ownerUserId: user.id,
           name: `Proof L1 ${suffix}`,
           sourceType: "PASTE",
           totalContacts: 1,
@@ -93,6 +94,7 @@ describe.skipIf(!hasDatabase)(
       const list2 = await prisma.contactList.create({
         data: {
           organizationId: orgId,
+          ownerUserId: user.id,
           name: `Proof L2 ${suffix}`,
           sourceType: "UPLOAD",
           totalContacts: 1,
@@ -123,6 +125,7 @@ describe.skipIf(!hasDatabase)(
       const older = await prisma.contact.create({
         data: {
           organizationId: orgId,
+          ownerUserId: user.id,
           email: emailPlain,
           normalizedEmail: null,
           firstName: "Alex",
@@ -142,6 +145,7 @@ describe.skipIf(!hasDatabase)(
       const newer = await prisma.contact.create({
         data: {
           organizationId: orgId,
+          ownerUserId: user.id,
           email: emailPlus,
           normalizedEmail: null,
           firstName: "Alex",
@@ -182,6 +186,7 @@ describe.skipIf(!hasDatabase)(
       const campaignA = await prisma.campaign.create({
         data: {
           organizationId: orgId,
+          ownerUserId: user.id,
           name: `Campaign A ${suffix}`,
           productId: product.id,
           icpId: icp.id,
@@ -194,6 +199,7 @@ describe.skipIf(!hasDatabase)(
       const campaignB = await prisma.campaign.create({
         data: {
           organizationId: orgId,
+          ownerUserId: user.id,
           name: `Campaign B ${suffix}`,
           productId: product.id,
           icpId: icp.id,
@@ -207,6 +213,7 @@ describe.skipIf(!hasDatabase)(
       const campaignShared = await prisma.campaign.create({
         data: {
           organizationId: orgId,
+          ownerUserId: user.id,
           name: `Campaign Shared ${suffix}`,
           productId: product.id,
           icpId: icp.id,

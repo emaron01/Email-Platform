@@ -11,7 +11,10 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
-import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
+import {
+  assertCanModifyOwnedWork,
+  getWorkActor,
+} from "@/lib/work/ownership";
 
 type Tx = Prisma.TransactionClient;
 
@@ -52,14 +55,22 @@ export async function deleteOrArchiveContact(contactId: string): Promise<{
   mode: "deleted" | "archived";
   message: string;
 }> {
-  const organizationId = await requireOrganizationId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const existing = await prisma.contact.findFirst({
     where: { id: contactId, organizationId },
-    select: { id: true, archivedAt: true, email: true, normalizedEmail: true },
+    select: {
+      id: true,
+      ownerUserId: true,
+      archivedAt: true,
+      email: true,
+      normalizedEmail: true,
+    },
   });
   if (!existing) {
     throw new TenantError("Contact not found in the active organization.");
   }
+  assertCanModifyOwnedWork(actor, existing.ownerUserId, "Contact");
 
   const decision = await decideContactDelete(organizationId, existing.id);
 

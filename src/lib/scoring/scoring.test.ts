@@ -18,6 +18,7 @@ describe.skipIf(!hasDatabase)("scoring framework", () => {
   let listAId = "";
   let contactAId = "";
   let contactBId = "";
+  let ownerAId = "";
 
   beforeAll(async () => {
     const { PrismaClient } = await import("@prisma/client");
@@ -52,6 +53,25 @@ describe.skipIf(!hasDatabase)("scoring framework", () => {
     });
     orgAId = orgA.id;
     orgBId = orgB.id;
+    const ownerA = await prisma.user.create({
+      data: {
+        email: `score-owner-a-${suffix}@example.test`,
+        emailNormalized: `score-owner-a-${suffix}@example.test`,
+      },
+    });
+    ownerAId = ownerA.id;
+    const ownerB = await prisma.user.create({
+      data: {
+        email: `score-owner-b-${suffix}@example.test`,
+        emailNormalized: `score-owner-b-${suffix}@example.test`,
+      },
+    });
+    await prisma.organizationMembership.createMany({
+      data: [
+        { organizationId: orgAId, userId: ownerA.id, role: "OWNER" },
+        { organizationId: orgBId, userId: ownerB.id, role: "OWNER" },
+      ],
+    });
 
     const productA = await prisma.product.create({
       data: { organizationId: orgAId, name: `[TEST] Score Product A ${suffix}` },
@@ -99,6 +119,7 @@ describe.skipIf(!hasDatabase)("scoring framework", () => {
     const listA = await prisma.contactList.create({
       data: {
         organizationId: orgAId,
+        ownerUserId: ownerA.id,
         name: `[TEST] Score List A ${suffix}`,
         sourceType: "PASTE",
         totalContacts: 1,
@@ -119,6 +140,7 @@ describe.skipIf(!hasDatabase)("scoring framework", () => {
     const listB = await prisma.contactList.create({
       data: {
         organizationId: orgBId,
+        ownerUserId: ownerB.id,
         name: `[TEST] Score List B ${suffix}`,
         sourceType: "UPLOAD",
         totalContacts: 1,
@@ -312,6 +334,7 @@ describe.skipIf(!hasDatabase)("scoring framework", () => {
     const campaign = await prisma.campaign.create({
       data: {
         organizationId: orgAId,
+        ownerUserId: ownerAId,
         name: `[TEST] Score Campaign`,
         productId: productAId,
         icpId: icpAId,

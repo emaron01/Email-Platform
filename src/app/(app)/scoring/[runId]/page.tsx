@@ -106,6 +106,7 @@ export default async function ScoringReportPage({
     : null;
 
   const membership = await getMembershipForCurrentUser(organization.id);
+  const readOnly = run.contactList.ownerUserId !== membership.user.id;
   const [
     rows,
     researchPlan,
@@ -128,7 +129,9 @@ export default async function ScoringReportPage({
       sort,
       sortDir,
     }),
-    getCompaniesNeedingResearchForScoringRun(runId),
+    getCompaniesNeedingResearchForScoringRun(runId, {
+      associateMissing: !readOnly,
+    }),
     getScoringReadiness(runId),
     listPersonas(run.productId),
     listTitleSuggestionsForRun(runId),
@@ -167,7 +170,7 @@ export default async function ScoringReportPage({
     (row) => readQualificationBucket(row.assessmentData) === "EXCLUDED",
   ).length;
 
-  const backToCampaignButton = campaign ? (
+  const backToCampaignButton = campaign && !readOnly ? (
     <SaveAndReturnToCampaignButton
       campaignId={campaign.id}
       scoringRunId={run.id}
@@ -198,6 +201,12 @@ export default async function ScoringReportPage({
           </div>
         }
       />
+      {readOnly ? (
+        <div className="mb-6 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          Manager access is read-only. This scoring run belongs to{" "}
+          {run.contactList.owner.name?.trim() || run.contactList.owner.email}.
+        </div>
+      ) : null}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Meta label="Run" value={runTitle} />
@@ -216,10 +225,16 @@ export default async function ScoringReportPage({
           title="AI Scoring"
           description="Qualifies contacts using company ICP criteria and persona title fit. Contact role research runs when you generate email, not during scoring."
         >
-          <ScoreContactsPanel
-            runId={run.id}
-            readiness={scoringReadiness}
-          />
+          {readOnly ? (
+            <p className="text-sm text-slate-600">
+              Only the list owner can run or rerun scoring.
+            </p>
+          ) : (
+            <ScoreContactsPanel
+              runId={run.id}
+              readiness={scoringReadiness}
+            />
+          )}
         </Panel>
       </div>
 
@@ -228,7 +243,12 @@ export default async function ScoringReportPage({
           title="Company Research"
           description="Research is company-level and reusable across contacts, lists, and scoring runs in this organization."
         >
-          <ResearchRunPanel
+          {readOnly ? (
+            <p className="text-sm text-slate-600">
+              Only the list owner can start or retry research.
+            </p>
+          ) : (
+            <ResearchRunPanel
             runId={run.id}
             researchAiConfigured={isResearchAiConfigured()}
             allowance={researchAllowance}
@@ -244,7 +264,8 @@ export default async function ScoringReportPage({
               needingResearch: researchPlan.needingResearch,
               statusCounts: researchPlan.statusCounts,
             }}
-          />
+            />
+          )}
         </Panel>
       </div>
 
@@ -297,7 +318,8 @@ export default async function ScoringReportPage({
         </Panel>
       </div>
 
-      {titleSuggestions.some((row) => row.status === "PENDING") ? (
+      {!readOnly &&
+      titleSuggestions.some((row) => row.status === "PENDING") ? (
         <div className="mb-6">
           <Panel
             title="Unmatched titles"
@@ -423,6 +445,7 @@ export default async function ScoringReportPage({
             name: persona.name,
           }))}
           mandatorySuggestions={mandatorySuggestions}
+          readOnly={readOnly}
           rows={rows.map((row) => ({
             id: row.id,
             contactId: row.contactId,
@@ -476,7 +499,7 @@ export default async function ScoringReportPage({
         />
       </div>
 
-      {campaign ? (
+      {campaign && !readOnly ? (
         <div className="mt-8 flex justify-start">
           <SaveAndReturnToCampaignButton
             campaignId={campaign.id}

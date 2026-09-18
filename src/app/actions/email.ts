@@ -96,18 +96,24 @@ function revalidateCampaign(campaignId: string): void {
 async function persistChosenPersonaForGeneration(
   campaignContactId: string,
   organizationId: string,
+  userId: string,
   personaId: string,
 ): Promise<void> {
   const row = await prisma.campaignContact.findFirst({
     where: { id: campaignContactId, organizationId },
     select: {
       chosenPersonaId: true,
-      campaign: { select: { productId: true } },
+      campaign: { select: { productId: true, ownerUserId: true } },
     },
   });
   if (!row) {
     throw new TenantError(
       "Campaign contact was not found in the active organization.",
+    );
+  }
+  if (row.campaign.ownerUserId !== userId) {
+    throw new TenantError(
+      "This campaign is read-only because it belongs to another user.",
     );
   }
   if (row.chosenPersonaId === personaId) return;
@@ -170,6 +176,7 @@ export async function generateEmailDraftAction(
       await persistChosenPersonaForGeneration(
         campaignContactId,
         organizationId,
+        user.id,
         normalizedPersonaId,
       );
     }

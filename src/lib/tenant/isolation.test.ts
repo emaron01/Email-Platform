@@ -13,6 +13,8 @@ describe.skipIf(!hasDatabase)("tenant isolation", () => {
   let productBId = "";
   let icpAId = "";
   let personaAId = "";
+  let ownerAId = "";
+  let ownerBId = "";
   let contactBId = "";
   let campaignAId = "";
 
@@ -50,6 +52,26 @@ describe.skipIf(!hasDatabase)("tenant isolation", () => {
     });
     orgAId = orgA.id;
     orgBId = orgB.id;
+    const ownerA = await prisma.user.create({
+      data: {
+        email: `isolation-owner-a-${suffix}@example.test`,
+        emailNormalized: `isolation-owner-a-${suffix}@example.test`,
+      },
+    });
+    const ownerB = await prisma.user.create({
+      data: {
+        email: `isolation-owner-b-${suffix}@example.test`,
+        emailNormalized: `isolation-owner-b-${suffix}@example.test`,
+      },
+    });
+    ownerAId = ownerA.id;
+    ownerBId = ownerB.id;
+    await prisma.organizationMembership.createMany({
+      data: [
+        { organizationId: orgAId, userId: ownerAId, role: "OWNER" },
+        { organizationId: orgBId, userId: ownerBId, role: "OWNER" },
+      ],
+    });
 
     const productA = await prisma.product.create({
       data: {
@@ -87,6 +109,7 @@ describe.skipIf(!hasDatabase)("tenant isolation", () => {
     const listB = await prisma.contactList.create({
       data: {
         organizationId: orgBId,
+        ownerUserId: ownerBId,
         name: `[TEST] List B ${suffix}`,
         sourceType: "PASTE",
         totalContacts: 1,
@@ -105,6 +128,7 @@ describe.skipIf(!hasDatabase)("tenant isolation", () => {
     const campaignA = await prisma.campaign.create({
       data: {
         organizationId: orgAId,
+        ownerUserId: ownerAId,
         name: `[TEST] Campaign A ${suffix}`,
         productId: productAId,
         icpId: icpAId,
@@ -182,6 +206,7 @@ describe.skipIf(!hasDatabase)("tenant isolation", () => {
         return prisma.campaign.create({
           data: {
             organizationId: orgAId,
+            ownerUserId: ownerAId,
             name: "Should not create",
             productId: productBId,
             icpId: icpAId,

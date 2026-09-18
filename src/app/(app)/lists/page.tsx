@@ -19,6 +19,7 @@ import {
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { getActiveResearchedCompanyUsage } from "@/lib/usage/quota";
 import { formatDate, formatNumber } from "@/lib/utils";
+import { canViewAllRepWork } from "@/lib/work/ownership";
 
 export default async function ListsPage({
   searchParams,
@@ -54,6 +55,7 @@ export default async function ListsPage({
       campaignId ? getCampaignForListWorkflow(campaignId) : Promise.resolve(null),
     ]);
   const workflowCampaignId = campaign?.id ?? null;
+  const showOwners = canViewAllRepWork(membership.membership.role);
 
   return (
     <div>
@@ -107,6 +109,9 @@ export default async function ListsPage({
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-medium">List Name</th>
+                {showOwners ? (
+                  <th className="px-4 py-3 font-medium">Owner</th>
+                ) : null}
                 <th className="px-4 py-3 font-medium">Source</th>
                 <th className="px-4 py-3 font-medium">Filename</th>
                 <th className="px-4 py-3 font-medium">Total Contacts</th>
@@ -131,6 +136,11 @@ export default async function ListsPage({
                       </span>
                     ) : null}
                   </td>
+                  {showOwners ? (
+                    <td className="px-4 py-3 text-slate-600">
+                      {list.owner.name?.trim() || list.owner.email}
+                    </td>
+                  ) : null}
                   <td className="px-4 py-3 text-slate-600">{list.sourceType}</td>
                   <td className="px-4 py-3 text-slate-600">
                     {list.originalFilename ?? "—"}

@@ -84,6 +84,7 @@ export default async function ListDetailPage({
   }
 
   const membership = await getMembershipForCurrentUser(organization.id);
+  const readOnly = list.ownerUserId !== membership.user.id;
   const [
     companyGroups,
     researchPlan,
@@ -97,8 +98,14 @@ export default async function ListDetailPage({
     latestResearchRun,
     campaign,
   ] = await Promise.all([
-    getContactListCompanyGroups(id, { page, pageSize: 25 }),
-    getCompaniesNeedingResearchForContactList(id),
+    getContactListCompanyGroups(id, {
+      page,
+      pageSize: 25,
+      associateMissing: !readOnly,
+    }),
+    getCompaniesNeedingResearchForContactList(id, {
+      associateMissing: !readOnly,
+    }),
     listScoringRunsForList(id),
     listProducts(),
     listIcps(),
@@ -147,7 +154,12 @@ export default async function ListDetailPage({
         } · ${formatNumber(list.totalContacts)} contacts · imported ${formatDate(list.createdAt)}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            {listArchived ? (
+            {readOnly ? (
+              <span className="self-center text-sm font-medium text-slate-600">
+                Read-only · owned by{" "}
+                {list.owner.name?.trim() || list.owner.email}
+              </span>
+            ) : listArchived ? (
               <UnarchiveForm
                 action={unarchiveContactListAction}
                 id={list.id}
@@ -182,21 +194,23 @@ export default async function ListDetailPage({
                 />
               </>
             )}
-            <ConfirmDeleteForm
-              action={deleteContactListAction}
-              hiddenFields={{ id: list.id, redirectTo: listsHref }}
-              triggerLabel="Delete list"
-              confirmTitle={`Delete list "${list.name}"?`}
-              confirmBody={listDeleteConfirmBody(deleteDecision)}
-              confirmButtonLabel={
-                deleteDecision.mode === "delete"
-                  ? "Delete list"
-                  : deleteDecision.mode === "archive"
-                    ? "Archive list"
-                    : "Cannot delete"
-              }
-              onSuccessNavigate={listsHref}
-            />
+            {!readOnly ? (
+              <ConfirmDeleteForm
+                action={deleteContactListAction}
+                hiddenFields={{ id: list.id, redirectTo: listsHref }}
+                triggerLabel="Delete list"
+                confirmTitle={`Delete list "${list.name}"?`}
+                confirmBody={listDeleteConfirmBody(deleteDecision)}
+                confirmButtonLabel={
+                  deleteDecision.mode === "delete"
+                    ? "Delete list"
+                    : deleteDecision.mode === "archive"
+                      ? "Archive list"
+                      : "Cannot delete"
+                }
+                onSuccessNavigate={listsHref}
+              />
+            ) : null}
             <Link
               href={listsHref}
               className={SECONDARY_BUTTON_CLASS}
@@ -219,7 +233,13 @@ export default async function ListDetailPage({
           title="Company Research"
           description="Research runs once per unique company on this list. Results appear below grouped by company — qualification scoring stays on the score report."
         >
-          <ResearchRunPanel
+          {readOnly ? (
+            <p className="text-sm text-slate-600">
+              Manager access is read-only. Research can only be started by the
+              list owner.
+            </p>
+          ) : (
+            <ResearchRunPanel
             contactListId={id}
             researchAiConfigured={isResearchAiConfigured()}
             allowance={researchAllowance}
@@ -235,7 +255,8 @@ export default async function ListDetailPage({
               needingResearch: researchPlan.needingResearch,
               statusCounts: researchPlan.statusCounts,
             }}
-          />
+            />
+          )}
         </Panel>
       </div>
 
@@ -247,7 +268,9 @@ export default async function ListDetailPage({
           {scoringRuns.length === 0 ? (
             <p className="text-sm text-slate-600">
               No scoring runs yet.{" "}
-              {listArchived
+              {readOnly
+                ? "Only the list owner can create a scoring run."
+                : listArchived
                 ? "Unarchive this list to score it."
                 : readyProducts.length > 0 ? (
                 <Link href={scoreHref} className="underline">
@@ -304,6 +327,7 @@ export default async function ListDetailPage({
             contactListId={id}
             showIndustry={companyGroups.showIndustry}
             listArchived={listArchived}
+            readOnly={readOnly}
             suppressedEmails={suppressedEmails}
           />
 

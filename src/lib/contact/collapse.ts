@@ -1,6 +1,6 @@
 /**
- * Collapse duplicate Contact rows that share (organizationId, normalizedEmail)
- * into one Contact + ContactListMembership rows.
+ * Collapse duplicate Contact rows that share
+ * (organizationId, ownerUserId, normalizedEmail) into one Contact plus history.
  *
  * Preview mode reports what would merge without writing.
  * Apply mode writes ContactMergeAudit in its own commit BEFORE remapping /
@@ -21,6 +21,7 @@ export type CollapseFieldMerge = {
 
 export type CollapseGroupPreview = {
   organizationId: string;
+  ownerUserId: string;
   normalizedEmail: string;
   winnerContactId: string;
   loserContactIds: string[];
@@ -72,6 +73,7 @@ export async function previewContactCollapse(
     select: {
       id: true,
       organizationId: true,
+      ownerUserId: true,
       email: true,
       normalizedEmail: true,
       createdAt: true,
@@ -104,7 +106,7 @@ export async function previewContactCollapse(
       emailLess += 1;
       continue;
     }
-    const key = `${contact.organizationId}::${normalized}`;
+    const key = `${contact.organizationId}::${contact.ownerUserId}::${normalized}`;
     const bucket = byKey.get(key) ?? [];
     bucket.push(contact);
     byKey.set(key, bucket);
@@ -113,7 +115,8 @@ export async function previewContactCollapse(
   const groups: CollapseGroupPreview[] = [];
   for (const [key, rows] of byKey) {
     if (rows.length < 2) continue;
-    const [organizationId, normalizedEmail] = key.split("::") as [
+    const [organizationId, ownerUserId, normalizedEmail] = key.split("::") as [
+      string,
       string,
       string,
     ];
@@ -163,6 +166,7 @@ export async function previewContactCollapse(
     }
     groups.push({
       organizationId,
+      ownerUserId,
       normalizedEmail,
       winnerContactId: winner.id,
       loserContactIds: losers.map((row) => row.id),
@@ -189,6 +193,7 @@ export async function previewContactCollapse(
 type MergeContact = {
   id: string;
   organizationId: string;
+  ownerUserId: string;
   email: string | null;
   normalizedEmail: string | null;
   createdAt: Date;
@@ -500,6 +505,7 @@ export async function applyContactCollapse(
       where: {
         id: { in: group.contactIds },
         organizationId: group.organizationId,
+        ownerUserId: group.ownerUserId,
       },
     });
     if (rows.length < 2) continue;

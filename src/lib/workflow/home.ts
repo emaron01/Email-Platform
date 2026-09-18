@@ -77,7 +77,11 @@ function isCampaignReadyProduct(product: {
 
 export async function getHomeWorkflow(
   organizationId: string,
-  options?: { includeArchived?: boolean; userId?: string },
+  options?: {
+    includeArchived?: boolean;
+    userId?: string;
+    canViewAllRepWork?: boolean;
+  },
 ): Promise<HomeWorkflow> {
   const [products, campaigns, dueByCampaign, listCount, contactCount, mailbox] =
     await Promise.all([
@@ -114,6 +118,9 @@ export async function getHomeWorkflow(
       prisma.campaign.findMany({
         where: {
           organizationId,
+          ...(options?.userId && !options.canViewAllRepWork
+            ? { ownerUserId: options.userId }
+            : {}),
           ...(options?.includeArchived ? {} : { archivedAt: null }),
         },
         orderBy: { updatedAt: "desc" },
@@ -143,10 +150,22 @@ export async function getHomeWorkflow(
           })
         : Promise.resolve([] as CampaignDueSummary[]),
       prisma.contactList.count({
-        where: { organizationId, archivedAt: null },
+        where: {
+          organizationId,
+          ...(options?.userId && !options.canViewAllRepWork
+            ? { ownerUserId: options.userId }
+            : {}),
+          archivedAt: null,
+        },
       }),
       prisma.contact.count({
-        where: { organizationId, archivedAt: null },
+        where: {
+          organizationId,
+          ...(options?.userId && !options.canViewAllRepWork
+            ? { ownerUserId: options.userId }
+            : {}),
+          archivedAt: null,
+        },
       }),
       options?.userId
         ? getMailboxConnectionView({

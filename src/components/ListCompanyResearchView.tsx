@@ -72,12 +72,14 @@ export function ListCompanyResearchView({
   contactListId,
   showIndustry,
   listArchived,
+  readOnly,
   suppressedEmails,
 }: {
   groups: ContactListCompanyGroup[];
   contactListId: string;
   showIndustry: boolean;
   listArchived: boolean;
+  readOnly: boolean;
   suppressedEmails: Set<string>;
 }) {
   return (
@@ -159,7 +161,7 @@ export function ListCompanyResearchView({
                     <p className="text-sm text-slate-600">
                       Company research has not been run yet.
                     </p>
-                    {!listArchived ? (
+                    {!listArchived && !readOnly ? (
                       <RefreshCompanyResearchForm
                         companyId={group.companyId}
                         contactListId={contactListId}
@@ -219,7 +221,7 @@ export function ListCompanyResearchView({
                         {contact.title ?? "—"}
                       </td>
                       <td className="px-4 py-2.5 sm:px-5">
-                        {contact.email && !listArchived ? (
+                        {contact.email && !listArchived && !readOnly ? (
                           <SuppressContactForm
                             contactId={contact.id}
                             email={contact.email}

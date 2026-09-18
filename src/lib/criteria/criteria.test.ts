@@ -549,6 +549,7 @@ describe.skipIf(!hasDatabase)(
       const list = await prisma.contactList.create({
         data: {
           organizationId: a.organization.id,
+          ownerUserId: a.user.id,
           name: `List ${suffix}`,
         },
       });
@@ -623,6 +624,7 @@ describe.skipIf(!hasDatabase)(
       const list = await prisma.contactList.create({
         data: {
           organizationId: ws.organization.id,
+          ownerUserId: ws.user.id,
           name: `Score List ${suffix}`,
           totalContacts: 1,
         },

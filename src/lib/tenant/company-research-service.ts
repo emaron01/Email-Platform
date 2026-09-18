@@ -385,6 +385,7 @@ export async function setContactCompany(
 
 export async function getCompaniesNeedingResearchForContactList(
   contactListId: string,
+  options?: { associateMissing?: boolean },
 ): Promise<ResearchPlanSummary> {
   const organizationId = await orgId();
   const list = await prisma.contactList.findFirst({
@@ -393,7 +394,9 @@ export async function getCompaniesNeedingResearchForContactList(
   });
   if (!list) notFound("Contact list");
 
-  await associateContactsForList(contactListId);
+  if (options?.associateMissing !== false) {
+    await associateContactsForList(contactListId);
+  }
 
   const contacts = await prisma.contact.findMany({
     where: {
@@ -492,6 +495,7 @@ export async function getCompaniesNeedingResearchForContactList(
 
 export async function getCompaniesNeedingResearchForScoringRun(
   scoringRunId: string,
+  options?: { associateMissing?: boolean },
 ): Promise<ResearchPlanSummary> {
   const organizationId = await orgId();
   const run = await prisma.scoringRun.findFirst({
@@ -500,7 +504,7 @@ export async function getCompaniesNeedingResearchForScoringRun(
   });
   if (!run) notFound("Scoring run");
 
-  return getCompaniesNeedingResearchForContactList(run.contactListId);
+  return getCompaniesNeedingResearchForContactList(run.contactListId, options);
 }
 
 export type ContactListGroupContact = {
@@ -525,7 +529,11 @@ export type ContactListCompanyGroup = {
 
 export async function getContactListCompanyGroups(
   contactListId: string,
-  options?: { page?: number; pageSize?: number },
+  options?: {
+    page?: number;
+    pageSize?: number;
+    associateMissing?: boolean;
+  },
 ): Promise<{
   groups: ContactListCompanyGroup[];
   totalCompanies: number;
@@ -542,7 +550,9 @@ export async function getContactListCompanyGroups(
   if (!list) notFound("Contact list");
 
   const [plan, contacts] = await Promise.all([
-    getCompaniesNeedingResearchForContactList(contactListId),
+    getCompaniesNeedingResearchForContactList(contactListId, {
+      associateMissing: options?.associateMissing,
+    }),
     prisma.contact.findMany({
       where: {
         organizationId,

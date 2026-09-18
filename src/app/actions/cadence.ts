@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireOrgAdmin, getMembershipForCurrentUser } from "@/lib/org/authz";
+import { requireOrgAdmin } from "@/lib/org/authz";
 import { requireCurrentUser, requireVerifiedForAiSpend } from "@/lib/auth/authz";
 import { requireOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { TenantError } from "@/lib/tenant/errors";
@@ -128,10 +128,6 @@ export async function stopSequenceAction(
   try {
     const user = await requireCurrentUser();
     const organization = await requireOrganization();
-    const { membership } = await getMembershipForCurrentUser(organization.id);
-    if (!membership) {
-      return { ok: false, message: "No active organization membership was found." };
-    }
     const { assertCanManageContactCadence } = await import(
       "@/lib/cadence/cadence-authz"
     );
@@ -139,7 +135,6 @@ export async function stopSequenceAction(
       campaignContactId,
       organizationId: organization.id,
       userId: user.id,
-      role: membership.role,
     });
     await stopSequenceForContact({
       campaignContactId,
@@ -160,10 +155,6 @@ export async function restoreSequenceAction(
   try {
     const user = await requireCurrentUser();
     const organization = await requireOrganization();
-    const { membership } = await getMembershipForCurrentUser(organization.id);
-    if (!membership) {
-      return { ok: false, message: "No active organization membership was found." };
-    }
     const { assertCanManageContactCadence } = await import(
       "@/lib/cadence/cadence-authz"
     );
@@ -171,7 +162,6 @@ export async function restoreSequenceAction(
       campaignContactId,
       organizationId: organization.id,
       userId: user.id,
-      role: membership.role,
     });
     await restoreSequenceForContact({
       campaignContactId,

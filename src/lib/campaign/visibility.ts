@@ -13,7 +13,7 @@ export type CampaignListViewMode =
 export type CampaignListView = CampaignListViewMode;
 
 export type CampaignVisibilityRow = {
-  ownerUserId: string | null;
+  ownerUserId: string;
   visibility: "PERSONAL" | "SHARED";
 };
 
@@ -35,7 +35,7 @@ export const canViewAllCampaigns = canSetCampaignShared;
 
 /**
  * Open campaign detail by URL.
- * MEMBER may open: own PERSONAL, SHARED templates, legacy null-owner.
+ * MEMBER may open their own campaign or a SHARED template.
  * Not another member's PERSONAL campaign.
  */
 export function canOpenCampaignDetail(input: {
@@ -44,7 +44,6 @@ export function canOpenCampaignDetail(input: {
   campaign: CampaignVisibilityRow;
 }): boolean {
   if (canViewAllCampaigns(input.role)) return true;
-  if (input.campaign.ownerUserId == null) return true;
   if (input.campaign.ownerUserId === input.userId) return true;
   if (input.campaign.visibility === "SHARED") return true;
   return false;
@@ -56,15 +55,7 @@ export function canEditCampaignTemplate(input: {
   userId: string;
   campaign: CampaignVisibilityRow;
 }): boolean {
-  if (input.campaign.visibility !== "SHARED") {
-    return (
-      input.campaign.ownerUserId == null ||
-      input.campaign.ownerUserId === input.userId ||
-      canSetCampaignShared(input.role)
-    );
-  }
-  if (input.campaign.ownerUserId === input.userId) return true;
-  return canSetCampaignShared(input.role);
+  return input.campaign.ownerUserId === input.userId;
 }
 
 export function shouldShowUseThisCampaign(input: {
@@ -88,5 +79,5 @@ export function shouldUseSharedCampaign(input: {
 export function campaignMatchesAllSharedView(
   campaign: CampaignVisibilityRow,
 ): boolean {
-  return campaign.visibility === "SHARED" || campaign.ownerUserId == null;
+  return campaign.visibility === "SHARED";
 }

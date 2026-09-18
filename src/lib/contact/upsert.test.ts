@@ -10,6 +10,7 @@ describe.skipIf(!hasDatabase)("contact upsert into list", { timeout: 60_000 }, (
   let ready = false;
   let orgId = "";
   let listId = "";
+  let ownerId = "";
   const suffix = Date.now().toString(36);
 
   beforeAll(async () => {
@@ -26,9 +27,21 @@ describe.skipIf(!hasDatabase)("contact upsert into list", { timeout: 60_000 }, (
         },
       });
       orgId = org.id;
+      const owner = await prisma.user.create({
+        data: {
+          email: `upsert-owner-${suffix}@example.test`,
+          emailNormalized: `upsert-owner-${suffix}@example.test`,
+          name: "Upsert Owner",
+        },
+      });
+      ownerId = owner.id;
+      await prisma.organizationMembership.create({
+        data: { organizationId: orgId, userId: ownerId, role: "OWNER" },
+      });
       const list = await prisma.contactList.create({
         data: {
           organizationId: orgId,
+          ownerUserId: ownerId,
           name: `Upsert list ${suffix}`,
           sourceType: "PASTE",
           totalContacts: 0,
@@ -51,6 +64,7 @@ describe.skipIf(!hasDatabase)("contact upsert into list", { timeout: 60_000 }, (
   function baseInput(overrides: Record<string, unknown> = {}) {
     return {
       organizationId: orgId,
+      ownerUserId: ownerId,
       contactListId: listId,
       firstName: "Ada",
       lastName: "Lovelace",

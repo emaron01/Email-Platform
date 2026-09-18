@@ -29,6 +29,7 @@ describe.skipIf(!hasDatabase)(
     let prisma: import("@prisma/client").PrismaClient;
     let ready = false;
     let orgA = "";
+    let ownerId = "";
     const suffix = Date.now().toString(36);
     const previousBypass = process.env.ALLOW_DEV_TENANT_BYPASS;
     const previousOrg = process.env.DEV_ORGANIZATION_ID;
@@ -52,6 +53,7 @@ describe.skipIf(!hasDatabase)(
             name: "Camp Arch Owner",
           },
         });
+        ownerId = owner.id;
         await prisma.organizationMembership.create({
           data: {
             organizationId: orgA,
@@ -92,6 +94,7 @@ describe.skipIf(!hasDatabase)(
       const campaign = await prisma.campaign.create({
         data: {
           organizationId: orgA,
+          ownerUserId: ownerId,
           name: `Live campaign ${suffix}`,
           productId: product.id,
           icpId: icp.id,

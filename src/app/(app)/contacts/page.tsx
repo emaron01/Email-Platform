@@ -18,6 +18,8 @@ import {
   listActiveNormalizedEmails,
 } from "@/lib/suppression/service";
 import { contactDisplayName, formatNumber } from "@/lib/utils";
+import { getMembershipForCurrentUser } from "@/lib/auth/authz";
+import { canViewAllRepWork } from "@/lib/work/ownership";
 
 type PageProps = {
   searchParams: Promise<{
@@ -63,6 +65,8 @@ export default async function ContactsPage({ searchParams }: PageProps) {
   const search = query.q?.trim() || undefined;
   const includeArchived = query.archived === "1";
   const includeUnlisted = query.unlisted === "1";
+  const membership = await getMembershipForCurrentUser(organization.id);
+  const showOwners = canViewAllRepWork(membership.membership.role);
 
   const [contacts, lists] = await Promise.all([
     listContacts({
@@ -181,6 +185,9 @@ export default async function ContactsPage({ searchParams }: PageProps) {
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Name</th>
+                {showOwners ? (
+                  <th className="px-4 py-3 font-medium">Owner</th>
+                ) : null}
                 <th className="px-4 py-3 font-medium">Title</th>
                 <th className="px-4 py-3 font-medium">Company</th>
                 {showIndustryColumn ? (
@@ -226,6 +233,11 @@ export default async function ContactsPage({ searchParams }: PageProps) {
                         </span>
                       ) : null}
                     </td>
+                    {showOwners ? (
+                      <td className="px-4 py-3 text-slate-600">
+                        {contact.owner.name?.trim() || contact.owner.email}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3 text-slate-600">
                       {contact.title ?? "—"}
                       {contact.previousTitle ? (
@@ -269,7 +281,8 @@ export default async function ContactsPage({ searchParams }: PageProps) {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {usable ? (
+                      {usable &&
+                      contact.ownerUserId === membership.user.id ? (
                         <SuppressContactForm
                           contactId={contact.id}
                           email={contact.email}

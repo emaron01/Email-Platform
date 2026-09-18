@@ -12,6 +12,7 @@ type Db = Prisma.TransactionClient;
 
 export type ContactUpsertInput = {
   organizationId: string;
+  ownerUserId: string;
   createdByUserId?: string | null;
   addedByUserId?: string | null;
   contactListId: string;
@@ -98,6 +99,7 @@ export async function upsertContactIntoList(
     const contact = await db.contact.create({
       data: {
         organizationId: input.organizationId,
+        ownerUserId: input.ownerUserId,
         createdByUserId: input.createdByUserId ?? null,
         normalizedEmail: null,
         firstName: input.firstName,
@@ -134,8 +136,8 @@ export async function upsertContactIntoList(
   const existing = await db.contact.findFirst({
     where: {
       organizationId: input.organizationId,
+      ownerUserId: input.ownerUserId,
       normalizedEmail,
-      archivedAt: null,
     },
   });
 
@@ -143,6 +145,7 @@ export async function upsertContactIntoList(
     const contact = await db.contact.create({
       data: {
         organizationId: input.organizationId,
+        ownerUserId: input.ownerUserId,
         createdByUserId: input.createdByUserId ?? null,
         normalizedEmail,
         firstName: input.firstName,
@@ -177,6 +180,11 @@ export async function upsertContactIntoList(
   }
 
   const { data, titleChanged } = incomingNonNullWins(existing, input);
+  if (existing.archivedAt) {
+    data.archivedAt = null;
+    data.archiveReason = null;
+    data.archivedByList = { disconnect: true };
+  }
   const contact =
     Object.keys(data).length > 0
       ? await db.contact.update({ where: { id: existing.id }, data })

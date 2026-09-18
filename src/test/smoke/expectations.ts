@@ -38,7 +38,7 @@ const ROUTE_EXPECTATIONS: Record<string, SmokeExpectation> = {
   },
   "/forgot-password": { mustInclude: "Forgot password", public: true },
   "/reset-password": { mustInclude: "Reset password", public: true },
-  "/invite/accept": { mustInclude: "Create account", public: true },
+  "/invite/accept": { mustInclude: "Invalid invitation", public: true },
   "/": { mustInclude: "data-testid=\"app-sidebar\"" },
   "/campaigns": { mustInclude: "Campaigns" },
   "/campaigns/new": { mustInclude: "New campaign" },

@@ -9,6 +9,7 @@ describe.skipIf(!hasDatabase)("contact collapse", { timeout: 60_000 }, () => {
   let prisma: import("@prisma/client").PrismaClient;
   let ready = false;
   let orgId = "";
+  let ownerId = "";
   const suffix = Date.now().toString(36);
 
   beforeAll(async () => {
@@ -25,6 +26,17 @@ describe.skipIf(!hasDatabase)("contact collapse", { timeout: 60_000 }, () => {
         },
       });
       orgId = org.id;
+      const owner = await prisma.user.create({
+        data: {
+          email: `collapse-owner-${suffix}@example.test`,
+          emailNormalized: `collapse-owner-${suffix}@example.test`,
+          name: "Collapse Owner",
+        },
+      });
+      ownerId = owner.id;
+      await prisma.organizationMembership.create({
+        data: { organizationId: orgId, userId: ownerId, role: "OWNER" },
+      });
       ready = true;
     } catch (e) {
       console.warn("Skipping contact collapse DB tests — run db:test:migrate:", e);
@@ -44,6 +56,7 @@ describe.skipIf(!hasDatabase)("contact collapse", { timeout: 60_000 }, () => {
     const list1 = await prisma.contactList.create({
       data: {
         organizationId: orgId,
+        ownerUserId: ownerId,
         name: `Collapse L1 ${suffix}`,
         sourceType: "PASTE",
         totalContacts: 1,
@@ -52,6 +65,7 @@ describe.skipIf(!hasDatabase)("contact collapse", { timeout: 60_000 }, () => {
     const list2 = await prisma.contactList.create({
       data: {
         organizationId: orgId,
+        ownerUserId: ownerId,
         name: `Collapse L2 ${suffix}`,
         sourceType: "UPLOAD",
         totalContacts: 1,
@@ -63,6 +77,7 @@ describe.skipIf(!hasDatabase)("contact collapse", { timeout: 60_000 }, () => {
     const older = await prisma.contact.create({
       data: {
         organizationId: orgId,
+        ownerUserId: ownerId,
         email: sharedEmail,
         normalizedEmail: null,
         firstName: "Winner",
@@ -79,6 +94,7 @@ describe.skipIf(!hasDatabase)("contact collapse", { timeout: 60_000 }, () => {
     const newer = await prisma.contact.create({
       data: {
         organizationId: orgId,
+        ownerUserId: ownerId,
         email: sharedEmail,
         normalizedEmail: null,
         firstName: "Loser",

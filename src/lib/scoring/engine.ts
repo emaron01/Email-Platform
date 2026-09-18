@@ -15,10 +15,11 @@ import type {
 } from "@/lib/scoring/types";
 import { prisma } from "@/lib/prisma";
 import { getResearchPolicy } from "@/lib/usage/policy-service";
+import { TenantError } from "@/lib/tenant/getCurrentOrganization";
 import {
-  requireOrganizationId,
-  TenantError,
-} from "@/lib/tenant/getCurrentOrganization";
+  assertCanModifyOwnedWork,
+  getWorkActor,
+} from "@/lib/work/ownership";
 
 export {
   scoreSingleContact,
@@ -84,9 +85,16 @@ export async function getScoringReadiness(scoringRunId: string): Promise<{
   contactResearchEnabled: boolean;
   unconfiguredRoleLabels: string[];
 }> {
-  const organizationId = await requireOrganizationId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const run = await prisma.scoringRun.findFirst({
-    where: { id: scoringRunId, organizationId },
+    where: {
+      id: scoringRunId,
+      organizationId,
+      ...(actor.canViewAll
+        ? {}
+        : { contactList: { ownerUserId: actor.userId } }),
+    },
     select: { id: true, contactListId: true },
   });
   if (!run)
@@ -160,14 +168,17 @@ export async function runScoringForRun(
   scoringRunId: string,
   options?: RunScoringOptions,
 ): Promise<RunScoringSummary> {
-  const organizationId = await requireOrganizationId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
 
   const run = await prisma.scoringRun.findFirst({
     where: { id: scoringRunId, organizationId },
+    include: { contactList: { select: { ownerUserId: true } } },
   });
   if (!run) {
     throw new TenantError("Scoring run not found in the active organization.");
   }
+  assertCanModifyOwnedWork(actor, run.contactList.ownerUserId, "Scoring run");
 
   const product = asSnapshot<ProductSnapshot>(run.productSnapshot);
   const icp = asSnapshot<IcpSnapshot>(run.icpSnapshot);

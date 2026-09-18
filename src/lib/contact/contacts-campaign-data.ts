@@ -40,6 +40,7 @@ export async function loadContactCampaignSummaries(
           productId: true,
           icpId: true,
           personaId: true,
+          ownerUserId: true,
         },
       },
       emailDrafts: {
@@ -130,6 +131,7 @@ async function qualifyContactsForCampaign(
     productId: string;
     icpId: string;
     personaId: string | null;
+    ownerUserId: string;
   },
   contactIds: string[],
 ): Promise<
@@ -218,6 +220,7 @@ async function compatibleScoringRunWhere(
     productId: string;
     icpId: string;
     personaId: string | null;
+    ownerUserId: string;
   },
   organizationId: string,
 ): Promise<Prisma.ScoringRunWhereInput> {
@@ -241,7 +244,10 @@ async function compatibleScoringRunWhere(
     productId: campaign.productId,
     icpId: campaign.icpId,
     status: { in: ["COMPLETED", "PARTIAL"] },
-    contactList: { archivedAt: null },
+    contactList: {
+      archivedAt: null,
+      ownerUserId: campaign.ownerUserId,
+    },
     OR: scoringRunPersonaWhere({
       campaignFallbackPersonaId: campaign.personaId,
       campaignInPlayPersonaIds: inPlay.map((row) => row.personaId),

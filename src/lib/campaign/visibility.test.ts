@@ -38,6 +38,13 @@ describe("campaign visibility", () => {
         userId: "u2",
         campaign: { ownerUserId: "u1", visibility: "SHARED" },
       }),
+    ).toBe(false);
+    expect(
+      canEditCampaignTemplate({
+        role: "ADMIN",
+        userId: "u2",
+        campaign: { ownerUserId: "u2", visibility: "PERSONAL" },
+      }),
     ).toBe(true);
     expect(
       shouldUseSharedCampaign({

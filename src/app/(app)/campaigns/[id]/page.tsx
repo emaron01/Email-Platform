@@ -28,6 +28,7 @@ import {
   canEditCampaignTemplate,
   canOpenCampaignDetail,
   canSetShared,
+  canViewAllCampaigns,
 } from "@/lib/campaign/visibility";
 import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 import { TenantError } from "@/lib/tenant/errors";
@@ -171,11 +172,13 @@ export default async function CampaignDetailPage({
     campaign,
   });
   const canShare = canSetShared(membershipCtx.membership.role);
+  const managerView = canViewAllCampaigns(membershipCtx.membership.role);
 
   // Shared templates expose setup, never another rep's contacts.
   const scopedContacts =
     campaign.visibility === "SHARED" &&
     campaign.ownerUserId !== user.id &&
+    !managerView &&
     !canEditTemplate
       ? []
       : campaign.contacts;
@@ -456,7 +459,7 @@ export default async function CampaignDetailPage({
         description={`Stage ${stages.find((stage) => stage.key === currentStage)?.number}: ${stages.find((stage) => stage.key === currentStage)?.label}`}
         actions={
           <>
-            {canShare && !campaignArchived ? (
+            {canShare && canEditTemplate && !campaignArchived ? (
               <CampaignVisibilityButton
                 campaignId={campaign.id}
                 visibility={campaign.visibility}
@@ -468,13 +471,13 @@ export default async function CampaignDetailPage({
             >
               Back to campaigns
             </Link>
-            {campaignArchived ? (
+            {canEditTemplate && campaignArchived ? (
               <UnarchiveForm
                 action={unarchiveCampaignAction}
                 id={campaign.id}
                 label="Unarchive campaign"
               />
-            ) : (
+            ) : canEditTemplate ? (
               <ConfirmDeleteForm
                 action={archiveCampaignAction}
                 hiddenFields={{ id: campaign.id }}
@@ -485,20 +488,26 @@ export default async function CampaignDetailPage({
                 tone="warning"
                 pendingLabel="Archiving…"
               />
+            ) : null}
+            {canEditTemplate ? (
+              <ConfirmDeleteForm
+                action={deleteCampaignAction}
+                hiddenFields={{ id: campaign.id }}
+                triggerLabel="Delete campaign"
+                confirmTitle={`Delete campaign "${campaign.name}"?`}
+                confirmBody={campaignDeleteConfirmBody({
+                  contactCount: campaign.contacts.length,
+                  draftCount: generatedEmailCount,
+                  sentCount: sentEmailCount,
+                })}
+                confirmButtonLabel="Delete campaign"
+                onSuccessNavigate="/campaigns"
+              />
+            ) : (
+              <span className="self-center text-sm font-medium text-slate-600">
+                Read-only · owned by {campaign.owner?.name?.trim() || campaign.owner?.email}
+              </span>
             )}
-            <ConfirmDeleteForm
-              action={deleteCampaignAction}
-              hiddenFields={{ id: campaign.id }}
-              triggerLabel="Delete campaign"
-              confirmTitle={`Delete campaign "${campaign.name}"?`}
-              confirmBody={campaignDeleteConfirmBody({
-                contactCount: campaign.contacts.length,
-                draftCount: generatedEmailCount,
-                sentCount: sentEmailCount,
-              })}
-              confirmButtonLabel="Delete campaign"
-              onSuccessNavigate="/campaigns"
-            />
           </>
         }
       />
@@ -718,7 +727,7 @@ export default async function CampaignDetailPage({
                 warningLimit: dailySendUsage.warningLimit,
                 limit: dailySendUsage.limit,
               }}
-              readOnly={campaignArchived}
+              readOnly={campaignArchived || !canEditTemplate}
               initialCampaignContactId={query.contact}
               contacts={stageContacts.map((campaignContact) => {
                 const contact = campaignContact.contact;
@@ -835,7 +844,7 @@ export default async function CampaignDetailPage({
           title="5 List"
           description="Get contacts into this campaign. Research and score a list first if you have not already, then add the scored run here."
         >
-          {campaignArchived ? (
+          {campaignArchived || !canEditTemplate ? (
             <div className="space-y-4">
               <div className="flex flex-col items-start gap-2">
                 <Link
@@ -846,7 +855,9 @@ export default async function CampaignDetailPage({
                 </Link>
               </div>
               <p className="text-sm text-slate-600">
-                Contacts cannot be changed while this campaign is archived.
+                {campaignArchived
+                  ? "Contacts cannot be changed while this campaign is archived."
+                  : "Manager access is read-only. Only the campaign owner can change contacts."}
               </p>
             </div>
           ) : (
@@ -891,6 +902,7 @@ export default async function CampaignDetailPage({
               emptyTitle="No company qualification results yet"
               emptyActionHref={`/campaigns/${campaign.id}?stage=list`}
               emptyActionLabel="Choose a list"
+              readOnly={!canEditTemplate}
             />
           </Panel>
         </CampaignStageShell>
@@ -909,6 +921,7 @@ export default async function CampaignDetailPage({
               emptyTitle="No contact qualification results yet"
               emptyActionHref={`/campaigns/${campaign.id}?stage=companies`}
               emptyActionLabel="Review companies"
+              readOnly={!canEditTemplate}
             />
           </Panel>
         </CampaignStageShell>

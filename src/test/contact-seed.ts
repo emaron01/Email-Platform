@@ -29,8 +29,13 @@ export async function seedContactOnList(
   input: SeedContactInput,
 ): Promise<Contact> {
   const normalizedEmail = normalizeContactEmail(input.email ?? null);
+  const list = await db.contactList.findUniqueOrThrow({
+    where: { id: input.contactListId },
+    select: { ownerUserId: true },
+  });
   const data: Prisma.ContactUncheckedCreateInput = {
     organizationId: input.organizationId,
+    ownerUserId: list.ownerUserId,
     normalizedEmail,
   };
   if (input.email !== undefined) data.email = input.email;

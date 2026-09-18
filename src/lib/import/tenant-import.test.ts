@@ -35,10 +35,21 @@ describe.skipIf(!hasDatabase)("tenant-scoped list import", () => {
         status: "ACTIVE",
       },
     });
+    const owner = await prisma.user.create({
+      data: {
+        email: `import-owner-${suffix}@example.test`,
+        emailNormalized: `import-owner-${suffix}@example.test`,
+        name: "Import Owner",
+      },
+    });
+    await prisma.organizationMembership.create({
+      data: { organizationId: orgA.id, userId: owner.id, role: "OWNER" },
+    });
 
     const listA = await prisma.contactList.create({
       data: {
         organizationId: orgA.id,
+        ownerUserId: owner.id,
         name: `[TEST] List A ${suffix}`,
         sourceType: "PASTE",
         totalContacts: 0,

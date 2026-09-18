@@ -238,6 +238,7 @@ export function ScoreReportClient({
   personas: _personas = [],
   rows,
   mandatorySuggestions = [],
+  readOnly = false,
 }: {
   runId: string;
   productId: string;
@@ -249,6 +250,7 @@ export function ScoreReportClient({
   personas?: Array<{ id: string; name: string }>;
   rows: ScoreReportClientRow[];
   mandatorySuggestions?: MandatorySuggestionView[];
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -320,10 +322,12 @@ export function ScoreReportClient({
   }, [exclusionGroups]);
 
   function keepExcluded(contactId: string) {
+    if (readOnly) return;
     setKeptExcludedIds((current) => new Set(current).add(contactId));
   }
 
   function keepExcludedMany(contactIds: string[]) {
+    if (readOnly) return;
     setKeptExcludedIds((current) => {
       const next = new Set(current);
       for (const id of contactIds) next.add(id);
@@ -332,6 +336,7 @@ export function ScoreReportClient({
   }
 
   async function restoreContact(contactId: string, bucket: QualificationBucket = "GOOD") {
+    if (readOnly) return;
     setOverridePending(true);
     setOverrideMessage(null);
     const result = await overrideQualificationBucketAction({
@@ -352,6 +357,7 @@ export function ScoreReportClient({
   }
 
   async function restoreGroup(contactIds: string[], bucket: QualificationBucket = "GOOD") {
+    if (readOnly) return;
     setOverridePending(true);
     setOverrideMessage(null);
     const result = await bulkRestoreQualificationAction({
@@ -384,6 +390,7 @@ export function ScoreReportClient({
   }
 
   function selectAllVisible() {
+    if (readOnly) return;
     setSelected(new Set(visibleIds));
   }
 
@@ -392,6 +399,7 @@ export function ScoreReportClient({
   }
 
   function submitCampaign(formData: FormData) {
+    if (readOnly) return;
     for (const contactId of selected) {
       formData.append("contactIds", contactId);
     }
@@ -600,6 +608,7 @@ export function ScoreReportClient({
                         type="checkbox"
                         checked={selected.has(row.contactId)}
                         disabled={
+                          readOnly ||
                           row.suppressed ||
                           row.scoringStatus === "SUPPRESSED" ||
                           row.scoringStatus === "UNUSABLE"

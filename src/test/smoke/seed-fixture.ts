@@ -276,6 +276,7 @@ export async function seedSmokeFixture(prisma: PrismaClient): Promise<SmokeFixtu
   const list = await prisma.contactList.create({
     data: {
       organizationId,
+      ownerUserId: appUser.id,
       name: testEntityName(`Smoke List ${suffix}`),
       sourceType: "PASTE",
       totalContacts: 1,
@@ -301,6 +302,7 @@ export async function seedSmokeFixture(prisma: PrismaClient): Promise<SmokeFixtu
   const campaign = await prisma.campaign.create({
     data: {
       organizationId,
+      ownerUserId: appUser.id,
       name: testEntityName(`Smoke Campaign ${suffix}`),
       productId: product.id,
       icpId: icp.id,

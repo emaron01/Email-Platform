@@ -93,6 +93,7 @@ export async function sendEmailDraftWithConnectedMailbox(input: {
           campaignId: true,
           contactId: true,
           contact: { select: { email: true } },
+          campaign: { select: { ownerUserId: true } },
         },
       },
     },
@@ -100,6 +101,11 @@ export async function sendEmailDraftWithConnectedMailbox(input: {
   if (!draft) {
     throw new TenantError(
       "Email draft does not belong to the active organization.",
+    );
+  }
+  if (draft.campaignContact.campaign.ownerUserId !== input.userId) {
+    throw new TenantError(
+      "This campaign is read-only because it belongs to another user.",
     );
   }
   if (draft.status === "SENT" || draft.sentAt) {

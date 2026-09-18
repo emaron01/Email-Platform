@@ -17,6 +17,7 @@ import {
   getCurrentOrganization,
   TenantError,
 } from "@/lib/tenant/getCurrentOrganization";
+import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -51,6 +52,8 @@ export default async function ScoreListPage({ params, searchParams }: PageProps)
     listPersonas(),
     campaignId ? getCampaignForListWorkflow(campaignId) : Promise.resolve(null),
   ]);
+  const membership = await getMembershipForCurrentUser(organization.id);
+  const readOnly = list.ownerUserId !== membership.user.id;
 
   const readyProducts = products.filter((product) => {
     const hasIcp = icps.some((icp) => icp.productId === product.id);
@@ -81,7 +84,12 @@ export default async function ScoreListPage({ params, searchParams }: PageProps)
         title="Create Scoring Run"
         description="No AI scoring runs yet. This creates the report framework with pending/null score fields."
       >
-        {list.archivedAt ? (
+        {readOnly ? (
+          <p className="text-sm text-slate-600">
+            Manager access is read-only. Only{" "}
+            {list.owner.name?.trim() || list.owner.email} can score this list.
+          </p>
+        ) : list.archivedAt ? (
           <p className="text-sm text-slate-600">
             This list is archived and cannot be scored until it is unarchived.
           </p>

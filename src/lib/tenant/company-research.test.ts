@@ -11,6 +11,8 @@ describe.skipIf(!hasDatabase)("company research (Phase 3B)", {
   let ready = false;
   let orgAId = "";
   let orgBId = "";
+  let ownerAId = "";
+  let ownerBId = "";
   let suffix = "";
 
   beforeAll(async () => {
@@ -48,6 +50,26 @@ describe.skipIf(!hasDatabase)("company research (Phase 3B)", {
     });
     orgAId = orgA.id;
     orgBId = orgB.id;
+    const ownerA = await prisma.user.create({
+      data: {
+        email: `research-owner-a-${suffix}@example.test`,
+        emailNormalized: `research-owner-a-${suffix}@example.test`,
+      },
+    });
+    const ownerB = await prisma.user.create({
+      data: {
+        email: `research-owner-b-${suffix}@example.test`,
+        emailNormalized: `research-owner-b-${suffix}@example.test`,
+      },
+    });
+    ownerAId = ownerA.id;
+    ownerBId = ownerB.id;
+    await prisma.organizationMembership.createMany({
+      data: [
+        { organizationId: orgAId, userId: ownerAId, role: "OWNER" },
+        { organizationId: orgBId, userId: ownerBId, role: "OWNER" },
+      ],
+    });
   });
 
   it("same tenant + same normalized domain reuses one Company", async () => {
@@ -169,6 +191,7 @@ describe.skipIf(!hasDatabase)("company research (Phase 3B)", {
     const listA = await prisma.contactList.create({
       data: {
         organizationId: orgAId,
+        ownerUserId: ownerAId,
         name: `[TEST] Attach List ${suffix}`,
         sourceType: "PASTE",
         totalContacts: 1,
@@ -408,6 +431,7 @@ describe.skipIf(!hasDatabase)("company research (Phase 3B)", {
       const list = await prisma.contactList.create({
         data: {
           organizationId: orgAId,
+          ownerUserId: ownerAId,
           name: `[TEST] Multi Contact List ${suffix}`,
           sourceType: "PASTE",
           totalContacts: 3,
@@ -500,6 +524,7 @@ describe.skipIf(!hasDatabase)("company research (Phase 3B)", {
       const list1 = await prisma.contactList.create({
         data: {
           organizationId: orgAId,
+          ownerUserId: ownerAId,
           name: `[TEST] List1 ${suffix}`,
           sourceType: "PASTE",
           totalContacts: 1,
@@ -508,6 +533,7 @@ describe.skipIf(!hasDatabase)("company research (Phase 3B)", {
       const list2 = await prisma.contactList.create({
         data: {
           organizationId: orgAId,
+          ownerUserId: ownerAId,
           name: `[TEST] List2 ${suffix}`,
           sourceType: "UPLOAD",
           totalContacts: 1,

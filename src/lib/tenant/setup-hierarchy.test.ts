@@ -13,6 +13,7 @@ describe.skipIf(!hasDatabase)("product hierarchy and campaign validation", () =>
   let icpBId = "";
   let personaA1Id = "";
   let personaBId = "";
+  let ownerAId = "";
 
   beforeAll(async () => {
     const { PrismaClient } = await import("@prisma/client");
@@ -47,6 +48,16 @@ describe.skipIf(!hasDatabase)("product hierarchy and campaign validation", () =>
     });
     orgAId = orgA.id;
     orgBId = orgB.id;
+    const owner = await prisma.user.create({
+      data: {
+        email: `hierarchy-owner-${suffix}@example.test`,
+        emailNormalized: `hierarchy-owner-${suffix}@example.test`,
+      },
+    });
+    ownerAId = owner.id;
+    await prisma.organizationMembership.create({
+      data: { organizationId: orgAId, userId: ownerAId, role: "OWNER" },
+    });
 
     const productA = await prisma.product.create({
       data: {
@@ -198,6 +209,7 @@ describe.skipIf(!hasDatabase)("product hierarchy and campaign validation", () =>
     const campaign1 = await prisma.campaign.create({
       data: {
         organizationId: orgAId,
+        ownerUserId: ownerAId,
         name: `[TEST] Campaign Offer 1`,
         productId: productAId,
         icpId: icpA1Id,
@@ -211,6 +223,7 @@ describe.skipIf(!hasDatabase)("product hierarchy and campaign validation", () =>
     const campaign2 = await prisma.campaign.create({
       data: {
         organizationId: orgAId,
+        ownerUserId: ownerAId,
         name: `[TEST] Campaign Offer 2`,
         productId: productAId,
         icpId: icpA1Id,

@@ -52,7 +52,7 @@ export async function acceptInviteAction(
  * Sign out and return to login with `next` pointing back at the invite link,
  * so the invited person can sign in (or sign up) as the invited email.
  */
-export async function logoutForInviteAction(formData: FormData): Promise<void> {
+export async function logoutForInviteAction(formData: FormData): Promise<never> {
   const nextRaw = String(formData.get("next") || "").trim();
   const next =
     nextRaw.startsWith("/invite/accept") && !nextRaw.includes("//")

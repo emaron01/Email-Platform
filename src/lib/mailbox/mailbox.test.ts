@@ -161,6 +161,7 @@ describe.skipIf(!hasDatabase)(
       const list = await prisma.contactList.create({
         data: {
           organizationId,
+          ownerUserId: userAId,
           name: "Mailbox contacts",
           sourceType: "PASTE",
           totalContacts: 1,
@@ -175,6 +176,7 @@ describe.skipIf(!hasDatabase)(
       const campaign = await prisma.campaign.create({
         data: {
           organizationId,
+          ownerUserId: userAId,
           productId: product.id,
           icpId: icp.id,
           personaId: persona.id,

@@ -8,7 +8,10 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
-import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
+import {
+  assertCanModifyOwnedWork,
+  getWorkActor,
+} from "@/lib/work/ownership";
 
 export function campaignArchiveConfirmBody(): string {
   return [
@@ -22,14 +25,16 @@ export async function archiveCampaign(id: string): Promise<{
   mode: "archived";
   message: string;
 }> {
-  const organizationId = await requireOrganizationId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const existing = await prisma.campaign.findFirst({
     where: { id, organizationId },
-    select: { id: true, archivedAt: true },
+    select: { id: true, ownerUserId: true, archivedAt: true },
   });
   if (!existing) {
     throw new TenantError("Campaign not found in the active organization.");
   }
+  assertCanModifyOwnedWork(actor, existing.ownerUserId, "Campaign");
   if (existing.archivedAt) {
     return { mode: "archived", message: "Campaign is already archived." };
   }
@@ -51,14 +56,16 @@ export async function unarchiveCampaign(id: string): Promise<{
   mode: "unarchived";
   message: string;
 }> {
-  const organizationId = await requireOrganizationId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const existing = await prisma.campaign.findFirst({
     where: { id, organizationId },
-    select: { id: true, archivedAt: true },
+    select: { id: true, ownerUserId: true, archivedAt: true },
   });
   if (!existing) {
     throw new TenantError("Campaign not found in the active organization.");
   }
+  assertCanModifyOwnedWork(actor, existing.ownerUserId, "Campaign");
   if (!existing.archivedAt) {
     return { mode: "unarchived", message: "Campaign is not archived." };
   }

@@ -187,6 +187,7 @@ describe.skipIf(!hasDatabase)(
       const list = await prisma.contactList.create({
         data: {
           organizationId: orgAId,
+          ownerUserId: owner.id,
           name: "Scored list",
           totalContacts: 3,
         },
@@ -229,6 +230,7 @@ describe.skipIf(!hasDatabase)(
       const campaign = await prisma.campaign.create({
         data: {
           organizationId: orgAId,
+          ownerUserId: owner.id,
           name: "Campaign A",
           productId: product.id,
           icpId: icp.id,
@@ -340,6 +342,7 @@ describe.skipIf(!hasDatabase)(
       const foreignList = await prisma.contactList.create({
         data: {
           organizationId: orgBId,
+          ownerUserId: owner.id,
           name: "Foreign list",
           totalContacts: 1,
         },

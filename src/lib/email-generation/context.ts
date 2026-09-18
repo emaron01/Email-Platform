@@ -273,6 +273,11 @@ export async function loadEmailGenerationContext(
       "Campaign contact was not found in the active organization.",
     );
   }
+  if (campaignContact.campaign.ownerUserId !== userId) {
+    throw new TenantError(
+      "This campaign is read-only because it belongs to another user.",
+    );
+  }
 
   const { campaign, contact } = campaignContact;
   if (

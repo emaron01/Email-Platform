@@ -22,7 +22,7 @@ import {
   snapshotPersona,
   snapshotProduct,
 } from "@/lib/scoring/snapshots";
-import { getCurrentUser } from "@/lib/auth/session";
+import { requireCurrentUser } from "@/lib/auth/session";
 import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 import {
   CAMPAIGN_LIST_VIEW_MY,
@@ -41,14 +41,18 @@ import {
   deletePersonaAssistedSetupGraph,
   deleteProductAssistedSetupGraph,
 } from "@/lib/tenant/product-persona-delete";
+import {
+  assertCanModifyOwnedWork,
+  getWorkActor,
+} from "@/lib/work/ownership";
 
 async function orgId(): Promise<string> {
   return requireOrganizationId();
 }
 
-async function currentUserId(): Promise<string | null> {
-  const user = await getCurrentUser();
-  return user?.id ?? null;
+async function currentUserId(): Promise<string> {
+  const user = await requireCurrentUser();
+  return user.id;
 }
 
 function notFound(entity: string): never {
@@ -457,23 +461,38 @@ export async function deletePersona(id: string): Promise<{
 
 // --- Contact lists ---
 
+export type ContactListWithOwner = ContactList & {
+  owner: { id: string; name: string | null; email: string };
+};
+
 export async function listContactLists(options?: {
   includeArchived?: boolean;
-}): Promise<ContactList[]> {
-  const organizationId = await orgId();
+}): Promise<ContactListWithOwner[]> {
+  const actor = await getWorkActor();
   return prisma.contactList.findMany({
     where: {
-      organizationId,
+      organizationId: actor.organizationId,
+      ...(actor.canViewAll ? {} : { ownerUserId: actor.userId }),
       ...(options?.includeArchived ? {} : { archivedAt: null }),
+    },
+    include: {
+      owner: { select: { id: true, name: true, email: true } },
     },
     orderBy: { createdAt: "desc" },
   });
 }
 
-export async function getContactList(id: string): Promise<ContactList> {
-  const organizationId = await orgId();
+export async function getContactList(id: string): Promise<ContactListWithOwner> {
+  const actor = await getWorkActor();
   const list = await prisma.contactList.findFirst({
-    where: { id, organizationId },
+    where: {
+      id,
+      organizationId: actor.organizationId,
+      ...(actor.canViewAll ? {} : { ownerUserId: actor.userId }),
+    },
+    include: {
+      owner: { select: { id: true, name: true, email: true } },
+    },
   });
   if (!list) notFound("Contact list");
   return list;
@@ -488,9 +507,14 @@ export async function getContactListContacts(
   page: number;
   pageSize: number;
 }> {
-  const organizationId = await orgId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const list = await prisma.contactList.findFirst({
-    where: { id: listId, organizationId },
+    where: {
+      id: listId,
+      organizationId,
+      ...(actor.canViewAll ? {} : { ownerUserId: actor.userId }),
+    },
     select: { id: true },
   });
   if (!list) notFound("Contact list");
@@ -525,9 +549,12 @@ export async function findExistingContactsForDuplicateCheck(): Promise<
     company: string | null;
   }>
 > {
-  const organizationId = await orgId();
+  const actor = await getWorkActor();
   return prisma.contact.findMany({
-    where: { organizationId },
+    where: {
+      organizationId: actor.organizationId,
+      ownerUserId: actor.userId,
+    },
     select: {
       email: true,
       firstName: true,
@@ -566,8 +593,9 @@ export async function importContactList(input: {
   mergedCount: number;
   titleChangedCount: number;
 }> {
-  const organizationId = await orgId();
-  const userId = await currentUserId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
+  const userId = actor.userId;
   const name = input.name.trim();
 
   if (!name) {
@@ -582,6 +610,7 @@ export async function importContactList(input: {
       const list = await tx.contactList.create({
         data: {
           organizationId,
+          ownerUserId: userId,
           name,
           sourceType: input.sourceType,
           originalFilename: input.originalFilename?.trim() || null,
@@ -599,6 +628,7 @@ export async function importContactList(input: {
       for (const contact of input.contacts) {
         const upserted = await upsertContactIntoList(tx, {
           organizationId,
+          ownerUserId: userId,
           createdByUserId: userId,
           addedByUserId: userId,
           contactListId: list.id,
@@ -662,6 +692,7 @@ export async function importContactList(input: {
 // --- Contacts ---
 
 export type ContactWithMemberships = Contact & {
+  owner: { id: string; name: string | null; email: string };
   memberships: Array<{
     contactList: { id: string; name: string; archivedAt: Date | null };
   }>;
@@ -674,7 +705,8 @@ export async function listContacts(options?: {
   includeUnlisted?: boolean;
   includeArchivedContacts?: boolean;
 }): Promise<ContactWithMemberships[]> {
-  const organizationId = await orgId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const listId = options?.listId?.trim() || undefined;
   const search = options?.search?.trim() || undefined;
   const includeUnlisted = options?.includeUnlisted === true;
@@ -682,7 +714,11 @@ export async function listContacts(options?: {
 
   if (listId) {
     const list = await prisma.contactList.findFirst({
-      where: { id: listId, organizationId },
+      where: {
+        id: listId,
+        organizationId,
+        ...(actor.canViewAll ? {} : { ownerUserId: actor.userId }),
+      },
       select: { id: true },
     });
     if (!list) notFound("Contact list");
@@ -728,10 +764,12 @@ export async function listContacts(options?: {
   return prisma.contact.findMany({
     where: {
       organizationId,
+      ...(actor.canViewAll ? {} : { ownerUserId: actor.userId }),
       ...(includeArchivedContacts ? {} : { archivedAt: null }),
       AND: [membershipFilter, ...(searchFilter ? [searchFilter] : [])],
     },
     include: {
+      owner: { select: { id: true, name: true, email: true } },
       memberships: {
         include: {
           contactList: {
@@ -747,7 +785,7 @@ export async function listContacts(options?: {
 // --- Campaigns ---
 
 export type CampaignWithRelations = Campaign & {
-  owner: { id: string; name: string | null; email: string } | null;
+  owner: { id: string; name: string | null; email: string };
   product: { id: string; name: string };
   icp: { id: string; name: string };
   persona: { id: string; name: string } | null;
@@ -784,10 +822,7 @@ export async function listCampaigns(options?: {
   let visibilityWhere: Prisma.CampaignWhereInput = {};
   if (view === CAMPAIGN_LIST_VIEW_MY) {
     visibilityWhere = {
-      OR: [
-        { ownerUserId: userId },
-        { ownerUserId: null },
-      ],
+      ownerUserId: userId,
     };
   } else if (view === CAMPAIGN_LIST_VIEW_SHARED_ALL) {
     // Managers need a complete org-wide campaign index. Members see only
@@ -835,7 +870,8 @@ export async function createCampaign(input: {
   contactIds?: string[];
   status?: CampaignStatus;
 }): Promise<Campaign> {
-  const organizationId = await orgId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
 
   const inPlayIds = Array.from(
     new Set((input.personaIds ?? []).map((id) => id.trim()).filter(Boolean)),
@@ -904,6 +940,7 @@ export async function createCampaign(input: {
     const contacts = await prisma.contact.findMany({
       where: {
         organizationId,
+        ownerUserId: actor.userId,
         id: { in: contactIds },
         archivedAt: null,
       },
@@ -957,7 +994,7 @@ export async function createCampaign(input: {
     }
   }
 
-  const actorUserId = await currentUserId();
+  const actorUserId = actor.userId;
 
   return prisma.$transaction(async (tx) => {
     const campaign = await tx.campaign.create({
@@ -1013,12 +1050,14 @@ export async function deleteCampaign(id: string): Promise<{
   message: string;
   impact: CampaignDeleteImpact;
 }> {
-  const organizationId = await orgId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const existing = await prisma.campaign.findFirst({
     where: { id, organizationId },
-    select: { id: true },
+    select: { id: true, ownerUserId: true },
   });
   if (!existing) notFound("Campaign");
+  assertCanModifyOwnedWork(actor, existing.ownerUserId, "Campaign");
 
   const impact = await prisma.$transaction((tx) =>
     deleteCampaignGraph(tx, organizationId, existing.id),
@@ -1060,9 +1099,13 @@ export async function getCampaignForListWorkflow(campaignId: string): Promise<{
   icpId: string;
   personaId: string | null;
 } | null> {
-  const organizationId = await orgId();
+  const actor = await getWorkActor();
   return prisma.campaign.findFirst({
-    where: { id: campaignId, organizationId },
+    where: {
+      id: campaignId,
+      organizationId: actor.organizationId,
+      ownerUserId: actor.userId,
+    },
     select: {
       id: true,
       name: true,
@@ -1076,7 +1119,12 @@ export async function getCampaignForListWorkflow(campaignId: string): Promise<{
 // --- Scoring ---
 
 export type ScoringRunWithRelations = ScoringRun & {
-  contactList: { id: string; name: string };
+  contactList: {
+    id: string;
+    name: string;
+    ownerUserId: string;
+    owner: { id: string; name: string | null; email: string };
+  };
   product: { id: string; name: string };
   icp: { id: string; name: string };
   persona: { id: string; name: string } | null;
@@ -1085,9 +1133,14 @@ export type ScoringRunWithRelations = ScoringRun & {
 export async function listScoringRunsForList(
   contactListId: string,
 ): Promise<ScoringRunWithRelations[]> {
-  const organizationId = await orgId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const list = await prisma.contactList.findFirst({
-    where: { id: contactListId, organizationId },
+    where: {
+      id: contactListId,
+      organizationId,
+      ...(actor.canViewAll ? {} : { ownerUserId: actor.userId }),
+    },
     select: { id: true },
   });
   if (!list) notFound("Contact list");
@@ -1095,7 +1148,14 @@ export async function listScoringRunsForList(
   return prisma.scoringRun.findMany({
     where: { organizationId, contactListId },
     include: {
-      contactList: { select: { id: true, name: true } },
+      contactList: {
+        select: {
+          id: true,
+          name: true,
+          ownerUserId: true,
+          owner: { select: { id: true, name: true, email: true } },
+        },
+      },
       product: { select: { id: true, name: true } },
       icp: { select: { id: true, name: true } },
       persona: { select: { id: true, name: true } },
@@ -1105,11 +1165,25 @@ export async function listScoringRunsForList(
 }
 
 export async function getScoringRun(runId: string): Promise<ScoringRunWithRelations> {
-  const organizationId = await orgId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const run = await prisma.scoringRun.findFirst({
-    where: { id: runId, organizationId },
+    where: {
+      id: runId,
+      organizationId,
+      ...(actor.canViewAll
+        ? {}
+        : { contactList: { ownerUserId: actor.userId } }),
+    },
     include: {
-      contactList: { select: { id: true, name: true } },
+      contactList: {
+        select: {
+          id: true,
+          name: true,
+          ownerUserId: true,
+          owner: { select: { id: true, name: true, email: true } },
+        },
+      },
       product: { select: { id: true, name: true } },
       icp: { select: { id: true, name: true } },
       persona: { select: { id: true, name: true } },
@@ -1127,7 +1201,8 @@ export async function createScoringRun(input: {
   /** When set, stamps label + sourceCampaignId for campaign round-trip UX. */
   campaignId?: string | null;
 }): Promise<ScoringRun> {
-  const organizationId = await orgId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
 
   const [list, product, icp, sourceCampaign] = await Promise.all([
     prisma.contactList.findFirst({
@@ -1142,13 +1217,22 @@ export async function createScoringRun(input: {
     input.campaignId
       ? prisma.campaign.findFirst({
           where: { id: input.campaignId, organizationId },
-          select: { id: true, name: true },
+          select: { id: true, name: true, ownerUserId: true },
         })
       : Promise.resolve(null),
   ]);
 
   if (!list) {
     throw new TenantError("Contact list does not belong to the active organization.");
+  }
+  assertCanModifyOwnedWork(actor, list.ownerUserId, "Contact list");
+  if (sourceCampaign) {
+    assertCanModifyOwnedWork(actor, sourceCampaign.ownerUserId, "Campaign");
+    if (sourceCampaign.ownerUserId !== list.ownerUserId) {
+      throw new TenantError(
+        "A scoring run and its campaign must belong to the same user.",
+      );
+    }
   }
   if (list.archivedAt) {
     throw new TenantError(
@@ -1188,6 +1272,7 @@ export async function createScoringRun(input: {
   const contacts = await prisma.contact.findMany({
     where: {
       organizationId,
+        ownerUserId: list.ownerUserId,
       archivedAt: null,
       memberships: { some: { contactListId: list.id } },
     },
@@ -1382,9 +1467,16 @@ export async function getScoreReportRows(
   runId: string,
   filters: ScoreReportFilters = {},
 ): Promise<ScoreReportRow[]> {
-  const organizationId = await orgId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const run = await prisma.scoringRun.findFirst({
-    where: { id: runId, organizationId },
+    where: {
+      id: runId,
+      organizationId,
+      ...(actor.canViewAll
+        ? {}
+        : { contactList: { ownerUserId: actor.userId } }),
+    },
     select: { id: true },
   });
   if (!run) notFound("Scoring run");

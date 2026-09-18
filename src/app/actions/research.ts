@@ -25,6 +25,11 @@ import {
   requireResearchRunInOrganization,
 } from "@/lib/research/runs";
 import type { ResearchRunView } from "@/lib/research/run-types";
+import {
+  assertCanModifyOwnedWork,
+  assertCanViewOwnedWork,
+  getWorkActor,
+} from "@/lib/work/ownership";
 
 function requiredString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -52,8 +57,16 @@ async function startResearchRun(input: {
   scoringRunId?: string;
   revalidatePathname: string;
 }): Promise<ResearchStartResult> {
-  const organizationId = await requireOrganizationId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
   const user = await requireCurrentUser();
+  const { prisma } = await import("@/lib/prisma");
+  const list = await prisma.contactList.findFirst({
+    where: { id: input.contactListId, organizationId },
+    select: { ownerUserId: true },
+  });
+  if (!list) throw new TenantError("Contact list was not found.");
+  assertCanModifyOwnedWork(actor, list.ownerUserId, "Contact list");
 
   const result = await createResearchRun({
     organizationId,
@@ -94,6 +107,14 @@ export async function researchCompaniesForContactListAction(
   }
 
   try {
+    const actor = await getWorkActor();
+    const { prisma } = await import("@/lib/prisma");
+    const list = await prisma.contactList.findFirst({
+      where: { id: contactListId, organizationId: actor.organizationId },
+      select: { ownerUserId: true },
+    });
+    if (!list) throw new TenantError("Contact list was not found.");
+    assertCanModifyOwnedWork(actor, list.ownerUserId, "Contact list");
     if (!forceRefresh) {
       const plan = await getCompaniesNeedingResearchForContactList(contactListId);
       if (plan.needingResearch === 0) {
@@ -134,11 +155,16 @@ export async function researchCompaniesForScoringRunAction(
     const { prisma } = await import("@/lib/prisma");
     const run = await prisma.scoringRun.findFirst({
       where: { id: scoringRunId, organizationId },
-      select: { contactListId: true },
+      select: {
+        contactListId: true,
+        contactList: { select: { ownerUserId: true } },
+      },
     });
     if (!run) {
       return { ok: false, message: "Scoring run not found." };
     }
+    const actor = await getWorkActor();
+    assertCanModifyOwnedWork(actor, run.contactList.ownerUserId, "Scoring run");
 
     if (!forceRefresh) {
       const plan = await getCompaniesNeedingResearchForScoringRun(scoringRunId);
@@ -169,14 +195,30 @@ export async function researchCompaniesForScoringRunAction(
 export async function getResearchRunStatusAction(
   runId: string,
 ): Promise<ResearchRunView | null> {
-  const organizationId = await requireOrganizationId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
+  const { prisma } = await import("@/lib/prisma");
+  const run = await prisma.researchRun.findFirst({
+    where: { id: runId, organizationId },
+    select: { contactList: { select: { ownerUserId: true } } },
+  });
+  if (!run) return null;
+  assertCanViewOwnedWork(actor, run.contactList.ownerUserId, "Research run");
   return getResearchRunForOrganization(runId, organizationId);
 }
 
 export async function getActiveResearchRunForListAction(
   contactListId: string,
 ): Promise<ResearchRunView | null> {
-  const organizationId = await requireOrganizationId();
+  const actor = await getWorkActor();
+  const organizationId = actor.organizationId;
+  const { prisma } = await import("@/lib/prisma");
+  const list = await prisma.contactList.findFirst({
+    where: { id: contactListId, organizationId },
+    select: { ownerUserId: true },
+  });
+  if (!list) return null;
+  assertCanViewOwnedWork(actor, list.ownerUserId, "Contact list");
   return getActiveResearchRunForContactList(contactListId, organizationId);
 }
 
@@ -187,6 +229,16 @@ export async function retryFailedResearchRunAction(
     const organizationId = await requireOrganizationId();
     const user = await requireCurrentUser();
     const prior = await requireResearchRunInOrganization(runId, organizationId);
+    const { prisma } = await import("@/lib/prisma");
+    const list = await prisma.contactList.findFirstOrThrow({
+      where: { id: prior.contactListId, organizationId },
+      select: { ownerUserId: true },
+    });
+    assertCanModifyOwnedWork(
+      { userId: user.id },
+      list.ownerUserId,
+      "Research run",
+    );
 
     if (!canRetryResearchRun(prior)) {
       return {
@@ -249,9 +301,19 @@ export async function refreshCompanyResearchAction(
       return { ok: false, message: "Company is required." };
     }
 
+    const contactListId = requiredString(formData, "contactListId");
+    if (contactListId) {
+      const actor = await getWorkActor();
+      const { prisma } = await import("@/lib/prisma");
+      const list = await prisma.contactList.findFirst({
+        where: { id: contactListId, organizationId: actor.organizationId },
+        select: { ownerUserId: true },
+      });
+      if (!list) throw new TenantError("Contact list was not found.");
+      assertCanModifyOwnedWork(actor, list.ownerUserId, "Contact list");
+    }
     const result = await researchCompany(companyId, { force: true });
     revalidatePath(`/companies/${companyId}`);
-    const contactListId = requiredString(formData, "contactListId");
     if (contactListId) {
       revalidatePath(`/lists/${contactListId}`);
     }

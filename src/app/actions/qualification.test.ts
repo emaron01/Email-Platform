@@ -25,7 +25,10 @@ vi.mock("@/lib/tenant/getCurrentOrganization", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     scoringRun: {
-      findFirst: async () => ({ id: "run_1" }),
+      findFirst: async () => ({
+        id: "run_1",
+        contactList: { ownerUserId: "user_1" },
+      }),
     },
     contactScore: {
       count: async () => 1,

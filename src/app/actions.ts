@@ -328,7 +328,6 @@ export async function deleteCampaignAction(
 ): Promise<CrudDeleteResult> {
   let notice: string;
   try {
-    await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
     if (!id) throw new TenantError("Campaign id is required.");
     if (requiredString(formData, "confirm") !== "1") {
@@ -356,7 +355,6 @@ export async function archiveCampaignAction(
   formData: FormData,
 ): Promise<CrudDeleteResult> {
   try {
-    await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
     if (!id) throw new TenantError("Campaign id is required.");
     if (requiredString(formData, "confirm") !== "1") {
@@ -379,7 +377,6 @@ export async function unarchiveCampaignAction(
   formData: FormData,
 ): Promise<CrudDeleteResult> {
   try {
-    await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
     if (!id) throw new TenantError("Campaign id is required.");
     const { unarchiveCampaign } = await import("@/lib/tenant/campaign-archive");
@@ -399,7 +396,6 @@ export async function archiveContactListAction(
   formData: FormData,
 ): Promise<CrudDeleteResult> {
   try {
-    await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
     if (!id) throw new TenantError("List id is required.");
     if (requiredString(formData, "confirm") !== "1") {
@@ -424,7 +420,6 @@ export async function unarchiveContactListAction(
   formData: FormData,
 ): Promise<CrudDeleteResult> {
   try {
-    await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
     if (!id) throw new TenantError("List id is required.");
     const { unarchiveContactList } = await import("@/lib/tenant/list-delete");
@@ -448,7 +443,6 @@ export async function deleteContactListAction(
   let notice: string;
   let destination: string;
   try {
-    await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
     if (!id) throw new TenantError("List id is required.");
     if (requiredString(formData, "confirm") !== "1") {

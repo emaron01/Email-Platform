@@ -25,7 +25,7 @@ const DISMISS_MAX_AGE_SEC = 60 * 60 * 24 * 30;
  */
 export async function switchActiveOrganizationAction(
   formData: FormData,
-): Promise<void> {
+): Promise<never> {
   const organizationId = String(formData.get("organizationId") || "").trim();
   if (!organizationId) {
     throw new Error("Organization is required.");
@@ -78,7 +78,7 @@ export async function dismissPersonalBillingNoticeAction(
  */
 export async function openOwnedOrgBillingPortalAction(
   formData: FormData,
-): Promise<void> {
+): Promise<never> {
   const organizationId = String(formData.get("organizationId") || "").trim();
   if (!organizationId) {
     throw new Error("Organization is required.");

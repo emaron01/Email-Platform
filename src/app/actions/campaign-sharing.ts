@@ -73,7 +73,7 @@ export async function setCampaignVisibilityAction(
       where: { id: campaignId },
       data: {
         visibility,
-        ownerUserId: campaign.ownerUserId ?? user.id,
+        ownerUserId: campaign.ownerUserId,
       },
     });
     revalidatePath("/campaigns");

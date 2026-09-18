@@ -20,6 +20,7 @@
     "db:test:migrate": "tsx scripts/migrate-test-db.ts",
     "db:contact-collapse-preview": "dotenv -e .env.local -e .env -- tsx scripts/collapse-contacts.ts --preview",
     "db:contact-collapse-apply": "dotenv -e .env.local -e .env -- tsx scripts/collapse-contacts.ts --apply",
+    "db:personal-ownership-report": "dotenv -e .env.local -e .env -- node scripts/report-personal-work-ownership.mjs",
     "db:test:pollution-report": "tsx scripts/report-test-pollution.mjs",
     "db:seed": "dotenv -e .env.local -e .env -- tsx prisma/seed.ts",
     "auth:bootstrap": "dotenv -e .env.local -e .env -- tsx scripts/auth-bootstrap.ts",

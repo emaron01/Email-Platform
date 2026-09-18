@@ -44,6 +44,16 @@ describe.skipIf(!hasDatabase)("scoring engine tenant isolation (Phase 3C)", () =
     });
     orgAId = orgA.id;
     orgBId = orgB.id;
+    const owner = await prisma.user.create({
+      data: {
+        email: `score-engine-owner-${suffix}@example.test`,
+        emailNormalized: `score-engine-owner-${suffix}@example.test`,
+        name: "Score Engine Owner",
+      },
+    });
+    await prisma.organizationMembership.create({
+      data: { organizationId: orgAId, userId: owner.id, role: "OWNER" },
+    });
 
     const product = await prisma.product.create({
       data: { organizationId: orgAId, name: `[TEST] SE Product ${suffix}` },
@@ -68,6 +78,7 @@ describe.skipIf(!hasDatabase)("scoring engine tenant isolation (Phase 3C)", () =
     const list = await prisma.contactList.create({
       data: {
         organizationId: orgAId,
+        ownerUserId: owner.id,
         name: `[TEST] SE List ${suffix}`,
         sourceType: "PASTE",
         totalContacts: 1,

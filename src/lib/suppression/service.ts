@@ -216,10 +216,15 @@ export async function suppressContactById(input: {
 }): Promise<EmailSuppression> {
   const contact = await prisma.contact.findFirst({
     where: { id: input.contactId, organizationId: input.organizationId },
-    select: { id: true, email: true },
+    select: { id: true, email: true, ownerUserId: true },
   });
   if (!contact) {
     throw new TenantError("Contact does not belong to the active organization.");
+  }
+  if (contact.ownerUserId !== input.actorUserId) {
+    throw new TenantError(
+      "This contact is read-only because it belongs to another user.",
+    );
   }
   if (!contact.email) {
     throw new TenantError("Add an email address before opting this contact out.");
@@ -240,10 +245,15 @@ export async function releaseContactById(input: {
 }): Promise<EmailSuppression> {
   const contact = await prisma.contact.findFirst({
     where: { id: input.contactId, organizationId: input.organizationId },
-    select: { id: true, email: true },
+    select: { id: true, email: true, ownerUserId: true },
   });
   if (!contact) {
     throw new TenantError("Contact does not belong to the active organization.");
+  }
+  if (contact.ownerUserId !== input.actorUserId) {
+    throw new TenantError(
+      "This contact is read-only because it belongs to another user.",
+    );
   }
   if (!contact.email) {
     throw new TenantError("This contact has no email address to restore.");

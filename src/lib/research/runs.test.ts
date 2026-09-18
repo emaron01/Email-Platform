@@ -46,6 +46,7 @@ describe.skipIf(!hasDatabase)("research runs", () => {
     const list = await prisma.contactList.create({
       data: {
         organizationId: orgId,
+        ownerUserId: userId,
         name: `List ${suffix}`,
         sourceType: "PASTE",
         createdByUserId: userId,

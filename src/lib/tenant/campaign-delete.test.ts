@@ -81,6 +81,15 @@ describe.skipIf(!hasDatabase)(
     });
 
     async function seedCampaign(organizationId: string, label: string) {
+      const owner = await prisma.user.create({
+        data: {
+          email: `campaign-delete-${label}-${suffix}@example.test`,
+          emailNormalized: `campaign-delete-${label}-${suffix}@example.test`,
+        },
+      });
+      await prisma.organizationMembership.create({
+        data: { organizationId, userId: owner.id, role: "OWNER" },
+      });
       const product = await prisma.product.create({
         data: { organizationId, name: `Product ${label} ${suffix}` },
       });
@@ -102,7 +111,11 @@ describe.skipIf(!hasDatabase)(
         data: { organizationId, name: `Offer ${label} ${suffix}` },
       });
       const list = await prisma.contactList.create({
-        data: { organizationId, name: `List ${label} ${suffix}` },
+        data: {
+          organizationId,
+          ownerUserId: owner.id,
+          name: `List ${label} ${suffix}`,
+        },
       });
       const contact = await seedContactOnList(prisma, {
         organizationId,
@@ -114,6 +127,7 @@ describe.skipIf(!hasDatabase)(
       const campaign = await prisma.campaign.create({
         data: {
           organizationId,
+          ownerUserId: owner.id,
           name: `Campaign ${label} ${suffix}`,
           productId: product.id,
           icpId: icp.id,

@@ -9,9 +9,10 @@ import { ALL_PERSONAS_VALUE } from "@/lib/scoring/title-fit";
 import { resolveTitleSuggestion } from "@/lib/scoring/title-suggestions";
 import { createScoringRun } from "@/lib/tenant/data";
 import {
-  requireOrganizationId,
-  TenantError,
-} from "@/lib/tenant/getCurrentOrganization";
+  assertCanModifyOwnedWork,
+  getWorkActor,
+} from "@/lib/work/ownership";
+import { TenantError } from "@/lib/tenant/getCurrentOrganization";
 
 function requiredString(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -44,15 +45,13 @@ export async function createScoringRunAction(
 
   try {
     const { listIcpCriteria } = await import("@/lib/interpretation/icp");
-    const { requireOrganizationId } = await import(
-      "@/lib/tenant/getCurrentOrganization"
-    );
     const {
       criterionMaterialFingerprint,
       isTargetedSearchDecisionStale,
       normalizeEvidenceClass,
     } = await import("@/lib/criteria/evidence-class");
-    const organizationId = await requireOrganizationId();
+    const actor = await getWorkActor();
+    const organizationId = actor.organizationId;
     const criteria = await listIcpCriteria(organizationId, icpId);
     const undecided = criteria.filter((c) => {
       const evidenceClass = normalizeEvidenceClass(c.evidenceClass);
@@ -170,8 +169,18 @@ export async function resolveTitleSuggestionAction(
   }
 
   try {
-    const organizationId = await requireOrganizationId();
+    const actor = await getWorkActor();
+    const organizationId = actor.organizationId;
     const user = await getCurrentUser();
+    const { prisma } = await import("@/lib/prisma");
+    const run = await prisma.scoringRun.findFirst({
+      where: { id: scoringRunId, organizationId },
+      select: { contactList: { select: { ownerUserId: true } } },
+    });
+    if (!run) {
+      return { ok: false, message: "Scoring run was not found." };
+    }
+    assertCanModifyOwnedWork(actor, run.contactList.ownerUserId, "Scoring run");
     const result = await resolveTitleSuggestion({
       organizationId,
       userId: user?.id ?? null,
@@ -212,7 +221,8 @@ export async function makePrimaryCriterionMandatoryAndRescoreAction(
   }
 
   try {
-    const organizationId = await requireOrganizationId();
+    const actor = await getWorkActor();
+    const organizationId = actor.organizationId;
     const { prisma } = await import("@/lib/prisma");
     const { updateIcpCriterionManual } = await import(
       "@/lib/interpretation/icp"
@@ -221,10 +231,12 @@ export async function makePrimaryCriterionMandatoryAndRescoreAction(
 
     const run = await prisma.scoringRun.findFirst({
       where: { id: scoringRunId, organizationId },
+      include: { contactList: { select: { ownerUserId: true } } },
     });
     if (!run) {
       return { ok: false, message: "Scoring run was not found." };
     }
+    assertCanModifyOwnedWork(actor, run.contactList.ownerUserId, "Scoring run");
 
     const snapshot = run.icpSnapshot as {
       id?: string;

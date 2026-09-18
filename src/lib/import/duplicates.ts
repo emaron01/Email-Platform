@@ -1,4 +1,4 @@
-import { normalizeEmail } from "@/lib/import/validate";
+import { normalizeContactEmail } from "@/lib/contact/identity";
 import type { PreparedContact } from "@/lib/import/types";
 
 export type ExistingContactKey = {
@@ -26,7 +26,7 @@ export function buildDuplicateIndexes(existing: ExistingContactKey[]) {
   const nameCompany = new Set<string>();
 
   for (const row of existing) {
-    const email = normalizeEmail(row.email);
+    const email = normalizeContactEmail(row.email);
     if (email) emails.add(email);
 
     const key = nameCompanyKey(row.firstName, row.lastName, row.company);
@@ -40,7 +40,7 @@ export function isDuplicateContact(
   contact: PreparedContact,
   indexes: ReturnType<typeof buildDuplicateIndexes>,
 ): boolean {
-  const email = normalizeEmail(contact.email);
+  const email = normalizeContactEmail(contact.email);
   if (email && indexes.emails.has(email)) {
     return true;
   }
@@ -72,7 +72,7 @@ export function findDuplicateRows(
 
   contacts.forEach((contact, index) => {
     const againstExisting = isDuplicateContact(contact, indexes);
-    const email = normalizeEmail(contact.email);
+    const email = normalizeContactEmail(contact.email);
     let againstBatch = false;
 
     if (email) {

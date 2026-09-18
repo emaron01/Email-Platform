@@ -8,6 +8,8 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { getHomeWorkflow } from "@/lib/workflow/home";
 import { DueContactsPanel } from "@/components/DueContactsPanel";
+import { getMembershipForCurrentUser } from "@/lib/auth/authz";
+import { canViewAllRepWork } from "@/lib/work/ownership";
 
 function HomeNavLink({ href, label }: { href: string; label: string }) {
   return (
@@ -50,9 +52,11 @@ export default async function DashboardPage({
     );
   }
 
+  const membership = await getMembershipForCurrentUser(organization.id);
   const workflow = await getHomeWorkflow(organization.id, {
     includeArchived,
     userId: user?.id,
+    canViewAllRepWork: canViewAllRepWork(membership.membership.role),
   });
 
   return (
