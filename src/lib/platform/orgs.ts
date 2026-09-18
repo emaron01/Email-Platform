@@ -18,6 +18,7 @@ import {
   COMPED_BILLING_DEFAULTS,
   SELF_SERVE_BILLING_DEFAULTS,
 } from "@/lib/billing/billing-state";
+import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
 import { createOrganizationInvitationAsPlatform } from "@/lib/org/signup";
 
 export type PlatformBillingMode = "COMPED" | "BILLED";
@@ -551,10 +552,80 @@ export async function unsuspendOrganization(input: {
 }
 
 /**
+ * Failsafe: cancel Stripe subscription before org hard-delete.
+ * Already-canceled / missing subscriptions are treated as success.
+ * No subscription id or Stripe not configured → skip (local / Comped orgs).
+ */
+export async function cancelStripeSubscriptionForOrgDelete(
+  stripeSubscriptionId: string | null | undefined,
+): Promise<{
+  skipped: boolean;
+  canceled: boolean;
+  alreadyCanceled: boolean;
+  subscriptionId: string | null;
+}> {
+  if (!stripeSubscriptionId) {
+    return {
+      skipped: true,
+      canceled: false,
+      alreadyCanceled: false,
+      subscriptionId: null,
+    };
+  }
+  if (!stripeConfigured()) {
+    return {
+      skipped: true,
+      canceled: false,
+      alreadyCanceled: false,
+      subscriptionId: stripeSubscriptionId,
+    };
+  }
+
+  const stripe = getStripe();
+  try {
+    const existing = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+    if (existing.status === "canceled") {
+      return {
+        skipped: false,
+        canceled: false,
+        alreadyCanceled: true,
+        subscriptionId: stripeSubscriptionId,
+      };
+    }
+    await stripe.subscriptions.cancel(stripeSubscriptionId);
+    return {
+      skipped: false,
+      canceled: true,
+      alreadyCanceled: false,
+      subscriptionId: stripeSubscriptionId,
+    };
+  } catch (error) {
+    const code =
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      typeof (error as { code?: unknown }).code === "string"
+        ? (error as { code: string }).code
+        : "";
+    // Already gone in Stripe — safe to proceed with local delete.
+    if (code === "resource_missing") {
+      return {
+        skipped: false,
+        canceled: false,
+        alreadyCanceled: true,
+        subscriptionId: stripeSubscriptionId,
+      };
+    }
+    throw error;
+  }
+}
+
+/**
  * Hard-delete an organization and all cascading tenant data.
- * Audit is written first so the event retains org id/name after the row is gone.
- * Then purge org-only tenant Users and their Better Auth identities so the
- * email can be reused on a clean signup (no orphaned verified identity).
+ * Cancels the Stripe subscription first when one is linked (failsafe); already
+ * canceled / missing subs still proceed. Audit is written so the event retains
+ * org id/name after the row is gone. Then purge org-only tenant Users and their
+ * Better Auth identities so the email can be reused on a clean signup.
  */
 export async function deleteOrganization(input: {
   organizationId: string;
@@ -562,11 +633,22 @@ export async function deleteOrganization(input: {
 }): Promise<{ id: string; name: string }> {
   const org = await prisma.organization.findUnique({
     where: { id: input.organizationId },
-    select: { id: true, name: true, slug: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      billingProfile: {
+        select: { stripeSubscriptionId: true, stripeCustomerId: true },
+      },
+    },
   });
   if (!org) {
     throw new Error("Organization not found.");
   }
+
+  const stripeCancel = await cancelStripeSubscriptionForOrgDelete(
+    org.billingProfile?.stripeSubscriptionId,
+  );
 
   const members = await prisma.organizationMembership.findMany({
     where: { organizationId: org.id },
@@ -584,6 +666,9 @@ export async function deleteOrganization(input: {
       organizationSlug: org.slug,
       actorUserId: input.actorUserId,
       memberUserIds,
+      stripeCustomerId: org.billingProfile?.stripeCustomerId ?? null,
+      stripeSubscriptionId: org.billingProfile?.stripeSubscriptionId ?? null,
+      stripeCancel,
     },
   });
 

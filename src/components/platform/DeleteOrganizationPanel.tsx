@@ -47,7 +47,9 @@ export function DeleteOrganizationPanel({
         <p className="mt-1 text-sm text-slate-600">
           Permanently remove{" "}
           <span className="font-medium text-slate-800">{organizationName}</span>{" "}
-          and all associated data. This cannot be undone.
+          and all associated data. Any linked Stripe subscription is canceled
+          first (already-canceled subscriptions are fine). This cannot be
+          undone.
         </p>
       </div>
 
@@ -72,8 +74,10 @@ export function DeleteOrganizationPanel({
             Confirm permanent deletion
           </p>
           <p className="text-sm text-slate-700">
-            This will permanently delete this organization and all associated
-            data. This cannot be undone.
+            This will cancel any Stripe subscription for this organization,
+            then permanently delete the organization and all associated data.
+            Already-canceled Stripe subscriptions are skipped. This cannot be
+            undone.
           </p>
           <form action={formAction} className="space-y-3">
             <input type="hidden" name="organizationId" value={organizationId} />

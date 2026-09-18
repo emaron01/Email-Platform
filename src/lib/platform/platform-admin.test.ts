@@ -240,8 +240,11 @@ describe("platform-orgs actions gate mutations to SUPER_ADMIN", () => {
 });
 
 describe("platform org delete purges orphaned identities", () => {
-  it("deleteOrganization collects members then purges auth identity helper", () => {
+  it("deleteOrganization cancels Stripe then purges orphaned identities", () => {
     const src = readFileSync(resolve("src/lib/platform/orgs.ts"), "utf8");
+    expect(src).toContain("cancelStripeSubscriptionForOrgDelete");
+    expect(src).toContain("subscriptions.cancel");
+    expect(src).toContain("resource_missing");
     expect(src).toContain("purgeOrphanedTenantUsersAfterOrgDelete");
     expect(src).toContain("PLATFORM_ORGANIZATION_DELETED");
     const purge = readFileSync(
@@ -251,6 +254,11 @@ describe("platform org delete purges orphaned identities", () => {
     expect(purge).toContain("authUser.delete");
     expect(purge).toContain("authSession.deleteMany");
     expect(purge).toContain('platformRole !== "NONE"');
+    const panel = readFileSync(
+      resolve("src/components/platform/DeleteOrganizationPanel.tsx"),
+      "utf8",
+    );
+    expect(panel).toMatch(/Stripe subscription/i);
   });
 
   it("provision repairs missing workspace instead of throwing", () => {
