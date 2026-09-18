@@ -12,6 +12,7 @@ describe("smoke route discovery", () => {
     personaId: "persona_1",
     campaignId: "camp_1",
     listId: "list_1",
+    supportTicketId: "ticket_1",
     companyId: "company_1",
     scoringRunId: "score_1",
     productSetupRunId: "psrun_1",

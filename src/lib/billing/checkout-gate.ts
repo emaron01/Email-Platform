@@ -20,6 +20,7 @@ const CHECKOUT_EXEMPT_PREFIXES = [
   ONBOARDING_SUBSCRIBE_PATH,
   ONBOARDING_EULA_PATH,
   "/settings/account",
+  "/support",
   "/api/billing/checkout",
   "/api/billing/portal",
   "/no-workspace",

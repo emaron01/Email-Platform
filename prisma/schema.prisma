@@ -394,6 +394,8 @@ enum AdminAuditAction {
   EULA_ACCEPTED
   PLATFORM_CONTACT_OUTBOUND_PURGED
   COMPANY_RESEARCH_CREDIT_GRANTED
+  SUPPORT_TICKET_STATUS_CHANGED
+  SUPPORT_TICKET_NOTE_ADDED
 }
 
 enum TransactionalEmailTemplateKey {
@@ -405,6 +407,13 @@ enum TransactionalEmailTemplateKey {
   INVITATION_ACCEPTED
   CADENCE_DAILY_DIGEST
   USAGE_LIMIT_WARNING
+  SUPPORT_TICKET_CREATED
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
 }
 
 /// Resource kinds for usage-limit alert idempotency (not UsageResource).
@@ -551,6 +560,7 @@ model Organization {
   referralReward           OrganizationReferralReward?
   referralRedemptionsAsReferrer ReferralRedemption[] @relation("ReferrerRedemptions")
   referralRedemptionsAsReferee  ReferralRedemption[] @relation("RefereeRedemptions")
+  supportTickets           SupportTicket[]
 
   @@index([status])
   @@index([accountType])
@@ -637,6 +647,8 @@ model User {
   contactListsCreated      ContactList[]                 @relation("ContactListCreatedBy")
   contactsCreated          Contact[]                     @relation("ContactCreatedBy")
   ownedContactLists        ContactList[]                 @relation("ContactListOwner")
+  submittedSupportTickets  SupportTicket[]               @relation("SupportTicketSubmitter")
+  authoredSupportNotes     SupportTicketNote[]           @relation("SupportTicketNoteAuthor")
   ownedContacts            Contact[]                     @relation("ContactOwner")
   contactMembershipsAdded  ContactListMembership[]       @relation("ContactMembershipAddedBy")
   sequenceStopsInitiated   CampaignContact[]             @relation("SequenceStoppedBy")
@@ -2499,6 +2511,47 @@ model TransactionalEmailEvent {
   @@index([userId])
   @@index([createdAt])
   @@index([status])
+}
+
+model SupportTicket {
+  id                   String              @id @default(cuid())
+  organizationId       String?
+  submittedByUserId    String?
+  subject              String              @db.VarChar(120)
+  description          String              @db.Text
+  status               SupportTicketStatus @default(OPEN)
+  sourcePath           String              @db.VarChar(500)
+  userAgent            String?             @db.VarChar(1000)
+  organizationName     String              @db.VarChar(200)
+  submittedByName      String?             @db.VarChar(200)
+  submittedByEmail     String              @db.VarChar(320)
+  planCode             String?             @db.VarChar(50)
+  billingStatus        BillingStatus?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  organization Organization?       @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  submittedBy  User?               @relation("SupportTicketSubmitter", fields: [submittedByUserId], references: [id], onDelete: SetNull)
+  notes        SupportTicketNote[]
+
+  @@index([status, createdAt])
+  @@index([organizationId])
+  @@index([submittedByUserId])
+  @@index([createdAt])
+}
+
+model SupportTicketNote {
+  id              String   @id @default(cuid())
+  supportTicketId String
+  authorUserId    String?
+  body            String   @db.Text
+  createdAt       DateTime @default(now())
+
+  supportTicket SupportTicket @relation(fields: [supportTicketId], references: [id], onDelete: Cascade)
+  author        User?         @relation("SupportTicketNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([supportTicketId, createdAt])
+  @@index([authorUserId])
 }
 
 model RateLimitBucket {

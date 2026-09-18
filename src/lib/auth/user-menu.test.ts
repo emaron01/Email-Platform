@@ -50,6 +50,7 @@ describe("buildUserMenuModel", () => {
     expect(model.links.map((l) => l.id)).toEqual([
       "account_settings",
       "platform_admin",
+      "support",
       "log_out",
     ]);
     expect(model.links.some((l) => l.id === "organization_settings")).toBe(
@@ -93,7 +94,19 @@ describe("buildUserMenuModel", () => {
     expect(model.showPlatformAdmin).toBe(false);
     expect(model.links.some((l) => l.id === "platform_admin")).toBe(false);
     expect(model.links.some((l) => l.id === "log_out")).toBe(true);
+    expect(model.links.some((l) => l.id === "support")).toBe(true);
     expect(model.workspaces).toEqual([]);
+  });
+
+  it("keeps Support available when payment locked", () => {
+    const model = buildUserMenuModel({
+      email: "locked@acme.test",
+      platformRole: "NONE",
+      organizationName: "Acme",
+      membershipRole: "OWNER",
+      paymentLocked: true,
+    });
+    expect(model.links.map((link) => link.id)).toEqual(["support", "log_out"]);
   });
 
   it("passes through workspaces for the switcher", () => {

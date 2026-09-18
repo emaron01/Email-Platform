@@ -43,6 +43,12 @@ export const TEMPLATE_VARIABLE_ALLOWLIST: Record<
     "percentUsed",
     "settingsUrl",
   ],
+  SUPPORT_TICKET_CREATED: [
+    ...COMMON,
+    "ticketSubject",
+    "workspaceName",
+    "ticketUrl",
+  ],
 };
 
 export const TEMPLATE_REQUIRED_VARIABLES: Record<
@@ -63,6 +69,7 @@ export const TEMPLATE_REQUIRED_VARIABLES: Record<
     "limit",
     "percentUsed",
   ],
+  SUPPORT_TICKET_CREATED: ["ticketSubject", "workspaceName", "ticketUrl"],
 };
 
 export const BASELINE_TEMPLATES: Record<
@@ -137,5 +144,13 @@ export const BASELINE_TEMPLATES: Record<
       "<p>Hi {{firstName}},</p><p>Your workspace <strong>{{workspaceName}}</strong> has used <strong>{{used}}</strong> of <strong>{{limit}}</strong> ({{percentUsed}}%) for {{resourceLabel}}.</p><p><a href=\"{{settingsUrl}}\">Review usage settings</a></p><p>— {{appName}}</p>",
     textTemplate:
       "Hi {{firstName}},\n\nYour workspace {{workspaceName}} has used {{used}} of {{limit}} ({{percentUsed}}%) for {{resourceLabel}}.\n\nReview: {{settingsUrl}}\n\n— {{appName}}",
+  },
+  SUPPORT_TICKET_CREATED: {
+    displayName: "Support ticket created",
+    subjectTemplate: "Support request: {{ticketSubject}}",
+    htmlTemplate:
+      "<p>A new support request was submitted.</p><p><strong>Subject:</strong> {{ticketSubject}}</p><p><strong>Organization:</strong> {{workspaceName}}</p><p><a href=\"{{ticketUrl}}\">Open ticket in the platform console</a></p>",
+    textTemplate:
+      "A new support request was submitted.\n\nSubject: {{ticketSubject}}\nOrganization: {{workspaceName}}\n\nOpen ticket: {{ticketUrl}}",
   },
 };

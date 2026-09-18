@@ -65,12 +65,14 @@ const ROUTE_EXPECTATIONS: Record<string, SmokeExpectation> = {
   "/settings/organization": { mustInclude: "Organization" },
   "/settings/usage": { mustInclude: "Usage" },
   "/settings/voice": { mustInclude: "Your Voice" },
+  "/support": { mustInclude: "Submit a support request" },
   "/setup": { mustInclude: "Products" },
   "/setup/new": { mustInclude: "New Product" },
   "/no-workspace": { mustInclude: "data-testid=\"app-sidebar\"" },
   "/platform": { mustInclude: "data-testid=\"platform-console-nav\"" },
   "/platform/orgs": { mustInclude: "Organizations" },
   "/platform/orgs/new": { mustInclude: "Create account" },
+  "/platform/support": { mustInclude: "Support tickets" },
   "/platform/costs": { mustInclude: "Costs" },
   "/platform/email-templates": { mustInclude: "Email templates" },
   "/platform/billing": { mustInclude: "Billing Config" },
@@ -144,6 +146,9 @@ export function smokeExpectationForPath(pathname: string): SmokeExpectation {
   }
   if (pathname.startsWith("/platform/orgs/")) {
     return { mustInclude: "Organization" };
+  }
+  if (pathname.startsWith("/platform/support/")) {
+    return { mustInclude: "Captured context" };
   }
 
   return { mustInclude: "data-testid=\"app-sidebar\"" };

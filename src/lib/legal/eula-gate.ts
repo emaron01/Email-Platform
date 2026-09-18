@@ -13,10 +13,12 @@ import {
 } from "@/lib/legal/eula";
 import { ONBOARDING_EULA_PATH } from "@/lib/billing/paths";
 
-function isEulaPage(pathname: string): boolean {
+function isEulaExemptPage(pathname: string): boolean {
   return (
     pathname === ONBOARDING_EULA_PATH ||
-    pathname.startsWith(`${ONBOARDING_EULA_PATH}/`)
+    pathname.startsWith(`${ONBOARDING_EULA_PATH}/`) ||
+    pathname === "/support" ||
+    pathname.startsWith("/support/")
   );
 }
 
@@ -25,7 +27,7 @@ export async function enforceEulaAcceptanceGate(): Promise<void> {
   if (!user) return;
 
   const pathname = (await headers()).get("x-pathname")?.trim() || "";
-  if (pathname && isEulaPage(pathname)) return;
+  if (pathname && isEulaExemptPage(pathname)) return;
 
   const status = await userNeedsEulaAcceptance(user.id);
   if (!status.needs) return;

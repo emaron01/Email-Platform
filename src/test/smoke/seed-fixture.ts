@@ -328,6 +328,22 @@ export async function seedSmokeFixture(prisma: PrismaClient): Promise<SmokeFixtu
     },
   });
 
+  const supportTicket = await prisma.supportTicket.create({
+    data: {
+      organizationId,
+      submittedByUserId: appUser.id,
+      subject: testEntityName(`Smoke support ticket ${suffix}`),
+      description: "Smoke support ticket description.",
+      sourcePath: "/settings/billing",
+      userAgent: "Smoke test browser",
+      organizationName: "Smoke Workspace",
+      submittedByName: "Smoke Tester",
+      submittedByEmail: email,
+      planCode: "COMPED",
+      billingStatus: "FREE",
+    },
+  });
+
   return {
     email,
     password,
@@ -337,6 +353,7 @@ export async function seedSmokeFixture(prisma: PrismaClient): Promise<SmokeFixtu
     personaId: persona.id,
     campaignId: campaign.id,
     listId: list.id,
+    supportTicketId: supportTicket.id,
     companyId: company.id,
     scoringRunId: scoringRun.id,
     productSetupRunId: productSetupRun.id,

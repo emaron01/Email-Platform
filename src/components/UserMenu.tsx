@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { logoutAction } from "@/app/actions/account";
 import { switchActiveOrganizationAction } from "@/app/actions/workspace";
 import type { UserMenuModel } from "@/lib/auth/user-menu";
@@ -10,6 +11,7 @@ export function UserMenu({ model }: { model: UserMenuModel }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
+  const pathname = usePathname() || "/";
   const showSwitcher = model.workspaces.length > 1;
 
   useEffect(() => {
@@ -139,7 +141,11 @@ export function UserMenu({ model }: { model: UserMenuModel }) {
               .map((link) => (
                 <Link
                   key={link.id}
-                  href={link.href}
+                  href={
+                    link.id === "support"
+                      ? `${link.href}?from=${encodeURIComponent(pathname)}`
+                      : link.href
+                  }
                   role="menuitem"
                   data-testid={`user-menu-${link.id}`}
                   className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"

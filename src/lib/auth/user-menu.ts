@@ -20,7 +20,11 @@ export type UserMenuLink = {
   label: string;
   /** Shown in tests / a11y as distinct action ids */
   id:
-    "account_settings" | "organization_settings" | "platform_admin" | "log_out";
+    | "account_settings"
+    | "organization_settings"
+    | "platform_admin"
+    | "support"
+    | "log_out";
 };
 
 export type UserMenuWorkspaceOption = {
@@ -123,6 +127,12 @@ export function buildUserMenuModel(
       label: isSupport ? "Platform Support" : "Platform Administration",
     });
   }
+
+  links.push({
+    id: "support",
+    href: "/support",
+    label: "Support",
+  });
 
   links.push({
     id: "log_out",

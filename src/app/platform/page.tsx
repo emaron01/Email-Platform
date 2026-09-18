@@ -48,6 +48,11 @@ export default async function PlatformHomePage() {
       body: "List tenants, create free Individual or Enterprise accounts, manage policy and members.",
     },
     {
+      href: "/platform/support",
+      title: "Support",
+      body: "Review support requests, update status, and add internal notes.",
+    },
+    {
       href: "/platform/orgs/new",
       title: "Create account",
       body: "Invite a first OWNER by email. Every account starts free until Stripe.",

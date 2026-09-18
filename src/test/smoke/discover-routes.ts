@@ -42,6 +42,7 @@ export type SmokeRouteIds = {
   personaId: string;
   campaignId: string;
   listId: string;
+  supportTicketId: string;
   companyId: string;
   scoringRunId: string;
   productSetupRunId: string;
@@ -75,6 +76,9 @@ function substituteId(pattern: string, ids: SmokeRouteIds): string {
   }
   if (pattern.startsWith("/platform/orgs/")) {
     return pattern.replace("[id]", ids.organizationId);
+  }
+  if (pattern.startsWith("/platform/support/")) {
+    return pattern.replace("[id]", ids.supportTicketId);
   }
   return pattern.replace("[id]", ids.organizationId);
 }

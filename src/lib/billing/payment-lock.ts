@@ -31,12 +31,14 @@ import { prisma } from "@/lib/prisma-client";
 export const PAYMENT_LOCK_ROUTE_EXEMPT_PREFIXES = [
   "/settings/billing",
   "/onboarding/eula",
+  "/support",
 ] as const;
 
 /** Billing pay paths (APIs are outside (app) layout; listed for policy clarity). */
 export const PAYMENT_LOCK_EXEMPT_PATH_PREFIXES = [
   "/settings/billing",
   "/onboarding/eula",
+  "/support",
   "/api/billing/portal",
   "/api/billing/checkout",
   "/api/billing/credits-checkout",
