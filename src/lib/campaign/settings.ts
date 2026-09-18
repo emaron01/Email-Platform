@@ -34,7 +34,7 @@ async function assertCanEditCampaignTemplate(campaignId: string): Promise<void> 
     })
   ) {
     throw new TenantError(
-      "You cannot edit the shared campaign template. Use this campaign to start your own run.",
+      "You cannot edit the shared campaign template. Use this campaign to create your own personal copy.",
     );
   }
 }

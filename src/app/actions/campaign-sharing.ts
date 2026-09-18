@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 import { assertOrganizationNotPaymentLocked } from "@/lib/billing/payment-lock";
-import { createCampaignExecution } from "@/lib/campaign/execution";
 import { duplicateSharedCampaign } from "@/lib/campaign/duplicate";
 import {
   canEditCampaignTemplate,
@@ -14,30 +13,10 @@ import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 
 export type CampaignActionResult = { ok: boolean; message: string };
-/** Alias for CampaignVisibilityForm. */
+/** Result returned by campaign visibility controls. */
 export type CampaignSharingActionResult = CampaignActionResult;
 
 export async function useSharedCampaignAction(
-  formData: FormData,
-): Promise<CampaignActionResult> {
-  const { organization, user } = await getMembershipForCurrentUser();
-  await assertOrganizationNotPaymentLocked(organization.id);
-  const campaignId = String(formData.get("campaignId") || "").trim();
-  if (!campaignId) throw new TenantError("Campaign is required.");
-
-  const { executionId } = await createCampaignExecution({
-    organizationId: organization.id,
-    campaignId,
-    userId: user.id,
-  });
-  revalidatePath("/campaigns");
-  redirect(`/campaigns/${campaignId}?execution=${executionId}`);
-}
-
-/**
- * Copy SHARED campaign config into a new PERSONAL campaign owned by the actor.
- */
-export async function duplicateSharedCampaignAction(
   formData: FormData,
 ): Promise<CampaignActionResult> {
   const { organization, user, membership } =
@@ -103,7 +82,7 @@ export async function setCampaignVisibilityAction(
       ok: true,
       message:
         visibility === "SHARED"
-          ? "Campaign is shared. Teammates can Use this campaign (run on the template) or Duplicate as mine (personal copy)."
+          ? "Campaign is shared. Teammates can use it to create a personal copy with no contacts."
           : "Campaign is personal again.",
     };
   } catch (error) {

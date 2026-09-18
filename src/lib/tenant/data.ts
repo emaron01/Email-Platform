@@ -25,10 +25,9 @@ import {
 import { getCurrentUser } from "@/lib/auth/session";
 import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 import {
-  CAMPAIGN_LIST_VIEW_ALL_ACTIVITY,
   CAMPAIGN_LIST_VIEW_MY,
   CAMPAIGN_LIST_VIEW_SHARED_ALL,
-  canViewAllActivity,
+  canViewAllCampaigns,
   type CampaignListViewMode,
 } from "@/lib/campaign/visibility";
 import { normalizeContactEmail } from "@/lib/contact/identity";
@@ -748,18 +747,13 @@ export async function listContacts(options?: {
 // --- Campaigns ---
 
 export type CampaignWithRelations = Campaign & {
+  owner: { id: string; name: string | null; email: string } | null;
   product: { id: string; name: string };
   icp: { id: string; name: string };
   persona: { id: string; name: string } | null;
   personasInPlay: Array<{ persona: { id: string; name: string } }>;
   offer: { id: string; name: string } | null;
-  _count: { contacts: number; executions?: number };
-  executions?: Array<{
-    id: string;
-    userId: string;
-    createdAt: Date;
-    user?: { id: string; name: string | null; email: string };
-  }>;
+  _count: { contacts: number };
 };
 
 export async function listCampaigns(options?: {
@@ -777,13 +771,10 @@ export async function listCampaigns(options?: {
     throw new TenantError("Sign in required to list campaigns.");
   }
 
-  if (view === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY) {
+  let canViewEveryCampaign = false;
+  if (view === CAMPAIGN_LIST_VIEW_SHARED_ALL) {
     const ctx = await getMembershipForCurrentUser(organizationId);
-    if (!canViewAllActivity(ctx.membership.role)) {
-      throw new TenantError(
-        "Only organization admins can view all campaign activity.",
-      );
-    }
+    canViewEveryCampaign = canViewAllCampaigns(ctx.membership.role);
   }
 
   const archivedFilter = options?.includeArchived
@@ -796,22 +787,13 @@ export async function listCampaigns(options?: {
       OR: [
         { ownerUserId: userId },
         { ownerUserId: null },
-        {
-          visibility: "SHARED",
-          executions: { some: { userId } },
-        },
       ],
     };
   } else if (view === CAMPAIGN_LIST_VIEW_SHARED_ALL) {
-    visibilityWhere = { visibility: "SHARED" };
-  } else if (view === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY) {
-    visibilityWhere = {
-      visibility: "SHARED",
-      executions: { some: {} },
-    };
+    // Managers need a complete org-wide campaign index. Members see only
+    // templates deliberately shared with the organization.
+    visibilityWhere = canViewEveryCampaign ? {} : { visibility: "SHARED" };
   }
-
-  const includeExecutions = view === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY;
 
   return prisma.campaign.findMany({
     where: {
@@ -820,6 +802,7 @@ export async function listCampaigns(options?: {
       ...visibilityWhere,
     },
     include: {
+      owner: { select: { id: true, name: true, email: true } },
       product: { select: { id: true, name: true } },
       icp: { select: { id: true, name: true } },
       persona: { select: { id: true, name: true } },
@@ -828,27 +811,8 @@ export async function listCampaigns(options?: {
       },
       offer: { select: { id: true, name: true } },
       _count: {
-        select: {
-          contacts: true,
-          ...(includeExecutions ? { executions: true } : {}),
-        },
+        select: { contacts: true },
       },
-      ...(includeExecutions
-        ? {
-            executions: {
-              orderBy: { createdAt: "desc" as const },
-              take: 20,
-              select: {
-                id: true,
-                userId: true,
-                createdAt: true,
-                user: {
-                  select: { id: true, name: true, email: true },
-                },
-              },
-            },
-          }
-        : {}),
     },
     orderBy: { createdAt: "desc" },
   });

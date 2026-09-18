@@ -59,7 +59,6 @@ const campaignDetailInclude = {
       id: true,
       selected: true,
       status: true,
-      executionId: true,
       chosenPersonaId: true,
       sequenceStoppedAt: true,
       sequenceStoppedReason: true,
@@ -435,9 +434,8 @@ async function requireCampaignForOrganization(
 }
 
 /**
- * Attach contacts either to the caller's SHARED execution or to the template
- * (executionId null). Template attach requires canEditCampaignTemplate.
- * Execution attach requires owning the execution (OWNER/ADMIN may any).
+ * Contacts may only be attached to a campaign the caller can edit. Shared
+ * templates are read-only to reps; they must first create a PERSONAL copy.
  */
 async function assertCanAttachCampaignContacts(input: {
   organizationId: string;
@@ -446,29 +444,12 @@ async function assertCanAttachCampaignContacts(input: {
     ownerUserId: string | null;
     visibility: "PERSONAL" | "SHARED";
   };
-  executionId?: string | null;
 }): Promise<void> {
   const { getMembershipForCurrentUser } = await import("@/lib/auth/authz");
-  const { canEditCampaignTemplate, canViewAllActivity } = await import(
+  const { canEditCampaignTemplate } = await import(
     "@/lib/campaign/visibility"
   );
   const ctx = await getMembershipForCurrentUser(input.organizationId);
-  const executionId = input.executionId?.trim() || null;
-
-  if (executionId) {
-    const { requireCampaignExecution } = await import(
-      "@/lib/campaign/execution"
-    );
-    await requireCampaignExecution({
-      organizationId: input.organizationId,
-      executionId,
-      campaignId: input.campaign.id,
-      ...(canViewAllActivity(ctx.membership.role)
-        ? {}
-        : { userId: ctx.user.id }),
-    });
-    return;
-  }
 
   if (
     !canEditCampaignTemplate({
@@ -478,7 +459,7 @@ async function assertCanAttachCampaignContacts(input: {
     })
   ) {
     throw new TenantError(
-      "You cannot add contacts to the shared campaign template. Use this campaign to start your own run.",
+      "You cannot add contacts to a shared campaign template. Use this campaign to create your own personal copy.",
     );
   }
 }
@@ -644,7 +625,6 @@ async function insertCampaignContacts(input: {
   organizationId: string;
   campaignId: string;
   contactIds: string[];
-  executionId?: string | null;
 }): Promise<number> {
   const contactIds = Array.from(
     new Set(input.contactIds.map((id) => id.trim()).filter(Boolean)),
@@ -709,13 +689,11 @@ async function insertCampaignContacts(input: {
     );
   }
 
-  const executionId = input.executionId?.trim() || null;
   const inserted = await prisma.campaignContact.createMany({
     data: contactIds.map((contactId) => ({
       organizationId: input.organizationId,
       campaignId: input.campaignId,
       contactId,
-      executionId,
       selected: true,
       status: "SELECTED",
     })),
@@ -730,9 +708,6 @@ async function insertCampaignContacts(input: {
         organizationId: input.organizationId,
         campaignId: input.campaignId,
         contactId: { in: contactIds },
-        ...(executionId
-          ? { executionId }
-          : { executionId: null }),
       },
       select: { id: true },
     });
@@ -744,7 +719,6 @@ async function insertCampaignContacts(input: {
 export async function addContactsToCampaign(input: {
   campaignId: string;
   contactIds: string[];
-  executionId?: string | null;
 }): Promise<number> {
   const organizationId = await requireOrganizationId();
   const campaign = await requireCampaignForOrganization(
@@ -758,20 +732,17 @@ export async function addContactsToCampaign(input: {
   await assertCanAttachCampaignContacts({
     organizationId,
     campaign,
-    executionId: input.executionId,
   });
   return insertCampaignContacts({
     organizationId,
     campaignId: campaign.id,
     contactIds: input.contactIds,
-    executionId: input.executionId,
   });
 }
 
 export async function addScoringRunContactsToCampaign(input: {
   campaignId: string;
   scoringRunId: string;
-  executionId?: string | null;
   /**
    * When set, only attach contacts whose workflow bucket is in this list.
    * Campaign return uses ["GOOD"] (Ready to include). Manual add omits this
@@ -803,7 +774,6 @@ export async function addScoringRunContactsToCampaign(input: {
   await assertCanAttachCampaignContacts({
     organizationId,
     campaign,
-    executionId: input.executionId,
   });
 
   const scores = await prisma.contactScore.findMany({
@@ -841,6 +811,5 @@ export async function addScoringRunContactsToCampaign(input: {
     organizationId,
     campaignId: campaign.id,
     contactIds,
-    executionId: input.executionId,
   });
 }

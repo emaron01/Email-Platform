@@ -4,12 +4,10 @@
 
 export const CAMPAIGN_LIST_VIEW_MY = "MY" as const;
 export const CAMPAIGN_LIST_VIEW_SHARED_ALL = "SHARED_ALL" as const;
-export const CAMPAIGN_LIST_VIEW_ALL_ACTIVITY = "ALL_ACTIVITY" as const;
 
 export type CampaignListViewMode =
   | typeof CAMPAIGN_LIST_VIEW_MY
-  | typeof CAMPAIGN_LIST_VIEW_SHARED_ALL
-  | typeof CAMPAIGN_LIST_VIEW_ALL_ACTIVITY;
+  | typeof CAMPAIGN_LIST_VIEW_SHARED_ALL;
 
 /** @deprecated Prefer CampaignListViewMode */
 export type CampaignListView = CampaignListViewMode;
@@ -23,9 +21,6 @@ export function parseCampaignListViewMode(
   raw: string | null | undefined,
 ): CampaignListViewMode {
   if (raw === CAMPAIGN_LIST_VIEW_SHARED_ALL) return CAMPAIGN_LIST_VIEW_SHARED_ALL;
-  if (raw === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY) {
-    return CAMPAIGN_LIST_VIEW_ALL_ACTIVITY;
-  }
   if (raw === "ALL_SHARED") return CAMPAIGN_LIST_VIEW_SHARED_ALL;
   return CAMPAIGN_LIST_VIEW_MY;
 }
@@ -34,16 +29,13 @@ export function canSetCampaignShared(role: string): boolean {
   return role === "OWNER" || role === "ADMIN";
 }
 
-/** Alias used by campaign detail page. */
+/** Aliases used by campaign UI and authorization. */
 export const canSetShared = canSetCampaignShared;
-
-export function canViewAllActivity(role: string): boolean {
-  return canSetCampaignShared(role);
-}
+export const canViewAllCampaigns = canSetCampaignShared;
 
 /**
  * Open campaign detail by URL.
- * MEMBER may open: own PERSONAL, SHARED (template/execution), legacy null-owner.
+ * MEMBER may open: own PERSONAL, SHARED templates, legacy null-owner.
  * Not another member's PERSONAL campaign.
  */
 export function canOpenCampaignDetail(input: {
@@ -51,7 +43,7 @@ export function canOpenCampaignDetail(input: {
   userId: string;
   campaign: CampaignVisibilityRow;
 }): boolean {
-  if (canViewAllActivity(input.role)) return true;
+  if (canViewAllCampaigns(input.role)) return true;
   if (input.campaign.ownerUserId == null) return true;
   if (input.campaign.ownerUserId === input.userId) return true;
   if (input.campaign.visibility === "SHARED") return true;
@@ -91,17 +83,6 @@ export function shouldUseSharedCampaign(input: {
   campaign: CampaignVisibilityRow;
 }): boolean {
   return shouldShowUseThisCampaign(input);
-}
-
-export function campaignMatchesMyView(input: {
-  userId: string;
-  campaign: CampaignVisibilityRow;
-  hasExecution: boolean;
-}): boolean {
-  if (input.campaign.ownerUserId === input.userId) return true;
-  if (input.campaign.visibility === "SHARED" && input.hasExecution) return true;
-  if (input.campaign.ownerUserId == null) return true;
-  return false;
 }
 
 export function campaignMatchesAllSharedView(

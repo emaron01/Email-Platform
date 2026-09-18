@@ -4,7 +4,7 @@ import { deleteCampaignAction, archiveCampaignAction, unarchiveCampaignAction } 
 import { CampaignContactsManager } from "@/components/CampaignContactsManager";
 import { CampaignEmailSettingsForm } from "@/components/CampaignEmailSettingsForm";
 import { CampaignOfferForm } from "@/components/CampaignOfferForm";
-import { CampaignVisibilityForm } from "@/components/CampaignVisibilityForm";
+import { CampaignVisibilityButton } from "@/components/CampaignVisibilityButton";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { UnarchiveForm } from "@/components/UnarchiveForm";
 import { EmailDraftsStage } from "@/components/EmailDraftsStage";
@@ -61,7 +61,6 @@ type PageProps = {
     contact?: string;
     scoringRun?: string;
     attached?: string;
-    execution?: string;
   }>;
 };
 
@@ -172,38 +171,14 @@ export default async function CampaignDetailPage({
     campaign,
   });
   const canShare = canSetShared(membershipCtx.membership.role);
-  const executionId = query.execution?.trim() || null;
-  if (executionId) {
-    const execution = await prisma.campaignExecution.findFirst({
-      where: {
-        id: executionId,
-        organizationId: organization.id,
-        campaignId: campaign.id,
-      },
-      select: { id: true, userId: true },
-    });
-    if (!execution) notFound();
-    // Non-admins may only open their own executions.
-    if (
-      execution.userId !== user.id &&
-      !canSetShared(membershipCtx.membership.role)
-    ) {
-      notFound();
-    }
-  }
 
-  // Executors see only their run's contacts; template owners see owner-scoped rows.
-  const scopedContacts = campaign.contacts.filter((entry) => {
-    if (executionId) return entry.executionId === executionId;
-    if (
-      campaign.visibility === "SHARED" &&
-      campaign.ownerUserId !== user.id &&
-      !canEditTemplate
-    ) {
-      return false;
-    }
-    return entry.executionId == null;
-  });
+  // Shared templates expose setup, never another rep's contacts.
+  const scopedContacts =
+    campaign.visibility === "SHARED" &&
+    campaign.ownerUserId !== user.id &&
+    !canEditTemplate
+      ? []
+      : campaign.contacts;
   campaign = { ...campaign, contacts: scopedContacts };
 
   const campaignArchived = campaign.archivedAt != null;
@@ -481,6 +456,12 @@ export default async function CampaignDetailPage({
         description={`Stage ${stages.find((stage) => stage.key === currentStage)?.number}: ${stages.find((stage) => stage.key === currentStage)?.label}`}
         actions={
           <>
+            {canShare && !campaignArchived ? (
+              <CampaignVisibilityButton
+                campaignId={campaign.id}
+                visibility={campaign.visibility}
+              />
+            ) : null}
             <Link
               href="/campaigns"
               className={SECONDARY_BUTTON_CLASS}
@@ -608,8 +589,8 @@ export default async function CampaignDetailPage({
             ) : !canEditTemplate ? (
               <div className="space-y-3">
                 <p className="text-sm text-slate-600">
-                  Shared campaign template is read-only. You can still add
-                  contacts on your run.
+                  Shared campaign template is read-only. Use this campaign
+                  from the campaign list to create a personal copy.
                 </p>
                 <dl className="grid gap-3 sm:grid-cols-2">
                   <Meta label="Offer" value={offerName} />
@@ -625,15 +606,6 @@ export default async function CampaignDetailPage({
               />
             )}
           </Panel>
-
-          {canShare && !campaignArchived ? (
-            <Panel title="Sharing">
-              <CampaignVisibilityForm
-                campaignId={campaign.id}
-                visibility={campaign.visibility}
-              />
-            </Panel>
-          ) : null}
 
           <Panel
             title="Email settings"
@@ -880,7 +852,6 @@ export default async function CampaignDetailPage({
           ) : (
             <CampaignContactsManager
               campaignId={campaign.id}
-              executionId={executionId}
               search={query.q?.trim() ?? ""}
               selectedScoringRunId={selectedScoringRunId}
               contacts={availableContacts.map((contact) => ({

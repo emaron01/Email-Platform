@@ -513,7 +513,6 @@ model Organization {
   titleSuggestions         TitleSuggestion[]
   productTitleDismissals   ProductTitleDismissal[]
   campaigns                Campaign[]
-  campaignExecutions       CampaignExecution[]
   campaignPersonas         CampaignPersona[]
   campaignContacts         CampaignContact[]
   emailDrafts              EmailDraft[]
@@ -640,7 +639,6 @@ model User {
   contactMembershipsAdded  ContactListMembership[]       @relation("ContactMembershipAddedBy")
   sequenceStopsInitiated   CampaignContact[]             @relation("SequenceStoppedBy")
   ownedCampaigns           Campaign[]                    @relation("CampaignOwner")
-  campaignExecutions       CampaignExecution[]           @relation("CampaignExecutionUser")
   creditGrantsIssued       OrganizationCreditGrant[]     @relation("CreditGrantedBy")
   companyResearchCredits   CompanyResearchCredit[]       @relation("CompanyResearchCreditUser")
   spendReconciliationsCreated ProviderSpendReconciliation[] @relation("SpendReconciliationCreatedBy")
@@ -2134,7 +2132,6 @@ model Campaign {
   offer        Offer?              @relation(fields: [offerId], references: [id])
   contacts     CampaignContact[]
   personasInPlay CampaignPersona[]
-  executions   CampaignExecution[]
   sourcedScoringRuns ScoringRun[]
 
   @@index([organizationId])
@@ -2147,26 +2144,6 @@ model Campaign {
   @@index([icpId])
   @@index([personaId])
   @@index([offerId])
-}
-
-/// Personal run of a SHARED campaign. Multiple executions per user/campaign allowed (history).
-model CampaignExecution {
-  id             String   @id @default(cuid())
-  organizationId String
-  campaignId     String
-  userId         String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  campaign     Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  user         User              @relation("CampaignExecutionUser", fields: [userId], references: [id], onDelete: Cascade)
-  contacts     CampaignContact[]
-
-  @@index([organizationId])
-  @@index([campaignId])
-  @@index([userId])
-  @@index([organizationId, campaignId, userId, createdAt])
 }
 
 /// Personas a campaign will email. Empty means all personas for the product.
@@ -2192,8 +2169,6 @@ model CampaignContact {
   id                      String                @id @default(cuid())
   organizationId          String
   campaignId              String
-  /// When set, this contact belongs to a personal SHARED-campaign execution.
-  executionId             String?
   contactId               String
   selected                Boolean               @default(true)
   status                  CampaignContactStatus @default(PENDING)
@@ -2210,20 +2185,17 @@ model CampaignContact {
 
   organization        Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campaign            Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  execution           CampaignExecution? @relation(fields: [executionId], references: [id], onDelete: Cascade)
   contact             Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
   chosenPersona       Persona?           @relation("CampaignContactChosenPersona", fields: [chosenPersonaId], references: [id], onDelete: SetNull)
   sequenceStoppedBy   User?              @relation("SequenceStoppedBy", fields: [sequenceStoppedByUserId], references: [id], onDelete: SetNull)
   emailDrafts         EmailDraft[]
   sendRecords         EmailSendRecord[]
 
-  /// Uniqueness for owner vs execution contacts is enforced via partial indexes in SQL.
+  @@unique([organizationId, campaignId, contactId])
   @@index([organizationId])
   @@index([organizationId, campaignId])
   @@index([organizationId, campaignId, contactId])
   @@index([campaignId])
-  @@index([executionId])
-  @@index([executionId, contactId])
   @@index([contactId])
   @@index([organizationId, nextDueAt])
   @@index([nextDueAt])

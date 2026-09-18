@@ -23,11 +23,6 @@ function campaignIdFrom(formData: FormData): string {
   return String(formData.get("campaignId") ?? "").trim();
 }
 
-function executionIdFrom(formData: FormData): string | null {
-  const value = String(formData.get("executionId") ?? "").trim();
-  return value || null;
-}
-
 function revalidateCampaign(campaignId: string): void {
   revalidatePath("/campaigns");
   revalidatePath(`/campaigns/${campaignId}`);
@@ -48,7 +43,6 @@ export async function addContactsToCampaignAction(
   try {
     const addedCount = await addContactsToCampaign({
       campaignId,
-      executionId: executionIdFrom(formData),
       contactIds: formData
         .getAll("contactIds")
         .map((value) => String(value).trim())
@@ -84,7 +78,6 @@ export async function addScoringRunContactsToCampaignAction(
     const addedCount = await addScoringRunContactsToCampaign({
       campaignId,
       scoringRunId,
-      executionId: executionIdFrom(formData),
     });
     revalidateCampaign(campaignId);
     return {
@@ -111,7 +104,6 @@ export async function saveScoringRunAndReturnToCampaignAction(
 ) {
   const campaignId = campaignIdFrom(formData);
   const scoringRunId = String(formData.get("scoringRunId") ?? "").trim();
-  const executionId = executionIdFrom(formData);
   if (!campaignId || !scoringRunId) {
     throw new TenantError("Campaign and scoring run are required.");
   }
@@ -122,7 +114,6 @@ export async function saveScoringRunAndReturnToCampaignAction(
     attachedCount = await addScoringRunContactsToCampaign({
       campaignId,
       scoringRunId,
-      executionId,
       qualificationBuckets: ["GOOD"],
     });
   } catch (error) {
@@ -145,7 +136,6 @@ export async function saveScoringRunAndReturnToCampaignAction(
     where: {
       campaignId,
       organizationId,
-      ...(executionId ? { executionId } : { executionId: null }),
     },
   });
   redirect(

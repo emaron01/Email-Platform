@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   canEditCampaignTemplate,
@@ -68,5 +69,64 @@ describe("campaign visibility", () => {
         campaign: { ownerUserId: "u1", visibility: "PERSONAL" },
       }),
     ).toBe(true);
+  });
+
+  it("puts sharing in the campaign header instead of the Setup stage", () => {
+    const page = readFileSync(
+      "src/app/(app)/campaigns/[id]/page.tsx",
+      "utf8",
+    );
+    expect(page).toContain("CampaignVisibilityButton");
+    expect(page).not.toContain("CampaignVisibilityForm");
+    expect(page.indexOf("<CampaignVisibilityButton")).toBeLessThan(
+      page.indexOf("<CampaignStageRail"),
+    );
+  });
+
+  it("gives OWNER and ADMIN an org-wide campaign index", () => {
+    const data = readFileSync("src/lib/tenant/data.ts", "utf8");
+    const page = readFileSync("src/app/(app)/campaigns/page.tsx", "utf8");
+    expect(data).toContain(
+      "visibilityWhere = canViewEveryCampaign ? {} : { visibility: \"SHARED\" }",
+    );
+    expect(page).toContain("All org campaigns");
+    expect(page).toContain("<th className=\"px-4 py-3 font-medium\">Owner</th>");
+  });
+
+  it("uses shared campaigns only by making a PERSONAL config copy", () => {
+    const action = readFileSync(
+      "src/app/actions/campaign-sharing.ts",
+      "utf8",
+    );
+    const ui = readFileSync("src/components/SharedCampaignActions.tsx", "utf8");
+    const duplicate = readFileSync("src/lib/campaign/duplicate.ts", "utf8");
+
+    expect(action).toContain("duplicateSharedCampaign");
+    expect(action).not.toContain("createCampaignExecution");
+    expect(action).not.toContain("duplicateSharedCampaignAction");
+    expect(ui).toContain("Use this campaign");
+    expect(ui).not.toContain("Duplicate as mine");
+    expect(duplicate).toContain('visibility: "PERSONAL"');
+    expect(duplicate).not.toContain("campaignContact");
+  });
+
+  it("has no runtime CampaignExecution or executionId model dependency", () => {
+    const schema = readFileSync("prisma/schema.prisma", "utf8");
+    const detail = readFileSync(
+      "src/app/(app)/campaigns/[id]/page.tsx",
+      "utf8",
+    );
+    const contacts = readFileSync("src/lib/campaign/contacts.ts", "utf8");
+    const actions = readFileSync(
+      "src/app/actions/campaign-contacts.ts",
+      "utf8",
+    );
+
+    expect(schema).not.toContain("CampaignExecution");
+    expect(schema).not.toContain("executionId");
+    expect(detail).not.toContain("executionId");
+    expect(detail).not.toContain("?execution=");
+    expect(contacts).not.toContain("executionId");
+    expect(actions).not.toContain("executionId");
   });
 });

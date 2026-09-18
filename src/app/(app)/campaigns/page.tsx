@@ -6,10 +6,9 @@ import { ShowArchivedToggle } from "@/components/ShowArchivedToggle";
 import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 import { requireCurrentUser } from "@/lib/auth/session";
 import {
-  CAMPAIGN_LIST_VIEW_ALL_ACTIVITY,
   CAMPAIGN_LIST_VIEW_MY,
   CAMPAIGN_LIST_VIEW_SHARED_ALL,
-  canViewAllActivity,
+  canViewAllCampaigns,
   parseCampaignListViewMode,
   shouldUseSharedCampaign,
 } from "@/lib/campaign/visibility";
@@ -55,11 +54,10 @@ export default async function CampaignsPage({
     requireCurrentUser(),
     getMembershipForCurrentUser(organization.id),
   ]);
-  const showAllActivity = canViewAllActivity(membershipCtx.membership.role);
-  const effectiveView =
-    view === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY && !showAllActivity
-      ? CAMPAIGN_LIST_VIEW_MY
-      : view;
+  const canManageCampaigns = canViewAllCampaigns(
+    membershipCtx.membership.role,
+  );
+  const effectiveView = view;
 
   const [campaigns, workflow] = await Promise.all([
     listCampaigns({
@@ -110,15 +108,12 @@ export default async function CampaignsPage({
         {(
           [
             { id: CAMPAIGN_LIST_VIEW_MY, label: "My Campaigns" },
-            { id: CAMPAIGN_LIST_VIEW_SHARED_ALL, label: "All Campaigns" },
-            ...(showAllActivity
-              ? [
-                  {
-                    id: CAMPAIGN_LIST_VIEW_ALL_ACTIVITY,
-                    label: "All activity",
-                  } as const,
-                ]
-              : []),
+            {
+              id: CAMPAIGN_LIST_VIEW_SHARED_ALL,
+              label: canManageCampaigns
+                ? "All org campaigns"
+                : "All Campaigns",
+            },
           ] as const
         ).map((tab) => (
           <Link
@@ -142,17 +137,17 @@ export default async function CampaignsPage({
         <EmptyState
           title={
             effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL
-              ? "No shared campaigns"
-              : effectiveView === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY
-                ? "No shared campaign activity yet"
-                : "No campaigns yet"
+              ? canManageCampaigns
+                ? "No campaigns in this organization"
+                : "No shared campaigns"
+              : "No campaigns yet"
           }
           description={
             effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL
-              ? "Shared campaigns appear here for the whole organization. Ask an admin to share a campaign, or create your own."
-              : effectiveView === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY
-                ? "When teammates use shared campaigns, their runs show up here."
-                : "A campaign ties your product setup to a contact list — qualify companies, score contacts, and write emails in one workspace."
+              ? canManageCampaigns
+                ? "Every campaign owned by a member of this organization appears here."
+                : "Shared campaigns appear here for the whole organization. Ask an admin to share a campaign, or create your own."
+              : "A campaign ties your product setup to a contact list — qualify companies, score contacts, and write emails in one workspace."
           }
           actions={
             canCreate && effectiveView === CAMPAIGN_LIST_VIEW_MY ? (
@@ -178,25 +173,27 @@ export default async function CampaignsPage({
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-medium">Campaign</th>
+                {effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL &&
+                canManageCampaigns ? (
+                  <th className="px-4 py-3 font-medium">Owner</th>
+                ) : null}
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Product</th>
                 <th className="px-4 py-3 font-medium">ICP</th>
                 <th className="px-4 py-3 font-medium">Offer</th>
-                <th className="px-4 py-3 font-medium">
-                  {effectiveView === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY
-                    ? "Activity"
-                    : "Contacts"}
-                </th>
+                <th className="px-4 py-3 font-medium">Contacts</th>
                 <th className="px-4 py-3 font-medium">Created</th>
                 <th className="px-4 py-3 font-medium"> </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {campaigns.map((campaign) => {
-                const useShared = shouldUseSharedCampaign({
-                  userId: user.id,
-                  campaign,
-                });
+                const useShared =
+                  !canManageCampaigns &&
+                  shouldUseSharedCampaign({
+                    userId: user.id,
+                    campaign,
+                  });
                 return (
                   <tr key={campaign.id}>
                     <td className="px-4 py-3 font-medium text-slate-900">
@@ -222,6 +219,14 @@ export default async function CampaignsPage({
                         </span>
                       ) : null}
                     </td>
+                    {effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL &&
+                    canManageCampaigns ? (
+                      <td className="px-4 py-3 text-slate-600">
+                        {campaign.owner?.name ||
+                          campaign.owner?.email ||
+                          "Legacy campaign"}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3 text-slate-600">
                       {campaign.status}
                     </td>
@@ -235,29 +240,7 @@ export default async function CampaignsPage({
                       {campaign.offerName ?? campaign.offer?.name ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
-                      {effectiveView === CAMPAIGN_LIST_VIEW_ALL_ACTIVITY ? (
-                        <div className="space-y-1">
-                          <p>
-                            {campaign._count.executions ??
-                              campaign.executions?.length ??
-                              0}{" "}
-                            run
-                            {(campaign._count.executions ??
-                              campaign.executions?.length ??
-                              0) === 1
-                              ? ""
-                              : "s"}
-                          </p>
-                          {(campaign.executions ?? []).slice(0, 3).map((ex) => (
-                            <p key={ex.id} className="text-xs text-slate-500">
-                              {(ex.user?.name || ex.user?.email || "Member") +
-                                ` · ${formatDate(ex.createdAt)}`}
-                            </p>
-                          ))}
-                        </div>
-                      ) : (
-                        campaign._count.contacts
-                      )}
+                      {campaign._count.contacts}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {formatDate(campaign.createdAt)}
