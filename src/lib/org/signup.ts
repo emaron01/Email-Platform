@@ -422,7 +422,24 @@ export async function acceptOrganizationInvitation(input: {
     throw new InvitationError("Invitation not found.");
   }
   if (invitation.status === "REVOKED") {
-    throw new InvitationError("Invitation has been revoked.");
+    // Lookup is by token only. A newer PENDING invite for the same email is a
+    // different token — the old link cannot be redirected by email match.
+    const newerPending = await prisma.organizationInvitation.findFirst({
+      where: {
+        organizationId: invitation.organizationId,
+        email: invitation.email,
+        status: "PENDING",
+        expiresAt: { gt: new Date() },
+        id: { not: invitation.id },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    throw new InvitationError(
+      newerPending
+        ? "Invitation has been revoked. A newer invite was sent to this email — open the latest invitation link."
+        : "Invitation has been revoked.",
+    );
   }
   if (invitation.status === "ACCEPTED") {
     throw new InvitationError("Invitation has already been used.");

@@ -543,9 +543,14 @@ describe.skipIf(!hasDatabase)(
       }),
     ).rejects.toBeInstanceOf(InvitationError);
 
-    // Revoked
+    // Revoked token stays revoked; a new invite to the same email uses a new
+    // token and must accept (lookup is by tokenHash, not email).
     const revokeTarget = await prisma.user.create({
-      data: { email: `revoke-${suffix}@example.test`, emailNormalized: `revoke-${suffix}@example.test`, name: "Revoke" },
+      data: {
+        email: `revoke-${suffix}@example.test`,
+        emailNormalized: `revoke-${suffix}@example.test`,
+        name: "Revoke",
+      },
     });
     const revokeInvite = await createOrganizationInvitation({
       organizationId: organization.id,
@@ -563,7 +568,57 @@ describe.skipIf(!hasDatabase)(
         rawToken: revokeInvite.rawToken,
         acceptingUserId: revokeTarget.id,
       }),
-    ).rejects.toBeInstanceOf(InvitationError);
+    ).rejects.toMatchObject({
+      name: "InvitationError",
+      message: "Invitation has been revoked.",
+    });
+
+    const reissued = await createOrganizationInvitation({
+      organizationId: organization.id,
+      invitedByUserId: owner.id,
+      email: revokeTarget.email,
+      role: "MEMBER",
+    });
+    expect(reissued.rawToken).not.toBe(revokeInvite.rawToken);
+    expect(reissued.invitationId).not.toBe(revokeInvite.invitationId);
+
+    // Old link still fails (hints that a newer invite exists).
+    await expect(
+      acceptOrganizationInvitation({
+        rawToken: revokeInvite.rawToken,
+        acceptingUserId: revokeTarget.id,
+      }),
+    ).rejects.toMatchObject({
+      name: "InvitationError",
+      message: expect.stringContaining("A newer invite was sent"),
+    });
+
+    // New link accepts.
+    const reissuedAccepted = await acceptOrganizationInvitation({
+      rawToken: reissued.rawToken,
+      acceptingUserId: revokeTarget.id,
+    });
+    expect(reissuedAccepted.organizationId).toBe(organization.id);
+    const membership = await prisma.organizationMembership.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: organization.id,
+          userId: revokeTarget.id,
+        },
+      },
+    });
+    expect(membership?.role).toBe("MEMBER");
+
+    const inviteRows = await prisma.organizationInvitation.findMany({
+      where: {
+        organizationId: organization.id,
+        email: revokeTarget.email,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(inviteRows).toHaveLength(2);
+    expect(inviteRows[0]?.status).toBe("REVOKED");
+    expect(inviteRows[1]?.status).toBe("ACCEPTED");
 
     // Existing CompanyResearch remains available after join (same org id)
     const company = await prisma.company.create({
