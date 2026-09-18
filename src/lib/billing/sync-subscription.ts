@@ -92,7 +92,14 @@ export async function findOrganizationIdForSubscription(input: {
     input.subscription.metadata?.organizationId?.trim() ||
     input.checkoutSession?.metadata?.organizationId?.trim() ||
     null;
-  if (fromMeta) return fromMeta;
+  if (fromMeta) {
+    // Metadata can outlive a Super Admin hard-delete — never return a dead org id.
+    const stillExists = await prisma.organization.findUnique({
+      where: { id: fromMeta },
+      select: { id: true },
+    });
+    if (stillExists) return fromMeta;
+  }
 
   const customerId =
     typeof input.subscription.customer === "string"
@@ -310,12 +317,24 @@ export async function syncSubscriptionById(input: {
   checkoutSession?: Stripe.Checkout.Session | null;
 }): Promise<{ organizationId: string; billingStatus: string } | null> {
   const subscription = await retrieveSubscriptionExpanded(input.subscriptionId);
-  const organizationId =
-    input.organizationId ??
-    (await findOrganizationIdForSubscription({
+
+  let organizationId = input.organizationId?.trim() || null;
+  if (organizationId) {
+    const orgStillThere = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { id: true },
+    });
+    if (!orgStillThere) {
+      // Stale Checkout/subscription metadata after Super Admin hard-delete.
+      organizationId = null;
+    }
+  }
+  if (!organizationId) {
+    organizationId = await findOrganizationIdForSubscription({
       subscription,
       checkoutSession: input.checkoutSession,
-    }));
+    });
+  }
   if (!organizationId) return null;
 
   await syncOrganizationFromStripeSubscription({

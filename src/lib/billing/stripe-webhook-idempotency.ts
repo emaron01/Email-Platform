@@ -11,12 +11,22 @@ export type WebhookClaimResult =
   | { ok: true; duplicate: true };
 
 /**
- * Inserts stripeEventId. Unique violation ⇒ already processed (safe no-op).
+ * Inserts stripeEventId. Already claimed ⇒ duplicate (safe no-op).
+ * Prefers a read before create so Stripe retries do not spam prisma:error logs
+ * for the unique constraint (P2002 is still caught for races).
  */
 export async function claimStripeWebhookEvent(input: {
   stripeEventId: string;
   type: string;
 }): Promise<WebhookClaimResult> {
+  const existing = await prisma.stripeWebhookEvent.findUnique({
+    where: { stripeEventId: input.stripeEventId },
+    select: { id: true },
+  });
+  if (existing) {
+    return { ok: true, duplicate: true };
+  }
+
   try {
     await prisma.stripeWebhookEvent.create({
       data: {
