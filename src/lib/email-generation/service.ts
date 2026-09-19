@@ -362,7 +362,7 @@ export async function generateEmailDraft(
         ...messages,
         {
           role: "user",
-          content: `The previous draft did not reason from a required company specific. Rewrite the full email as JSON only. Reason FROM at least one of these by name to the executive problem (do not bolt it on; do not quote headcount or LinkedIn): ${requiredNames}. Keep paragraph 1 focused on the executive problem; do not open with product capabilities.`,
+          content: `The previous draft did not reason from a required company specific. Rewrite the full email as JSON only. Reason FROM at least one of these by name to the executive problem (do not bolt it on; do not quote headcount or LinkedIn): ${requiredNames}. Keep the opening focused on the executive problem; do not open with product capabilities. The specific may appear in any sentence or paragraph where it does real causal work.`,
         },
       ];
       response = await withRetries(

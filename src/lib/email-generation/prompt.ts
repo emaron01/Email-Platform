@@ -16,7 +16,7 @@ import {
   type PersonalizationDecision,
 } from "@/lib/email-generation/personalization";
 
-export const EMAIL_GENERATION_PROMPT_VERSION = "17";
+export const EMAIL_GENERATION_PROMPT_VERSION = "18";
 export const ADDITIONAL_GUIDANCE_MAX_CHARS = 200;
 
 export type EmailPromptOptions = {
@@ -30,8 +30,8 @@ Use the supplied context in this strict priority order:
 1. Per-contact regeneration instructions, when supplied. They override campaign guidance and writing defaults.
 2. Additional campaign instructions, when supplied. They override writing defaults.
 3. The campaign offer and call to action.
-4. Paragraph 1 problem framing (hard): lead with the executive or business problem from paragraph1ProblemFraming (painPoints first; messagingNotes inform tone and emphasis only, not the opener). Do this before naming the product or any product capability.
-5. Required company specifics, when requiredMotionSpecifics is non-empty: Reason FROM at least one listed specific to the executive problem (mandatory and checkable). The specific must do causal work in the sentence — not decorate a generic clause or quote firmographics.
+4. Opening problem framing (hard): establish the executive or business problem from openingProblemFraming before naming the product or any product capability. PainPoints lead; messagingNotes inform tone and emphasis only.
+5. Required company specifics, when requiredMotionSpecifics is non-empty: Reason FROM at least one listed specific to the executive problem (mandatory and checkable). The specific must do causal work, but it need not occupy a fixed sentence or paragraph position.
 6. Company research, when personalization.companyResearchUsable is true: infer selling motion and connect it to this product's problem in that motion. Do not restate what the company does.
 7. Persona as angle only: which value prop leads, what this role cares about, what objections to preempt, what vocabulary to use. Persona is not personalization.
 8. Contact role research, when personalization.contactResearchUsable is true: roleSummary, responsibilities, ownershipAreas only.
@@ -43,15 +43,16 @@ Per-contact regeneration instructions override additional campaign instructions 
 Additional campaign instructions may override writing and template defaults, including the default prohibition on bullets, but they cannot override factual constraints, the selected emailStructure, JSON-only output, the sign-off prohibition, or the em dash prohibition.
 
 Writing and structure rules:
-- Follow the emailStructure instruction exactly. It defines sentence count, paragraph count, word target, and purpose per paragraph. These constraints override your defaults.
-- Content paragraph 1 must frame the executive or business problem using paragraph1ProblemFraming before any product name, mechanism, or capability appears. Product messaging belongs in later sentences or paragraphs, never as the opener's subject.
+- Follow emailStructure.mode. FIXED_THIN is an exact fallback. FLEXIBLE_RESEARCH gives bounds, not a template: let the strongest supported opening approach determine paragraph and sentence shape.
+- The first sentence must not name the product, lead with a product mechanism, or assert a company situation without support from requiredMotionSpecifics.
+- For COMPANY and BEST, choose the opening approach that best fits the selected fact. Do not rotate approaches randomly and do not force every email into problem paragraph → product paragraph → ask.
 - When a writing sample is supplied, match its sentence length, approximate total length, conversational cadence, paragraph pacing, and closing style. Do not merely borrow its terminology.
-- The writing sample's structure overrides any default outbound email or marketing template structure, except that emailStructure overrides the sample's paragraph count.
+- The writing sample may influence flexible structure but cannot override emailStructure bounds or factual rules.
 - Use the sample only as a style reference. Do not copy its recipient, claims, offer, or other facts.
 - Do not use bullet points or structured headers unless the additional campaign instructions explicitly request them.
 - Put the greeting on its own line, followed by exactly one blank line before the first content paragraph. The greeting does not count as a paragraph or sentence in emailStructure.
 - No paragraph may exceed three sentences. Do not write run-on sentences.
-- Close the email with exactly one soft question. Do not place additional questions earlier in the email.
+- Use no more than one question. A question is optional; a concise declarative next step is allowed. Do not force the ask into a fixed sentence position.
 - Do not include a sign-off, sender name, sender placeholder, signature, or signature block of any kind. Never write "Best," or "[Your Name]". End the generated body immediately after the closing question or final sentence.
 - Never use an em dash character in the subject, body, or reasoning. No exceptions. Use a period, comma, or rewrite the sentence instead.
 
@@ -87,25 +88,50 @@ export function buildEmailPrompt(
 ): [AiMessage, AiMessage] {
   const firstVoiceSample = context.voiceSamples[0] ?? null;
   const regenerationGuidance = additionalGuidance?.trim() || null;
-  const emailStructure =
-    (context.emailLength ?? context.campaign.emailLength) === "SHORT"
+  const { personalization, requiredMotionSpecifics } = options;
+  const emailLength = context.emailLength ?? context.campaign.emailLength;
+  const thinFallback = personalization.tier === "THIN";
+  const emailStructure = thinFallback
+    ? emailLength === "SHORT"
       ? {
           emailLength: "SHORT" as const,
+          mode: "FIXED_THIN" as const,
           instruction:
-            "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. Sentence 1 frames the executive or business problem from paragraph1ProblemFraming (no product name or capability yet). Then one soft close question. Target 40-60 words excluding the greeting.",
+            "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. Sentence 1 frames the executive or business problem from openingProblemFraming (no product name or capability yet). Then one soft close question. Target 40-60 words excluding the greeting.",
         }
-      : (context.emailLength ?? context.campaign.emailLength) === "LONG"
+      : emailLength === "LONG"
         ? {
             emailLength: "LONG" as const,
+            mode: "FIXED_THIN" as const,
             instruction:
-              "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from paragraph1ProblemFraming only, 2 sentences max. Do not name the product or any capability here. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and close question, 2 sentences max. Target 120-150 words excluding the greeting.",
+              "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming only, 2 sentences max. Do not name the product or any capability here. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and close question, 2 sentences max. Target 120-150 words excluding the greeting.",
           }
         : {
             emailLength: "MEDIUM" as const,
+            mode: "FIXED_THIN" as const,
             instruction:
-              "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from paragraph1ProblemFraming, 2 sentences max. Do not lead with product name or capability. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
+              "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming, 2 sentences max. Do not lead with product name or capability. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
+          }
+    : emailLength === "SHORT"
+      ? {
+          emailLength: "SHORT" as const,
+          mode: "FLEXIBLE_RESEARCH" as const,
+          instruction:
+            "Let the supported opening approach determine the shape. Use 1-2 short content paragraphs, no more than 4 content sentences, and no more than 75 words excluding the greeting.",
+        }
+      : emailLength === "LONG"
+        ? {
+            emailLength: "LONG" as const,
+            mode: "FLEXIBLE_RESEARCH" as const,
+            instruction:
+              "Let the supported opening approach determine the shape. Use 2-4 short content paragraphs, no more than 9 content sentences, and no more than 165 words excluding the greeting.",
+          }
+        : {
+            emailLength: "MEDIUM" as const,
+            mode: "FLEXIBLE_RESEARCH" as const,
+            instruction:
+              "Let the supported opening approach determine the shape. Use 1-3 short content paragraphs, no more than 6 content sentences, and no more than 120 words excluding the greeting.",
           };
-  const { personalization, requiredMotionSpecifics } = options;
   const problemSpace = {
     problemsSolved: context.product.problemsSolved,
     painPoints: context.persona.painPoints,
@@ -124,6 +150,24 @@ export function buildEmailPrompt(
       ? `Additional instructions that override defaults: ${context.campaign.emailGuidance}`
       : null,
     emailStructure,
+    openingApproach: thinFallback
+      ? {
+          mode: "FIXED_FALLBACK",
+          instruction:
+            "Use the fixed problem-led fallback in emailStructure. Do not invent company specificity.",
+        }
+      : {
+          mode: "MODEL_CHOOSES_FROM_SUPPORT",
+          instruction:
+            "Choose the one approach best supported by requiredMotionSpecifics and the persona pain. The selected fact must do causal work. Do not choose randomly or mention the approach label in the email.",
+          options: [
+            "supported observation about the selling motion",
+            "operational consequence",
+            "decision or approval moment",
+            "role-specific tradeoff",
+            "direct problem framing",
+          ],
+        },
     personalization: {
       tier: personalization.tier,
       companyResearchUsable: personalization.companyResearchUsable,
@@ -138,11 +182,11 @@ export function buildEmailPrompt(
     requiredMotionSpecifics,
     requiredMotionSpecificsInstruction:
       requiredMotionSpecifics.length > 0
-        ? "Reason FROM at least one requiredMotionSpecifics[].text to the executive problem in paragraph 1. Use whyItMatters as the intended connection. The specific must do causal work — not decorate a generic sentence or quote headcount/location/LinkedIn."
+        ? "Reason FROM at least one requiredMotionSpecifics[].text to the executive problem. Use whyItMatters as the intended connection. The specific must do causal work, but it need not occupy a fixed sentence or paragraph position. Do not decorate a generic sentence or quote headcount/location/LinkedIn."
         : null,
-    paragraph1ProblemFraming: {
+    openingProblemFraming: {
       instruction:
-        "Open with the executive or business problem from painPoints. Use messagingNotes only for tone, emphasis, and what to avoid — never as the opener when painPoints are present. Do not open with product name, mechanism, capability, or productProblemSpace.problemsSolved. When requiredMotionSpecifics is present, reason FROM one listed fact to the persona's pain — never quote headcount, location, or directory research.",
+        "Establish the executive or business problem from painPoints before introducing the product. Use messagingNotes only for tone, emphasis, and what to avoid. Do not open with product name, mechanism, capability, or productProblemSpace.problemsSolved. When requiredMotionSpecifics is present, reason FROM one listed fact to the persona's pain without forcing it into a fixed sentence or paragraph position. Never quote headcount, location, or directory research.",
       painPoints: context.persona.painPoints,
       messagingNotes: context.persona.messagingNotes,
     },
