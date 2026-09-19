@@ -364,6 +364,8 @@ export async function createPlatformOrganizationAction(
         billingMode === "BILLED" && monthlyEmailSendLimit == null
           ? 1000
           : monthlyEmailSendLimit,
+      seatQuantity: asPositiveInt(formData.get("seatQuantity"), "Included seats"),
+      maxSeats: asPositiveInt(formData.get("maxSeats"), "Seat cap"),
     });
     revalidatePath("/platform/orgs");
     revalidatePath(`/platform/orgs/${created.organizationId}`);

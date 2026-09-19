@@ -4,9 +4,9 @@
 import {
   BILLING_PLAN_ENTERPRISE,
   BILLING_PLAN_STANDARD,
-  BILLING_PLAN_TEAM,
   canonicalPlanCode,
   getPlanDefinition,
+  planAllowsSelfServeSeatChanges,
   planUsesSeatBilling,
 } from "@/lib/billing/plans";
 
@@ -76,8 +76,7 @@ export function buildSeatSnapshot(input: {
   const plan = getPlanDefinition(code);
   const planMax = plan?.seats.seatMax;
   const canAddSeatSelfServe =
-    planUsesSeatBilling(code) &&
-    code === BILLING_PLAN_TEAM &&
+    planAllowsSelfServeSeatChanges(code) &&
     seatQuantity < maxSeats &&
     (planMax == null || seatQuantity < planMax);
 

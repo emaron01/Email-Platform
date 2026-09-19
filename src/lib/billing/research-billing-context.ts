@@ -18,6 +18,7 @@ export async function loadResearchBillingContext(
   const profile = await prisma.organizationBillingProfile.findUnique({
     where: { organizationId },
     select: {
+      planCode: true,
       billingStatus: true,
       trialEndsAt: true,
     },
@@ -39,6 +40,7 @@ export async function loadResearchBillingContext(
   }
 
   return {
+    planCode: profile?.planCode ?? "",
     billingStatus,
     trialEndsAt: profile?.trialEndsAt?.toISOString() ?? null,
     canConvertTrialEarly,

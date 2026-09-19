@@ -3,7 +3,10 @@
  * Safe for client + server — no DB imports.
  */
 
-import { formatBillingDate } from "@/lib/billing/billing-state";
+import {
+  billingPlanLabel,
+  formatBillingDate,
+} from "@/lib/billing/billing-state";
 
 /** Heads-up when this many (or fewer) new-company slots remain. Does not block. */
 export const ACTIVE_RESEARCHED_COMPANY_WARN_REMAINING = 10;
@@ -21,6 +24,7 @@ export type ActiveResearchedCompanyUsageView = {
 
 /** Billing fields the research UI needs for trial-aware quota copy. */
 export type ResearchBillingContext = {
+  planCode: string;
   billingStatus: string;
   trialEndsAt: string | null;
   /** TRIALING + card on file — eligible for Stripe trial_end: 'now'. */
@@ -84,14 +88,18 @@ export function formatTrialResearchExhausted(input: {
   trialLimit: number;
   paidLimit?: number;
   trialEndsAt?: Date | string | null;
+  planCode?: string | null;
 }): string {
   const paid = input.paidLimit ?? STANDARD_ACTIVE_COMPANY_LIMIT;
+  const planLabel = input.planCode?.trim()
+    ? billingPlanLabel(input.planCode)
+    : "paid plan";
   const ends = parseTrialEndsAt(input.trialEndsAt ?? null);
   const dateLabel = ends ? formatBillingDate(ends) : null;
   if (dateLabel) {
-    return `You've used your trial research allowance of ${input.trialLimit} companies. Your plan converts to Standard on ${dateLabel}, which includes ${paid} companies.`;
+    return `You've used your trial research allowance of ${input.trialLimit} companies. Your plan converts to ${planLabel} on ${dateLabel}, which includes ${paid} companies.`;
   }
-  return `You've used your trial research allowance of ${input.trialLimit} companies. Your plan converts to Standard at the end of the trial, which includes ${paid} companies.`;
+  return `You've used your trial research allowance of ${input.trialLimit} companies. Your plan converts to ${planLabel} at the end of the trial, which includes ${paid} companies.`;
 }
 
 export function formatResearchQuotaBlockedMessage(input: {
@@ -99,11 +107,13 @@ export function formatResearchQuotaBlockedMessage(input: {
   limit: number;
   billingStatus?: string | null;
   trialEndsAt?: Date | string | null;
+  planCode?: string | null;
 }): string {
   if (input.billingStatus === "TRIALING") {
     return formatTrialResearchExhausted({
       trialLimit: input.limit,
       trialEndsAt: input.trialEndsAt,
+      planCode: input.planCode,
     });
   }
   return formatResearchAllowanceExhausted(input.limit);
@@ -128,10 +138,14 @@ export type ResearchQuotaCta = {
 /** Secondary Billing link after hitting the company research cap. */
 export function researchQuotaBlockedCta(input: {
   billingStatus?: string | null;
+  planCode?: string | null;
 }): ResearchQuotaCta {
   if (input.billingStatus === "TRIALING") {
+    const planLabel = input.planCode?.trim()
+      ? billingPlanLabel(input.planCode)
+      : "plan";
     return {
-      label: "View Standard conversion in Billing",
+      label: `View ${planLabel} conversion in Billing`,
       href: RESEARCH_BILLING_HREF,
     };
   }

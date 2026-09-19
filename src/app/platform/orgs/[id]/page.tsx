@@ -39,7 +39,7 @@ import {
   updatePlatformResearchPolicyAction,
   updatePlatformOrgMaxSeatsAction,
 } from "@/app/actions/platform-orgs";
-import { BILLING_PLAN_COMPED, planUsesPerUserCompanyAllowance, COMPANY_CREDIT_BLOCK } from "@/lib/billing/plans";
+import { planUsesPerUserCompanyAllowance, COMPANY_CREDIT_BLOCK } from "@/lib/billing/plans";
 
 function pct(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
@@ -798,8 +798,7 @@ export default async function PlatformOrgDetailPage({
             organizationName={org.name}
           />
 
-          {billing.planCode !== BILLING_PLAN_COMPED ||
-          billing.billingStatus !== "FREE" ||
+          {billing.billingStatus !== "FREE" ||
           billing.stripeSubscriptionId ? (
             <ConvertOrganizationToCompedPanel
               organizationId={id}

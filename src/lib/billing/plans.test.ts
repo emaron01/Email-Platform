@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   COMPANY_CREDIT_BLOCK,
   BILLING_PLAN_COMPED,
+  BILLING_PLAN_ENTERPRISE,
   BILLING_PLAN_STANDARD,
+  BILLING_PLAN_TEAM,
   creditExpiryDate,
   getPlanDefinition,
+  planAllowsSelfServeSeatChanges,
+  planUsesInvoicedBilling,
+  planUsesPerUserCompanyAllowance,
   resolveEntitlementsForStatus,
 } from "@/lib/billing/plans";
 import {
@@ -13,7 +18,10 @@ import {
   sumActiveCreditCompanies,
   companiesFromCreditCheckoutBlocks,
 } from "@/lib/billing/company-research-credits-math";
-import { shouldSendBillingTransactionalEmail } from "@/lib/billing/billing-state";
+import {
+  requiresStripeCheckout,
+  shouldSendBillingTransactionalEmail,
+} from "@/lib/billing/billing-state";
 import {
   formatResearchQuotaBlockedMessage,
   formatTrialResearchExhausted,
@@ -50,6 +58,27 @@ describe("billing plans catalog", () => {
         billingStatus: "ACTIVE",
       })?.activeResearchedCompanyLimit,
     ).toBe(100);
+  });
+
+  it("models Enterprise product capabilities separately from collection state", () => {
+    expect(planUsesPerUserCompanyAllowance(BILLING_PLAN_ENTERPRISE)).toBe(true);
+    expect(planUsesInvoicedBilling(BILLING_PLAN_ENTERPRISE)).toBe(true);
+    expect(planAllowsSelfServeSeatChanges(BILLING_PLAN_ENTERPRISE)).toBe(false);
+    expect(planAllowsSelfServeSeatChanges(BILLING_PLAN_TEAM)).toBe(true);
+    expect(
+      requiresStripeCheckout({
+        planCode: BILLING_PLAN_ENTERPRISE,
+        billingStatus: "UNPAID",
+        stripeSubscriptionId: null,
+      }),
+    ).toBe(false);
+    expect(
+      requiresStripeCheckout({
+        planCode: BILLING_PLAN_TEAM,
+        billingStatus: "UNPAID",
+        stripeSubscriptionId: null,
+      }),
+    ).toBe(true);
   });
 
   it("never sends billing email to comped orgs", () => {
@@ -130,6 +159,7 @@ describe("billing plans catalog", () => {
         limit: 25,
         billingStatus: "TRIALING",
         trialEndsAt: new Date("2026-09-17T00:00:00.000Z"),
+        planCode: BILLING_PLAN_TEAM,
       }),
     ).toContain("trial research allowance of 25");
     expect(
@@ -138,14 +168,16 @@ describe("billing plans catalog", () => {
         limit: 25,
         billingStatus: "TRIALING",
         trialEndsAt: new Date("2026-09-17T00:00:00.000Z"),
+        planCode: BILLING_PLAN_TEAM,
       }),
-    ).toContain("converts to Standard on");
+    ).toContain("converts to Team on");
     expect(
       formatResearchQuotaBlockedMessage({
         used: 25,
         limit: 25,
         billingStatus: "TRIALING",
         trialEndsAt: new Date("2026-09-17T00:00:00.000Z"),
+        planCode: BILLING_PLAN_STANDARD,
       }),
     ).toContain("100 companies");
     expect(formatTrialResearchExhausted({ trialLimit: 25 })).toContain(

@@ -9,7 +9,7 @@ import {
   createIndividualWorkspace,
   removeOrganizationMember,
 } from "@/lib/org/signup";
-import { COMPED_BILLING_DEFAULTS } from "@/lib/billing/billing-state";
+import { BILLING_PLAN_ENTERPRISE } from "@/lib/billing/plans";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL?.trim());
 
@@ -39,6 +39,8 @@ describe.skipIf(!hasDatabase)(
         activeResearchedCompanyLimit: 50,
         dailyEmailSendWarningLimit: 50,
         monthlyEmailSendLimit: null,
+        seatQuantity: 4,
+        maxSeats: 6,
       });
 
       const org = await prisma.organization.findUniqueOrThrow({
@@ -54,9 +56,11 @@ describe.skipIf(!hasDatabase)(
       expect(org.accountType).toBe("ENTERPRISE");
       expect(org.status).toBe("ACTIVE");
       expect(org.memberships).toHaveLength(0);
-      expect(org.billingProfile?.planCode).toBe(COMPED_BILLING_DEFAULTS.planCode);
+      expect(org.billingProfile?.planCode).toBe(BILLING_PLAN_ENTERPRISE);
       expect(org.billingProfile?.billingStatus).toBe("FREE");
       expect(org.billingProfile?.stripeCustomerId).toBeNull();
+      expect(org.billingProfile?.seatQuantity).toBe(4);
+      expect(org.billingProfile?.maxSeats).toBe(6);
       expect(org.usagePolicy?.activeResearchedCompanyLimit).toBe(50);
       expect(org.invitations).toHaveLength(1);
       expect(org.invitations[0]?.email).toBe(ownerEmail);
@@ -69,6 +73,42 @@ describe.skipIf(!hasDatabase)(
         },
       });
       expect(audit?.actorUserId).toBe(admin.user.id);
+    });
+
+    it("creates billed ENTERPRISE as active invoiced access without Stripe", async () => {
+      const stamp = `${Date.now().toString(36)}-billed`;
+      const admin = await createIndividualWorkspace({
+        email: `sa-create-${stamp}@example.com`,
+        firstName: "Super",
+        lastName: "Admin",
+      });
+      await prisma.user.update({
+        where: { id: admin.user.id },
+        data: { platformRole: "SUPER_ADMIN", emailVerifiedAt: new Date() },
+      });
+
+      const created = await createPlatformOrganization({
+        actorUserId: admin.user.id,
+        name: `Enterprise Billed ${stamp}`,
+        accountType: "ENTERPRISE",
+        ownerEmail: `owner-${stamp}@example.com`,
+        billingMode: "BILLED",
+        activeResearchedCompanyLimit: 150,
+        dailyEmailSendWarningLimit: 50,
+        monthlyEmailSendLimit: 1000,
+        seatQuantity: 8,
+        maxSeats: 12,
+      });
+      const billing = await prisma.organizationBillingProfile.findUniqueOrThrow({
+        where: { organizationId: created.organizationId },
+      });
+
+      expect(billing.planCode).toBe(BILLING_PLAN_ENTERPRISE);
+      expect(billing.billingStatus).toBe("ACTIVE");
+      expect(billing.stripeCustomerId).toBeNull();
+      expect(billing.stripeSubscriptionId).toBeNull();
+      expect(billing.seatQuantity).toBe(8);
+      expect(billing.maxSeats).toBe(12);
     });
 
     it("allows OWNER/ADMIN to change and remove members", async () => {

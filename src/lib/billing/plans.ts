@@ -69,6 +69,8 @@ export type PlanDefinition = {
   planCode: KnownBillingPlanCode | string;
   sellable: boolean;
   requiresStripe: boolean;
+  /** How payment is collected; product behavior must not infer this from a plan name. */
+  billingCollection: "NONE" | "SELF_SERVE_STRIPE" | "INVOICED";
   /**
    * When non-null, Checkout attaches a Stripe trial. Length comes from
    * platform console billing.trial → BILLING_TRIAL_PERIOD_DAYS — not this number.
@@ -113,6 +115,7 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
     planCode: BILLING_PLAN_COMPED,
     sellable: false,
     requiresStripe: false,
+    billingCollection: "NONE",
     trialDays: null,
     trialEntitlements: null,
     components: [],
@@ -134,6 +137,7 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
     planCode: BILLING_PLAN_STANDARD,
     sellable: true,
     requiresStripe: true,
+    billingCollection: "SELF_SERVE_STRIPE",
     trialDays: 7,
     trialEntitlements: {
       activeResearchedCompanyLimit: 25,
@@ -160,6 +164,7 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
     planCode: BILLING_PLAN_TEAM,
     sellable: true,
     requiresStripe: true,
+    billingCollection: "SELF_SERVE_STRIPE",
     trialDays: 7,
     trialEntitlements: {
       activeResearchedCompanyLimit: 150,
@@ -187,6 +192,7 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
     planCode: BILLING_PLAN_PREMIUM,
     sellable: false,
     requiresStripe: true,
+    billingCollection: "SELF_SERVE_STRIPE",
     trialDays: 7,
     trialEntitlements: {
       activeResearchedCompanyLimit: 150,
@@ -212,7 +218,8 @@ export const BILLING_PLAN_CATALOG: readonly PlanDefinition[] = [
   {
     planCode: BILLING_PLAN_ENTERPRISE,
     sellable: false,
-    requiresStripe: true,
+    requiresStripe: false,
+    billingCollection: "INVOICED",
     trialDays: null,
     trialEntitlements: null,
     components: [
@@ -266,10 +273,27 @@ export function planAllowsReferrals(planCode: string | null | undefined): boolea
   return canonicalPlanCode(planCode) === BILLING_PLAN_STANDARD;
 }
 
-/** True when plan bills / gates by seat quantity. */
+/** True when product limits and allowances are expressed per seat. */
 export function planUsesSeatBilling(planCode: string): boolean {
   const seats = getPlanDefinition(canonicalPlanCode(planCode))?.seats;
   return seats != null && (seats.seatMax == null || seats.seatMax > 1);
+}
+
+/** True when the customer can change subscription seats through Stripe. */
+export function planAllowsSelfServeSeatChanges(planCode: string): boolean {
+  const plan = getPlanDefinition(canonicalPlanCode(planCode));
+  return (
+    plan?.billingCollection === "SELF_SERVE_STRIPE" &&
+    planUsesSeatBilling(plan.planCode)
+  );
+}
+
+/** True when billing is handled by invoice instead of Stripe Checkout. */
+export function planUsesInvoicedBilling(planCode: string): boolean {
+  return (
+    getPlanDefinition(canonicalPlanCode(planCode))?.billingCollection ===
+    "INVOICED"
+  );
 }
 
 export function getPlanDefinition(planCode: string): PlanDefinition | null {

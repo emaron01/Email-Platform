@@ -20,6 +20,7 @@ export function CompanyResearchAllowanceBanner({
 }) {
   const cta = researchQuotaBlockedCta({
     billingStatus: billing?.billingStatus,
+    planCode: billing?.planCode,
   });
 
   if (usage.exhausted) {
@@ -38,6 +39,7 @@ export function CompanyResearchAllowanceBanner({
               limit: usage.limit,
               billingStatus: billing?.billingStatus,
               trialEndsAt: billing?.trialEndsAt,
+              planCode: billing?.planCode,
             })}
           </p>
         ) : null}

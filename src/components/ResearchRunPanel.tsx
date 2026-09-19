@@ -13,6 +13,7 @@ import {
 import { CompanyResearchAllowanceBanner } from "@/components/CompanyResearchAllowanceBanner";
 import { ConvertTrialNowButton } from "@/components/billing/ConvertTrialNowButton";
 import { PrimaryButton, SECONDARY_BUTTON_CLASS, SecondaryButton } from "@/components/ui";
+import { billingPlanLabel } from "@/lib/billing/billing-state";
 import {
   isResearchRunPaused,
   isResearchRunStalled,
@@ -279,6 +280,7 @@ export function ResearchRunPanel({
 
   const quotaCta = researchQuotaBlockedCta({
     billingStatus: billing?.billingStatus,
+    planCode: billing?.planCode,
   });
   const isTrialing = billing?.billingStatus === "TRIALING";
   const exhaustedMessage = formatResearchQuotaBlockedMessage({
@@ -286,6 +288,7 @@ export function ResearchRunPanel({
     limit: allowance.limit,
     billingStatus: billing?.billingStatus,
     trialEndsAt: billing?.trialEndsAt,
+    planCode: billing?.planCode,
   });
 
   return (
@@ -378,6 +381,7 @@ export function ResearchRunPanel({
                   limit: allowance.limit,
                   billingStatus: billing?.billingStatus,
                   trialEndsAt: billing?.trialEndsAt,
+                  planCode: billing?.planCode,
                 })}
               </p>
               {billing?.canConvertTrialEarly ? (
@@ -391,7 +395,7 @@ export function ResearchRunPanel({
                   {quotaCta.label}
                 </Link>
                 {isTrialing && !billing?.canConvertTrialEarly
-                  ? " — capacity unlocks when your plan converts to Standard."
+                  ? ` — capacity unlocks when your plan converts to ${billing?.planCode ? billingPlanLabel(billing.planCode) : "the paid plan"}.`
                   : isTrialing
                     ? " — or wait until the scheduled conversion date."
                     : "."}

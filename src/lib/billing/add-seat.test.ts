@@ -58,4 +58,13 @@ describe("seat change confirmation copy", () => {
     expect(lib).toMatch(/seatQuantity: input\.expectedCurrentSeats/);
     expect(lib).toContain("STRIPE_UPDATE_FAILED");
   });
+
+  it("blocks invoice-managed seat changes before the Stripe API path", () => {
+    const lib = readFileSync("src/lib/billing/add-seat.ts", "utf8");
+    expect(lib).toContain("planAllowsSelfServeSeatChanges");
+    expect(lib).toContain("invoice-managed seats");
+    expect(lib.indexOf("if (!planAllowsSelfServeSeatChanges")).toBeLessThan(
+      lib.indexOf("if (!profile.stripeSubscriptionId)"),
+    );
+  });
 });

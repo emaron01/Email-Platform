@@ -13,6 +13,7 @@ import {
   BILLING_PLAN_PREMIUM,
   BILLING_PLAN_STANDARD,
   BILLING_PLAN_TEAM,
+  planUsesInvoicedBilling,
   planUsesSeatBilling,
 } from "@/lib/billing/plans";
 import { formatSeatsUsedLabel } from "@/lib/org/seat-limits";
@@ -210,6 +211,9 @@ export function requiresStripeCheckout(profile: {
   billingStatus: string;
   stripeSubscriptionId?: string | null;
 }): boolean {
+  if (planUsesInvoicedBilling(profile.planCode)) {
+    return false;
+  }
   if (
     profile.planCode === BILLING_PLAN_COMPED ||
     profile.planCode === "FREE" ||

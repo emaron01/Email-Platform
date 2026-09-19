@@ -16,7 +16,10 @@ import {
   individualOrgAdminInviteBlockMessage,
 } from "@/lib/org/seats";
 import { buildSeatSnapshot, formatSeatsUsedLabel } from "@/lib/org/seat-limits";
-import { planUsesSeatBilling } from "@/lib/billing/plans";
+import {
+  planUsesInvoicedBilling,
+  planUsesSeatBilling,
+} from "@/lib/billing/plans";
 import { prisma } from "@/lib/prisma";
 import { ensureOrganizationPolicies } from "@/lib/usage/policy";
 
@@ -73,6 +76,9 @@ export default async function OrganizationSettingsPage() {
   });
 
   const showSeats = planUsesSeatBilling(billing?.planCode ?? "");
+  const seatsAreInvoiceManaged = planUsesInvoicedBilling(
+    billing?.planCode ?? "",
+  );
 
   const overrideByUser = new Map(
     overrides.map((o) => [o.userId, o] as const),
@@ -303,20 +309,26 @@ export default async function OrganizationSettingsPage() {
             })}
             {" · "}
             Cap {seatSnap.maxSeats}
-            {seatSnap.planCode === "ENTERPRISE"
+            {seatsAreInvoiceManaged
               ? " (set by Sales Forecaster)"
               : ""}
             .
           </p>
           <p className="text-sm text-slate-600">
-            Add or remove seats from{" "}
-            <Link
-              href="/settings/billing"
-              className="font-medium text-slate-900 underline"
-            >
-              Billing
-            </Link>
-            . Seat changes update your subscription and require confirmation.
+            {seatsAreInvoiceManaged ? (
+              "Contact support to change invoice-managed seats."
+            ) : (
+              <>
+                Add or remove seats from{" "}
+                <Link
+                  href="/settings/billing"
+                  className="font-medium text-slate-900 underline"
+                >
+                  Billing
+                </Link>
+                . Seat changes update your subscription and require confirmation.
+              </>
+            )}
           </p>
         </section>
       ) : null}

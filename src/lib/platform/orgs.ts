@@ -18,6 +18,11 @@ import {
   COMPED_BILLING_DEFAULTS,
   SELF_SERVE_BILLING_DEFAULTS,
 } from "@/lib/billing/billing-state";
+import {
+  BILLING_PLAN_ENTERPRISE,
+  BILLING_PLAN_STANDARD,
+  getPlanDefinition,
+} from "@/lib/billing/plans";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
 import { createOrganizationInvitationAsPlatform } from "@/lib/org/signup";
 
@@ -1034,7 +1039,6 @@ export async function convertOrganizationToComped(input: {
 
   const profile = org.billingProfile;
   if (
-    profile.planCode === COMPED_BILLING_DEFAULTS.planCode &&
     profile.billingStatus === COMPED_BILLING_DEFAULTS.billingStatus &&
     !profile.stripeSubscriptionId
   ) {
@@ -1069,6 +1073,8 @@ export async function convertOrganizationToComped(input: {
       where: { organizationId: org.id },
       data: {
         ...COMPED_BILLING_DEFAULTS,
+        // Comped is a billing state. Preserve the product plan and its capabilities.
+        planCode: profile.planCode,
         stripePriceUnitAmountCents: null,
         stripePriceCurrency: null,
         stripePriceInterval: null,
@@ -1139,6 +1145,8 @@ export async function createPlatformOrganization(input: {
   activeResearchedCompanyLimit: number;
   dailyEmailSendWarningLimit: number;
   monthlyEmailSendLimit: number | null;
+  seatQuantity?: number;
+  maxSeats?: number;
   timezone?: string;
 }): Promise<{
   organizationId: string;
@@ -1174,10 +1182,35 @@ export async function createPlatformOrganization(input: {
     throw new Error("Daily send advisory must be a non-negative number.");
   }
 
+  const planCode =
+    input.accountType === "ENTERPRISE"
+      ? BILLING_PLAN_ENTERPRISE
+      : BILLING_PLAN_STANDARD;
+  const plan = getPlanDefinition(planCode);
+  const seatMinimum = plan?.seats.seatMin ?? 1;
+  const seatQuantity =
+    input.accountType === "ENTERPRISE"
+      ? Math.floor(input.seatQuantity ?? seatMinimum)
+      : 1;
+  const maxSeats =
+    input.accountType === "ENTERPRISE"
+      ? Math.floor(input.maxSeats ?? seatQuantity)
+      : 1;
+  if (seatQuantity < seatMinimum) {
+    throw new Error(`Seats must be at least ${seatMinimum} for this account.`);
+  }
+  if (maxSeats < seatQuantity) {
+    throw new Error("Seat cap cannot be below included seats.");
+  }
   const billingDefaults =
     input.billingMode === "COMPED"
       ? COMPED_BILLING_DEFAULTS
-      : SELF_SERVE_BILLING_DEFAULTS;
+      : input.accountType === "ENTERPRISE"
+        ? {
+            ...SELF_SERVE_BILLING_DEFAULTS,
+            billingStatus: "ACTIVE" as const,
+          }
+        : SELF_SERVE_BILLING_DEFAULTS;
 
   const slug = await uniqueOrganizationSlug(slugifyOrgName(name));
   const organization = await prisma.$transaction(async (tx) => {
@@ -1214,6 +1247,9 @@ export async function createPlatformOrganization(input: {
         organizationId: org.id,
         billingEmail: ownerEmail,
         ...billingDefaults,
+        planCode,
+        seatQuantity,
+        maxSeats,
       },
     });
     return org;
@@ -1227,8 +1263,10 @@ export async function createPlatformOrganization(input: {
       accountType: input.accountType,
       ownerEmail,
       billingMode: input.billingMode,
-      planCode: billingDefaults.planCode,
+      planCode,
       billingStatus: billingDefaults.billingStatus,
+      seatQuantity,
+      maxSeats,
       activeResearchedCompanyLimit: input.activeResearchedCompanyLimit,
     },
   });

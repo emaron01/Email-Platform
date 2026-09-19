@@ -959,6 +959,7 @@ export async function researchCompany(
               limit,
               billingStatus: billingProfile?.billingStatus,
               trialEndsAt: billingProfile?.trialEndsAt,
+              planCode: billingProfile?.planCode,
             }),
             "ACTIVE_RESEARCHED_COMPANY",
             used,

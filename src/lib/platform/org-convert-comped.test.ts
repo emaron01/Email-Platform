@@ -89,7 +89,7 @@ describe("convertOrganizationToComped", () => {
     expect(state.billingUpdate).not.toHaveBeenCalled();
   });
 
-  it("writes COMPED only after subscription is confirmed canceled", async () => {
+  it("writes comped billing state without replacing the product plan", async () => {
     state.orgFindUnique.mockResolvedValue({
       id: "org_1",
       name: "Acme",
@@ -124,7 +124,7 @@ describe("convertOrganizationToComped", () => {
       expect.objectContaining({
         where: { organizationId: "org_1" },
         data: expect.objectContaining({
-          planCode: "COMPED",
+          planCode: "STANDARD",
           billingStatus: "FREE",
           stripeSubscriptionId: null,
           stripeCustomerId: null,

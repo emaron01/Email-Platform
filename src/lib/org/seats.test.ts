@@ -25,28 +25,34 @@ describe("org seat / invite policy", () => {
     expect(individualOrgAdminInviteBlockMessage()).toContain("Team");
   });
 
-  it("allows COMPED Individual and seat-capacity ENTERPRISE/TEAM", () => {
+  it("keeps comped access subject to the product seat policy", () => {
     expect(
       orgAdminInvitesAllowed({
         accountType: "INDIVIDUAL",
         planCode: "COMPED",
       }),
-    ).toBe(true);
-    expect(
-      orgAdminInvitesAllowed({
-        accountType: "INDIVIDUAL",
-        planCode: "FREE",
-      }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       orgAdminInvitesAllowed({
         accountType: "ENTERPRISE",
-        planCode: "STANDARD",
+        planCode: "ENTERPRISE",
         seatQuantity: 5,
         maxSeats: 10,
         usedSeats: 2,
       }),
     ).toBe(true);
+    expect(
+      orgAdminInviteDenialReason({
+        accountType: "ENTERPRISE",
+        planCode: "ENTERPRISE",
+        seatQuantity: 5,
+        maxSeats: 10,
+        usedSeats: 5,
+      }),
+    ).toBe(SEAT_LIMIT_REACHED_MESSAGE);
+  });
+
+  it("allows seat-capacity ENTERPRISE/TEAM", () => {
     expect(
       orgAdminInviteDenialReason({
         accountType: "INDIVIDUAL",

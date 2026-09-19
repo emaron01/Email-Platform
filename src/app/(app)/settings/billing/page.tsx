@@ -24,6 +24,7 @@ import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
 import {
   getPlanDefinition,
   planAllowsReferrals,
+  planUsesInvoicedBilling,
   planUsesPerUserCompanyAllowance,
   planUsesSeatBilling,
 } from "@/lib/billing/plans";
@@ -134,6 +135,7 @@ export default async function OrganizationBillingSettingsPage({
   const planCode = billing?.planCode ?? BILLING_PLAN_COMPED;
   const billingStatus = billing?.billingStatus ?? "FREE";
   const perUserCredits = planUsesPerUserCompanyAllowance(planCode);
+  const invoiceManaged = planUsesInvoicedBilling(planCode);
 
   const [activeCompanies, creditBalance] = await Promise.all([
     countActiveResearchedCompanies(
@@ -521,7 +523,7 @@ export default async function OrganizationBillingSettingsPage({
           </div>
         ) : null}
 
-        {isComped && !hasLiveSubscription && isOwner ? (
+        {isComped && !hasLiveSubscription && isOwner && !invoiceManaged ? (
           <p className="text-sm text-slate-600">
             <Link
               href={ONBOARDING_SUBSCRIBE_PATH}

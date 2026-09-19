@@ -106,11 +106,41 @@ export default async function PlatformCreateOrgPage() {
               className="mt-1"
             />
             <span>
-              <span className="font-medium">Billed</span> — Standard path;
-              owner completes Checkout from Settings → Billing (coupon optional).
+              <span className="font-medium">Billed</span> — Individual accounts
+              complete Stripe Checkout; Enterprise accounts are invoice-managed.
             </span>
           </label>
         </fieldset>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="font-medium text-slate-800">Included seats</span>
+            <input
+              name="seatQuantity"
+              type="number"
+              min={1}
+              defaultValue={2}
+              required
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              Used for Enterprise. Individual accounts remain one seat.
+            </span>
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-slate-800">Seat cap</span>
+            <input
+              name="maxSeats"
+              type="number"
+              min={1}
+              defaultValue={2}
+              required
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              Must be at least the included-seat count.
+            </span>
+          </label>
+        </div>
         <label className="block text-sm">
           <span className="font-medium text-slate-800">
             Active researched company limit

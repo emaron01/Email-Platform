@@ -8,7 +8,11 @@
  */
 import "server-only";
 
-import { BILLING_PLAN_TEAM, getPlanDefinition, planUsesSeatBilling } from "@/lib/billing/plans";
+import {
+  BILLING_PLAN_TEAM,
+  getPlanDefinition,
+  planAllowsSelfServeSeatChanges,
+} from "@/lib/billing/plans";
 import { formatStripeMoney } from "@/lib/billing/billing-state";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
 import { retrieveSubscriptionExpanded } from "@/lib/billing/sync-subscription";
@@ -113,18 +117,26 @@ async function loadSeatChangeContext(organizationId: string) {
   const profile = await prisma.organizationBillingProfile.findUnique({
     where: { organizationId },
   });
-  if (!profile?.stripeSubscriptionId) {
+  if (!profile) {
+    return {
+      ok: false as const,
+      error: "Billing profile not found.",
+      code: "NO_BILLING_PROFILE",
+    };
+  }
+  if (!planAllowsSelfServeSeatChanges(profile.planCode)) {
+    return {
+      ok: false as const,
+      error:
+        "Self-serve seat changes are unavailable for this account. Contact support for invoice-managed seats.",
+      code: "PLAN_NOT_ELIGIBLE",
+    };
+  }
+  if (!profile.stripeSubscriptionId) {
     return {
       ok: false as const,
       error: "No active subscription to change seats on.",
       code: "NO_SUBSCRIPTION",
-    };
-  }
-  if (!planUsesSeatBilling(profile.planCode)) {
-    return {
-      ok: false as const,
-      error: "Seat changes are only available on Team plans.",
-      code: "PLAN_NOT_ELIGIBLE",
     };
   }
   if (!stripeConfigured()) {

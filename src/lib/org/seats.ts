@@ -2,12 +2,13 @@
  * Seat / invite policy for organizations.
  *
  * - STANDARD Individual: 1 seat — invites blocked
- * - COMPED: invites allowed (platform sets limits)
+ * - Comped access keeps the seat policy of its product plan
  * - TEAM / legacy PREMIUM: invites until seatQuantity filled (max 10)
  * - ENTERPRISE (accountType or plan): invites until seatQuantity / maxSeats
  */
 import {
   BILLING_PLAN_COMPED,
+  BILLING_PLAN_ENTERPRISE,
   BILLING_PLAN_STANDARD,
   BILLING_PLAN_TEAM,
   canonicalPlanCode,
@@ -66,9 +67,11 @@ export function orgAdminInviteDenialReason(input: {
   maxSeats?: number;
   usedSeats?: number;
 }): string | null {
-  if (isCompedPlanCode(input.planCode)) return null;
-
-  const code = canonicalPlanCode(input.planCode ?? BILLING_PLAN_STANDARD);
+  const code = isCompedPlanCode(input.planCode)
+    ? input.accountType === "ENTERPRISE"
+      ? BILLING_PLAN_ENTERPRISE
+      : BILLING_PLAN_STANDARD
+    : canonicalPlanCode(input.planCode ?? BILLING_PLAN_STANDARD);
 
   if (planUsesSeatBilling(code) || input.accountType === "ENTERPRISE") {
     const seatQuantity = input.seatQuantity ?? 1;
