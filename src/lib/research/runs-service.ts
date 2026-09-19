@@ -130,7 +130,10 @@ function buildTargetItems(
 ): ResearchPlanItem[] {
   let items = options.forceRefresh
     ? plan.items
-    : plan.items.filter((item) => item.reason !== "fresh");
+    : plan.items.filter(
+        (item) =>
+          item.reason !== "fresh" && item.reason !== "no_usable_fields",
+      );
 
   if (options.failuresOnly) {
     const allowed = new Set(options.failureTargetIds);

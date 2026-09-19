@@ -209,7 +209,7 @@ describe.skipIf(!hasDatabase)("company research (Phase 3B)", {
     ).rejects.toBeInstanceOf(TenantError);
   });
 
-  it("existing research is reused inside freshness window", async () => {
+  it("existing usable low-confidence research is reused inside freshness window", async () => {
     if (!ready) return;
 
     const {
@@ -239,7 +239,7 @@ describe.skipIf(!hasDatabase)("company research (Phase 3B)", {
           relevantTechnologies: [],
           buyingSignals: [],
           riskSignals: [],
-          confidence: "HIGH",
+          confidence: "LOW",
           sources: [
             {
               url: "https://fresh-research-co.com/pricing",

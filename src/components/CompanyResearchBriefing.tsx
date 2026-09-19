@@ -33,7 +33,6 @@ export type CompanyBriefingDefaults = {
   relevantTechnologies: unknown;
   buyingSignals: unknown;
   riskSignals: unknown;
-  researchConfidence: string | null;
 };
 
 export function CompanyResearchBriefing({
@@ -43,6 +42,7 @@ export function CompanyResearchBriefing({
   defaults,
   sources,
   researchMethod,
+  identityAmbiguous,
   researchStatus,
 }: {
   companyId: string;
@@ -53,12 +53,12 @@ export function CompanyResearchBriefing({
     location: string | null;
     employeeCount: string | null;
     revenue: string | null;
-    confidence: string | null;
     lastResearched: string | null;
   };
   defaults: CompanyBriefingDefaults;
   sources: ResearchSource[];
   researchMethod: string | null;
+  identityAmbiguous: boolean;
   researchStatus: string;
 }) {
   const [editing, setEditing] = useState(false);
@@ -109,6 +109,29 @@ export function CompanyResearchBriefing({
           {researchMethod ? ` · ${researchMethod}` : ""}
         </p>
       </header>
+
+      {identityAmbiguous ? (
+        <div
+          className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"
+          role="status"
+          data-testid="company-identity-warning"
+        >
+          <p className="font-semibold">
+            We could not confirm this is the right company.
+          </p>
+          <p className="mt-1">
+            The supplied company details conflict with the evidence we found,
+            so this research will not be used to personalize emails.
+          </p>
+          {riskSignals.length > 0 ? (
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {riskSignals.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
 
       <div>
         <p

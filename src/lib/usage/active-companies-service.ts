@@ -7,8 +7,8 @@ import { getResearchPolicy } from "@/lib/usage/policy-service";
 
 export type CountActiveResearchedCompaniesOptions = {
   /**
-   * TEAM/ENTERPRISE: count fresh companies this user first introduced
-   * (firstResearchedByUserId), not rows they merely re-researched.
+   * Per-user allowances count fresh companies this user first introduced,
+   * not rows they merely re-researched.
    */
   firstResearchedByUserId?: string | null;
   /**
@@ -43,8 +43,18 @@ export async function countActiveResearchedCompanies(
       companyId: true,
       status: true,
       expiresAt: true,
-      researchConfidence: true,
       researchedAt: true,
+      companySummary: true,
+      whatTheySell: true,
+      estimatedAov: true,
+      aovReasoning: true,
+      customerTypes: true,
+      primaryMarkets: true,
+      businessModel: true,
+      companySizeContext: true,
+      relevantTechnologies: true,
+      buyingSignals: true,
+      riskSignals: true,
       updatedAt: true,
     },
     orderBy: { updatedAt: "desc" },

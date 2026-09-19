@@ -23,6 +23,7 @@ import {
   SubmitButton,
 } from "@/components/ui";
 import { contactDisplayName, cn } from "@/lib/utils";
+import { hasUsableCompanyResearchFields } from "@/lib/research/freshness";
 import { SuppressContactForm } from "@/components/SuppressContactForm";
 import { ExclusionDetailList } from "@/components/ExclusionDetailList";
 import {
@@ -47,7 +48,6 @@ export type CompanyResearchView = {
   id: string;
   status: string;
   researchMethod: string;
-  researchConfidence: string | null;
   companySummary: string | null;
   whatTheySell: string | null;
   estimatedAov: string | null;
@@ -187,7 +187,6 @@ function asDisqualifierList(value: unknown): string[] {
 type DimensionView = {
   dimension: string;
   assessment: string;
-  confidence: string;
   evidence: string[];
   concerns: string[];
 };
@@ -203,7 +202,6 @@ function asDimensions(assessmentData: unknown): DimensionView[] {
       return {
         dimension: String(row.dimension ?? ""),
         assessment: String(row.assessment ?? ""),
-        confidence: String(row.confidence ?? ""),
         evidence: asStringList(row.evidence),
         concerns: asStringList(row.concerns),
       };
@@ -211,8 +209,18 @@ function asDimensions(assessmentData: unknown): DimensionView[] {
     .filter((d): d is DimensionView => Boolean(d?.dimension));
 }
 
-function companyResearchLabel(status: string | null | undefined): string {
-  switch (status) {
+function companyResearchLabel(
+  research: CompanyResearchView | null | undefined,
+): string {
+  if (
+    research &&
+    (research.status === "COMPLETED" || research.status === "PARTIAL")
+  ) {
+    return hasUsableCompanyResearchFields(research)
+      ? "Available"
+      : "No usable details found";
+  }
+  switch (research?.status) {
     case "COMPLETED":
       return "Complete";
     case "PARTIAL":
@@ -598,7 +606,7 @@ export function ScoreReportClient({
                 row.assessmentData,
               );
               const researchLabel = companyResearchLabel(
-                companyResearch?.status,
+                companyResearch,
               );
               return (
                 <Fragment key={row.id}>
@@ -796,7 +804,7 @@ export function ScoreReportClient({
                                     <p className="font-medium text-slate-900">
                                       {dim.dimension}{" "}
                                       <span className="font-normal text-slate-500">
-                                        · {dim.assessment} · {dim.confidence}
+                                        · {dim.assessment}
                                       </span>
                                     </p>
                                     {dim.evidence.length > 0 ? (
@@ -929,9 +937,7 @@ export function ScoreReportClient({
                               Scored At: {row.scoredAt ?? "—"} · Model:{" "}
                               {row.aiModel ?? "—"} · Prompt:{" "}
                               {row.promptVersion ?? "—"} · Logic:{" "}
-                              {row.scoringLogicVersion ?? "—"} · Research
-                              confidence:{" "}
-                              {companyResearch?.researchConfidence ?? "—"}
+                              {row.scoringLogicVersion ?? "—"}
                               {row.aiProvider
                                 ? ` · Provider: ${row.aiProvider}`
                                 : ""}

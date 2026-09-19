@@ -251,8 +251,10 @@ export function canonicalPlanCode(planCode: string): string {
 
 /** True when company research allowance is per-user (not org pool). */
 export function planUsesPerUserCompanyAllowance(planCode: string): boolean {
-  const code = canonicalPlanCode(planCode);
-  return code === BILLING_PLAN_TEAM || code === BILLING_PLAN_ENTERPRISE;
+  return (
+    getPlanDefinition(canonicalPlanCode(planCode))?.seats.companiesPerSeat !=
+    null
+  );
 }
 
 /**
@@ -266,7 +268,8 @@ export function planAllowsReferrals(planCode: string | null | undefined): boolea
 
 /** True when plan bills / gates by seat quantity. */
 export function planUsesSeatBilling(planCode: string): boolean {
-  return planUsesPerUserCompanyAllowance(planCode);
+  const seats = getPlanDefinition(canonicalPlanCode(planCode))?.seats;
+  return seats != null && (seats.seatMax == null || seats.seatMax > 1);
 }
 
 export function getPlanDefinition(planCode: string): PlanDefinition | null {

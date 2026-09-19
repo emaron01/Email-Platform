@@ -61,6 +61,15 @@ export type MotionSpecificCandidate = {
 };
 
 /**
+ * Research phrases carrying an explicit verification hedge are not facts.
+ * Exclude the whole source value so phrase splitting cannot detach a qualifier
+ * such as "unverified" from the claim it qualifies.
+ */
+export function isUnverifiedResearchPhrase(text: string): boolean {
+  return /\b(?:likely|unverified|reportedly)\b/i.test(text);
+}
+
+/**
  * Split a free-text research field into phrase candidates without knowing
  * what kind of fact the tenant cares about.
  */
@@ -431,6 +440,7 @@ export function collectMotionSpecificCandidates(
 ): MotionSpecificCandidate[] {
   const out: MotionSpecificCandidate[] = [];
   const push = (text: string, sourceField: string) => {
+    if (isUnverifiedResearchPhrase(text)) return;
     if (isUnusableEmailFirmographicPhrase(text)) return;
     const candidate = candidateFrom(text, sourceField);
     if (candidate) out.push(candidate);
@@ -444,23 +454,27 @@ export function collectMotionSpecificCandidates(
   }
   if (research.whatTheySell?.trim()) {
     const raw = research.whatTheySell.trim();
-    // Multiple named offerings → portfolio is the specific, not one SKU.
-    if (countNamedOfferings(raw) >= 2) {
-      push(buildPortfolioOfferingSpecific(raw), "whatTheySell");
-    } else {
-      for (const phrase of splitResearchPhrases(raw)) {
-        push(phrase, "whatTheySell");
+    if (!isUnverifiedResearchPhrase(raw)) {
+      // Multiple named offerings → portfolio is the specific, not one SKU.
+      if (countNamedOfferings(raw) >= 2) {
+        push(buildPortfolioOfferingSpecific(raw), "whatTheySell");
+      } else {
+        for (const phrase of splitResearchPhrases(raw)) {
+          push(phrase, "whatTheySell");
+        }
       }
     }
   }
   if (research.businessModel?.trim()) {
     // Prefer compact model phrases; avoid chopping long narrative into debris.
     const model = research.businessModel.trim();
-    if (model.length <= 100) {
-      push(model, "businessModel");
-    } else {
-      for (const phrase of splitResearchPhrases(model)) {
-        if (phrase.length <= 100) push(phrase, "businessModel");
+    if (!isUnverifiedResearchPhrase(model)) {
+      if (model.length <= 100) {
+        push(model, "businessModel");
+      } else {
+        for (const phrase of splitResearchPhrases(model)) {
+          if (phrase.length <= 100) push(phrase, "businessModel");
+        }
       }
     }
   }

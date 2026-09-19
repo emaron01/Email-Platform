@@ -333,7 +333,14 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
 
   if (!org) return null;
 
-  const [usageToday, usage7d, usage30d, researchedCompaniesUsed, health] =
+  const [
+    usageToday,
+    usage7d,
+    usage30d,
+    researchedCompaniesUsed,
+    health,
+    researchConfidence30d,
+  ] =
     await Promise.all([
       aggregateUsage({
         organizationId: org.id,
@@ -352,6 +359,16 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
       }),
       countActiveResearchedCompanies(org.id),
       orgHealthSummary(org.id),
+      prisma.companyResearch.groupBy({
+        by: ["researchConfidence"],
+        where: {
+          organizationId: org.id,
+          createdAt: {
+            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          },
+        },
+        _count: { _all: true },
+      }),
     ]);
 
   return {
@@ -418,6 +435,12 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
         org.usagePolicy?.activeResearchedCompanyLimit ?? null,
     },
     health,
+    researchConfidence30d: Object.fromEntries(
+      researchConfidence30d.map((row) => [
+        row.researchConfidence ?? "UNKNOWN",
+        row._count._all,
+      ]),
+    ) as Record<string, number>,
   };
 }
 

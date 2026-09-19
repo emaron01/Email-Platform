@@ -7,7 +7,7 @@ import {
 import { COMPANY_RESEARCH_FRESHNESS_DAYS } from "@/lib/research/types";
 
 describe("research freshness", () => {
-  it("marks completed medium/high research fresh inside expiry window", () => {
+  it("marks completed usable research fresh inside expiry window", () => {
     const researchedAt = new Date("2026-01-01T00:00:00.000Z");
     const expiresAt = researchExpiresAt(researchedAt);
     expect(
@@ -15,6 +15,7 @@ describe("research freshness", () => {
         {
           status: "COMPLETED",
           researchConfidence: "MEDIUM",
+          companySummary: "Usable company facts",
           researchedAt,
           expiresAt,
         },
@@ -46,6 +47,7 @@ describe("research freshness", () => {
       relevantTechnologies: null,
       buyingSignals: null,
       riskSignals: null,
+      identityAmbiguous: false,
       researchConfidence: "HIGH" as const,
       sourceCount: 1,
       researchSources: [],
@@ -72,12 +74,25 @@ describe("research freshness", () => {
     expect(needsResearchRefresh(research, now)).toBe(true);
   });
 
-  it("treats low confidence as needing refresh", () => {
+  it("treats usable low-confidence research as fresh", () => {
     const researchedAt = new Date();
     expect(
       isResearchFresh({
         status: "COMPLETED",
         researchConfidence: "LOW",
+        companySummary: "Usable company facts",
+        researchedAt,
+        expiresAt: researchExpiresAt(researchedAt),
+      }),
+    ).toBe(true);
+  });
+
+  it("does not treat an attempted result with no usable fields as fresh", () => {
+    const researchedAt = new Date();
+    expect(
+      isResearchFresh({
+        status: "PARTIAL",
+        researchConfidence: "MEDIUM",
         researchedAt,
         expiresAt: researchExpiresAt(researchedAt),
       }),

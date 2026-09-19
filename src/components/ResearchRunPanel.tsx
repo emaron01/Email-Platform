@@ -34,6 +34,7 @@ export type ResearchPlanView = {
   uniqueCompanies: number;
   alreadyResearched: number;
   needingResearch: number;
+  noUsableResearch: number;
   statusCounts: {
     completed: number;
     partial: number;
@@ -294,13 +295,23 @@ export function ResearchRunPanel({
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Total Contacts" value={plan.totalContacts} />
         <Stat label="Unique Companies" value={plan.uniqueCompanies} />
-        <Stat label="Already Researched" value={plan.alreadyResearched} />
+        <Stat label="Research Available" value={plan.alreadyResearched} />
         <Stat label="Need Research" value={plan.needingResearch} />
-        <Stat label="Completed" value={plan.statusCounts.completed} />
-        <Stat label="Partial" value={plan.statusCounts.partial} />
+        <Stat label="No Usable Details" value={plan.noUsableResearch} />
         <Stat label="Failed" value={plan.statusCounts.failed} />
         <Stat label="Not Started" value={plan.statusCounts.notStarted} />
       </div>
+
+      {plan.noUsableResearch > 0 ? (
+        <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          Research ran but found no usable details for{" "}
+          {plan.noUsableResearch === 1
+            ? "1 company"
+            : `${plan.noUsableResearch} companies`}
+          . Add context manually from the company briefing, retry that company,
+          or continue without it.
+        </p>
+      ) : null}
 
       {displayRun ? (
         <div

@@ -253,6 +253,7 @@ export default async function ListDetailPage({
               uniqueCompanies: researchPlan.uniqueCompanies,
               alreadyResearched: researchPlan.alreadyResearched,
               needingResearch: researchPlan.needingResearch,
+              noUsableResearch: researchPlan.noUsableResearch,
               statusCounts: researchPlan.statusCounts,
             }}
             />

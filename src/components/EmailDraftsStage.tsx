@@ -590,14 +590,12 @@ function CampaignDraftCompare({
               <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
                 {draft.body}
               </p>
-              <p className="mt-3 text-xs text-slate-500">
-                {draft.personalizationTier ?? contact.personalizationTier}
-                {draft.personalizationSources
-                  ? ` · ${draft.personalizationSources}`
-                  : contact.personalizationSources
-                    ? ` · ${contact.personalizationSources}`
-                    : ""}
-              </p>
+              {draft.personalizationSources || contact.personalizationSources ? (
+                <p className="mt-3 text-xs text-slate-500">
+                  {draft.personalizationSources ??
+                    contact.personalizationSources}
+                </p>
+              ) : null}
             </>
           ) : (
             <p className="mt-3 text-sm text-slate-500">No draft yet.</p>

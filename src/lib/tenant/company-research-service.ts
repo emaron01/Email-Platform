@@ -14,6 +14,7 @@ import type {
 import { prisma } from "@/lib/prisma-client";
 import {
   domainFromEmail,
+  hasUsableCompanyResearchFields,
   isResearchFresh,
   needsResearchRefresh,
   normalizeCompanyName,
@@ -332,7 +333,7 @@ export type ResearchPlanItem = {
   companyId: string;
   companyName: string;
   normalizedDomain: string | null;
-  reason: "missing" | "stale" | "failed" | "low_confidence" | "fresh";
+  reason: "missing" | "stale" | "failed" | "no_usable_fields" | "fresh";
   latestResearch: CompanyResearch | null;
 };
 
@@ -349,6 +350,7 @@ export type ResearchPlanSummary = {
   uniqueCompanies: number;
   alreadyResearched: number;
   needingResearch: number;
+  noUsableResearch: number;
   statusCounts: ResearchStatusCounts;
   items: ResearchPlanItem[];
 };
@@ -425,6 +427,7 @@ export async function getCompaniesNeedingResearchForContactList(
   const items: ResearchPlanItem[] = [];
   let alreadyResearched = 0;
   let needingResearch = 0;
+  let noUsableResearch = 0;
   const statusCounts: ResearchStatusCounts = {
     completed: 0,
     partial: 0,
@@ -448,9 +451,12 @@ export async function getCompaniesNeedingResearchForContactList(
       reason = "failed";
       needingResearch += 1;
       statusCounts.failed += 1;
-    } else if (latest.researchConfidence === "LOW") {
-      reason = "low_confidence";
-      needingResearch += 1;
+    } else if (
+      (latest.status === "COMPLETED" || latest.status === "PARTIAL") &&
+      !hasUsableCompanyResearchFields(latest)
+    ) {
+      reason = "no_usable_fields";
+      noUsableResearch += 1;
       bumpStatusCount(statusCounts, latest.status);
     } else if (needsResearchRefresh(latest, new Date(), freshnessDays)) {
       reason = "stale";
@@ -488,6 +494,7 @@ export async function getCompaniesNeedingResearchForContactList(
     uniqueCompanies: byCompany.size,
     alreadyResearched,
     needingResearch,
+    noUsableResearch,
     statusCounts,
     items,
   };
@@ -734,6 +741,7 @@ async function createCompanyResearchRowUnderIntroLock(input: {
 export async function saveCompanyResearch(input: {
   companyId: string;
   result: CompanyResearchResult;
+  identityAmbiguous?: boolean;
   researchMethod?: ResearchMethod;
   status?: CompanyResearchStatus;
   provenance?: CompanyResearchProvenance | null;
@@ -797,6 +805,7 @@ export async function saveCompanyResearch(input: {
         relevantTechnologies: input.result.relevantTechnologies,
         buyingSignals: input.result.buyingSignals,
         riskSignals: input.result.riskSignals,
+        identityAmbiguous: input.identityAmbiguous ?? false,
         researchConfidence: input.result.confidence,
         sourceCount: sources.length,
         researchSources: sources,
@@ -826,11 +835,7 @@ function isSuccessfulResearch(
   if (!research) return false;
   return (
     (research.status === "COMPLETED" || research.status === "PARTIAL") &&
-    Boolean(
-      research.companySummary ||
-        research.whatTheySell ||
-        research.sourceCount > 0,
-    )
+    hasUsableCompanyResearchFields(research)
   );
 }
 
@@ -903,13 +908,30 @@ export async function researchCompany(
 
         // Inline quota check under the company lock (avoid nested assertUsageAllowed tx).
         await assertOrganizationNotPaymentLocked(organizationId);
+        const billingProfile =
+          await prisma.organizationBillingProfile.findUnique({
+            where: { organizationId },
+            select: {
+              planCode: true,
+              billingStatus: true,
+              trialEndsAt: true,
+            },
+          });
+        const { planUsesPerUserCompanyAllowance } = await import(
+          "@/lib/billing/plans"
+        );
+        const perUser = planUsesPerUserCompanyAllowance(
+          billingProfile?.planCode ?? "",
+        );
         const used = await countActiveResearchedCompanies(
           organizationId,
           new Date(),
-          {
-            firstResearchedByUserId: user.id,
-            includeInProgressClaims: true,
-          },
+          perUser
+            ? {
+                firstResearchedByUserId: user.id,
+                includeInProgressClaims: true,
+              }
+            : undefined,
         );
         const { getEffectiveUsagePolicy } = await import(
           "@/lib/usage/policy-service"
@@ -925,13 +947,9 @@ export async function researchCompany(
           await getEffectiveCompanyResearchAllowance({
             organizationId,
             baseLimit: policy.activeResearchedCompanyLimit,
+            userId: perUser ? user.id : null,
           });
         if (used >= limit) {
-          const billingProfile =
-            await prisma.organizationBillingProfile.findUnique({
-              where: { organizationId },
-              select: { billingStatus: true, trialEndsAt: true },
-            });
           const { formatResearchQuotaBlockedMessage } = await import(
             "@/lib/usage/research-allowance"
           );
@@ -1064,21 +1082,15 @@ export async function researchCompany(
                 : null,
           }
         : null;
-    const identityAmbiguous =
-      "identityAmbiguous" in result && Boolean(result.identityAmbiguous);
-
-    const status: CompanyResearchStatus =
-      identityAmbiguous ||
-      (result.sources.length === 0 &&
-        !result.companySummary &&
-        !result.whatTheySell) ||
-      (result.confidence === "LOW" && result.sources.length === 0)
-        ? "PARTIAL"
-        : "COMPLETED";
+    const status: CompanyResearchStatus = hasUsableCompanyResearchFields(result)
+      ? "COMPLETED"
+      : "PARTIAL";
 
     const saved = await saveCompanyResearch({
       companyId: company.id,
       result,
+      identityAmbiguous:
+        "identityAmbiguous" in result && result.identityAmbiguous === true,
       researchMethod: "AUTOMATED",
       status,
       provenance,

@@ -1,7 +1,6 @@
 /**
- * Graded email personalization. Research quality is a signal, not a binary
- * on/off. Thin or low-confidence research must degrade rather than be stretched
- * into false specificity.
+ * Graded email personalization. Research content, not an internal confidence
+ * score, determines whether company facts are available to generation.
  */
 
 import type { EmailCompanyResearch } from "@/lib/email-generation/company-research-use";
@@ -42,10 +41,11 @@ export function isUsableCompanyResearch(
   research: EmailCompanyResearch | null,
 ): boolean {
   if (!research) return false;
-  if (research.confidence !== "HIGH" && research.confidence !== "MEDIUM") {
-    return false;
-  }
-  return hasSellingMotionSignals(research);
+  return Boolean(
+    research.companySummary?.trim() ||
+      research.companySizeContext?.trim() ||
+      hasSellingMotionSignals(research),
+  );
 }
 
 export function isUsableContactResearch(
@@ -205,7 +205,7 @@ THIN — little or no usable research:
 
 Research quality:
 - Only infer selling motion when personalization.companyResearchUsable is true.
-- If company research is missing, thin (no selling-motion signals), or not HIGH/MEDIUM confidence, do not infer. Fall back to THIN behavior.
+- If company research is missing or the relevant-fact selector finds no usable connection, do not infer. Fall back to THIN behavior.
 - Never stretch weak research into false specificity.
 - Never use risk signals or any field not supplied in the payload.
 - Never fabricate a personal hook when contact research is absent.`;

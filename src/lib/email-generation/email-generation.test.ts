@@ -873,7 +873,7 @@ describe("sequence and claim guards", () => {
     ).toBe(true);
   });
 
-  it("passes company and contact research into claim validation", async () => {
+  it("passes low-confidence company research into claim validation when fields are usable", async () => {
     const { validateGeneratedEmailClaims } = await import(
       "@/lib/email-generation/claim-validation"
     );
@@ -906,7 +906,7 @@ describe("sequence and claim guards", () => {
           primaryMarkets: ["US"],
           businessModel: "Franchise retail",
           companySizeContext: "Large",
-          confidence: "HIGH",
+          confidence: "LOW",
         },
         contactResearch: {
           id: "cr_1",
@@ -1644,6 +1644,34 @@ describe.skipIf(!hasDatabase)(
       expect(context.product.problemsSolved).toEqual([
         "Missed shift handoffs on the floor",
       ]);
+    });
+
+    it("withholds all company research when entity resolution is ambiguous", async () => {
+      if (!ready) return;
+      const contact = await prisma.contact.findUniqueOrThrow({
+        where: { id: contactId },
+        select: { companyId: true },
+      });
+      expect(contact.companyId).toBeTruthy();
+      await prisma.companyResearch.updateMany({
+        where: { organizationId, companyId: contact.companyId! },
+        data: { identityAmbiguous: true },
+      });
+
+      const { loadEmailGenerationContext } = await import(
+        "@/lib/email-generation/context"
+      );
+      const context = await loadEmailGenerationContext(
+        campaignContactId,
+        userAId,
+      );
+      expect(context.companyResearch).toBeNull();
+      expect(context.companyResearchUpdatedAt).toBeNull();
+
+      await prisma.companyResearch.updateMany({
+        where: { organizationId, companyId: contact.companyId! },
+        data: { identityAmbiguous: false },
+      });
     });
 
     it("returns null for low-confidence or older-than-90-day research", async () => {

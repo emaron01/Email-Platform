@@ -11,7 +11,6 @@ export type TitleSuggestionView = {
   contactCount: number;
   proposedPersonaId: string | null;
   proposedPersonaName: string | null;
-  confidence: string | null;
   reasoning: string | null;
   status: "PENDING" | "APPROVED" | "DISMISSED";
 };
@@ -105,12 +104,6 @@ function TitleSuggestionRow({
             <span className="font-medium">
               {suggestion.proposedPersonaName}
             </span>
-            {suggestion.confidence ? (
-              <span className="text-slate-500">
-                {" "}
-                ({suggestion.confidence.toLowerCase()} confidence)
-              </span>
-            ) : null}
           </>
         ) : (
           <span className="font-medium text-slate-800">

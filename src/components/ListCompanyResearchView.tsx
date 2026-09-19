@@ -3,7 +3,10 @@ import Link from "next/link";
 import { RefreshCompanyResearchForm } from "@/components/RefreshCompanyResearchForm";
 import { SuppressContactForm } from "@/components/SuppressContactForm";
 import type { ContactListCompanyGroup } from "@/lib/tenant/companies";
-import { parseStringArray } from "@/lib/research/freshness";
+import {
+  hasUsableCompanyResearchFields,
+  parseStringArray,
+} from "@/lib/research/freshness";
 import { contactMatchesSuppressionSet } from "@/lib/suppression/service";
 import { cn, contactDisplayName, formatNumber } from "@/lib/utils";
 import type { CompanyResearch } from "@prisma/client";
@@ -36,21 +39,6 @@ function formatCustomerAudience(research: CompanyResearch): string | null {
 function firstBuyingSignal(research: CompanyResearch): string | null {
   const signals = parseStringArray(research.buyingSignals);
   return signals[0] ?? null;
-}
-
-function confidenceLabel(
-  confidence: CompanyResearch["researchConfidence"],
-): string {
-  switch (confidence) {
-    case "HIGH":
-      return "High confidence";
-    case "MEDIUM":
-      return "Medium confidence";
-    case "LOW":
-      return "Low confidence";
-    default:
-      return "Confidence unknown";
-  }
 }
 
 function compactQualifiers(group: ContactListCompanyGroup, showIndustry: boolean) {
@@ -88,6 +76,9 @@ export function ListCompanyResearchView({
         const qualifiers = compactQualifiers(group, showIndustry);
         const research = group.latestResearch;
         const showSummary = hasResearchSummary(research);
+        const hasUsableResearch = hasUsableCompanyResearchFields(research);
+        const researchAttempted =
+          research?.status === "COMPLETED" || research?.status === "PARTIAL";
         const isLinkedCompany = group.companyId.length > 0;
 
         return (
@@ -110,12 +101,12 @@ export function ListCompanyResearchView({
                     </p>
                   ) : null}
                 </div>
-                {isLinkedCompany && showSummary ? (
+                {isLinkedCompany && research ? (
                   <Link
                     href={`/companies/${group.companyId}`}
                     className={cn(SECONDARY_BUTTON_CLASS, "shrink-0", "!px-3", "!py-1.5")}
                   >
-                    Full company briefing
+                    Company briefing
                   </Link>
                 ) : null}
               </div>
@@ -149,17 +140,17 @@ export function ListCompanyResearchView({
                         </dd>
                       </div>
                     ) : null}
-                    <div>
-                      <dt className="font-medium text-slate-700">Confidence</dt>
-                      <dd className="mt-0.5 text-slate-600">
-                        {confidenceLabel(research.researchConfidence)}
-                      </dd>
-                    </div>
                   </dl>
                 ) : (
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-sm text-slate-600">
-                      Company research has not been run yet.
+                      {researchAttempted && !hasUsableResearch
+                        ? "Research ran, but no usable company details were found. Add context in the company briefing, retry, or continue without it."
+                        : hasUsableResearch
+                          ? "Research is available in the full company briefing."
+                          : research?.status === "FAILED"
+                            ? "Company research did not complete. Retry or add context manually."
+                            : "Company research has not been run yet."}
                     </p>
                     {!listArchived && !readOnly ? (
                       <RefreshCompanyResearchForm

@@ -128,6 +128,24 @@ describe("motion specifics candidates", () => {
     ).toBe(false);
   });
 
+  it("excludes individually hedged research values before phrase splitting", () => {
+    const candidates = collectMotionSpecificCandidates({
+      ...telecomResearch,
+      whatTheySell:
+        "Likely property-management services; facilities coordination",
+      customerTypes: [
+        "Commercial property owners; this remains unverified",
+        "Reportedly serves condominium boards",
+      ],
+      businessModel: "Reportedly a third-party management company",
+      primaryMarkets: ["Commercial real estate portfolios"],
+    });
+
+    expect(candidates.map((candidate) => candidate.text)).toEqual([
+      "Commercial real estate portfolios",
+    ]);
+  });
+
   it("checks that the body references a required specific by name", () => {
     const specifics = [
       {

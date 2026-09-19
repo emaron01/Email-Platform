@@ -32,7 +32,6 @@ export function ManualCompanyResearchForm({
     relevantTechnologies: unknown;
     buyingSignals: unknown;
     riskSignals: unknown;
-    researchConfidence: string | null;
   };
 }) {
   const router = useRouter();
@@ -85,18 +84,6 @@ export function ManualCompanyResearchForm({
         placeholder="$25K–$75K"
         defaultValue={defaults.estimatedAov}
       />
-      <label className="block text-sm">
-        <span className="font-medium text-slate-700">Confidence</span>
-        <select
-          name="researchConfidence"
-          defaultValue={defaults.researchConfidence ?? "MEDIUM"}
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="HIGH">HIGH</option>
-          <option value="MEDIUM">MEDIUM</option>
-          <option value="LOW">LOW</option>
-        </select>
-      </label>
       <div className="md:col-span-2">
         <Field
           label="AOV Reasoning"

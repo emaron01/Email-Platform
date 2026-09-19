@@ -915,13 +915,10 @@ export function EmailSequenceWorkspace({
         <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
           <div data-testid="personalization-tier">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Personalization
+              Personalization inputs
             </p>
             <p className="mt-1 text-sm font-medium text-slate-900">
-              {selected?.personalizationTier ?? personalizationTier}
-              <span className="ml-2 font-normal text-slate-500">
-                ({personalizationLabel})
-              </span>
+              {personalizationLabel}
             </p>
             <p className="mt-1 text-xs text-slate-700">
               {selected?.personalizationSources ?? personalizationSources}

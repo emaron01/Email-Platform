@@ -156,7 +156,6 @@ export function formatCompanyBriefingMeta(input: {
   domain: string | null;
   employeeCount: string | null;
   revenue: string | null;
-  confidence: string | null;
   lastResearched: string | null;
   industry: string | null;
   location: string | null;
@@ -167,7 +166,6 @@ export function formatCompanyBriefingMeta(input: {
     input.location,
     input.employeeCount ? `${input.employeeCount} employees` : null,
     input.revenue ? `Revenue ${input.revenue}` : null,
-    input.confidence ? `Confidence ${input.confidence}` : null,
     input.lastResearched ? `Last researched ${input.lastResearched}` : null,
   ]
     .filter(Boolean)

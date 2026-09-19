@@ -14,6 +14,7 @@ import type {
   ProductSnapshot,
 } from "@/lib/scoring/types";
 import { prisma } from "@/lib/prisma";
+import { hasUsableCompanyResearchFields } from "@/lib/research/freshness";
 import { getResearchPolicy } from "@/lib/usage/policy-service";
 import { TenantError } from "@/lib/tenant/getCurrentOrganization";
 import {
@@ -111,7 +112,20 @@ export async function getScoringReadiness(scoringRunId: string): Promise<{
               research: {
                 orderBy: { updatedAt: "desc" },
                 take: 1,
-                select: { status: true, researchConfidence: true },
+                select: {
+                  status: true,
+                  companySummary: true,
+                  whatTheySell: true,
+                  estimatedAov: true,
+                  aovReasoning: true,
+                  customerTypes: true,
+                  primaryMarkets: true,
+                  businessModel: true,
+                  companySizeContext: true,
+                  relevantTechnologies: true,
+                  buyingSignals: true,
+                  riskSignals: true,
+                },
               },
             },
           },
@@ -128,7 +142,7 @@ export async function getScoringReadiness(scoringRunId: string): Promise<{
     const ok =
       latest != null &&
       (latest.status === "COMPLETED" || latest.status === "PARTIAL") &&
-      latest.researchConfidence !== "LOW";
+      hasUsableCompanyResearchFields(latest);
     companyResearch.set(companyId, ok);
   }
 

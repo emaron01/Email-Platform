@@ -71,8 +71,8 @@ export function ScoreContactsPanel({
 
       {incompleteResearch ? (
         <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          Some companies have incomplete research. Scores may have lower
-          confidence. Missing research will not fabricate company facts.
+          Some companies have no usable research. Scoring will mark unsupported
+          facts as unknown rather than inventing them.
         </p>
       ) : null}
 

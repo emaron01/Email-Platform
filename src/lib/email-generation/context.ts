@@ -361,6 +361,12 @@ export async function loadEmailGenerationContext(
     companyResearchRow && isResearchFresh(companyResearchRow)
       ? companyResearchRow
       : null;
+  // Identity ambiguity is an attribution failure: otherwise usable facts may
+  // describe a different company and must not reach selection or generation.
+  const attributableCompanyResearch =
+    freshCompanyResearch && !freshCompanyResearch.identityAmbiguous
+      ? freshCompanyResearch
+      : null;
 
   const latestDraftPersonaId =
     [...campaignContact.emailDrafts]
@@ -513,18 +519,23 @@ export async function loadEmailGenerationContext(
           researchedAt: freshContactResearch.researchedAt,
         }
       : null,
-    companyResearch: freshCompanyResearch
+    companyResearch: attributableCompanyResearch
       ? {
-          companySummary: freshCompanyResearch.companySummary,
-          whatTheySell: freshCompanyResearch.whatTheySell,
-          customerTypes: parseStringArray(freshCompanyResearch.customerTypes),
-          primaryMarkets: parseStringArray(freshCompanyResearch.primaryMarkets),
-          businessModel: freshCompanyResearch.businessModel,
-          companySizeContext: freshCompanyResearch.companySizeContext,
-          confidence: freshCompanyResearch.researchConfidence,
+          companySummary: attributableCompanyResearch.companySummary,
+          whatTheySell: attributableCompanyResearch.whatTheySell,
+          customerTypes: parseStringArray(
+            attributableCompanyResearch.customerTypes,
+          ),
+          primaryMarkets: parseStringArray(
+            attributableCompanyResearch.primaryMarkets,
+          ),
+          businessModel: attributableCompanyResearch.businessModel,
+          companySizeContext: attributableCompanyResearch.companySizeContext,
+          confidence: attributableCompanyResearch.researchConfidence,
         }
       : null,
-    companyResearchUpdatedAt: freshCompanyResearch?.updatedAt.toISOString() ?? null,
+    companyResearchUpdatedAt:
+      attributableCompanyResearch?.updatedAt.toISOString() ?? null,
     excludedCopySignals: {
       riskSignals: freshCompanyResearch
         ? parseStringArray(freshCompanyResearch.riskSignals)
@@ -672,7 +683,9 @@ export async function loadEmailDraftScreenStates(input: {
       : null;
     const freshContact = isFreshContactResearch(contactResearch);
     const freshCompany =
-      companyResearchRow && isResearchFresh(companyResearchRow)
+      companyResearchRow &&
+      !companyResearchRow.identityAmbiguous &&
+      isResearchFresh(companyResearchRow)
         ? companyResearchRow
         : null;
     const personalization = resolvePersonalization({

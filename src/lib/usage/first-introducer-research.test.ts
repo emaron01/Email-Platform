@@ -35,5 +35,7 @@ describe("first introducer / net-new company research", () => {
     expect(research).toContain("company-research-intro:");
     expect(research).toContain("firstResearchedByUserId");
     expect(research).toContain("pg_advisory_xact_lock");
+    expect(research).toContain("planUsesPerUserCompanyAllowance");
+    expect(research).toContain("userId: perUser ? user.id : null");
   });
 });

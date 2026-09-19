@@ -302,6 +302,13 @@ export default async function PlatformOrgDetailPage({
               {health.last30d.emailGeneration.failed}/
               {health.last30d.emailGeneration.total})
             </p>
+            <p>
+              Research confidence: High{" "}
+              {detail.researchConfidence30d.HIGH ?? 0} · Medium{" "}
+              {detail.researchConfidence30d.MEDIUM ?? 0} · Low{" "}
+              {detail.researchConfidence30d.LOW ?? 0} · Unknown{" "}
+              {detail.researchConfidence30d.UNKNOWN ?? 0}
+            </p>
           </div>
         </div>
       </section>

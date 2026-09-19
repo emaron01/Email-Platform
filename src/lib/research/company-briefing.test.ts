@@ -79,6 +79,10 @@ describe("company briefing page contracts", () => {
     expect(briefing).toContain("ManualCompanyResearchForm");
     expect(briefing).toContain("ExportPdfButton");
     expect(briefing).toContain("data-print-document");
+    expect(briefing).toContain("company-identity-warning");
+    expect(briefing).toContain(
+      "We could not confirm this is the right company.",
+    );
     expect(briefing).not.toContain("Manual Research Override");
   });
 

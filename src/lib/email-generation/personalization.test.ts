@@ -12,6 +12,7 @@ import {
   personalizationSourceSummary,
   resolveEmailGenerationPersona,
   resolvePersonalization,
+  resolvePersonalizationForGeneration,
   tokenJaccard,
 } from "@/lib/email-generation/personalization";
 import { CRO_PERSONA_DRAFT_V2_FIXTURE } from "@/lib/persona-research/fixtures/cro-setup-run-draft-v2";
@@ -284,27 +285,41 @@ describe("personalization tiers", () => {
         companyResearch: thinResearch,
         contactResearch: null,
       }).tier,
+    ).toBe("COMPANY");
+    expect(
+      resolvePersonalization({
+        companyResearch: null,
+        contactResearch: null,
+      }).tier,
     ).toBe("THIN");
     expect(
       resolvePersonalization({
         companyResearch: { ...stoneEagleResearch, confidence: "LOW" },
         contactResearch: null,
       }).companyResearchUsable,
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("does not send thin or low-confidence company research for inference", () => {
+  it("passes usable low-confidence research to the selector", () => {
     const thin = resolvePersonalization({
       companyResearch: thinResearch,
       contactResearch: null,
     });
-    expect(thin.companyResearch).toBeNull();
+    expect(thin.companyResearch).not.toBeNull();
     const low = resolvePersonalization({
       companyResearch: { ...stoneEagleResearch, confidence: "LOW" },
       contactResearch: null,
     });
-    expect(low.companyResearch).toBeNull();
-    expect(low.tier).toBe("THIN");
+    expect(low.companyResearch).not.toBeNull();
+    expect(low.tier).toBe("COMPANY");
+
+    const noRelevantFact = resolvePersonalizationForGeneration({
+      companyResearch: { ...stoneEagleResearch, confidence: "LOW" },
+      contactResearch: null,
+      hasRelevantCompanyFacts: false,
+    });
+    expect(noRelevantFact.companyResearch).toBeNull();
+    expect(noRelevantFact.tier).toBe("THIN");
   });
 
   it("signals tier and degrade rules in the generation prompt", () => {

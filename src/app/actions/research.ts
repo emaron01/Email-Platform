@@ -12,7 +12,6 @@ import {
   TenantError,
 } from "@/lib/tenant/getCurrentOrganization";
 import { requireCurrentUser } from "@/lib/auth/session";
-import type { ResearchConfidence } from "@prisma/client";
 import {
   formatResearchAllowanceExhausted,
   RESEARCH_BILLING_HREF,
@@ -356,14 +355,6 @@ export async function updateManualCompanyResearchAction(
       return { ok: false, message: "Company is required." };
     }
 
-    const confidenceRaw = requiredString(formData, "researchConfidence");
-    const confidence =
-      confidenceRaw === "HIGH" ||
-      confidenceRaw === "MEDIUM" ||
-      confidenceRaw === "LOW"
-        ? (confidenceRaw as ResearchConfidence)
-        : "MEDIUM";
-
     await updateManualCompanyResearch({
       companyId,
       companySummary: requiredString(formData, "companySummary") || null,
@@ -385,7 +376,6 @@ export async function updateManualCompanyResearchAction(
         String(formData.get("buyingSignals") ?? ""),
       ),
       riskSignals: parseLineList(String(formData.get("riskSignals") ?? "")),
-      researchConfidence: confidence,
     });
 
     revalidatePath(`/companies/${companyId}`);

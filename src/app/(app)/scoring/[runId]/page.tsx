@@ -262,6 +262,7 @@ export default async function ScoringReportPage({
               uniqueCompanies: researchPlan.uniqueCompanies,
               alreadyResearched: researchPlan.alreadyResearched,
               needingResearch: researchPlan.needingResearch,
+              noUsableResearch: researchPlan.noUsableResearch,
               statusCounts: researchPlan.statusCounts,
             }}
             />
@@ -337,7 +338,6 @@ export default async function ScoringReportPage({
                 contactCount: row.contactCount,
                 proposedPersonaId: row.proposedPersonaId,
                 proposedPersonaName: row.proposedPersonaName,
-                confidence: row.confidence,
                 reasoning: row.reasoning,
                 status: row.status,
               }))}
@@ -486,12 +486,18 @@ export default async function ScoringReportPage({
               companyRecord: row.contact.companyRecord
                 ? {
                     ...row.contact.companyRecord,
-                    research: row.contact.companyRecord.research.map((r) => ({
-                      ...r,
-                      researchedAt: r.researchedAt
-                        ? r.researchedAt.toISOString()
-                        : null,
-                    })),
+                    research: row.contact.companyRecord.research.map((r) => {
+                      const {
+                        researchConfidence: _researchConfidence,
+                        ...repVisibleResearch
+                      } = r;
+                      return {
+                        ...repVisibleResearch,
+                        researchedAt: r.researchedAt
+                          ? r.researchedAt.toISOString()
+                          : null,
+                      };
+                    }),
                   }
                 : null,
             },

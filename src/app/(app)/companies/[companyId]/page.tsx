@@ -12,6 +12,7 @@ import {
 } from "@/lib/tenant/getCurrentOrganization";
 import { formatDate, formatNumber } from "@/lib/utils";
 import type { ResearchSource } from "@/lib/research";
+import { hasUsableCompanyResearchFields } from "@/lib/research/freshness";
 
 type PageProps = {
   params: Promise<{ companyId: string }>;
@@ -74,7 +75,6 @@ export default async function CompanyResearchPage({ params }: PageProps) {
                 : null,
             revenue:
               company.revenue != null ? String(company.revenue) : null,
-            confidence: latest?.researchConfidence ?? null,
             lastResearched: latest?.researchedAt
               ? formatDate(latest.researchedAt)
               : null,
@@ -91,11 +91,18 @@ export default async function CompanyResearchPage({ params }: PageProps) {
             relevantTechnologies: latest?.relevantTechnologies,
             buyingSignals: latest?.buyingSignals,
             riskSignals: latest?.riskSignals,
-            researchConfidence: latest?.researchConfidence ?? null,
           }}
           sources={sources}
           researchMethod={latest?.researchMethod ?? null}
-          researchStatus={researchStatusLabel(latest?.status)}
+          identityAmbiguous={latest?.identityAmbiguous ?? false}
+          researchStatus={
+            latest &&
+            (latest.status === "COMPLETED" || latest.status === "PARTIAL")
+              ? hasUsableCompanyResearchFields(latest)
+                ? "Researched"
+                : "No usable details found"
+              : researchStatusLabel(latest?.status)
+          }
         />
       </section>
     </div>
