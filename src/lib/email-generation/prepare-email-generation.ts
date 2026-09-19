@@ -4,7 +4,10 @@ import type { AiMessage } from "@/lib/ai/types";
 import type { ReplyClassification } from "@prisma/client";
 import type { EmailGenerationContext } from "@/lib/email-generation/context";
 import type { RequiredMotionSpecific } from "@/lib/email-generation/motion-specifics";
-import { selectRequiredMotionSpecifics } from "@/lib/email-generation/motion-specifics";
+import {
+  bodyReferencesRequiredSpecific,
+  selectRequiredMotionSpecifics,
+} from "@/lib/email-generation/motion-specifics";
 import {
   contactResearchForPrompt,
   resolvePersonalizationForGeneration,
@@ -26,6 +29,21 @@ export type PreparedEmailGeneration = {
   personalization: PersonalizationDecision;
   factSelection: FactSelectionResult;
 };
+
+export function selectUnusedFollowUpSpecifics(
+  specifics: RequiredMotionSpecific[],
+  priorEmails: Array<{ body: string | null }>,
+): RequiredMotionSpecific[] {
+  const unused = specifics.filter(
+    (specific) =>
+      !priorEmails.some((email) =>
+        email.body
+          ? bodyReferencesRequiredSpecific(email.body, [specific])
+          : false,
+      ),
+  );
+  return unused.length > 0 ? unused : specifics;
+}
 
 /**
  * Semantic selection first. When the semantic path is skipped (config missing,
@@ -148,7 +166,6 @@ export async function buildFollowUpEmailPrompt(
     context,
     additionalGuidance,
   );
-  const messages = prepared.messages;
   const priorEmails = context.sequence
     .filter(
       (draft) =>
@@ -164,6 +181,23 @@ export async function buildFollowUpEmailPrompt(
       sentAt: draft.sentAt?.toISOString() ?? null,
     }));
   const previous = priorEmails.at(-1);
+  const requiredMotionSpecifics = selectUnusedFollowUpSpecifics(
+    prepared.requiredMotionSpecifics,
+    priorEmails,
+  );
+  const personalization = resolvePersonalizationForGeneration({
+    companyResearch: context.companyResearch,
+    contactResearch: contactResearchForPrompt(context.contactResearch),
+    hasRelevantCompanyFacts: requiredMotionSpecifics.length > 0,
+  });
+  const messages =
+    requiredMotionSpecifics === prepared.requiredMotionSpecifics
+      ? prepared.messages
+      : buildEmailPrompt(
+          context,
+          { personalization, requiredMotionSpecifics },
+          additionalGuidance ?? null,
+        );
 
   return {
     messages: [
@@ -173,6 +207,7 @@ export async function buildFollowUpEmailPrompt(
 
 This is Email ${sequenceNumber} in an existing sequence. Every prior email is supplied verbatim. Do not repeat any prior opener, angle, framing, or closing ask. The new email must carry its own reason to exist and should be shorter than the immediately preceding email by default.
 For follow-ups, being shorter than the prior email and the position guidance override the campaign word target and default paragraph count. Keep paragraphs short and preserve all factual and claim guards.
+Choose a different supported opening approach from the prior emails. Use a different selected company fact when one remains unused. Pull a different supported product feature, positioning theme, proof point, or offer emphasis. Do not paraphrase the same problem → solution → ask sequence.
 
 Position guidance: ${followUpGuidance(sequenceNumber)}`,
       },
@@ -195,9 +230,13 @@ ${JSON.stringify(
 )}`,
       },
     ],
-    requiredMotionSpecifics: prepared.requiredMotionSpecifics,
-    personalization: prepared.personalization,
-    factSelection: prepared.factSelection,
+    requiredMotionSpecifics,
+    personalization,
+    factSelection: {
+      ...prepared.factSelection,
+      specifics: requiredMotionSpecifics,
+      noneRelevant: requiredMotionSpecifics.length === 0,
+    },
   };
 }
 

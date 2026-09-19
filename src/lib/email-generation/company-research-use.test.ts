@@ -484,8 +484,8 @@ describe("anti-title overlap (B1)", () => {
   });
 });
 
-describe("paragraph1 painPoints lead (persona convergence)", () => {
-  it("puts painPoints ahead of messagingNotes in paragraph1ProblemFraming", () => {
+describe("opening painPoints lead (persona convergence)", () => {
+  it("puts painPoints ahead of messagingNotes in openingProblemFraming", () => {
     const messages = promptMessages(
       baseContext({
         persona: {
@@ -505,12 +505,12 @@ describe("paragraph1 painPoints lead (persona convergence)", () => {
     const system = messages[0]?.content ?? "";
     const user = messages[1]?.content ?? "";
 
-    expect(system).toContain("paragraph1ProblemFraming");
+    expect(system).toContain("openingProblemFraming");
     expect(system).toContain("painPoints first");
-    expect(user).toContain('"paragraph1ProblemFraming"');
+    expect(user).toContain('"openingProblemFraming"');
     expect(user).toContain("Decisions rest on incomplete status updates");
     expect(user).toMatch(
-      /paragraph1ProblemFraming[\s\S]*painPoints[\s\S]*messagingNotes/,
+      /openingProblemFraming[\s\S]*painPoints[\s\S]*messagingNotes/,
     );
     expect(user).toContain(
       "Use messagingNotes only for tone, emphasis, and what to avoid",

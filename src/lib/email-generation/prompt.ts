@@ -46,6 +46,7 @@ Writing and structure rules:
 - Follow emailStructure.mode. FIXED_THIN is an exact fallback. FLEXIBLE_RESEARCH gives bounds, not a template: let the strongest supported opening approach determine paragraph and sentence shape.
 - The first sentence must not name the product, lead with a product mechanism, or assert a company situation without support from requiredMotionSpecifics.
 - For COMPANY and BEST, choose the opening approach that best fits the selected fact. Do not rotate approaches randomly and do not force every email into problem paragraph → product paragraph → ask.
+- Product context may enter after the opening sentence in the same paragraph. The offer or next step may be integrated into another paragraph. Do not create dedicated product and CTA paragraphs by default.
 - When a writing sample is supplied, match its sentence length, approximate total length, conversational cadence, paragraph pacing, and closing style. Do not merely borrow its terminology.
 - The writing sample may influence flexible structure but cannot override emailStructure bounds or factual rules.
 - Use the sample only as a style reference. Do not copy its recipient, claims, offer, or other facts.
@@ -117,20 +118,20 @@ export function buildEmailPrompt(
           emailLength: "SHORT" as const,
           mode: "FLEXIBLE_RESEARCH" as const,
           instruction:
-            "Let the supported opening approach determine the shape. Use 1-2 short content paragraphs, no more than 4 content sentences, and no more than 75 words excluding the greeting.",
+            "Let the supported opening approach determine the shape. Use 1-2 short content paragraphs, no more than 4 content sentences, and no more than 75 words excluding the greeting. Use the fewest paragraphs that make the chosen approach read naturally.",
         }
       : emailLength === "LONG"
         ? {
             emailLength: "LONG" as const,
             mode: "FLEXIBLE_RESEARCH" as const,
             instruction:
-              "Let the supported opening approach determine the shape. Use 2-4 short content paragraphs, no more than 9 content sentences, and no more than 165 words excluding the greeting.",
+              "Let the supported opening approach determine the shape. Use 2-4 short content paragraphs, no more than 9 content sentences, and no more than 165 words excluding the greeting. Do not default to the maximum paragraph count.",
           }
         : {
             emailLength: "MEDIUM" as const,
             mode: "FLEXIBLE_RESEARCH" as const,
             instruction:
-              "Let the supported opening approach determine the shape. Use 1-3 short content paragraphs, no more than 6 content sentences, and no more than 120 words excluding the greeting.",
+              "Let the supported opening approach determine the shape. Use 1-3 short content paragraphs, no more than 6 content sentences, and no more than 120 words excluding the greeting. Do not default to three paragraphs; use the fewest paragraphs that make the chosen approach read naturally.",
           };
   const problemSpace = {
     problemsSolved: context.product.problemsSolved,
@@ -159,13 +160,33 @@ export function buildEmailPrompt(
       : {
           mode: "MODEL_CHOOSES_FROM_SUPPORT",
           instruction:
-            "Choose the one approach best supported by requiredMotionSpecifics and the persona pain. The selected fact must do causal work. Do not choose randomly or mention the approach label in the email.",
+            "Choose the one approach best supported by requiredMotionSpecifics and the persona pain. The selected fact must do causal work. Let the chosen approach control the body shape below; do not choose randomly or mention the approach label in the email. In reasoning, name the chosen approach and explain why the selected fact supports it.",
           options: [
-            "supported observation about the selling motion",
-            "operational consequence",
-            "decision or approval moment",
-            "role-specific tradeoff",
-            "direct problem framing",
+            {
+              approach: "supported observation about the selling motion",
+              naturalShape:
+                "Use 1 compact content paragraph after the greeting. Move from the supported observation to its implication, then connect the product and next step without sectioning them.",
+            },
+            {
+              approach: "operational consequence",
+              naturalShape:
+                "Use 2 content paragraphs. Let the consequence and its business impact lead; integrate the supported response and next step naturally rather than reserving a CTA paragraph.",
+            },
+            {
+              approach: "decision or approval moment",
+              naturalShape:
+                "Use 3 very short content paragraphs: the supported decision moment, what would make that decision easier, and a concise next step. One sentence per paragraph is enough.",
+            },
+            {
+              approach: "role-specific tradeoff",
+              naturalShape:
+                "Use 1 compact content paragraph after the greeting. Frame both sides of the tradeoff, connect the supported product response, and end with either a question or declarative next step.",
+            },
+            {
+              approach: "direct problem framing",
+              naturalShape:
+                "Use 2 short content paragraphs. Keep the direct problem concise, then connect product and next step without restating the problem.",
+            },
           ],
         },
     personalization: {
@@ -267,12 +288,12 @@ export function buildEmailPrompt(
 
 export function followUpGuidance(sequenceNumber: number): string {
   if (sequenceNumber === 2) {
-    return "Use a genuinely different angle or proof point from Email 1. Do not repeat its opener, framing, or ask.";
+    return "Use a genuinely different opening approach and a different supported product feature, positioning theme, proof point, or offer emphasis from Email 1. Use an unused selected company fact when available. Do not repeat its framing or ask.";
   }
   if (sequenceNumber === 3) {
-    return "Be shorter and more direct than Email 2. Introduce a new concrete reason to respond. Do not repeat a prior opener or ask.";
+    return "Be shorter and more direct than Email 2. Use an opening approach, supported product angle, and ask not used earlier. Introduce a new concrete reason to respond, using an unused selected company fact when available.";
   }
-  return "Write a brief close-out with its own useful reason to exist. Do not make “following up on my last email” the entire content, and do not repeat a prior opener or ask.";
+  return "Write a brief close-out with its own useful reason to exist. Use a supported product angle and next step not used earlier. Do not make “following up on my last email” the entire content, and do not repeat a prior opener or ask.";
 }
 
 export function replyStrategy(

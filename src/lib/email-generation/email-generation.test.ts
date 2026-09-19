@@ -9,6 +9,7 @@ import {
 import {
   buildFollowUpEmailPrompt,
   buildReplyEmailPrompt,
+  selectUnusedFollowUpSpecifics,
 } from "@/lib/email-generation/prepare-email-generation";
 import { TenantError } from "@/lib/tenant/errors";
 import { seedContactOnList } from "@/test/contact-seed";
@@ -224,15 +225,15 @@ describe("buildEmailPrompt", () => {
   it.each([
     [
       "SHORT",
-      "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. Sentence 1 frames the executive or business problem from paragraph1ProblemFraming (no product name or capability yet). Then one soft close question. Target 40-60 words excluding the greeting.",
+      "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. Sentence 1 frames the executive or business problem from openingProblemFraming (no product name or capability yet). Then one soft close question. Target 40-60 words excluding the greeting.",
     ],
     [
       "MEDIUM",
-      "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from paragraph1ProblemFraming, 2 sentences max. Do not lead with product name or capability. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
+      "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming, 2 sentences max. Do not lead with product name or capability. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
     ],
     [
       "LONG",
-      "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from paragraph1ProblemFraming only, 2 sentences max. Do not name the product or any capability here. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and close question, 2 sentences max. Target 120-150 words excluding the greeting.",
+      "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming only, 2 sentences max. Do not name the product or any capability here. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and close question, 2 sentences max. Target 120-150 words excluding the greeting.",
     ],
   ] as const)("uses the exact %s structure instruction", (emailLength, instruction) => {
     const base = contextFixture();
@@ -249,11 +250,50 @@ describe("buildEmailPrompt", () => {
     expect(messages[1].content).toContain(`"emailLength": "${emailLength}"`);
     expect(messages[1].content).toContain(instruction);
     expect(messages[1].content).not.toContain("requiredParagraphCount");
-    expect(messages[0].content).toMatch(
-      /Follow the emailStructure instruction exactly/i,
-    );
+    expect(messages[1].content).toContain('"mode": "FIXED_THIN"');
     expect(messages[0].content).toMatch(
       /greeting on its own line, followed by exactly one blank line/i,
+    );
+  });
+
+  it("lets COMPANY and BEST choose a supported opening within broad bounds", () => {
+    const context = contextFixture({
+      companyResearch: {
+        companySummary: "Automotive retail software provider",
+        whatTheySell: "Dealer operations software",
+        customerTypes: ["multi-rooftop dealer groups"],
+        primaryMarkets: ["US automotive retail"],
+        businessModel: "B2B SaaS",
+        companySizeContext: null,
+        confidence: "MEDIUM",
+      },
+    });
+    const messages = buildEmailPrompt(
+      context,
+      emailPromptOptionsForContext(context, [
+        {
+          text: "multi-rooftop dealer groups",
+          sourceField: "customerTypes",
+          whyItMatters: "Distributed stakeholders complicate forecast evidence.",
+        },
+      ]),
+    );
+    const system = messages[0].content;
+    const user = messages[1].content;
+
+    expect(user).toContain('"mode": "FLEXIBLE_RESEARCH"');
+    expect(user).toContain('"mode": "MODEL_CHOOSES_FROM_SUPPORT"');
+    expect(user).toContain("1-3 short content paragraphs");
+    expect(user).toContain("no more than 120 words");
+    expect(user).toContain("operational consequence");
+    expect(user).toContain("Use 1 compact content paragraph");
+    expect(user).toContain("Use 3 very short content paragraphs");
+    expect(user).not.toContain("exactly 2 short content paragraphs");
+    expect(system).toContain("must not name the product");
+    expect(system).toContain("without support from requiredMotionSpecifics");
+    expect(system).toContain("need not occupy a fixed sentence");
+    expect(system).toContain(
+      "Do not create dedicated product and CTA paragraphs by default",
     );
   });
 
@@ -288,13 +328,14 @@ describe("buildEmailPrompt", () => {
     const userPrompt = messages[1].content;
 
     expect(systemPrompt).toMatch(/match its sentence length/i);
-    expect(systemPrompt).toMatch(/paragraph count/i);
+    expect(systemPrompt).toMatch(/paragraph pacing/i);
     expect(systemPrompt).toMatch(/closing style/i);
-    expect(systemPrompt).toMatch(/structure overrides/i);
+    expect(systemPrompt).toMatch(/influence flexible structure/i);
     expect(systemPrompt).toMatch(/do not use bullet points/i);
     expect(systemPrompt).toMatch(/No paragraph may exceed three sentences/i);
     expect(systemPrompt).toMatch(/Do not write run-on sentences/i);
-    expect(systemPrompt).toMatch(/exactly one soft question/i);
+    expect(systemPrompt).toMatch(/no more than one question/i);
+    expect(systemPrompt).toMatch(/question is optional/i);
     expect(systemPrompt).toMatch(/do not include a sign-off/i);
     expect(systemPrompt).toMatch(/signature block of any kind/i);
     expect(systemPrompt).toMatch(/end the generated body immediately/i);
@@ -575,8 +616,41 @@ describe("sequence and claim guards", () => {
     expect(prepared.messages[1].content).toContain(
       JSON.stringify(sentEmail.body).slice(1, -1),
     );
-    expect(prepared.messages[0].content).toMatch(/different angle or proof point/i);
+    expect(prepared.messages[0].content).toMatch(
+      /different supported product feature/i,
+    );
     expect(prepared.messages[0].content).toMatch(/shorter than/i);
+    expect(prepared.messages[0].content).toMatch(
+      /different supported opening approach/i,
+    );
+    expect(prepared.messages[0].content).toMatch(
+      /do not paraphrase the same problem/i,
+    );
+  });
+
+  it("prefers a selected company fact not used by prior sequence emails", () => {
+    const specifics = [
+      {
+        text: "dealer groups",
+        sourceField: "customerTypes",
+        whyItMatters: "Complex buying groups",
+      },
+      {
+        text: "OEM programs",
+        sourceField: "primaryMarkets",
+        whyItMatters: "Long approval paths",
+      },
+    ];
+    expect(
+      selectUnusedFollowUpSpecifics(specifics, [
+        { body: "Dealer groups often create complex buying paths." },
+      ]),
+    ).toEqual([specifics[1]]);
+    expect(
+      selectUnusedFollowUpSpecifics([specifics[0]], [
+        { body: "Dealer groups often create complex buying paths." },
+      ]),
+    ).toEqual([specifics[0]]);
   });
 
   it("does not expose Email 2 until Email 1 is marked sent", async () => {
