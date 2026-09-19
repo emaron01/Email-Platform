@@ -43,7 +43,8 @@ Per-contact regeneration instructions override additional campaign instructions 
 Additional campaign instructions may override writing and template defaults, including the default prohibition on bullets, but they cannot override factual constraints, the selected emailStructure, JSON-only output, the sign-off prohibition, or the em dash prohibition.
 
 Writing and structure rules:
-- Follow emailStructure.mode. FIXED_THIN is an exact fallback. FLEXIBLE_RESEARCH gives bounds, not a template: let the strongest supported opening approach determine paragraph and sentence shape.
+- Follow the selected emailStructure exactly. It is authoritative for content-block count, sentence count, and word range. A content block is a prose paragraph, or a requested bullet list replacing one prose paragraph.
+- FIXED_THIN is an exact fallback. FLEXIBLE_RESEARCH varies the rhetorical approach and where supported facts, product context, and the next step appear, but it never changes the selected length.
 - The first sentence must not name the product, lead with a product mechanism, or assert a company situation without support from requiredMotionSpecifics.
 - For COMPANY and BEST, choose the opening approach that best fits the selected fact. Do not rotate approaches randomly and do not force every email into problem paragraph → product paragraph → ask.
 - Product context may enter after the opening sentence in the same paragraph. The offer or next step may be integrated into another paragraph. Do not create dedicated product and CTA paragraphs by default.
@@ -118,20 +119,20 @@ export function buildEmailPrompt(
           emailLength: "SHORT" as const,
           mode: "FLEXIBLE_RESEARCH" as const,
           instruction:
-            "Let the supported opening approach determine the shape. Use 1-2 short content paragraphs, no more than 4 content sentences, and no more than 75 words excluding the greeting. Use the fewest paragraphs that make the chosen approach read naturally.",
+            "SHORT is compact. After the greeting, use exactly 1 content block, 2-3 content sentences, and 45-65 words excluding the greeting. Keep the chosen opening approach, supported fact, product connection, and next step in that single block. If explicit guidance requests bullets, the bullet list is the one content block.",
         }
       : emailLength === "LONG"
         ? {
             emailLength: "LONG" as const,
             mode: "FLEXIBLE_RESEARCH" as const,
             instruction:
-              "Let the supported opening approach determine the shape. Use 2-4 short content paragraphs, no more than 9 content sentences, and no more than 165 words excluding the greeting. Do not default to the maximum paragraph count.",
+              "LONG provides room to develop the reasoning. After the greeting, use exactly 3 content blocks, 5-8 content sentences, and 110-160 words excluding the greeting. Develop the supported opening, its business consequence, and the product connection or next step without padding or repeating the same claim. If explicit guidance requests bullets, one bullet list may replace one content block.",
           }
         : {
             emailLength: "MEDIUM" as const,
             mode: "FLEXIBLE_RESEARCH" as const,
             instruction:
-              "Let the supported opening approach determine the shape. Use 1-3 short content paragraphs, no more than 6 content sentences, and no more than 120 words excluding the greeting. Do not default to three paragraphs; use the fewest paragraphs that make the chosen approach read naturally.",
+              "MEDIUM balances context and brevity. After the greeting, use exactly 2 content blocks, 3-5 content sentences, and 80-110 words excluding the greeting. Let the chosen opening approach determine the rhetorical flow inside those blocks. If explicit guidance requests bullets, one bullet list may replace one content block.",
           };
   const problemSpace = {
     problemsSolved: context.product.problemsSolved,
@@ -160,32 +161,32 @@ export function buildEmailPrompt(
       : {
           mode: "MODEL_CHOOSES_FROM_SUPPORT",
           instruction:
-            "Choose the one approach best supported by requiredMotionSpecifics and the persona pain. The selected fact must do causal work. Let the chosen approach control the body shape below; do not choose randomly or mention the approach label in the email. In reasoning, name the chosen approach and explain why the selected fact supports it.",
+            "Choose the one approach best supported by requiredMotionSpecifics and the persona pain. The selected fact must do causal work. The approach controls rhetorical flow, not length: obey emailStructure's exact content-block, sentence, and word requirements. Do not choose randomly or mention the approach label in the email. In reasoning, name the chosen approach and explain why the selected fact supports it.",
           options: [
             {
               approach: "supported observation about the selling motion",
               naturalShape:
-                "Use 1 compact content paragraph after the greeting. Move from the supported observation to its implication, then connect the product and next step without sectioning them.",
+                "Move from the supported observation to its implication, then connect the product and next step without treating each as a mandatory section.",
             },
             {
               approach: "operational consequence",
               naturalShape:
-                "Use 2 content paragraphs. Let the consequence and its business impact lead; integrate the supported response and next step naturally rather than reserving a CTA paragraph.",
+                "Let the consequence and its business impact lead; integrate the supported response and next step naturally rather than reserving a mandatory CTA section.",
             },
             {
               approach: "decision or approval moment",
               naturalShape:
-                "Use 3 very short content paragraphs: the supported decision moment, what would make that decision easier, and a concise next step. One sentence per paragraph is enough.",
+                "Move from the supported decision moment to what would make that decision easier, then a concise next step.",
             },
             {
               approach: "role-specific tradeoff",
               naturalShape:
-                "Use 1 compact content paragraph after the greeting. Frame both sides of the tradeoff, connect the supported product response, and end with either a question or declarative next step.",
+                "Frame both sides of the tradeoff, connect the supported product response, and use either a question or declarative next step.",
             },
             {
               approach: "direct problem framing",
               naturalShape:
-                "Use 2 short content paragraphs. Keep the direct problem concise, then connect product and next step without restating the problem.",
+                "Keep the direct problem concise, then connect product and next step without restating the problem.",
             },
           ],
         },

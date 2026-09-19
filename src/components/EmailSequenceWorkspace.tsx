@@ -35,6 +35,7 @@ import {
 } from "@/lib/email-generation/email-body";
 import { formatDraftStalenessMessage } from "@/lib/email-generation/draft-staleness";
 import { SuppressContactForm } from "@/components/SuppressContactForm";
+import { EmailGuidancePromptExamples } from "@/components/EmailGuidancePromptExamples";
 import {
   deeplinkSendDeclinedStorageKey,
   formatDailySendAdvisory,
@@ -1133,24 +1134,28 @@ export function EmailSequenceWorkspace({
             ) : selected.status !== "SENT" ? (
               <div className="space-y-3">
                 <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-                  <label className="block text-sm">
-                    <span className="font-medium text-slate-700">
-                      What should change?
-                    </span>
-                    <span className="mt-0.5 block text-xs text-slate-500">
-                      Applied only when you regenerate this draft.
-                    </span>
-                    <input
-                      type="text"
-                      value={regenerationGuidance}
-                      onChange={(event) =>
-                        setRegenerationGuidance(event.target.value)
-                      }
-                      maxLength={ADDITIONAL_GUIDANCE_MAX_CHARS}
-                      disabled={aiBusy}
-                      className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-                    />
-                  </label>
+                  <div>
+                    <label className="block text-sm">
+                      <span className="font-medium text-slate-700">
+                        What should change?
+                      </span>
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        Applies only when you regenerate this draft.
+                      </span>
+                      <input
+                        type="text"
+                        value={regenerationGuidance}
+                        onChange={(event) =>
+                          setRegenerationGuidance(event.target.value)
+                        }
+                        maxLength={ADDITIONAL_GUIDANCE_MAX_CHARS}
+                        disabled={aiBusy}
+                        placeholder="Use a more direct tone and ask for a reply"
+                        className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <EmailGuidancePromptExamples />
+                  </div>
                   <button
                     type="button"
                     disabled={aiBusy || !selectedPersonaId}

@@ -26,6 +26,7 @@ import { contactDisplayName, cn } from "@/lib/utils";
 import { hasUsableCompanyResearchFields } from "@/lib/research/freshness";
 import { SuppressContactForm } from "@/components/SuppressContactForm";
 import { ExclusionDetailList } from "@/components/ExclusionDetailList";
+import { EmailGuidancePromptExamples } from "@/components/EmailGuidancePromptExamples";
 import {
   groupExclusionDetailsByCriterion,
   readExclusionDetails,
@@ -1047,26 +1048,30 @@ export function ScoreReportClient({
                   ))}
                 </div>
               </fieldset>
-              <label className="block text-sm">
-                <span className="font-medium text-slate-700">
-                  Email guidance
-                </span>
-                <textarea
-                  name="emailGuidance"
-                  rows={3}
-                  maxLength={EMAIL_GUIDANCE_MAX_CHARS}
-                  defaultValue={
-                    campaignState && !campaignState.ok
-                      ? campaignState.values?.emailGuidance
-                      : undefined
-                  }
-                  placeholder="Emphasize the free trial"
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 placeholder:text-slate-400 focus:ring-2"
-                />
-                <span className="mt-1 block text-xs text-slate-500">
-                  Optional, up to {EMAIL_GUIDANCE_MAX_CHARS} characters.
-                </span>
-              </label>
+              <div>
+                <label className="block text-sm">
+                  <span className="font-medium text-slate-700">
+                    Email guidance
+                  </span>
+                  <span className="mt-1 block text-xs text-slate-500">
+                    Steers every generated email in this campaign, up to{" "}
+                    {EMAIL_GUIDANCE_MAX_CHARS} characters.
+                  </span>
+                  <textarea
+                    name="emailGuidance"
+                    rows={3}
+                    maxLength={EMAIL_GUIDANCE_MAX_CHARS}
+                    defaultValue={
+                      campaignState && !campaignState.ok
+                        ? campaignState.values?.emailGuidance
+                        : undefined
+                    }
+                    placeholder="Focus on the feature that removes the most manual work"
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 placeholder:text-slate-400 focus:ring-2"
+                  />
+                </label>
+                <EmailGuidancePromptExamples />
+              </div>
               <div className="flex gap-2">
                 <SubmitButton disabled={campaignPending}>
                   {campaignPending ? "Creating…" : "Create campaign"}

@@ -10,6 +10,7 @@ import {
   type CampaignActionResult,
 } from "@/lib/campaign/save";
 import { formatProductCampaignOmission } from "@/lib/workflow/product-campaign-readiness";
+import { EmailGuidancePromptExamples } from "@/components/EmailGuidancePromptExamples";
 import { Field, SubmitButton } from "@/components/ui";
 
 type Option = { id: string; name: string; productId: string };
@@ -294,21 +295,24 @@ export function NewCampaignForm({
           </div>
         </div>
 
-        <label className="block text-sm">
-          <span className="font-medium text-slate-700">Email guidance</span>
-          <span className="mt-1 block text-xs text-slate-500">
-            Optional instructions for generated emails, up to{" "}
-            {EMAIL_GUIDANCE_MAX_CHARS} characters.
-          </span>
-          <textarea
-            name="emailGuidance"
-            rows={3}
-            maxLength={EMAIL_GUIDANCE_MAX_CHARS}
-            defaultValue={restored?.emailGuidance}
-            placeholder="Emphasize the free trial"
-            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 placeholder:text-slate-400 focus:ring-2"
-          />
-        </label>
+        <div>
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Email guidance</span>
+            <span className="mt-1 block text-xs text-slate-500">
+              Steers every generated email in this campaign, up to{" "}
+              {EMAIL_GUIDANCE_MAX_CHARS} characters.
+            </span>
+            <textarea
+              name="emailGuidance"
+              rows={3}
+              maxLength={EMAIL_GUIDANCE_MAX_CHARS}
+              defaultValue={restored?.emailGuidance}
+              placeholder="Focus on the feature that removes the most manual work"
+              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-slate-400 placeholder:text-slate-400 focus:ring-2"
+            />
+          </label>
+          <EmailGuidancePromptExamples />
+        </div>
       </div>
 
       <div className="md:col-span-2">

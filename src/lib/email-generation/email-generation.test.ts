@@ -256,46 +256,60 @@ describe("buildEmailPrompt", () => {
     );
   });
 
-  it("lets COMPANY and BEST choose a supported opening within broad bounds", () => {
-    const context = contextFixture({
-      companyResearch: {
-        companySummary: "Automotive retail software provider",
-        whatTheySell: "Dealer operations software",
-        customerTypes: ["multi-rooftop dealer groups"],
-        primaryMarkets: ["US automotive retail"],
-        businessModel: "B2B SaaS",
-        companySizeContext: null,
-        confidence: "MEDIUM",
-      },
-    });
-    const messages = buildEmailPrompt(
-      context,
-      emailPromptOptionsForContext(context, [
-        {
-          text: "multi-rooftop dealer groups",
-          sourceField: "customerTypes",
-          whyItMatters: "Distributed stakeholders complicate forecast evidence.",
+  it.each([
+    ["SHORT", "exactly 1 content block", "2-3 content sentences", "45-65 words"],
+    ["MEDIUM", "exactly 2 content blocks", "3-5 content sentences", "80-110 words"],
+    ["LONG", "exactly 3 content blocks", "5-8 content sentences", "110-160 words"],
+  ] as const)(
+    "keeps flexible openings inside the selected %s length",
+    (emailLength, blocks, sentences, words) => {
+      const base = contextFixture();
+      const context = contextFixture({
+        campaign: { ...base.campaign, emailLength },
+        emailLength,
+        companyResearch: {
+          companySummary: "Automotive retail software provider",
+          whatTheySell: "Dealer operations software",
+          customerTypes: ["multi-rooftop dealer groups"],
+          primaryMarkets: ["US automotive retail"],
+          businessModel: "B2B SaaS",
+          companySizeContext: null,
+          confidence: "MEDIUM",
         },
-      ]),
-    );
-    const system = messages[0].content;
-    const user = messages[1].content;
+      });
+      const messages = buildEmailPrompt(
+        context,
+        emailPromptOptionsForContext(context, [
+          {
+            text: "multi-rooftop dealer groups",
+            sourceField: "customerTypes",
+            whyItMatters:
+              "Distributed stakeholders complicate forecast evidence.",
+          },
+        ]),
+      );
+      const system = messages[0].content;
+      const user = messages[1].content;
 
-    expect(user).toContain('"mode": "FLEXIBLE_RESEARCH"');
-    expect(user).toContain('"mode": "MODEL_CHOOSES_FROM_SUPPORT"');
-    expect(user).toContain("1-3 short content paragraphs");
-    expect(user).toContain("no more than 120 words");
-    expect(user).toContain("operational consequence");
-    expect(user).toContain("Use 1 compact content paragraph");
-    expect(user).toContain("Use 3 very short content paragraphs");
-    expect(user).not.toContain("exactly 2 short content paragraphs");
-    expect(system).toContain("must not name the product");
-    expect(system).toContain("without support from requiredMotionSpecifics");
-    expect(system).toContain("need not occupy a fixed sentence");
-    expect(system).toContain(
-      "Do not create dedicated product and CTA paragraphs by default",
-    );
-  });
+      expect(user).toContain('"mode": "FLEXIBLE_RESEARCH"');
+      expect(user).toContain('"mode": "MODEL_CHOOSES_FROM_SUPPORT"');
+      expect(user).toContain(blocks);
+      expect(user).toContain(sentences);
+      expect(user).toContain(words);
+      expect(user).toContain("operational consequence");
+      expect(user).not.toMatch(/Use [123] (?:compact|content|very short)/);
+      expect(system).toContain("selected emailStructure exactly");
+      expect(system).toContain(
+        "authoritative for content-block count, sentence count, and word range",
+      );
+      expect(system).toContain("must not name the product");
+      expect(system).toContain("without support from requiredMotionSpecifics");
+      expect(system).toContain("need not occupy a fixed sentence");
+      expect(system).toContain(
+        "Do not create dedicated product and CTA paragraphs by default",
+      );
+    },
+  );
 
   it("uses a per-draft length override instead of the campaign default", () => {
     const base = contextFixture();
@@ -619,7 +633,12 @@ describe("sequence and claim guards", () => {
     expect(prepared.messages[0].content).toMatch(
       /different supported product feature/i,
     );
-    expect(prepared.messages[0].content).toMatch(/shorter than/i);
+    expect(prepared.messages[0].content).toMatch(
+      /selected emailStructure remains authoritative/i,
+    );
+    expect(prepared.messages[0].content).not.toMatch(
+      /shorter than the prior email/i,
+    );
     expect(prepared.messages[0].content).toMatch(
       /different supported opening approach/i,
     );
@@ -1144,6 +1163,22 @@ describe("email generation action and UI seams", () => {
       "src/app/(app)/campaigns/[id]/page.tsx",
       "utf8",
     );
+    const promptExamples = readFileSync(
+      "src/components/EmailGuidancePromptExamples.tsx",
+      "utf8",
+    );
+    const campaignSettings = readFileSync(
+      "src/components/CampaignEmailSettingsForm.tsx",
+      "utf8",
+    );
+    const newCampaign = readFileSync(
+      "src/components/NewCampaignForm.tsx",
+      "utf8",
+    );
+    const scoreReport = readFileSync(
+      "src/components/ScoreReportClient.tsx",
+      "utf8",
+    );
 
     expect(action).toMatch(
       /generateEmailDraftAction\([\s\S]*Promise<GenerateEmailDraftActionResult>/,
@@ -1172,8 +1207,18 @@ describe("email generation action and UI seams", () => {
     expect(form).not.toContain("Daily send warning:");
     expect(form).toContain("not a delivery confirmation");
     expect(form).toContain("Draft reply");
-    expect(form).toContain("Applied only when you regenerate this draft.");
+    expect(form).toContain("Applies only when you regenerate this draft.");
     expect(form).toContain("What should change?");
+    expect(form).toContain("EmailGuidancePromptExamples");
+    expect(campaignSettings).toContain("EmailGuidancePromptExamples");
+    expect(newCampaign).toContain("EmailGuidancePromptExamples");
+    expect(scoreReport).toContain("EmailGuidancePromptExamples");
+    expect(promptExamples).toContain("Focus on the feature");
+    expect(promptExamples).toContain("Emphasize faster decisions");
+    expect(promptExamples).toContain("Lead with the upcoming deadline");
+    expect(promptExamples).toContain("Highlight the newest capability");
+    expect(promptExamples).toContain("Leave out pricing");
+    expect(promptExamples).toContain("Use a more direct tone");
     expect(form).toContain("cursor-pointer");
     expect(form).toContain("sequence-reply-guidance");
     expect(form).toContain(

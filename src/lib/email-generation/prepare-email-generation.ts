@@ -205,8 +205,8 @@ export async function buildFollowUpEmailPrompt(
         role: "system",
         content: `${messages[0].content}
 
-This is Email ${sequenceNumber} in an existing sequence. Every prior email is supplied verbatim. Do not repeat any prior opener, angle, framing, or closing ask. The new email must carry its own reason to exist and should be shorter than the immediately preceding email by default.
-For follow-ups, being shorter than the prior email and the position guidance override the campaign word target and default paragraph count. Keep paragraphs short and preserve all factual and claim guards.
+This is Email ${sequenceNumber} in an existing sequence. Every prior email is supplied verbatim. Do not repeat any prior opener, angle, framing, or closing ask. The new email must carry its own reason to exist.
+The selected emailStructure remains authoritative for content-block count, sentence count, and word range. Follow-up position guidance changes the angle and emphasis, never the rep's selected length. Keep paragraphs short and preserve all factual and claim guards.
 Choose a different supported opening approach from the prior emails. Use a different selected company fact when one remains unused. Pull a different supported product feature, positioning theme, proof point, or offer emphasis. Do not paraphrase the same problem → solution → ask sequence.
 
 Position guidance: ${followUpGuidance(sequenceNumber)}`,
