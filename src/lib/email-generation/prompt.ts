@@ -54,8 +54,10 @@ Writing and structure rules:
 - Do not use bullet points or structured headers unless the additional campaign instructions explicitly request them.
 - Put the greeting on its own line, followed by exactly one blank line before the first content paragraph. The greeting does not count as a paragraph or sentence in emailStructure.
 - No paragraph may exceed three sentences. Do not write run-on sentences.
-- Use no more than one question. A question is optional; a concise declarative next step is allowed. Do not force the ask into a fixed sentence position.
-- Do not include a sign-off, sender name, sender placeholder, signature, or signature block of any kind. Never write "Best," or "[Your Name]". End the generated body immediately after the closing question or final sentence.
+- Use no more than one question. A question is optional, but an actionable close is required in every cold outbound email.
+- The final sentence must give the reader a clear next action: ask a direct, answerable question; make a direct request; or use an imperative that tells them what to do. The form may vary, but the ask may not disappear.
+- Do not end with a statement about what the sender could do, intends to do, or is available to do, such as "I can walk through it," "We can show you," or "Happy to discuss." Those are not closes unless the same sentence explicitly asks or directs the reader to act.
+- Do not include a sign-off, sender name, sender placeholder, signature, or signature block of any kind. Never write "Best," or "[Your Name]". End the generated body immediately after the actionable close.
 - Never use an em dash character in the subject, body, or reasoning. No exceptions. Use a period, comma, or rewrite the sentence instead.
 
 ${PERSONALIZATION_TIER_INSTRUCTIONS}
@@ -99,20 +101,20 @@ export function buildEmailPrompt(
           emailLength: "SHORT" as const,
           mode: "FIXED_THIN" as const,
           instruction:
-            "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. Sentence 1 frames the executive or business problem from openingProblemFraming (no product name or capability yet). Then one soft close question. Target 40-60 words excluding the greeting.",
+            "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. Sentence 1 frames the executive or business problem from openingProblemFraming (no product name or capability yet). End with one clear, low-friction action for the reader. Target 40-60 words excluding the greeting.",
         }
       : emailLength === "LONG"
         ? {
             emailLength: "LONG" as const,
             mode: "FIXED_THIN" as const,
             instruction:
-              "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming only, 2 sentences max. Do not name the product or any capability here. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and close question, 2 sentences max. Target 120-150 words excluding the greeting.",
+              "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming only, 2 sentences max. Do not name the product or any capability here. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and a clear action for the reader, 2 sentences max. Target 120-150 words excluding the greeting.",
           }
         : {
             emailLength: "MEDIUM" as const,
             mode: "FIXED_THIN" as const,
             instruction:
-              "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming, 2 sentences max. Do not lead with product name or capability. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
+              "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming, 2 sentences max. Do not lead with product name or capability. Content paragraph 2: offer and a clear action for the reader, 2 sentences max. Target 80-100 words excluding the greeting.",
           }
     : emailLength === "SHORT"
       ? {
@@ -148,6 +150,19 @@ export function buildEmailPrompt(
       callToAction: context.campaign.offerCta,
       notes: context.campaign.offerNotes,
     },
+    closingRequirement: {
+      required: true,
+      instruction:
+        "End with a clear action for the reader. Use a direct answerable question, direct request, or imperative. Do not merely state what the sender could do.",
+      supportedCallToAction: context.campaign.offerCta,
+      acceptableForms: [
+        "Question: Would you be open to a 20-minute review?",
+        "Imperative: Book a free estimate today.",
+        "Direct request: Reply with the best person to speak with.",
+      ],
+      invalidForm:
+        "I can walk through how this would fit into a 20-minute demo.",
+    },
     additionalInstructions: context.campaign.emailGuidance
       ? `Additional instructions that override defaults: ${context.campaign.emailGuidance}`
       : null,
@@ -181,7 +196,7 @@ export function buildEmailPrompt(
             {
               approach: "role-specific tradeoff",
               naturalShape:
-                "Frame both sides of the tradeoff, connect the supported product response, and use either a question or declarative next step.",
+                "Frame both sides of the tradeoff, connect the supported product response, and end with an actionable question, direct request, or imperative.",
             },
             {
               approach: "direct problem framing",

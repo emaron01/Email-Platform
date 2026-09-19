@@ -225,15 +225,15 @@ describe("buildEmailPrompt", () => {
   it.each([
     [
       "SHORT",
-      "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. Sentence 1 frames the executive or business problem from openingProblemFraming (no product name or capability yet). Then one soft close question. Target 40-60 words excluding the greeting.",
+      "Put the greeting on its own line, then one blank line, then exactly 1 content paragraph. Write 2-3 content sentences total with no paragraph breaks inside that content paragraph. Sentence 1 frames the executive or business problem from openingProblemFraming (no product name or capability yet). End with one clear, low-friction action for the reader. Target 40-60 words excluding the greeting.",
     ],
     [
       "MEDIUM",
-      "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming, 2 sentences max. Do not lead with product name or capability. Content paragraph 2: offer and close question, 2 sentences max. Target 80-100 words excluding the greeting.",
+      "Put the greeting on its own line, then one blank line, then exactly 2 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming, 2 sentences max. Do not lead with product name or capability. Content paragraph 2: offer and a clear action for the reader, 2 sentences max. Target 80-100 words excluding the greeting.",
     ],
     [
       "LONG",
-      "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming only, 2 sentences max. Do not name the product or any capability here. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and close question, 2 sentences max. Target 120-150 words excluding the greeting.",
+      "Put the greeting on its own line, then one blank line, then exactly 3 short content paragraphs separated by one blank line. Content paragraph 1: executive or business problem from openingProblemFraming only, 2 sentences max. Do not name the product or any capability here. Content paragraph 2: how the product solves it, 2-3 sentences max. Content paragraph 3: offer and a clear action for the reader, 2 sentences max. Target 120-150 words excluding the greeting.",
     ],
   ] as const)("uses the exact %s structure instruction", (emailLength, instruction) => {
     const base = contextFixture();
@@ -350,6 +350,16 @@ describe("buildEmailPrompt", () => {
     expect(systemPrompt).toMatch(/Do not write run-on sentences/i);
     expect(systemPrompt).toMatch(/no more than one question/i);
     expect(systemPrompt).toMatch(/question is optional/i);
+    expect(systemPrompt).toMatch(/actionable close is required/i);
+    expect(systemPrompt).toMatch(/final sentence must give the reader/i);
+    expect(systemPrompt).toMatch(/I can walk through it/i);
+    expect(userPrompt).toContain('"closingRequirement"');
+    expect(userPrompt).toContain(
+      "Do not merely state what the sender could do",
+    );
+    expect(userPrompt).toContain(
+      "I can walk through how this would fit into a 20-minute demo.",
+    );
     expect(systemPrompt).toMatch(/do not include a sign-off/i);
     expect(systemPrompt).toMatch(/signature block of any kind/i);
     expect(systemPrompt).toMatch(/end the generated body immediately/i);
