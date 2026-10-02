@@ -665,12 +665,6 @@ export default async function CampaignDetailPage({
                 Also on Setup
               </Link>
             </div>
-            <p
-              data-testid="email-settings-regenerate-notice"
-              className="rounded-md border border-yellow-400 bg-yellow-200 px-3 py-2 text-sm text-black"
-            >
-              You need to regenerate any emails that have been created before the change was saved.
-            </p>
             {campaignArchived ? (
               <>
                 <p className="text-sm text-slate-600">
@@ -710,6 +704,14 @@ export default async function CampaignDetailPage({
                     campaignId={campaign.id}
                     offer={offer}
                   />
+                }
+                besideSave={
+                  <p
+                    data-testid="email-settings-regenerate-notice"
+                    className="min-w-0 flex-1 rounded-md border border-yellow-400 bg-yellow-200 px-3 py-2 text-sm text-black"
+                  >
+                    You need to regenerate any emails that have been created before the change was saved.
+                  </p>
                 }
               />
             )}

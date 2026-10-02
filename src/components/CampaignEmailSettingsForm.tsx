@@ -20,12 +20,15 @@ export function CampaignEmailSettingsForm({
   emailLength,
   emailGuidance,
   belowGuidance,
+  besideSave,
 }: {
   campaignId: string;
   emailLength: CampaignEmailLength;
   emailGuidance: string | null;
   /** Rendered after Email guidance and outside this form, so it can submit separately. */
   belowGuidance?: React.ReactNode;
+  /** Rendered to the right of the save button when guidance content sits outside the form. */
+  besideSave?: React.ReactNode;
 }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(
@@ -116,9 +119,12 @@ export function CampaignEmailSettingsForm({
     <div className="space-y-4">
       {form}
       {belowGuidance}
-      <SubmitButton form={formId} disabled={pending}>
-        {pending ? "Saving…" : "Save email settings"}
-      </SubmitButton>
+      <div className="flex flex-wrap items-center gap-3">
+        <SubmitButton form={formId} disabled={pending}>
+          {pending ? "Saving…" : "Save email settings"}
+        </SubmitButton>
+        {besideSave}
+      </div>
     </div>
   );
 }

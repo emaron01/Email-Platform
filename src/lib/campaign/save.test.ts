@@ -249,9 +249,19 @@ describe("campaign save UI seam", () => {
     const notice =
       "You need to regenerate any emails that have been created before the change was saved.";
 
+    const settingsForm = readFileSync(
+      "src/components/CampaignEmailSettingsForm.tsx",
+      "utf8",
+    );
+
     expect(panel).toContain(notice);
     expect(panel).toContain("bg-yellow-200");
     expect(panel).toContain("text-black");
+    expect(panel.indexOf("besideSave=")).toBeLessThan(panel.indexOf(notice));
+    expect(settingsForm.lastIndexOf("Save email settings")).toBeLessThan(
+      settingsForm.indexOf("{besideSave}"),
+    );
+    expect(settingsForm).toContain("flex flex-wrap items-center gap-3");
     expect(setup).not.toContain(notice);
     expect(page.split(notice)).toHaveLength(2);
   });
