@@ -232,4 +232,27 @@ describe("campaign save UI seam", () => {
     expect(offerForm).toContain("showContinueToList={false}");
     expect(offerAction.match(/updateCampaignOffer\(/g)).toHaveLength(1);
   });
+
+  it("shows the regenerate notice in the Emails campaign email settings panel", () => {
+    const page = readFileSync("src/app/(app)/campaigns/[id]/page.tsx", "utf8");
+    const setup = page.slice(
+      page.indexOf('currentStage === "setup"'),
+      page.indexOf('currentStage === "emails"'),
+    );
+    const emails = page.slice(
+      page.indexOf('currentStage === "emails"'),
+      page.indexOf('currentStage === "list"'),
+    );
+    const panelStart = emails.indexOf("Campaign email settings");
+    const panelEnd = emails.indexOf("voiceSamples.length === 0");
+    const panel = emails.slice(panelStart, panelEnd);
+    const notice =
+      "You need to regenerate any emails that have been created before the change was saved.";
+
+    expect(panel).toContain(notice);
+    expect(panel).toContain("bg-yellow-200");
+    expect(panel).toContain("text-black");
+    expect(setup).not.toContain(notice);
+    expect(page.split(notice)).toHaveLength(2);
+  });
 });
