@@ -15,7 +15,7 @@ export const EMAIL_LENGTH_OPTIONS = [
 ] as const;
 export type CampaignEmailLength = (typeof EMAIL_LENGTH_OPTIONS)[number];
 export const DEFAULT_EMAIL_LENGTH: CampaignEmailLength = "MEDIUM";
-export const EMAIL_GUIDANCE_MAX_CHARS = 1500;
+export const EMAIL_GUIDANCE_MAX_CHARS = 2000;
 
 export function parseEmailLength(
   value: unknown,

@@ -1232,6 +1232,9 @@ describe("email generation action and UI seams", () => {
     expect(promptExamples).toContain("Highlight the newest capability");
     expect(promptExamples).toContain("Leave out pricing");
     expect(promptExamples).toContain("Use a more direct tone");
+    expect(promptExamples).toContain(
+      "Do not use the following words or their variations: sample, free, cost.",
+    );
     expect(form).toContain("cursor-pointer");
     expect(form).toContain("sequence-reply-guidance");
     expect(form).toContain(

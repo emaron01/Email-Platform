@@ -222,7 +222,7 @@ describe.skipIf(!hasDatabase)(
       });
     });
 
-    it("stores email guidance of 1500 characters and rejects 1501", async () => {
+    it("stores email guidance of 2000 characters and rejects 2001", async () => {
       if (!ready) return;
       const campaign = await prisma.campaign.create({
         data: {
@@ -236,7 +236,7 @@ describe.skipIf(!hasDatabase)(
       const { updateCampaignEmailSettings } = await import(
         "@/lib/campaign/settings"
       );
-      const guidance = "g".repeat(1500);
+      const guidance = "g".repeat(2000);
       await updateCampaignEmailSettings({
         campaignId: campaign.id,
         emailLength: "LONG",
@@ -252,9 +252,9 @@ describe.skipIf(!hasDatabase)(
         updateCampaignEmailSettings({
           campaignId: campaign.id,
           emailLength: "LONG",
-          emailGuidance: "g".repeat(1501),
+          emailGuidance: "g".repeat(2001),
         }),
-      ).rejects.toThrow(/1500 characters or fewer/);
+      ).rejects.toThrow(/2000 characters or fewer/);
       const unchanged = await prisma.campaign.findUniqueOrThrow({
         where: { id: campaign.id },
         select: { emailGuidance: true },

@@ -5,6 +5,7 @@ const EXAMPLES = [
   "Highlight the newest capability.",
   "Leave out pricing and implementation details.",
   "Use a more direct tone and ask for a reply instead of a meeting.",
+  "Do not use the following words or their variations: sample, free, cost.",
 ] as const;
 
 export function EmailGuidancePromptExamples() {

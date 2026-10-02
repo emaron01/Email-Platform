@@ -85,7 +85,7 @@ describe("parseCampaignEmailSettingsFormData", () => {
     expect(parsed.fields.emailGuidance).toBeNull();
   });
 
-  it("rejects invalid lengths and guidance over 1500 characters", () => {
+  it("rejects invalid lengths and guidance over 2000 characters", () => {
     const parsed = parseCampaignEmailSettingsFormData(
       formFrom({
         emailLength: "FIVE_PARAGRAPH",
@@ -95,31 +95,31 @@ describe("parseCampaignEmailSettingsFormData", () => {
 
     expect(parsed.fieldErrors.emailLength).toMatch(/valid email length/i);
     expect(parsed.fieldErrors.emailGuidance).toMatch(
-      /1500 characters or fewer/i,
+      /2000 characters or fewer/i,
     );
   });
 
-  it("accepts email guidance of 1500 characters and rejects 1501", () => {
-    expect(EMAIL_GUIDANCE_MAX_CHARS).toBe(1500);
+  it("accepts email guidance of 2000 characters and rejects 2001", () => {
+    expect(EMAIL_GUIDANCE_MAX_CHARS).toBe(2000);
 
     const accepted = parseCampaignEmailSettingsFormData(
       formFrom({
         emailLength: "SHORT",
-        emailGuidance: "a".repeat(1500),
+        emailGuidance: "a".repeat(2000),
       }),
     );
     expect(accepted.fieldErrors).toEqual({});
-    expect(accepted.fields.emailGuidance).toHaveLength(1500);
+    expect(accepted.fields.emailGuidance).toHaveLength(2000);
 
     const rejected = parseCampaignEmailSettingsFormData(
       formFrom({
-        emailGuidance: "a".repeat(1501),
+        emailGuidance: "a".repeat(2001),
       }),
     );
     expect(rejected.fieldErrors.emailGuidance).toBe(
-      "Email guidance must be 1500 characters or fewer.",
+      "Email guidance must be 2000 characters or fewer.",
     );
-    expect(rejected.fields.emailGuidance).toHaveLength(1501);
+    expect(rejected.fields.emailGuidance).toHaveLength(2001);
   });
 });
 
@@ -176,8 +176,8 @@ describe("campaign save UI seam", () => {
     expect(detailPage).toContain('?stage=setup');
   });
 
-  it("keeps email guidance at 1500 characters in every field", () => {
-    expect(EMAIL_GUIDANCE_MAX_CHARS).toBe(1500);
+  it("keeps email guidance at 2000 characters in every field", () => {
+    expect(EMAIL_GUIDANCE_MAX_CHARS).toBe(2000);
     const files = [
       "src/components/CampaignEmailSettingsForm.tsx",
       "src/components/NewCampaignForm.tsx",
