@@ -85,7 +85,7 @@ describe("parseCampaignEmailSettingsFormData", () => {
     expect(parsed.fields.emailGuidance).toBeNull();
   });
 
-  it("rejects invalid lengths and guidance over 500 characters", () => {
+  it("rejects invalid lengths and guidance over 1500 characters", () => {
     const parsed = parseCampaignEmailSettingsFormData(
       formFrom({
         emailLength: "FIVE_PARAGRAPH",
@@ -94,7 +94,32 @@ describe("parseCampaignEmailSettingsFormData", () => {
     );
 
     expect(parsed.fieldErrors.emailLength).toMatch(/valid email length/i);
-    expect(parsed.fieldErrors.emailGuidance).toMatch(/500 characters or fewer/i);
+    expect(parsed.fieldErrors.emailGuidance).toMatch(
+      /1500 characters or fewer/i,
+    );
+  });
+
+  it("accepts email guidance of 1500 characters and rejects 1501", () => {
+    expect(EMAIL_GUIDANCE_MAX_CHARS).toBe(1500);
+
+    const accepted = parseCampaignEmailSettingsFormData(
+      formFrom({
+        emailLength: "SHORT",
+        emailGuidance: "a".repeat(1500),
+      }),
+    );
+    expect(accepted.fieldErrors).toEqual({});
+    expect(accepted.fields.emailGuidance).toHaveLength(1500);
+
+    const rejected = parseCampaignEmailSettingsFormData(
+      formFrom({
+        emailGuidance: "a".repeat(1501),
+      }),
+    );
+    expect(rejected.fieldErrors.emailGuidance).toBe(
+      "Email guidance must be 1500 characters or fewer.",
+    );
+    expect(rejected.fields.emailGuidance).toHaveLength(1501);
   });
 });
 
@@ -149,5 +174,62 @@ describe("campaign save UI seam", () => {
     expect(detailPage).toContain("CampaignEmailSettingsForm");
     expect(detailPage).toContain("Campaign email settings");
     expect(detailPage).toContain('?stage=setup');
+  });
+
+  it("keeps email guidance at 1500 characters in every field", () => {
+    expect(EMAIL_GUIDANCE_MAX_CHARS).toBe(1500);
+    const files = [
+      "src/components/CampaignEmailSettingsForm.tsx",
+      "src/components/NewCampaignForm.tsx",
+      "src/components/ScoreReportClient.tsx",
+      "src/lib/campaign/settings.ts",
+    ];
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      expect(src).toContain("EMAIL_GUIDANCE_MAX_CHARS");
+      expect(src).not.toMatch(/up to 500 characters/);
+      expect(src).not.toMatch(/maxLength=\{500\}/);
+    }
+  });
+
+  it("puts one collapsed campaign offer under email guidance on Emails", () => {
+    const page = readFileSync("src/app/(app)/campaigns/[id]/page.tsx", "utf8");
+    const offerForm = readFileSync("src/components/CampaignOfferForm.tsx", "utf8");
+    const settingsForm = readFileSync(
+      "src/components/CampaignEmailSettingsForm.tsx",
+      "utf8",
+    );
+    const offerAction = readFileSync("src/app/actions/campaign-offer.ts", "utf8");
+    const setup = page.slice(
+      page.indexOf('currentStage === "setup"'),
+      page.indexOf('currentStage === "emails"'),
+    );
+    const emails = page.slice(
+      page.indexOf('currentStage === "emails"'),
+      page.indexOf('currentStage === "list"'),
+    );
+    const detailsAt = offerForm.indexOf('data-testid="emails-campaign-offer"');
+    const detailsTag = offerForm.slice(detailsAt - 40, detailsAt + 80);
+
+    expect(page.match(/campaignOfferView\(/g)).toHaveLength(1);
+    expect(setup).toContain("<CampaignOfferForm");
+    expect(setup).toContain("offer={offer}");
+    expect(setup).not.toContain("CollapsibleCampaignOffer");
+    expect(emails).toContain("belowGuidance");
+    expect(emails).toContain("<CollapsibleCampaignOffer");
+    expect(emails.match(/offer=\{offer\}/g)?.length).toBe(3);
+    expect(settingsForm.indexOf("{belowGuidance}")).toBeGreaterThan(
+      settingsForm.indexOf('name="emailGuidance"'),
+    );
+    expect(detailsTag).toContain("<details");
+    expect(detailsTag).not.toMatch(/\sopen(?:\s|=|>|$)/);
+    expect(offerForm).toContain('label="Offer Name"');
+    expect(offerForm).toContain('label="Primary CTA"');
+    expect(offerForm).toContain('label="Offer Description"');
+    expect(offerForm).toContain('label="Offer Notes"');
+    expect(offerForm).toContain("Save offer");
+    expect(offerForm).toContain("updateCampaignOfferAction");
+    expect(offerForm).toContain("showContinueToList={false}");
+    expect(offerAction.match(/updateCampaignOffer\(/g)).toHaveLength(1);
   });
 });

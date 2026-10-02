@@ -128,13 +128,16 @@ export function Field({
 export function SubmitButton({
   children,
   disabled,
+  form,
 }: {
   children: React.ReactNode;
   disabled?: boolean;
+  form?: string;
 }) {
   return (
     <button
       type="submit"
+      form={form}
       disabled={disabled}
       className={PRIMARY_BUTTON_CLASS}
     >

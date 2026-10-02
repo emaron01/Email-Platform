@@ -19,10 +19,13 @@ export function CampaignEmailSettingsForm({
   campaignId,
   emailLength,
   emailGuidance,
+  belowGuidance,
 }: {
   campaignId: string;
   emailLength: CampaignEmailLength;
   emailGuidance: string | null;
+  /** Rendered after Email guidance and outside this form, so it can submit separately. */
+  belowGuidance?: React.ReactNode;
 }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(
@@ -31,13 +34,16 @@ export function CampaignEmailSettingsForm({
   );
   const displayedLength = state?.values?.emailLength ?? emailLength;
   const displayedGuidance = state?.values?.emailGuidance ?? emailGuidance ?? "";
+  const formId = belowGuidance
+    ? `campaign-email-settings-${campaignId}`
+    : undefined;
 
   useEffect(() => {
     if (state?.ok) router.refresh();
   }, [state, router]);
 
-  return (
-    <form action={formAction} className="space-y-4">
+  const form = (
+    <form id={formId} action={formAction} className="space-y-4">
       <input type="hidden" name="campaignId" value={campaignId} />
 
       {state ? (
@@ -96,9 +102,23 @@ export function CampaignEmailSettingsForm({
         <EmailGuidancePromptExamples />
       </div>
 
-      <SubmitButton disabled={pending}>
+      {belowGuidance ? null : (
+        <SubmitButton disabled={pending}>
+          {pending ? "Saving…" : "Save email settings"}
+        </SubmitButton>
+      )}
+    </form>
+  );
+
+  if (!belowGuidance) return form;
+
+  return (
+    <div className="space-y-4">
+      {form}
+      {belowGuidance}
+      <SubmitButton form={formId} disabled={pending}>
         {pending ? "Saving…" : "Save email settings"}
       </SubmitButton>
-    </form>
+    </div>
   );
 }

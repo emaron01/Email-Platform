@@ -16,9 +16,12 @@ const initial: CampaignOfferActionResult | null = null;
 export function CampaignOfferForm({
   campaignId,
   offer,
+  showContinueToList = true,
 }: {
   campaignId: string;
   offer: CampaignOfferFields;
+  /** Setup offers the List-stage handoff after a successful save. */
+  showContinueToList?: boolean;
 }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(
@@ -46,7 +49,7 @@ export function CampaignOfferForm({
         </p>
       ) : null}
 
-      {state?.ok ? (
+      {showContinueToList && state?.ok ? (
         <div
           className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3"
           data-testid="campaign-offer-next-step"
@@ -104,5 +107,75 @@ export function CampaignOfferForm({
         {pending ? "Validating…" : "Save offer"}
       </SubmitButton>
     </form>
+  );
+}
+
+function OfferReadOnly({ offer }: { offer: CampaignOfferFields }) {
+  const rows: Array<{ label: string; value: string | null; wide?: boolean }> = [
+    { label: "Offer Name", value: offer.offerName },
+    { label: "Primary CTA", value: offer.offerCta },
+    { label: "Offer Description", value: offer.offerDescription, wide: true },
+    { label: "Offer Notes", value: offer.offerNotes, wide: true },
+  ];
+
+  return (
+    <dl className="grid gap-3 sm:grid-cols-2">
+      {rows.map((row) => (
+        <div key={row.label} className={row.wide ? "sm:col-span-2" : undefined}>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            {row.label}
+          </dt>
+          <dd className="mt-1 whitespace-pre-wrap text-sm text-slate-900">
+            {row.value || "—"}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function CollapsibleCampaignOffer({
+  campaignId,
+  offer,
+  readOnly = false,
+}: {
+  campaignId: string;
+  offer: CampaignOfferFields;
+  readOnly?: "archived" | "shared" | false;
+}) {
+  return (
+    <details
+      data-testid="emails-campaign-offer"
+      className="rounded-md border border-slate-200 bg-white"
+    >
+      <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-800">
+        Campaign offer
+      </summary>
+      <div className="border-t border-slate-200 px-3 py-3">
+        <p className="mb-3 text-xs text-slate-600">
+          Optional. Used in email copy when present.
+        </p>
+        {readOnly === "archived" ? (
+          <p className="mb-3 text-sm text-slate-600">
+            Offer settings are read-only while this campaign is archived.
+          </p>
+        ) : null}
+        {readOnly === "shared" ? (
+          <p className="mb-3 text-sm text-slate-600">
+            Shared campaign template is read-only. Use this campaign from the
+            campaign list to create a personal copy.
+          </p>
+        ) : null}
+        {readOnly ? (
+          <OfferReadOnly offer={offer} />
+        ) : (
+          <CampaignOfferForm
+            campaignId={campaignId}
+            offer={offer}
+            showContinueToList={false}
+          />
+        )}
+      </div>
+    </details>
   );
 }

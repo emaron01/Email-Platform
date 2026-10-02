@@ -3,7 +3,10 @@ import { notFound } from "next/navigation";
 import { deleteCampaignAction, archiveCampaignAction, unarchiveCampaignAction } from "@/app/actions";
 import { CampaignContactsManager } from "@/components/CampaignContactsManager";
 import { CampaignEmailSettingsForm } from "@/components/CampaignEmailSettingsForm";
-import { CampaignOfferForm } from "@/components/CampaignOfferForm";
+import {
+  CampaignOfferForm,
+  CollapsibleCampaignOffer,
+} from "@/components/CampaignOfferForm";
 import { CampaignVisibilityButton } from "@/components/CampaignVisibilityButton";
 import { ConfirmDeleteForm } from "@/components/ConfirmDeleteForm";
 import { UnarchiveForm } from "@/components/UnarchiveForm";
@@ -45,6 +48,7 @@ import {
   buildCampaignStages,
   resolveCampaignStage,
 } from "@/lib/workflow/campaign-stages";
+import { campaignOfferView } from "@/lib/campaign/offer-fields";
 import { parseEmailLength } from "@/lib/campaign/save";
 import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
 import { loadEmailDraftScreenStates } from "@/lib/email-generation/context";
@@ -258,17 +262,8 @@ export default async function CampaignDetailPage({
   }
   const productUpdatedAt = campaign.product.updatedAt.toISOString();
 
-  const offerName = campaign.offerName ?? campaign.offer?.name ?? null;
-  const offerDescription =
-    campaign.offerDescription ?? campaign.offer?.description ?? null;
-  const offerCta = campaign.offerCta ?? campaign.offer?.primaryCta ?? null;
-  const offerNotes = campaign.offerNotes ?? campaign.offer?.notes ?? null;
-  const offer = {
-    offerName,
-    offerDescription,
-    offerCta,
-    offerNotes,
-  };
+  const offer = campaignOfferView(campaign);
+  const { offerName, offerDescription, offerCta, offerNotes } = offer;
   const generatedEmailCount = campaign.contacts.reduce(
     (total, entry) => total + entry.emailDrafts.length,
     0,
@@ -671,25 +666,45 @@ export default async function CampaignDetailPage({
               </Link>
             </div>
             {campaignArchived ? (
-              <p className="text-sm text-slate-600">
-                Email settings are read-only while this campaign is archived.
-              </p>
+              <>
+                <p className="text-sm text-slate-600">
+                  Email settings are read-only while this campaign is archived.
+                </p>
+                <CollapsibleCampaignOffer
+                  campaignId={campaign.id}
+                  offer={offer}
+                  readOnly="archived"
+                />
+              </>
             ) : !canEditTemplate ? (
-              <dl className="grid gap-3 sm:grid-cols-2">
-                <Meta
-                  label="Default email length"
-                  value={campaign.emailLength}
+              <>
+                <dl className="grid gap-3 sm:grid-cols-2">
+                  <Meta
+                    label="Default email length"
+                    value={campaign.emailLength}
+                  />
+                  <Meta
+                    label="Email guidance"
+                    value={campaign.emailGuidance}
+                  />
+                </dl>
+                <CollapsibleCampaignOffer
+                  campaignId={campaign.id}
+                  offer={offer}
+                  readOnly="shared"
                 />
-                <Meta
-                  label="Email guidance"
-                  value={campaign.emailGuidance}
-                />
-              </dl>
+              </>
             ) : (
               <CampaignEmailSettingsForm
                 campaignId={campaign.id}
                 emailLength={campaign.emailLength}
                 emailGuidance={campaign.emailGuidance}
+                belowGuidance={
+                  <CollapsibleCampaignOffer
+                    campaignId={campaign.id}
+                    offer={offer}
+                  />
+                }
               />
             )}
           </div>
