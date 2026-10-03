@@ -6,6 +6,7 @@ import {
   countsTowardTargetedSearchCap,
   normalizeEvidenceClass,
 } from "@/lib/criteria/evidence-class";
+import { getCampaignQualificationView } from "@/lib/campaign/contacts";
 import { getDueContactsForUser, type CampaignDueSummary } from "@/lib/cadence/dashboard";
 import { getMailboxConnectionView } from "@/lib/mailbox/data";
 import { normalizeSuggestedBuyerRoles } from "@/lib/setup/product-overview";
@@ -17,6 +18,12 @@ import {
   type HomeSetupStep,
   type HomeSetupStepKey,
 } from "@/lib/workflow/home-setup-rail";
+import { deriveCampaignProgress } from "@/lib/workflow/campaign-progress";
+import {
+  resolveCampaignStage,
+  type CampaignStage,
+  type CampaignStageKey,
+} from "@/lib/workflow/campaign-stages";
 import { getProductCampaignReadiness } from "@/lib/workflow/product-campaign-readiness";
 
 export type SetupCardState = {
@@ -58,6 +65,8 @@ export type HomeWorkflow = {
     qualified: number;
     contacts: number;
     emailsToWrite: number;
+    stages: CampaignStage[];
+    currentStage: CampaignStageKey;
   }>;
   dueByCampaign: CampaignDueSummary[];
 };
@@ -134,10 +143,12 @@ export async function getHomeWorkflow(
           contacts: {
             select: {
               status: true,
+              sequenceStoppedAt: true,
+              nextDueAt: true,
               contact: {
-                select: { companyId: true, company: true },
+                select: { id: true, companyId: true, company: true },
               },
-              emailDrafts: { select: { id: true } },
+              emailDrafts: { select: { status: true } },
             },
           },
         },
@@ -234,6 +245,14 @@ export async function getHomeWorkflow(
     .filter((product) => !isCampaignReadyProduct(product))
     .map((product) => getProductCampaignReadiness(product));
 
+  const qualifications = await Promise.all(
+    campaigns.map((campaign) =>
+      campaign.contacts.length === 0
+        ? Promise.resolve({ companyRows: [], contactRows: [] })
+        : getCampaignQualificationView(campaign.id),
+    ),
+  );
+
   const voice = voiceReadiness(voiceSampleCount);
   const setupRail = buildHomeSetupRail({
     voice,
@@ -314,7 +333,18 @@ export async function getHomeWorkflow(
         : "/setup/new",
       names: activeProduct?.personas.map((persona) => persona.name) ?? [],
     },
-    campaigns: campaigns.map((campaign) => {
+    campaigns: campaigns.map((campaign, index) => {
+      const qualification = qualifications[index] ?? {
+        companyRows: [],
+        contactRows: [],
+      };
+      const progress = deriveCampaignProgress({
+        productId: campaign.productId,
+        icpId: campaign.icpId,
+        contacts: campaign.contacts,
+        companyRows: qualification.companyRows,
+        contactRows: qualification.contactRows,
+      });
       const companyKeys = new Set(
         campaign.contacts
           .map((entry) =>
@@ -352,6 +382,8 @@ export async function getHomeWorkflow(
         qualified,
         contacts: campaign.contacts.length,
         emailsToWrite,
+        stages: progress.stages,
+        currentStage: resolveCampaignStage(undefined, progress.stages),
       };
     }),
     dueByCampaign,

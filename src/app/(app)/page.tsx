@@ -8,6 +8,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { getHomeWorkflow } from "@/lib/workflow/home";
 import { DueContactsPanel } from "@/components/DueContactsPanel";
+import { HomeCampaignStages } from "@/components/HomeCampaignStages";
 import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 import { canViewAllRepWork } from "@/lib/work/ownership";
 
@@ -87,10 +88,6 @@ export default async function DashboardPage({
         />
       </div>
 
-      {workflow.dueByCampaign.length > 0 ? (
-        <DueContactsPanel dueByCampaign={workflow.dueByCampaign} />
-      ) : null}
-
       <div className="mt-8 mb-4 flex items-center justify-between gap-4">
         <h2 className="text-xl font-semibold text-slate-900">Campaigns</h2>
         {workflow.setupComplete ? (
@@ -142,15 +139,19 @@ export default async function DashboardPage({
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {workflow.campaigns.map((campaign) => (
-            <Link
+            <article
               key={campaign.id}
-              href={`/campaigns/${campaign.id}`}
-              className="rounded-xl border border-slate-200 bg-white p-5 transition hover:border-slate-400"
+              className="rounded-xl border border-slate-200 bg-white p-5"
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h3 className="font-semibold text-slate-900">
-                    {campaign.name}
+                    <Link
+                      href={`/campaigns/${campaign.id}`}
+                      className="hover:underline"
+                    >
+                      {campaign.name}
+                    </Link>
                     {campaign.archived ? (
                       <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
                         Archived
@@ -185,10 +186,21 @@ export default async function DashboardPage({
                   <dd className="font-semibold">{campaign.emailsToWrite}</dd>
                 </div>
               </dl>
-            </Link>
+              <HomeCampaignStages
+                campaignId={campaign.id}
+                stages={campaign.stages}
+                currentStage={campaign.currentStage}
+              />
+            </article>
           ))}
         </div>
       )}
+
+      {workflow.dueByCampaign.length > 0 ? (
+        <div className="mt-8">
+          <DueContactsPanel dueByCampaign={workflow.dueByCampaign} />
+        </div>
+      ) : null}
     </div>
   );
 }

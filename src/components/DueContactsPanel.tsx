@@ -57,37 +57,32 @@ export function DueContactsPanel({
 
       <div className="space-y-4">
         {dueByCampaign.map((campaign) => (
-          <article
+          <details
             key={campaign.campaignId}
+            data-testid={`due-campaign-${campaign.campaignId}`}
             className="rounded-xl border border-slate-200 bg-white p-5"
           >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <Link
-                  href={`/campaigns/${campaign.campaignId}`}
-                  className="font-semibold text-slate-900 hover:underline"
-                >
-                  {campaign.campaignName}
-                </Link>
-                <p className="mt-1 text-sm text-slate-600">
-                  {campaign.overdue > 0 ? (
-                    <span className="font-medium text-rose-700">
-                      {campaign.overdue} overdue
-                    </span>
-                  ) : null}
-                  {campaign.overdue > 0 && campaign.today > 0 ? " · " : null}
-                  {campaign.today > 0 ? (
-                    <span>{campaign.today} due today</span>
-                  ) : null}
-                  {(campaign.overdue > 0 || campaign.today > 0) &&
-                  campaign.thisWeek > 0
-                    ? " · "
-                    : null}
-                  {campaign.thisWeek > 0 ? (
-                    <span>{campaign.thisWeek} this week</span>
-                  ) : null}
-                </p>
-              </div>
+            <summary className="cursor-pointer list-none font-semibold text-slate-900">
+              <Link
+                href={`/campaigns/${campaign.campaignId}`}
+                className="hover:underline"
+              >
+                {campaign.campaignName}
+              </Link>
+              <span className="ml-2 text-sm font-medium text-rose-700">
+                {campaign.overdue} overdue
+              </span>
+            </summary>
+            <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
+              <p className="text-sm text-slate-600">
+                {campaign.today > 0 ? (
+                  <span>{campaign.today} due today</span>
+                ) : null}
+                {campaign.today > 0 && campaign.thisWeek > 0 ? " · " : null}
+                {campaign.thisWeek > 0 ? (
+                  <span>{campaign.thisWeek} this week</span>
+                ) : null}
+              </p>
               <button
                 type="button"
                 disabled={pending}
@@ -162,7 +157,7 @@ export function DueContactsPanel({
                 </li>
               ))}
             </ul>
-          </article>
+          </details>
         ))}
       </div>
     </section>
