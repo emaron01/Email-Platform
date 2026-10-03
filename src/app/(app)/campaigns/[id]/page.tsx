@@ -14,7 +14,7 @@ import { EmailDraftsStage } from "@/components/EmailDraftsStage";
 import { CampaignStageShell } from "@/components/CampaignStageShell";
 import { CampaignStageRail } from "@/components/CampaignStageRail";
 import { QualificationBuckets } from "@/components/QualificationBuckets";
-import { PageHeader, Panel, PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
+import { PageHeader, Panel, SECONDARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { campaignDeleteConfirmBody } from "@/lib/tenant/campaign-delete";
 import { campaignArchiveConfirmBody } from "@/lib/tenant/campaign-archive";
 import {
@@ -24,7 +24,6 @@ import {
 import {
   getCampaignDetail,
   getCampaignQualificationView,
-  listCompatibleScoringRuns,
   searchAvailableCampaignContacts,
 } from "@/lib/campaign/contacts";
 import {
@@ -36,7 +35,7 @@ import {
 import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 import { TenantError } from "@/lib/tenant/errors";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
-import { cn, contactDisplayName, formatDate } from "@/lib/utils";
+import { contactDisplayName } from "@/lib/utils";
 import { claimConflictsFromJson } from "@/lib/email-generation/claim-conflicts";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { getEffectiveUsagePolicy } from "@/lib/usage/policy";
@@ -53,9 +52,7 @@ import { parseEmailLength } from "@/lib/campaign/save";
 import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
 import { loadEmailDraftScreenStates } from "@/lib/email-generation/context";
 import { emailDraftStaleness } from "@/lib/email-generation/draft-staleness";
-import {
-  listIndexHref,
-} from "@/lib/lists/campaign-query";
+import { listContactLists } from "@/lib/tenant/data";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -111,7 +108,7 @@ export default async function CampaignDetailPage({
   let availableContacts: Awaited<
     ReturnType<typeof searchAvailableCampaignContacts>
   >;
-  let scoringRuns: Awaited<ReturnType<typeof listCompatibleScoringRuns>>;
+  let contactLists: Awaited<ReturnType<typeof listContactLists>>;
   let usagePolicy: Awaited<ReturnType<typeof getEffectiveUsagePolicy>>;
   let mailboxConnection: Awaited<ReturnType<typeof getMailboxConnectionView>>;
   let dailySendUsage: Awaited<ReturnType<typeof getDailyEmailSendUsage>>;
@@ -122,7 +119,7 @@ export default async function CampaignDetailPage({
     [
       campaign,
       availableContacts,
-      scoringRuns,
+      contactLists,
       usagePolicy,
       mailboxConnection,
       dailySendUsage,
@@ -132,7 +129,7 @@ export default async function CampaignDetailPage({
     ] = await Promise.all([
       getCampaignDetail(id),
       searchAvailableCampaignContacts(id, query.q),
-      listCompatibleScoringRuns(id),
+      listContactLists(),
       getEffectiveUsagePolicy({
         organizationId: organization.id,
         userId: user.id,
@@ -326,7 +323,6 @@ export default async function CampaignDetailPage({
     sentEmailCount,
   });
   const currentStage = resolveCampaignStage(query.stage, stages);
-  const selectedScoringRunId = query.scoringRun?.trim() || null;
   const bucketByContactId = new Map(
     campaignContactRows.map((row) => [row.id, row.bucket]),
   );
@@ -363,22 +359,7 @@ export default async function CampaignDetailPage({
   const listNext = campaignArchived
     ? null
     : campaign.contacts.length === 0
-      ? {
-          title:
-            scoringRuns.length === 0
-              ? "Next: research and score a list"
-              : "Next: add contacts from a scored run",
-          body:
-            scoringRuns.length === 0
-              ? "Open Lists, research companies, score against this campaign’s Product / ICP / Persona, then save and return from the score report."
-              : "Pick a completed scoring run below, or search for individual contacts. After contacts are attached, continue to Companies.",
-          href:
-            scoringRuns.length === 0 ? "/lists" : `#campaign-scored-run-form`,
-          label:
-            scoringRuns.length === 0
-              ? "Go to Lists to score"
-              : "Jump to scored runs",
-        }
+      ? null
       : {
           title: "Next: review companies",
           body: `${campaign.contacts.length} contact(s) are on this campaign. Qualify companies against the campaign ICP before drafting email.`,
@@ -865,49 +846,37 @@ export default async function CampaignDetailPage({
         <CampaignStageShell next={listNext}>
         <Panel
           title="5 List"
-          description="Get contacts into this campaign. Research and score a list first if you have not already, then add the scored run here."
+          description="Select a list. Research and scoring start automatically. Approve attaches Ready to include contacts."
         >
-          {campaignArchived || !canEditTemplate ? (
-            <div className="space-y-4">
-              <div className="flex flex-col items-start gap-2">
-                <Link
-                  href={listIndexHref({ campaignId: campaign.id })}
-                  className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
-                >
-                  Select an Existing List To Be Researched and Scored
-                </Link>
-              </div>
-              <p className="text-sm text-slate-600">
-                {campaignArchived
-                  ? "Contacts cannot be changed while this campaign is archived."
-                  : "Manager access is read-only. Only the campaign owner can change contacts."}
-              </p>
-            </div>
-          ) : (
-            <CampaignContactsManager
-              campaignId={campaign.id}
-              search={query.q?.trim() ?? ""}
-              selectedScoringRunId={selectedScoringRunId}
-              contacts={availableContacts.map((contact) => ({
-                id: contact.id,
-                name: contactDisplayName(contact.firstName, contact.lastName),
-                email: contact.email,
-                title: contact.title,
-                company: contact.company,
-                listName:
-                  contact.contactLists.map((list) => list.name).join(", ") ||
-                  "Unlisted",
-              }))}
-              scoringRuns={scoringRuns.map((run) => ({
-                id: run.id,
-                listName: run.contactList.name,
-                label: run.label,
-                status: run.status,
-                completedScoreCount: run.completedScoreCount,
-                createdLabel: formatDate(run.createdAt),
-              }))}
-            />
-          )}
+          <CampaignContactsManager
+            campaignId={campaign.id}
+            productId={campaign.product.id}
+            icpId={campaign.icp.id}
+            personaId={campaign.personaId}
+            lists={contactLists.map((list) => ({
+              id: list.id,
+              name: list.name,
+            }))}
+            search={query.q?.trim() ?? ""}
+            readOnly={campaignArchived || !canEditTemplate}
+            readOnlyMessage={
+              campaignArchived
+                ? "Contacts cannot be changed while this campaign is archived."
+                : !canEditTemplate
+                  ? "Manager access is read-only. Only the campaign owner can change contacts."
+                  : undefined
+            }
+            contacts={availableContacts.map((contact) => ({
+              id: contact.id,
+              name: contactDisplayName(contact.firstName, contact.lastName),
+              email: contact.email,
+              title: contact.title,
+              company: contact.company,
+              listName:
+                contact.contactLists.map((list) => list.name).join(", ") ||
+                "Unlisted",
+            }))}
+          />
         </Panel>
         </CampaignStageShell>
       ) : null}

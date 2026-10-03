@@ -26,6 +26,7 @@ function toSafeScoringRunActionError(error: unknown): string {
 export type ScoringRunActionResult = {
   ok: boolean;
   message: string;
+  scoringRunId?: string;
 };
 
 export async function createScoringRunAction(
@@ -99,6 +100,15 @@ export async function createScoringRunAction(
     });
   } catch (error) {
     return { ok: false, message: toSafeScoringRunActionError(error) };
+  }
+
+  // Stage 5 scores on the campaign page. The list score form does not send this flag.
+  if (requiredString(formData, "stayOnPage") === "1") {
+    return {
+      ok: true,
+      message: "Scoring run created.",
+      scoringRunId: run.id,
+    };
   }
 
   // redirect() throws — keep it outside try/catch so navigation still fires.

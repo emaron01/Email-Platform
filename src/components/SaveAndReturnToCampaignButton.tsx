@@ -6,8 +6,10 @@ import { SECONDARY_BUTTON_CLASS } from "@/components/ui";
 
 function SubmitButton({
   testId,
+  label,
 }: {
   testId: string;
+  label: string;
 }) {
   const { pending } = useFormStatus();
   return (
@@ -17,7 +19,7 @@ function SubmitButton({
       data-testid={testId}
       className={SECONDARY_BUTTON_CLASS}
     >
-      {pending ? "Saving…" : "Save and return to campaign"}
+      {pending ? "Saving…" : label}
     </button>
   );
 }
@@ -27,16 +29,18 @@ export function SaveAndReturnToCampaignButton({
   campaignId,
   scoringRunId,
   testId = "back-to-campaign",
+  label = "Save and return to campaign",
 }: {
   campaignId: string;
   scoringRunId: string;
   testId?: string;
+  label?: string;
 }) {
   return (
     <form action={saveScoringRunAndReturnToCampaignAction}>
       <input type="hidden" name="campaignId" value={campaignId} />
       <input type="hidden" name="scoringRunId" value={scoringRunId} />
-      <SubmitButton testId={testId} />
+      <SubmitButton testId={testId} label={label} />
     </form>
   );
 }

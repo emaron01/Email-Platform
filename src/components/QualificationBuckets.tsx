@@ -53,6 +53,7 @@ export function QualificationBuckets({
   emptyActionHref,
   emptyActionLabel,
   readOnly = false,
+  showSummary = true,
 }: {
   campaignId: string;
   scoringRunId: string | null;
@@ -61,6 +62,7 @@ export function QualificationBuckets({
   emptyActionHref: string;
   emptyActionLabel: string;
   readOnly?: boolean;
+  showSummary?: boolean;
 }) {
   const [rows, setRows] = useState(initialRows);
   const [message, setMessage] = useState<string | null>(null);
@@ -200,21 +202,23 @@ export function QualificationBuckets({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {QUALIFICATION_BUCKETS.map((bucket) => (
-          <div
-            key={bucket}
-            className={`rounded-lg border p-4 ${CARD_STYLES[bucket]}`}
-          >
-            <p className="text-sm font-medium">
-              {QUALIFICATION_BUCKET_LABELS[bucket]}
-            </p>
-            <p className="mt-1 text-3xl font-semibold">
-              {rows.filter((row) => row.bucket === bucket).length}
-            </p>
-          </div>
-        ))}
-      </div>
+      {showSummary ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {QUALIFICATION_BUCKETS.map((bucket) => (
+            <div
+              key={bucket}
+              className={`rounded-lg border p-4 ${CARD_STYLES[bucket]}`}
+            >
+              <p className="text-sm font-medium">
+                {QUALIFICATION_BUCKET_LABELS[bucket]}
+              </p>
+              <p className="mt-1 text-3xl font-semibold">
+                {rows.filter((row) => row.bucket === bucket).length}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {message ? (
         <p role="status" className="text-sm text-slate-700">

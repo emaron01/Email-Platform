@@ -179,8 +179,9 @@ describe("setup delete authorization policy", () => {
     expect(offer).toContain("campaign-offer-next-step");
     expect(offer).toContain("Continue to List");
     expect(offer).toContain("Optional. Not required to save or continue to List.");
-    expect(manager).toContain("campaign-list-score-hint");
-    expect(manager).toContain("Go to Lists to research and score");
+    expect(manager).toContain("List preparation is underway.");
+    expect(manager).toContain("SHOW_EXISTING_CONTACT_SEARCH = false");
+    expect(page).not.toContain("Jump to scored runs");
   });
 });
 

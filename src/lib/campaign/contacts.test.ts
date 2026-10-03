@@ -37,8 +37,9 @@ describe("campaign contact management seams", () => {
     expect(draftsStage).toContain('data-testid="email-contacts-filter"');
     expect(draftsStage).toContain("Ready to send");
     expect(draftsStage).toContain('value="all"');
+    expect(manager).toContain("SHOW_EXISTING_CONTACT_SEARCH = false");
     expect(manager).toContain("Search existing contacts");
-    expect(manager).toContain("Add from Scored Run");
+    expect(manager).not.toContain("Add from Scored Run");
     expect(manager).toContain(
       "Select an Existing List To Be Researched and Scored",
     );
@@ -46,8 +47,9 @@ describe("campaign contact management seams", () => {
     expect(manager).toContain("SECONDARY_BUTTON_CLASS");
     expect(manager).toContain("PRIMARY_BUTTON_CLASS");
     expect(manager).toContain("flex flex-col items-start gap-2");
-    expect(manager).toContain("campaign-list-score-hint");
+    expect(manager).not.toContain("campaign-list-score-hint");
     expect(manager).toContain("campaign-contacts-status");
+    expect(detailPage).not.toContain("Jump to scored runs");
     expect(actions).toContain("addContactsToCampaignAction");
     expect(actions).toContain("addScoringRunContactsToCampaignAction");
     expect(actions).toContain("saveScoringRunAndReturnToCampaignAction");

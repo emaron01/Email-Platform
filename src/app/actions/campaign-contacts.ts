@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   addContactsToCampaign,
   addScoringRunContactsToCampaign,
+  getScoringRunQualificationRows,
 } from "@/lib/campaign/contacts";
 import {
   campaignAfterScoringAttachHref,
@@ -91,6 +92,41 @@ export async function addScoringRunContactsToCampaignAction(
   } catch (error) {
     console.error("Failed to add scored campaign contacts.", error);
     return { ok: false, message: toSafeCampaignContactsError(error) };
+  }
+}
+
+export async function loadScoringRunQualificationAction(
+  scoringRunId: string,
+): Promise<
+  | {
+      ok: true;
+      companyRows: Awaited<
+        ReturnType<typeof getScoringRunQualificationRows>
+      >["companyRows"];
+      contactRows: Awaited<
+        ReturnType<typeof getScoringRunQualificationRows>
+      >["contactRows"];
+    }
+  | { ok: false; message: string }
+> {
+  if (!scoringRunId.trim()) {
+    return { ok: false, message: "Scoring run is required." };
+  }
+  try {
+    const view = await getScoringRunQualificationRows(scoringRunId);
+    return {
+      ok: true,
+      companyRows: view.companyRows,
+      contactRows: view.contactRows,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof TenantError
+          ? error.message
+          : "Unable to load qualification.",
+    };
   }
 }
 

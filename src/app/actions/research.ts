@@ -191,6 +191,42 @@ export async function researchCompaniesForScoringRunAction(
   }
 }
 
+export async function contactListResearchGapAction(
+  contactListId: string,
+): Promise<
+  | { ok: true; needingResearch: number; uniqueCompanies: number }
+  | { ok: false; message: string }
+> {
+  if (!contactListId.trim()) {
+    return { ok: false, message: "Contact list is required." };
+  }
+  try {
+    const actor = await getWorkActor();
+    const { prisma } = await import("@/lib/prisma");
+    const list = await prisma.contactList.findFirst({
+      where: { id: contactListId, organizationId: actor.organizationId },
+      select: { ownerUserId: true },
+    });
+    if (!list) throw new TenantError("Contact list was not found.");
+    assertCanViewOwnedWork(actor, list.ownerUserId, "Contact list");
+    const plan = await getCompaniesNeedingResearchForContactList(
+      contactListId,
+      { associateMissing: false },
+    );
+    return {
+      ok: true,
+      needingResearch: plan.needingResearch,
+      uniqueCompanies: plan.uniqueCompanies,
+    };
+  } catch (error) {
+    const message =
+      error instanceof TenantError
+        ? error.message
+        : "Unable to check company research.";
+    return { ok: false, message };
+  }
+}
+
 export async function getResearchRunStatusAction(
   runId: string,
 ): Promise<ResearchRunView | null> {

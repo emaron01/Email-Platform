@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Prisma, QualificationBucket } from "@prisma/client";
+import type { Prisma, QualificationBucket, ScoreLabel } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { requireOrganizationId } from "@/lib/tenant/getCurrentOrganization";
@@ -139,80 +139,53 @@ export type CampaignQualificationView = {
   contactRows: QualificationBucketRow[];
 };
 
-export async function getCampaignQualificationView(
-  campaignId: string,
-): Promise<CampaignQualificationView> {
-  const organizationId = await requireOrganizationId();
-  const campaign = await requireCampaignForOrganization(
-    campaignId,
-    organizationId,
-  );
-  const attachedContacts = await prisma.campaignContact.findMany({
-    where: { organizationId, campaignId },
-    select: { contactId: true },
-  });
-  const attachedContactIds = attachedContacts.map((row) => row.contactId);
-  if (attachedContactIds.length === 0) {
-    return { scoringRunId: null, companyRows: [], contactRows: [] };
-  }
-
-  // Only runs matching this campaign's product/ICP/persona config. Different
-  // product/ICP/persona combinations are ignored by compatibleScoringRunWhere.
-  const compatibleRuns = await prisma.scoringRun.findMany({
-    where: await compatibleScoringRunWhere(campaign, organizationId),
-    orderBy: { createdAt: "desc" },
-    include: {
-      icp: {
-        include: {
-          criteria: {
-            select: { id: true, name: true, researchGuidance: true },
-          },
-        },
-      },
-      persona: {
-        include: {
-          criteria: {
-            select: { id: true, name: true, researchGuidance: true },
-          },
-        },
-      },
-      scores: {
-        where: {
-          contactId: { in: attachedContactIds },
-          scoringStatus: { in: ["COMPLETED", "SUPPRESSED"] },
-        },
-        include: {
-          contact: {
-            include: {
-              companyRecord: { select: { id: true, name: true } },
-            },
-          },
-        },
-        orderBy: { createdAt: "asc" },
-      },
-      qualificationOverrides: true,
-    },
-  });
-
-  const runsWithScores = compatibleRuns.filter((run) => run.scores.length > 0);
-  if (runsWithScores.length === 0) {
-    return { scoringRunId: null, companyRows: [], contactRows: [] };
-  }
-
-  // Per contact: most recent compatible run that scored them (runs already desc).
-  type SelectedScore = {
-    run: (typeof runsWithScores)[number];
-    score: (typeof runsWithScores)[number]["scores"][number];
+type QualificationViewScore = {
+  contactId: string;
+  scoringStatus: string;
+  scoreLabel: ScoreLabel | null;
+  assessmentData: unknown;
+  criterionAssessments: unknown;
+  contact: {
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    title: string | null;
+    company: string | null;
+    companyId: string | null;
+    companyRecord: { id: string; name: string } | null;
   };
-  const selectedByContactId = new Map<string, SelectedScore>();
-  for (const run of runsWithScores) {
-    for (const score of run.scores) {
-      if (!selectedByContactId.has(score.contactId)) {
-        selectedByContactId.set(score.contactId, { run, score });
-      }
-    }
-  }
+};
 
+type QualificationViewRun = {
+  id: string;
+  icp: {
+    criteria: Array<{
+      id: string;
+      name: string;
+      researchGuidance: string | null;
+    }>;
+  };
+  persona: {
+    criteria: Array<{
+      id: string;
+      name: string;
+      researchGuidance: string | null;
+    }>;
+  } | null;
+  qualificationOverrides: Array<{
+    targetType: string;
+    targetId: string;
+    bucket: QualificationBucket;
+  }>;
+};
+
+function buildQualificationView<
+  TScore extends QualificationViewScore,
+  TRun extends QualificationViewRun,
+>(
+  runsWithScores: TRun[],
+  selectedByContactId: Map<string, { run: TRun; score: TScore }>,
+): CampaignQualificationView {
   const guidance = new Map<string, string | null>();
   for (const run of runsWithScores) {
     for (const criterion of [
@@ -399,11 +372,142 @@ export async function getCampaignQualificationView(
     return (b.secondaryFlags?.length ?? 0) - (a.secondaryFlags?.length ?? 0);
   });
   return {
-    // Newest compatible run that contributed any selected score (UI fallback).
     scoringRunId: runsWithScores[0]!.id,
     companyRows,
     contactRows,
   };
+}
+
+export async function getScoringRunQualificationRows(
+  scoringRunId: string,
+): Promise<CampaignQualificationView> {
+  const organizationId = await requireOrganizationId();
+  const run = await prisma.scoringRun.findFirst({
+    where: { id: scoringRunId, organizationId },
+    include: {
+      icp: {
+        include: {
+          criteria: {
+            select: { id: true, name: true, researchGuidance: true },
+          },
+        },
+      },
+      persona: {
+        include: {
+          criteria: {
+            select: { id: true, name: true, researchGuidance: true },
+          },
+        },
+      },
+      scores: {
+        where: { scoringStatus: { in: ["COMPLETED", "SUPPRESSED"] } },
+        include: {
+          contact: {
+            include: {
+              companyRecord: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      qualificationOverrides: true,
+    },
+  });
+  if (!run) {
+    throw new TenantError(
+      "Scoring run was not found in the active organization.",
+    );
+  }
+  if (run.scores.length === 0) {
+    return { scoringRunId: run.id, companyRows: [], contactRows: [] };
+  }
+  const selectedByContactId = new Map<
+    string,
+    { run: typeof run; score: (typeof run.scores)[number] }
+  >();
+  for (const score of run.scores) {
+    if (!selectedByContactId.has(score.contactId)) {
+      selectedByContactId.set(score.contactId, { run, score });
+    }
+  }
+  return buildQualificationView([run], selectedByContactId);
+}
+
+export async function getCampaignQualificationView(
+  campaignId: string,
+): Promise<CampaignQualificationView> {
+  const organizationId = await requireOrganizationId();
+  const campaign = await requireCampaignForOrganization(
+    campaignId,
+    organizationId,
+  );
+  const attachedContacts = await prisma.campaignContact.findMany({
+    where: { organizationId, campaignId },
+    select: { contactId: true },
+  });
+  const attachedContactIds = attachedContacts.map((row) => row.contactId);
+  if (attachedContactIds.length === 0) {
+    return { scoringRunId: null, companyRows: [], contactRows: [] };
+  }
+
+  // Only runs matching this campaign's product/ICP/persona config. Different
+  // product/ICP/persona combinations are ignored by compatibleScoringRunWhere.
+  const compatibleRuns = await prisma.scoringRun.findMany({
+    where: await compatibleScoringRunWhere(campaign, organizationId),
+    orderBy: { createdAt: "desc" },
+    include: {
+      icp: {
+        include: {
+          criteria: {
+            select: { id: true, name: true, researchGuidance: true },
+          },
+        },
+      },
+      persona: {
+        include: {
+          criteria: {
+            select: { id: true, name: true, researchGuidance: true },
+          },
+        },
+      },
+      scores: {
+        where: {
+          contactId: { in: attachedContactIds },
+          scoringStatus: { in: ["COMPLETED", "SUPPRESSED"] },
+        },
+        include: {
+          contact: {
+            include: {
+              companyRecord: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      qualificationOverrides: true,
+    },
+  });
+
+  const runsWithScores = compatibleRuns.filter((run) => run.scores.length > 0);
+  if (runsWithScores.length === 0) {
+    return { scoringRunId: null, companyRows: [], contactRows: [] };
+  }
+
+  // Per contact: most recent compatible run that scored them (runs already desc).
+  type SelectedScore = {
+    run: (typeof runsWithScores)[number];
+    score: (typeof runsWithScores)[number]["scores"][number];
+  };
+  const selectedByContactId = new Map<string, SelectedScore>();
+  for (const run of runsWithScores) {
+    for (const score of run.scores) {
+      if (!selectedByContactId.has(score.contactId)) {
+        selectedByContactId.set(score.contactId, { run, score });
+      }
+    }
+  }
+
+  return buildQualificationView(runsWithScores, selectedByContactId);
 }
 
 async function requireCampaignForOrganization(
