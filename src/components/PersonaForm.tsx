@@ -136,7 +136,13 @@ function ScoredCriterionRow({
   return (
     <li className="rounded border border-slate-200 bg-white p-2">
       <div>
-        {criterion.isDisqualifier ? "✗" : criterion.isRequired ? "✓" : "☆"}{" "}
+        {criterion.isDisqualifier ? (
+          <span className="font-medium text-red-600">✗</span>
+        ) : criterion.isRequired ? (
+          <span className="font-medium text-green-600">✓</span>
+        ) : (
+          <span className="font-medium text-yellow-500">☆</span>
+        )}{" "}
         {formatCriterionDisplay({
           ...criterion,
           dataType: criterion.dataType as never,
@@ -252,8 +258,10 @@ function CriteriaReview({
         AI Interpretation — review criteria
       </h5>
       <p className="mt-1 text-xs text-slate-500">
-        ✓ required / strong · ☆ supporting · ✗ disqualifier. Manual edits are
-        preserved on reinterpretation.
+        <span className="font-medium text-green-600">✓</span> required / strong
+        · <span className="font-medium text-yellow-500">☆</span> supporting ·{" "}
+        <span className="font-medium text-red-600">✗</span> disqualifier. Manual
+        edits are preserved on reinterpretation.
       </p>
       {scored.length === 0 ? (
         <p className="mt-3 text-sm text-slate-500">
