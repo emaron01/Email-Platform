@@ -794,7 +794,11 @@ export function PersonaForm({
           confirmTitle={`Delete Persona "${persona.name}"?`}
           confirmBody={`This will remove this Persona and its current generated criteria.\nHistorical scoring snapshots will not be changed.\nIf scoring runs reference this Persona, it will be archived instead of permanently deleted.`}
           confirmButtonLabel="Delete Persona"
-          onSuccessNavigate={`/setup/${productId}`}
+          onSuccessNavigate={
+            /^[A-Za-z0-9_-]+$/.test(productId)
+              ? `/personas?product=${encodeURIComponent(productId)}`
+              : "/personas"
+          }
         />
       </div>
     </div>

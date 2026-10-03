@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { ArtifactProductFilter } from "@/components/ArtifactProductFilter";
+import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
 import { EmptyState, PageHeader, PRIMARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { listPersonas, listProducts } from "@/lib/tenant/data";
@@ -61,6 +62,8 @@ export default async function PersonasPage({
           )
         }
       />
+
+      <DeleteSuccessNotice />
 
       <div className="mb-6">
         <Suspense fallback={null}>

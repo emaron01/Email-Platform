@@ -89,6 +89,13 @@ function safeListRedirectTo(raw: string): string {
   return value;
 }
 
+/** Persona list, optionally filtered to the product the deleted persona belonged to. */
+function safePersonaListRedirect(productId: string): string {
+  const id = productId.trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) return "/personas";
+  return `/personas?product=${encodeURIComponent(id)}`;
+}
+
 export async function upsertProductAction(
   _prev: ProductActionResult | null,
   formData: FormData,
@@ -299,6 +306,8 @@ export async function deletePersonaAction(
   _prev: CrudDeleteResult | null,
   formData: FormData,
 ): Promise<CrudDeleteResult> {
+  let notice: string;
+  let destination: string;
   try {
     await requireSetupDeletePermission();
     const id = requiredString(formData, "id");
@@ -308,18 +317,23 @@ export async function deletePersonaAction(
       return { ok: false, message: "Confirm deletion before continuing." };
     }
     const result = await deletePersona(id);
-    revalidateSetup(productId || undefined);
-    return {
-      ok: true,
-      message: result.message,
-      mode: result.mode,
-      personaId: id,
-      productId: productId || undefined,
-    };
+    // Never revalidate the manage URL — that page 404s once the persona is gone.
+    // redirect() in this same response leaves for the persona list instead.
+    revalidatePath("/personas");
+    revalidatePath("/setup");
+    if (productId) revalidatePath(`/setup/${productId}`);
+    revalidatePath("/campaigns");
+    revalidatePath("/");
+    notice = result.message;
+    destination = safePersonaListRedirect(productId);
   } catch (error) {
     logActionError("Failed to delete persona.", error);
     return { ok: false, message: toSafeCrudDeleteError(error) };
   }
+
+  // redirect() throws — keep outside try/catch so it is not swallowed.
+  await flashDeleteSuccessNotice(notice);
+  redirect(destination);
 }
 
 export async function deleteCampaignAction(

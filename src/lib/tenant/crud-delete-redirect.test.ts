@@ -82,6 +82,70 @@ describe("crud delete actions redirect after mutation", () => {
     expect(redirect).toHaveBeenCalledWith("/lists?campaign=camp_1");
   }, 20_000);
 
+  it("deletePersonaAction redirects to the persona list for that product", async () => {
+    const redirect = vi.fn(redirectThrow);
+    const deletePersona = vi.fn(async () => ({
+      message: "Persona deleted.",
+      mode: "deleted" as const,
+    }));
+
+    vi.doMock("next/navigation", () => ({ redirect }));
+    vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
+    vi.doMock("next/headers", () => ({
+      cookies: async () => ({ set: vi.fn() }),
+    }));
+    vi.doMock("@/lib/tenant/data", async () => ({
+      ...(await vi.importActual("@/lib/tenant/data")),
+      deletePersona,
+    }));
+    vi.doMock("@/lib/auth/authz", async () => ({
+      ...(await vi.importActual("@/lib/auth/authz")),
+      requireSetupDeletePermission: vi.fn(async () => undefined),
+    }));
+
+    const { deletePersonaAction } = await import("@/app/actions");
+    const formData = new FormData();
+    formData.set("id", "persona_1");
+    formData.set("productId", "prod_1");
+    formData.set("confirm", "1");
+
+    await expect(deletePersonaAction(null, formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/personas?product=prod_1",
+    );
+    expect(redirect).toHaveBeenCalledWith("/personas?product=prod_1");
+    expect(deletePersona).toHaveBeenCalledWith("persona_1");
+  }, 20_000);
+
+  it("deletePersonaAction falls back to /personas for an unsafe product id", async () => {
+    const redirect = vi.fn(redirectThrow);
+    vi.doMock("next/navigation", () => ({ redirect }));
+    vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
+    vi.doMock("next/headers", () => ({
+      cookies: async () => ({ set: vi.fn() }),
+    }));
+    vi.doMock("@/lib/tenant/data", async () => ({
+      ...(await vi.importActual("@/lib/tenant/data")),
+      deletePersona: vi.fn(async () => ({
+        message: "Persona deleted.",
+        mode: "deleted" as const,
+      })),
+    }));
+    vi.doMock("@/lib/auth/authz", async () => ({
+      ...(await vi.importActual("@/lib/auth/authz")),
+      requireSetupDeletePermission: vi.fn(async () => undefined),
+    }));
+
+    const { deletePersonaAction } = await import("@/app/actions");
+    const formData = new FormData();
+    formData.set("id", "persona_1");
+    formData.set("productId", "https://evil.example");
+    formData.set("confirm", "1");
+
+    await expect(deletePersonaAction(null, formData)).rejects.toThrow(
+      "NEXT_REDIRECT:/personas",
+    );
+  }, 20_000);
+
   it("deleteContactListAction rejects unsafe redirectTo", async () => {
     const redirect = vi.fn(redirectThrow);
     vi.doMock("next/navigation", () => ({ redirect }));

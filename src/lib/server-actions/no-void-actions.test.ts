@@ -115,6 +115,7 @@ describe("redirect-throwing actions keep redirect outside try/catch", () => {
   it.each([
     "deleteCampaignAction",
     "deleteProductAction",
+    "deletePersonaAction",
     "deleteContactListAction",
   ])("%s calls redirect after try/catch, not inside", (name) => {
     const source = readFileSync("src/app/actions.ts", "utf8");
