@@ -8,11 +8,16 @@ import type {
   QualificationBucket,
   QualificationOverrideTarget,
 } from "@prisma/client";
+import { loadQualificationScoreDetailAction } from "@/app/actions/campaign-contacts";
 import {
   bulkRestoreQualificationAction,
   overrideQualificationBucketAction,
 } from "@/app/actions/qualification";
 import { ExclusionDetailList } from "@/components/ExclusionDetailList";
+import {
+  InlineScoreDetails,
+  type ScoreReportClientRow,
+} from "@/components/ScoreDetailPanel";
 import type { ExclusionDetail } from "@/lib/scoring/exclusion-detail";
 import {
   EXCLUSION_REVIEW_COPY,
@@ -54,6 +59,7 @@ export function QualificationBuckets({
   emptyActionLabel,
   readOnly = false,
   showSummary = true,
+  inlineScoreDetail = false,
 }: {
   campaignId: string;
   scoringRunId: string | null;
@@ -63,9 +69,19 @@ export function QualificationBuckets({
   emptyActionLabel: string;
   readOnly?: boolean;
   showSummary?: boolean;
+  /** Stage 5: expand score detail in place. Other stages keep the outbound link. */
+  inlineScoreDetail?: boolean;
 }) {
   const [rows, setRows] = useState(initialRows);
   const [message, setMessage] = useState<string | null>(null);
+  const [openDetailKey, setOpenDetailKey] = useState<string | null>(null);
+  const [detailByKey, setDetailByKey] = useState<
+    Record<string, ScoreReportClientRow[]>
+  >({});
+  const [detailErrorByKey, setDetailErrorByKey] = useState<
+    Record<string, string>
+  >({});
+  const [detailPendingKey, setDetailPendingKey] = useState<string | null>(null);
   const [keptExcludedIds, setKeptExcludedIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -77,6 +93,45 @@ export function QualificationBuckets({
 
   function canActOnRow(row: QualificationBucketRow): boolean {
     return !readOnly && Boolean(runIdForRow(row));
+  }
+
+  function detailKey(row: QualificationBucketRow): string {
+    return `${row.targetType}:${row.id}`;
+  }
+
+  async function toggleScoreDetail(row: QualificationBucketRow) {
+    const key = detailKey(row);
+    if (openDetailKey === key) {
+      setOpenDetailKey(null);
+      return;
+    }
+    setOpenDetailKey(key);
+    if (detailByKey[key]) return;
+    const runId = runIdForRow(row);
+    if (!runId) {
+      setDetailErrorByKey((current) => ({
+        ...current,
+        [key]: "No score detail is available for this row.",
+      }));
+      return;
+    }
+    setDetailPendingKey(key);
+    setDetailErrorByKey((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    const result = await loadQualificationScoreDetailAction({
+      scoringRunId: runId,
+      targetType: row.targetType,
+      targetId: row.id,
+    });
+    setDetailPendingKey((current) => (current === key ? null : current));
+    if (!result.ok) {
+      setDetailErrorByKey((current) => ({ ...current, [key]: result.message }));
+      return;
+    }
+    setDetailByKey((current) => ({ ...current, [key]: result.rows }));
   }
 
   function canActOnRows(targetRows: QualificationBucketRow[]): boolean {
@@ -383,13 +438,49 @@ export function QualificationBuckets({
                   {row.researchGuidance ? (
                     <p className="mt-1 text-xs">{row.researchGuidance}</p>
                   ) : null}
-                  {row.researchHref ? (
+                  {!inlineScoreDetail && row.researchHref ? (
                     <Link
                       href={row.researchHref}
                       className="mt-2 inline-block text-xs font-medium underline"
                     >
                       Open score detail
                     </Link>
+                  ) : null}
+                </div>
+              ) : null}
+              {inlineScoreDetail ? (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    aria-expanded={openDetailKey === detailKey(row)}
+                    data-testid={`show-score-detail-${row.targetType}-${row.id}`}
+                    className="text-xs font-semibold uppercase tracking-wide text-slate-900 underline"
+                    onClick={() => void toggleScoreDetail(row)}
+                  >
+                    {openDetailKey === detailKey(row)
+                      ? "HIDE SCORE DETAIL"
+                      : "SHOW SCORE DETAIL"}
+                  </button>
+                  {openDetailKey === detailKey(row) &&
+                  detailPendingKey === detailKey(row) &&
+                  !detailByKey[detailKey(row)] ? (
+                    <p className="mt-2 text-sm text-slate-600">
+                      Loading score detail…
+                    </p>
+                  ) : null}
+                  {openDetailKey === detailKey(row) &&
+                  detailErrorByKey[detailKey(row)] &&
+                  !detailByKey[detailKey(row)] ? (
+                    <p className="mt-2 text-sm text-red-700" role="alert">
+                      {detailErrorByKey[detailKey(row)]}
+                    </p>
+                  ) : null}
+                  {openDetailKey === detailKey(row) &&
+                  detailByKey[detailKey(row)] ? (
+                    <InlineScoreDetails
+                      rows={detailByKey[detailKey(row)]}
+                      targetType={row.targetType}
+                    />
                   ) : null}
                 </div>
               ) : null}

@@ -63,6 +63,7 @@ const campaignDetailInclude = {
       chosenPersonaId: true,
       sequenceStoppedAt: true,
       sequenceStoppedReason: true,
+      nextDueAt: true,
       contact: {
         select: {
           id: true,

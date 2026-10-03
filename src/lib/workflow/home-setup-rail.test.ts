@@ -19,7 +19,13 @@ describe("home setup rail", () => {
     expect(home).toContain("workflow.setupRail");
     expect(rail).toContain('bg-emerald-600 text-white');
     expect(rail).toContain("{step.completed ? \"✓\" : step.number}");
-    expect(campaignRail).toContain('bg-emerald-600 text-white');
+    expect(campaignRail).toContain("campaignStageMarker");
+    const stageSource = readFileSync(
+      "src/lib/workflow/campaign-stages.ts",
+      "utf8",
+    );
+    expect(stageSource).toContain("bg-emerald-600 text-white");
+    expect(stageSource).toContain("bg-red-600 text-white");
   });
 
   it("explains product gaps instead of a bare count", () => {

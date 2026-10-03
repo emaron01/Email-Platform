@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { cadenceUrgency, isDue } from "@/lib/cadence/engine";
+import { cadenceUrgency, isCampaignContactDue } from "@/lib/cadence/engine";
 import type { CadenceUrgency } from "@/lib/cadence/engine";
 
 export type DueContactRow = {
@@ -48,6 +48,8 @@ export async function getDueContactsForUser(input: {
     select: {
       id: true,
       nextDueAt: true,
+      sequenceStoppedAt: true,
+      status: true,
       campaign: { select: { id: true, name: true } },
       contact: {
         select: {
@@ -70,7 +72,17 @@ export async function getDueContactsForUser(input: {
 
   const dueRows: DueContactRow[] = [];
   for (const row of rows) {
-    if (!row.nextDueAt || !isDue(row.nextDueAt, now)) continue;
+    if (
+      !row.nextDueAt ||
+      !isCampaignContactDue({
+        nextDueAt: row.nextDueAt,
+        sequenceStoppedAt: row.sequenceStoppedAt,
+        status: row.status,
+        now,
+      })
+    ) {
+      continue;
+    }
     const sentCount = row.emailDrafts.filter(
       (draft) => draft.status === "SENT",
     ).length;

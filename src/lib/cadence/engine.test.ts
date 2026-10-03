@@ -5,6 +5,7 @@ import {
   gapDaysAfterSentCount,
   isAtMaxSequence,
   isDue,
+  isCampaignContactDue,
   isMeetingSchedulingReply,
   cadenceUrgency,
 } from "@/lib/cadence/engine";
@@ -24,6 +25,43 @@ describe("cadence engine", () => {
     expect(gapDaysAfterSentCount(3, policy)).toBe(15);
     expect(gapDaysAfterSentCount(4, policy)).toBe(30);
     expect(gapDaysAfterSentCount(5, policy)).toBe(30);
+  });
+
+  it("treats a past nextDueAt as due only while the sequence is still running", () => {
+    const now = new Date("2026-06-01T12:00:00.000Z");
+    const past = new Date("2026-05-01T12:00:00.000Z");
+    expect(
+      isCampaignContactDue({
+        nextDueAt: past,
+        sequenceStoppedAt: null,
+        status: "SELECTED",
+        now,
+      }),
+    ).toBe(true);
+    expect(
+      isCampaignContactDue({
+        nextDueAt: past,
+        sequenceStoppedAt: now,
+        status: "SELECTED",
+        now,
+      }),
+    ).toBe(false);
+    expect(
+      isCampaignContactDue({
+        nextDueAt: past,
+        sequenceStoppedAt: null,
+        status: "EXCLUDED",
+        now,
+      }),
+    ).toBe(false);
+    expect(
+      isCampaignContactDue({
+        nextDueAt: null,
+        sequenceStoppedAt: null,
+        status: "SELECTED",
+        now,
+      }),
+    ).toBe(false);
   });
 
   it("computes next due from latest sent email", () => {

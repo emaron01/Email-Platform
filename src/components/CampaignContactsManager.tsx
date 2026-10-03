@@ -301,6 +301,7 @@ export function CampaignContactsManager({
                 scoringRunId={scoringRunId}
                 rows={companyRows}
                 showSummary={false}
+                inlineScoreDetail
                 emptyTitle="No companies were left out"
                 emptyActionHref={`/campaigns/${campaignId}?stage=list`}
                 emptyActionLabel="Back to list"
@@ -319,6 +320,7 @@ export function CampaignContactsManager({
                 scoringRunId={scoringRunId}
                 rows={contactRows}
                 showSummary={false}
+                inlineScoreDetail
                 emptyTitle="No contacts were left out"
                 emptyActionHref={`/campaigns/${campaignId}?stage=list`}
                 emptyActionLabel="Back to list"

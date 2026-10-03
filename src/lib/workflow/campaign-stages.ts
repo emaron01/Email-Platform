@@ -26,6 +26,11 @@ export function buildCampaignStages(input: {
   qualifiedContactCount: number;
   generatedEmailCount: number;
   sentEmailCount: number;
+  /**
+   * Contacts whose next email is due. Emails stays incomplete while this is
+   * above zero, and also while the campaign has no drafts yet.
+   */
+  dueContactCount: number;
 }): CampaignStage[] {
   const stages: CampaignStage[] = [
     {
@@ -71,7 +76,8 @@ export function buildCampaignStages(input: {
       number: 8,
       key: "emails",
       label: "Emails",
-      completed: input.generatedEmailCount > 0,
+      completed:
+        input.generatedEmailCount > 0 && input.dueContactCount === 0,
       available:
         input.qualifiedContactCount > 0 || input.generatedEmailCount > 0,
       unavailableReason:
@@ -108,4 +114,18 @@ export function resolveCampaignStage(
     stages.filter((stage) => stage.available).at(-1)?.key ??
     "setup"
   );
+}
+
+/** Shared marker for the top rail and the in-campaign side nav. */
+export function campaignStageMarker(
+  stage: Pick<CampaignStage, "completed" | "key" | "number">,
+  currentStage: CampaignStageKey,
+): { className: string; text: string } {
+  if (stage.completed) {
+    return { className: "bg-emerald-600 text-white", text: "✓" };
+  }
+  if (stage.key === currentStage) {
+    return { className: "bg-red-600 text-white", text: String(stage.number) };
+  }
+  return { className: "bg-slate-200 text-slate-600", text: String(stage.number) };
 }

@@ -68,6 +68,39 @@ export function isDue(nextDueAt: Date | null, now: Date = new Date()): boolean {
   return nextDueAt != null && now >= nextDueAt;
 }
 
+/**
+ * Same contact rule as the due list: nextDueAt is in the past, the sequence
+ * is still running, and the contact is not excluded.
+ */
+export function isCampaignContactDue(input: {
+  nextDueAt: Date | null;
+  sequenceStoppedAt: Date | null;
+  status: string;
+  now?: Date;
+}): boolean {
+  if (input.status === "EXCLUDED") return false;
+  if (input.sequenceStoppedAt != null) return false;
+  return isDue(input.nextDueAt, input.now ?? new Date());
+}
+
+export function countDueCampaignContacts(
+  contacts: ReadonlyArray<{
+    nextDueAt: Date | null;
+    sequenceStoppedAt: Date | null;
+    status: string;
+  }>,
+  now: Date = new Date(),
+): number {
+  return contacts.filter((contact) =>
+    isCampaignContactDue({
+      nextDueAt: contact.nextDueAt,
+      sequenceStoppedAt: contact.sequenceStoppedAt,
+      status: contact.status,
+      now,
+    }),
+  ).length;
+}
+
 /** Detect meeting/scheduling language in an INTERESTED prospect reply. */
 export function isMeetingSchedulingReply(
   classification: string,

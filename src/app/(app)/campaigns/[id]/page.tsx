@@ -43,10 +43,8 @@ import { getMailboxConnectionView } from "@/lib/mailbox/data";
 import { getDailyEmailSendUsage } from "@/lib/usage/quota";
 import { getActiveEmailSignatureBody } from "@/lib/signature/signature";
 import { listVoiceSamplesForUser } from "@/lib/voice/samples";
-import {
-  buildCampaignStages,
-  resolveCampaignStage,
-} from "@/lib/workflow/campaign-stages";
+import { resolveCampaignStage } from "@/lib/workflow/campaign-stages";
+import { deriveCampaignProgress } from "@/lib/workflow/campaign-progress";
 import { campaignOfferView } from "@/lib/campaign/offer-fields";
 import { parseEmailLength } from "@/lib/campaign/save";
 import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
@@ -261,66 +259,24 @@ export default async function CampaignDetailPage({
 
   const offer = campaignOfferView(campaign);
   const { offerName, offerDescription, offerCta, offerNotes } = offer;
-  const generatedEmailCount = campaign.contacts.reduce(
-    (total, entry) => total + entry.emailDrafts.length,
-    0,
-  );
-  const sentEmailCount = campaign.contacts.reduce(
-    (total, entry) =>
-      total +
-      entry.emailDrafts.filter((draft) => draft.status === "SENT").length,
-    0,
-  );
-  const attachedContactIds = new Set(
-    campaign.contacts.map((entry) => entry.contact.id),
-  );
-  const attachedCompanyIds = new Set(
-    campaign.contacts
-      .map((entry) => entry.contact.companyId)
-      .filter((value): value is string => Boolean(value)),
-  );
-  const attachedCompanyNames = new Set(
-    campaign.contacts
-      .map((entry) => entry.contact.company?.trim().toLowerCase())
-      .filter((value): value is string => Boolean(value)),
-  );
-  const campaignCompanyRows = qualification.companyRows.filter((row) =>
-    row.canOverride
-      ? attachedCompanyIds.has(row.id)
-      : attachedCompanyNames.has(row.name.trim().toLowerCase()),
-  );
-  const campaignContactRows = qualification.contactRows.filter((row) =>
-    attachedContactIds.has(row.id),
-  );
-  const excludedCompanyIds = new Set(
-    campaignCompanyRows
-      .filter((row) => row.bucket === "EXCLUDED" && row.canOverride)
-      .map((row) => row.id),
-  );
-  const survivingContactRows = campaignContactRows.filter(
-    (row) => !row.companyId || !excludedCompanyIds.has(row.companyId),
-  );
-  const qualifiedContactCount = survivingContactRows.filter(
-    (row) => row.bucket === "GOOD",
-  ).length;
+  const {
+    stages,
+    campaignCompanyRows,
+    campaignContactRows,
+    qualifiedContactCount,
+    generatedEmailCount,
+    sentEmailCount,
+  } = deriveCampaignProgress({
+    productId: campaign.productId,
+    icpId: campaign.icpId,
+    contacts: campaign.contacts,
+    companyRows: qualification.companyRows,
+    contactRows: qualification.contactRows,
+  });
   const personasLabel = campaignPersonasDisplayName({
     fallbackPersonaName: campaign.persona?.name,
     inPlayNames: campaign.personasInPlay.map((row) => row.persona.name),
     productPersonaCount: campaign.product.personas.length,
-  });
-  // Product + ICP are set at create time. Offer is optional — saving an empty
-  // offer succeeds, and List must unlock without one.
-  const setupComplete = Boolean(campaign.productId && campaign.icpId);
-  const stages = buildCampaignStages({
-    setupComplete,
-    hasListData: campaign.contacts.length > 0,
-    companyResultCount: campaignCompanyRows.length,
-    survivingCompanyCount: campaignCompanyRows.filter(
-      (row) => row.bucket === "GOOD",
-    ).length,
-    qualifiedContactCount,
-    generatedEmailCount,
-    sentEmailCount,
   });
   const currentStage = resolveCampaignStage(query.stage, stages);
   const bucketByContactId = new Map(

@@ -232,6 +232,7 @@ describe("campaign stage rail", () => {
       qualifiedContactCount: 0,
       generatedEmailCount: 0,
       sentEmailCount: 0,
+      dueContactCount: 0,
     });
     expect(stages.find((stage) => stage.key === "setup")?.completed).toBe(true);
     expect(stages.find((stage) => stage.key === "companies")?.available).toBe(
@@ -257,6 +258,7 @@ describe("campaign stage rail", () => {
       qualifiedContactCount: 0,
       generatedEmailCount: 0,
       sentEmailCount: 0,
+      dueContactCount: 0,
     });
     expect(stages.find((stage) => stage.key === "contacts")).toMatchObject({
       available: false,
@@ -273,6 +275,7 @@ describe("campaign stage rail", () => {
       qualifiedContactCount: 1,
       generatedEmailCount: 1,
       sentEmailCount: 0,
+      dueContactCount: 0,
     });
     expect(stages.map((stage) => stage.key)).toEqual([
       "setup",
@@ -378,6 +381,7 @@ describe("workflow view contracts", () => {
       qualifiedContactCount: 1,
       generatedEmailCount: 1,
       sentEmailCount: 1,
+      dueContactCount: 0,
     });
     expect(stages.find((stage) => stage.key === "report")).toMatchObject({
       number: 9,

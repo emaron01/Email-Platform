@@ -1,7 +1,8 @@
 import Link from "next/link";
-import type {
-  CampaignStage,
-  CampaignStageKey,
+import {
+  campaignStageMarker,
+  type CampaignStage,
+  type CampaignStageKey,
 } from "@/lib/workflow/campaign-stages";
 
 export function CampaignStageRail({
@@ -22,18 +23,13 @@ export function CampaignStageRail({
     >
       <ol className="flex min-w-max items-center gap-1">
         {stages.map((stage) => {
+          const marker = campaignStageMarker(stage, currentStage);
           const content = (
             <>
               <span
-                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
-                  stage.completed
-                    ? "bg-emerald-600 text-white"
-                    : currentStage === stage.key
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-200 text-slate-600"
-                }`}
+                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${marker.className}`}
               >
-                {stage.completed ? "✓" : stage.number}
+                {marker.text}
               </span>
               <span>{stage.label}</span>
             </>

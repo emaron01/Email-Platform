@@ -1,9 +1,17 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import {
   readDismissedPersonalBillingOrgIds,
 } from "@/app/actions/workspace";
 import { PersonalBillingNoticeBanner } from "@/components/billing/PersonalBillingNoticeBanner";
 import { Sidebar } from "@/components/Sidebar";
+import {
+  getCampaignDetail,
+  getCampaignQualificationView,
+} from "@/lib/campaign/contacts";
+import { TenantError } from "@/lib/tenant/errors";
+import { deriveCampaignProgress } from "@/lib/workflow/campaign-progress";
+import { resolveCampaignStage } from "@/lib/workflow/campaign-stages";
 import { TopBar } from "@/components/TopBar";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { getCurrentUser, resolveActiveOrganization } from "@/lib/auth/session";
@@ -20,6 +28,46 @@ import {
   listWorkspacesForUser,
 } from "@/lib/org/workspaces";
 import { prisma } from "@/lib/prisma";
+
+function campaignIdFromPath(pathname: string): string | null {
+  const match = pathname.match(/^\/campaigns\/([^/]+)/);
+  if (!match || match[1] === "new") return null;
+  return decodeURIComponent(match[1]);
+}
+
+async function campaignSidebarProgress() {
+  const headerList = await headers();
+  const pathname = headerList.get("x-pathname")?.trim() || "";
+  const campaignId = campaignIdFromPath(pathname);
+  if (!campaignId) return null;
+  const requested =
+    new URLSearchParams(
+      (headerList.get("x-search") ?? "").replace(/^\?/, ""),
+    )
+      .get("stage")
+      ?.trim() || undefined;
+  try {
+    const [campaign, qualification] = await Promise.all([
+      getCampaignDetail(campaignId),
+      getCampaignQualificationView(campaignId),
+    ]);
+    const progress = deriveCampaignProgress({
+      productId: campaign.productId,
+      icpId: campaign.icpId,
+      contacts: campaign.contacts,
+      companyRows: qualification.companyRows,
+      contactRows: qualification.contactRows,
+    });
+    return {
+      campaignId,
+      stages: progress.stages,
+      currentStage: resolveCampaignStage(requested, progress.stages),
+    };
+  } catch (error) {
+    if (error instanceof TenantError) return null;
+    throw error;
+  }
+}
 
 export async function AppShell({
   children,
@@ -78,6 +126,7 @@ export async function AppShell({
     isPlatformOperator: user ? isPlatformOperator(user.platformRole) : false,
     paymentLocked,
   });
+  const campaignProgress = organization ? await campaignSidebarProgress() : null;
 
   let personalBillingNoticeOrgs: Array<{
     organizationId: string;
@@ -103,7 +152,7 @@ export async function AppShell({
 
   return (
     <div className="flex min-h-screen bg-white text-slate-900">
-      <Sidebar items={sidebarItems} />
+      <Sidebar items={sidebarItems} campaign={campaignProgress} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
           menuModel={menuModel}
