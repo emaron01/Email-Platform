@@ -180,4 +180,23 @@ describe("write paths unchanged", () => {
     expect(overview).toContain("data-print-document");
     expect(overview).toContain("Delete product");
   });
+
+  it("opens a needs-review Edit on the classification block", () => {
+    const overview = readFileSync(
+      "src/app/(app)/setup/[productId]/page.tsx",
+      "utf8",
+    );
+    const manage = readFileSync(
+      "src/app/(app)/setup/[productId]/personas/manage/[personaId]/page.tsx",
+      "utf8",
+    );
+    const form = readFileSync("src/components/PersonaForm.tsx", "utf8");
+    expect(overview).toMatch(
+      /needsReview > 0[\s\S]*\?edit=review#persona-criteria-review/,
+    );
+    expect(manage).toContain('edit === "review"');
+    expect(form).toContain("startInReview");
+    expect(form).toContain('id="persona-criteria-review"');
+    expect(form).toContain("useState(startInReview)");
+  });
 });

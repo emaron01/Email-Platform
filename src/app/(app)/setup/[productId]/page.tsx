@@ -415,7 +415,11 @@ export default async function SetupProductPage({ params }: PageProps) {
                           ) : null}
                         </div>
                         <ActionLink
-                          href={`/setup/${product.id}/personas/manage/${persona.id}`}
+                          href={
+                            summary.needsReview > 0
+                              ? `/setup/${product.id}/personas/manage/${persona.id}?edit=review#persona-criteria-review`
+                              : `/setup/${product.id}/personas/manage/${persona.id}`
+                          }
                         >
                           Edit
                         </ActionLink>

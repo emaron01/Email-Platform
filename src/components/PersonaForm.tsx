@@ -144,7 +144,10 @@ function CriteriaReview({
   return (
     <div className="mt-4 space-y-3">
       {needsReview.length > 0 ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
+        <div
+          id="persona-criteria-review"
+          className="scroll-mt-6 rounded-md border border-amber-300 bg-amber-50 p-3"
+        >
           <h5 className="text-sm font-semibold text-amber-950">
             Needs review — {needsReview.length} unclassified
             {needsReview.length === 1 ? " criterion" : " criteria"}
@@ -481,15 +484,18 @@ export function PersonaForm({
   persona,
   criteria,
   sources = [],
+  startInReview = false,
 }: {
   productId: string;
   persona?: Persona;
   criteria: CriterionRow[];
   sources?: PersonaReviewSource[];
+  /** Open the editor on the unclassified-criteria block. */
+  startInReview?: boolean;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startInReview);
   const [saveState, saveAction, savePending] = useActionState(
     upsertPersonaAction,
     initialResult,
@@ -537,6 +543,23 @@ export function PersonaForm({
     [criteria],
   );
   const metaLine = briefing ? formatPersonaBriefingMeta(briefing) : "";
+
+  useEffect(() => {
+    if (!startInReview) return;
+    const scroll = () => {
+      document
+        .getElementById("persona-criteria-review")
+        ?.scrollIntoView({ block: "start" });
+    };
+    // Next scrolls to the hash, then sometimes to the top. Retry after that.
+    scroll();
+    const frame = window.requestAnimationFrame(scroll);
+    const timer = window.setTimeout(scroll, 0);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [startInReview]);
 
   useEffect(() => {
     if (saveState?.ok) {

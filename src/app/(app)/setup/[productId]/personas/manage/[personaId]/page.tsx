@@ -12,11 +12,16 @@ import {
 
 type PageProps = {
   params: Promise<{ productId: string; personaId: string }>;
+  searchParams: Promise<{ edit?: string }>;
 };
 
-export default async function ManagePersonaPage({ params }: PageProps) {
+export default async function ManagePersonaPage({
+  params,
+  searchParams,
+}: PageProps) {
   const organization = await getCurrentOrganization();
   const { productId, personaId } = await params;
+  const { edit } = await searchParams;
 
   if (!organization) {
     return (
@@ -83,6 +88,7 @@ export default async function ManagePersonaPage({ params }: PageProps) {
         persona={persona}
         criteria={criteria}
         sources={sources}
+        startInReview={edit === "review"}
       />
     </div>
   );
