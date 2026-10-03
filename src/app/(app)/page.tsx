@@ -88,6 +88,12 @@ export default async function DashboardPage({
         />
       </div>
 
+      {workflow.dueByCampaign.length > 0 ? (
+        <div className="mb-8">
+          <DueContactsPanel dueByCampaign={workflow.dueByCampaign} />
+        </div>
+      ) : null}
+
       <div className="mt-8 mb-4 flex items-center justify-between gap-4">
         <h2 className="text-xl font-semibold text-slate-900">Campaigns</h2>
         {workflow.setupComplete ? (
@@ -195,12 +201,6 @@ export default async function DashboardPage({
           ))}
         </div>
       )}
-
-      {workflow.dueByCampaign.length > 0 ? (
-        <div className="mt-8">
-          <DueContactsPanel dueByCampaign={workflow.dueByCampaign} />
-        </div>
-      ) : null}
     </div>
   );
 }

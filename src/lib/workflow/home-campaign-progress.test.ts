@@ -63,8 +63,8 @@ describe("home campaign progress", () => {
     const campaignsAt = page.indexOf("workflow.campaigns.map");
     const dueAt = page.indexOf("<DueContactsPanel");
     expect(setupAt).toBeGreaterThan(-1);
-    expect(campaignsAt).toBeGreaterThan(setupAt);
-    expect(dueAt).toBeGreaterThan(campaignsAt);
+    expect(dueAt).toBeGreaterThan(setupAt);
+    expect(campaignsAt).toBeGreaterThan(dueAt);
   });
 
   it("renders overdue emails as one collapsed section per campaign", () => {
