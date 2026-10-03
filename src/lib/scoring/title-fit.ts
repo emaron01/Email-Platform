@@ -123,24 +123,35 @@ export function titlesMatch(contactTitle: string, likelyTitle: string): boolean 
   const likelyTokens = titleTokens(likelyTitle);
   if (contactTokens.length === 0 || likelyTokens.length === 0) return false;
   if (contactTokens.join(" ") === likelyTokens.join(" ")) return true;
-  if (
-    likelyTokens.length === 1 &&
-    contactTokens[0] === likelyTokens[0]
-  ) {
-    return true;
+  if (likelyTokens.length === 1 && contactTokens[0] === likelyTokens[0]) {
+    const token = likelyTokens[0]!;
+    // A bare seniority target such as "VP" matches only a title that is
+    // just that token. A bare function acronym such as "CRO" may still open
+    // a longer title ("CRO, North America").
+    if (!SENIORITY_TOKENS.has(token) || contactTokens.length === 1) {
+      return true;
+    }
   }
 
   const contactSet = new Set(contactTokens);
   const likelySet = new Set(likelyTokens);
+  // The target may sit inside a longer contact title ("VP Sales" inside
+  // "SVP Worldwide Sales"). The contact may not sit inside a longer target
+  // ("VP Sales" is not "VP Sales Enablement").
   if (isSubset(likelySet, contactSet) && meaningfulSubset(likelyTokens)) {
-    return true;
-  }
-  if (isSubset(contactSet, likelySet) && meaningfulSubset(contactTokens)) {
     return true;
   }
 
   const overlap = [...contactSet].filter((token) => likelySet.has(token));
   if (overlap.length >= 2) {
+    const overlapSet = new Set(overlap);
+    const extraFunction = (tokens: string[]) =>
+      tokens.some(
+        (token) => !SENIORITY_TOKENS.has(token) && !overlapSet.has(token),
+      );
+    if (extraFunction(contactTokens) || extraFunction(likelyTokens)) {
+      return false;
+    }
     const union = new Set([...contactSet, ...likelySet]);
     return overlap.length / union.size >= 2 / 3;
   }

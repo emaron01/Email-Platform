@@ -81,11 +81,23 @@ describe("contactMatchesPersonaTitles", () => {
       ]).matched,
     ).toBe(true);
     expect(
+      contactMatchesPersonaTitles("Chief Revenue Officer (North America)", [
+        "CRO",
+        "Chief Revenue Officer",
+      ]).matched,
+    ).toBe(true);
+    expect(
       contactMatchesPersonaTitles("Chief Risk Officer (CRO)", [
         "CRO",
         "Chief Revenue Officer",
       ]).matched,
     ).toBe(false);
+  });
+
+  it("does not let a bare VP target match every title that starts with VP", () => {
+    expect(titlesMatch("Vice President of Sales", "VP")).toBe(false);
+    expect(titlesMatch("SVP Worldwide Sales", "VP")).toBe(false);
+    expect(titlesMatch("VP", "VP")).toBe(true);
   });
 
   it("returns unmatched when the persona has no likelyTitles", () => {
@@ -130,6 +142,50 @@ describe("evaluatePersonaTitleGate", () => {
       applyPositiveFit: true,
     });
     expect(result.status).toBe("EXCLUDED");
+  });
+
+  it("keeps ordinary sales titles on the persona they belong to", () => {
+    const personas = [
+      {
+        name: "Chief Revenue Officer",
+        titles: ["Chief Revenue Officer", "Chief Sales Officer", "VP of Revenue", "VP"],
+      },
+      {
+        name: "VP of Sales",
+        titles: ["VP Sales", "Senior Vice President of Sales", "Head of Sales"],
+      },
+      {
+        name: "Sales Enablement and Coaching Leader",
+        titles: [
+          "VP Sales Enablement",
+          "VP Sales Effectiveness",
+          "Head of Sales Enablement",
+        ],
+      },
+    ];
+    const matched = (title: string) =>
+      personas
+        .filter((persona) =>
+          contactMatchesPersonaTitles(title, persona.titles).matched,
+        )
+        .map((persona) => persona.name);
+
+    expect(matched("Vice President of Sales")).toEqual(["VP of Sales"]);
+    expect(matched("SVP Worldwide Sales")).toEqual(["VP of Sales"]);
+    expect(matched("Chief Revenue Officer")).toEqual(["Chief Revenue Officer"]);
+    expect(matched("VP Sales Enablement")).toContain(
+      "Sales Enablement and Coaching Leader",
+    );
+
+    const fixture = [
+      "Vice President of Sales",
+      "SVP Worldwide Sales",
+      "Chief Revenue Officer",
+      "VP Sales Enablement",
+      "Head of Sales Enablement",
+    ];
+    const multi = fixture.filter((title) => matched(title).length >= 2);
+    expect(multi).toEqual(["VP Sales Enablement", "Head of Sales Enablement"]);
   });
 
   it("skips the positive gate on a single-persona run", () => {
