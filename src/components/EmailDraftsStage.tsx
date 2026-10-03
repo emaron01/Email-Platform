@@ -127,6 +127,7 @@ export function EmailDraftsStage({
   offerWarnings,
   emailDeeplinkMaxUrlLength,
   mailboxConnection,
+  microsoft365SendingAvailable = false,
   dailySendUsage,
   readOnly = false,
   emailSignature = null,
@@ -140,6 +141,7 @@ export function EmailDraftsStage({
     status: "CONNECTED" | "RECONNECT_REQUIRED";
     mailboxAddress: string;
   } | null;
+  microsoft365SendingAvailable?: boolean;
   dailySendUsage: {
     used: number;
     warningLimit: number;
@@ -470,6 +472,7 @@ export function EmailDraftsStage({
                 readOnly={readOnly}
                 emailDeeplinkMaxUrlLength={emailDeeplinkMaxUrlLength}
                 mailboxConnection={mailboxConnection}
+                microsoft365SendingAvailable={microsoft365SendingAvailable}
                 dailySendUsage={dailySendUsage}
                 campaignEmailLength={campaignEmailLength}
                 emailSignature={emailSignature}

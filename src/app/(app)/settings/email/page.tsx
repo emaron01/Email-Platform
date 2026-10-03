@@ -1,6 +1,7 @@
 import { EmailSignatureForm } from "@/components/EmailSignatureForm";
 import { MailboxConnectionPanel } from "@/components/MailboxConnectionPanel";
 import { requireCurrentUser } from "@/lib/auth/session";
+import { getMicrosoft365SendingAccess } from "@/lib/mailbox/availability-access";
 import { getMailboxConnectionView } from "@/lib/mailbox/data";
 import { getEmailSignatureForUser } from "@/lib/signature/signature";
 import type { EmailSignatureView } from "@/lib/signature/types";
@@ -44,10 +45,13 @@ export default async function EmailSettingsPage({ searchParams }: PageProps) {
     requireOrganization(),
     searchParams,
   ]);
-  const connection = await getMailboxConnectionView({
-    organizationId: organization.id,
-    userId: user.id,
-  });
+  const access = await getMicrosoft365SendingAccess(organization.id);
+  const connection = access.available
+    ? await getMailboxConnectionView({
+        organizationId: organization.id,
+        userId: user.id,
+      })
+    : null;
 
   let signature: EmailSignatureView | null = null;
   let signatureLoadError: string | null = null;
@@ -66,28 +70,28 @@ export default async function EmailSettingsPage({ searchParams }: PageProps) {
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-          Email connection
+          {access.available ? "Email connection" : "Email signature"}
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Connect a personal mailbox for direct sending. Connections belong to
-          you within this workspace and cannot be used by another member. The
-          signature below is appended on Connected Send and when you open
-          Gmail or Outlook on the web. Outlook Desktop uses your Outlook
-          signature instead.
+          {access.available
+            ? "Connect a personal mailbox for direct sending. Connections belong to you within this workspace and cannot be used by another member. The signature below is appended on Connected Send and when you open Gmail or Outlook on the web. Outlook Desktop uses your Outlook signature instead."
+            : "The signature below is appended when you open a draft in Outlook or Gmail. Outlook Desktop uses your Outlook signature instead."}
         </p>
       </div>
-      <MailboxConnectionPanel
-        connection={
-          connection
-            ? {
-                status: connection.status,
-                mailboxAddress: connection.mailboxAddress,
-                connectedAt: connection.connectedAt.toISOString(),
-              }
-            : null
-        }
-        notice={noticeFor(query)}
-      />
+      {access.available ? (
+        <MailboxConnectionPanel
+          connection={
+            connection
+              ? {
+                  status: connection.status,
+                  mailboxAddress: connection.mailboxAddress,
+                  connectedAt: connection.connectedAt.toISOString(),
+                }
+              : null
+          }
+          notice={noticeFor(query)}
+        />
+      ) : null}
       {signatureLoadError ? (
         <p
           role="alert"
@@ -96,7 +100,10 @@ export default async function EmailSettingsPage({ searchParams }: PageProps) {
           {signatureLoadError}
         </p>
       ) : (
-        <EmailSignatureForm signature={signature} />
+        <EmailSignatureForm
+          signature={signature}
+          microsoft365SendingAvailable={access.available}
+        />
       )}
     </div>
   );

@@ -26,6 +26,7 @@ const prismaMock = vi.hoisted(() => ({
   voiceSample: { count: vi.fn() },
   contactList: { count: vi.fn() },
   contact: { count: vi.fn() },
+  organizationBillingProfile: { findUnique: vi.fn() },
 }));
 
 vi.mock("server-only", () => ({}));
@@ -76,6 +77,7 @@ describe("home workflow", () => {
     prismaMock.voiceSample.count.mockResolvedValue(3);
     prismaMock.contactList.count.mockResolvedValue(0);
     prismaMock.contact.count.mockResolvedValue(0);
+    prismaMock.organizationBillingProfile.findUnique.mockResolvedValue(null);
   });
 
   it.each([

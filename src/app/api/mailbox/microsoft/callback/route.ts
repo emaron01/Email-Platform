@@ -9,6 +9,7 @@ import {
   mailboxCallbackErrorParam,
 } from "@/lib/mailbox/microsoft-oauth";
 import { requireOrganization } from "@/lib/tenant/getCurrentOrganization";
+import { getMicrosoft365SendingAccess } from "@/lib/mailbox/availability-access";
 
 function redirectToEmailSettings(query: Record<string, string>): NextResponse {
   const url = new URL(appAbsoluteUrl("/settings/email"));
@@ -41,6 +42,10 @@ export async function GET(request: Request) {
       requireOrganization(),
     ]);
     assertAccountCapability(user, "OUTBOUND_EMAIL");
+    const access = await getMicrosoft365SendingAccess(organization.id);
+    if (!access.available) {
+      return redirectToEmailSettings({});
+    }
     const connected = await completeMicrosoftMailboxConnection({
       organizationId: organization.id,
       userId: user.id,

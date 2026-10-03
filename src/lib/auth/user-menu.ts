@@ -169,6 +169,8 @@ export function buildSidebarNavItems(input: {
   isSuperAdmin?: boolean;
   /** When true, only Billing (and Platform for operators). */
   paymentLocked?: boolean;
+  /** Team or Enterprise with connected Microsoft 365 sending turned on. */
+  microsoft365SendingAvailable?: boolean;
 }): SidebarNavItem[] {
   const isOperator =
     input.isPlatformOperator || Boolean(input.isSuperAdmin);
@@ -218,7 +220,9 @@ export function buildSidebarNavItems(input: {
       label: "Your Voice",
       separatorBefore: true,
     },
-    { href: "/settings/email", label: "Email Connection" },
+    ...(input.microsoft365SendingAvailable
+      ? [{ href: "/settings/email", label: "Email Connection" }]
+      : []),
     { href: "/settings", label: "Settings" },
     { href: "/settings/account", label: "Account" },
   ];

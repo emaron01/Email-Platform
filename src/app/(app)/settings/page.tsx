@@ -5,10 +5,14 @@ import {
   canManageOrganizationPolicy,
 } from "@/lib/org/authz";
 import { ensureOrganizationPolicies } from "@/lib/usage/policy";
+import { getMicrosoft365SendingAccess } from "@/lib/mailbox/availability-access";
 
 export default async function SettingsIndexPage() {
   const organization = await requireOrganization();
   await ensureOrganizationPolicies(organization.id);
+  const microsoft365Sending = await getMicrosoft365SendingAccess(
+    organization.id,
+  );
   const { membership } = await getMembershipForCurrentUser(organization.id);
   const isAdmin = canManageOrganizationPolicy(membership.role);
 
@@ -65,8 +69,9 @@ export default async function SettingsIndexPage() {
             Email connection
           </Link>
           <p className="text-slate-600">
-            Connect your Microsoft 365 mailbox and set the signature appended
-            when you send.
+            {microsoft365Sending.available
+              ? "Connect your Microsoft 365 mailbox and set the signature appended when you send."
+              : "Set the signature appended when you open Outlook or Gmail."}
           </p>
         </li>
         {isAdmin ? (

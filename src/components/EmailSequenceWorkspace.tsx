@@ -103,6 +103,7 @@ export function EmailSequenceWorkspace({
   offerWarnings,
   emailDeeplinkMaxUrlLength,
   mailboxConnection,
+  microsoft365SendingAvailable = false,
   dailySendUsage,
   personaOptions = [],
   resolvedPersonaId = null,
@@ -139,6 +140,8 @@ export function EmailSequenceWorkspace({
     status: "CONNECTED" | "RECONNECT_REQUIRED";
     mailboxAddress: string;
   } | null;
+  /** Team or Enterprise with the platform switch on. */
+  microsoft365SendingAvailable?: boolean;
   dailySendUsage: {
     used: number;
     warningLimit: number;
@@ -901,8 +904,9 @@ export function EmailSequenceWorkspace({
                 contact was created automatically.
               </p>
             ) : null}
-            {result.recoveryAction === "RECONNECT" ||
-            result.recoveryAction === "ASK_ADMIN" ? (
+            {microsoft365SendingAvailable &&
+            (result.recoveryAction === "RECONNECT" ||
+              result.recoveryAction === "ASK_ADMIN") ? (
               <a
                 href="/settings/email"
                 className="mt-2 inline-block text-sm font-medium text-slate-900 underline"
@@ -1225,24 +1229,27 @@ export function EmailSequenceWorkspace({
                       Open in {option.label}
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    disabled={
-                      handoffLocked ||
-                      mailboxConnection?.status !== "CONNECTED"
-                    }
-                    title={
-                      mailboxConnection?.status === "CONNECTED"
-                        ? `Send from ${mailboxConnection.mailboxAddress}.`
-                        : "Connect Microsoft 365 in Email connection settings first."
-                    }
-                    onClick={sendConnected}
-                    className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    {sendBusy === "connected"
-                      ? "Sending…"
-                      : "Send with Microsoft 365"}
-                  </button>
+                  {microsoft365SendingAvailable ? (
+                    <button
+                      type="button"
+                      data-testid="send-with-microsoft-365"
+                      disabled={
+                        handoffLocked ||
+                        mailboxConnection?.status !== "CONNECTED"
+                      }
+                      title={
+                        mailboxConnection?.status === "CONNECTED"
+                          ? `Send from ${mailboxConnection.mailboxAddress}.`
+                          : "Connect Microsoft 365 in Email connection settings first."
+                      }
+                      onClick={sendConnected}
+                      className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      {sendBusy === "connected"
+                        ? "Sending…"
+                        : "Send with Microsoft 365"}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     disabled={handoffLocked}
@@ -1254,9 +1261,11 @@ export function EmailSequenceWorkspace({
                       : "I sent this — mark as sent"}
                   </button>
                 </div>
-                {mailboxConnection?.status !== "CONNECTED" ? (
+                {microsoft365SendingAvailable &&
+                mailboxConnection?.status !== "CONNECTED" ? (
                   <a
                     href="/settings/email"
+                    data-testid="connect-microsoft-365"
                     className="text-xs font-medium text-slate-700 underline"
                   >
                     {mailboxConnection?.status === "RECONNECT_REQUIRED"
@@ -1280,8 +1289,10 @@ export function EmailSequenceWorkspace({
                 ) : null}
                 <p className="text-xs text-slate-500">
                   Mark as sent records your assertion that you sent the email.
-                  It is not a delivery confirmation. Connected Microsoft 365
-                  send is confirmed automatically.
+                  It is not a delivery confirmation.
+                  {microsoft365SendingAvailable
+                    ? " Connected Microsoft 365 send is confirmed automatically."
+                    : null}
                 </p>
               </div>
             ) : (

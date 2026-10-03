@@ -21,6 +21,7 @@ import {
   isOnCurrentCatalogPrice,
 } from "@/lib/billing/billing-state";
 import { hasActiveDiscount } from "@/lib/billing/price-discount-mirror";
+import { isMicrosoft365SendingAvailable } from "@/lib/mailbox/availability";
 import { loadFlattenedBillingPrices } from "@/lib/billing/effective-prices";
 import { ActionFeedbackForm } from "@/components/ActionFeedbackForm";
 import { DeleteOrganizationPanel } from "@/components/platform/DeleteOrganizationPanel";
@@ -37,9 +38,14 @@ import {
   unsuspendOrganizationAction,
   updatePlatformUsagePolicyAction,
   updatePlatformResearchPolicyAction,
+  updatePlatformMicrosoft365SendingAction,
   updatePlatformOrgMaxSeatsAction,
 } from "@/app/actions/platform-orgs";
-import { planUsesPerUserCompanyAllowance, COMPANY_CREDIT_BLOCK } from "@/lib/billing/plans";
+import {
+  COMPANY_CREDIT_BLOCK,
+  planAllowsMicrosoft365Sending,
+  planUsesPerUserCompanyAllowance,
+} from "@/lib/billing/plans";
 
 function pct(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
@@ -113,6 +119,15 @@ export default async function PlatformOrgDetailPage({
           </li>
           <li className="rounded-md border border-slate-200 bg-white p-3">
             Status: {billingStatusLabel(billing.billingStatus)}
+          </li>
+          <li className="rounded-md border border-slate-200 bg-white p-3">
+            Microsoft 365 sending:{" "}
+            {isMicrosoft365SendingAvailable({
+              planCode: billing.planCode,
+              enabled: billing.microsoft365SendingEnabled,
+            })
+              ? "On"
+              : "Off"}
           </li>
           <li className="rounded-md border border-slate-200 bg-white p-3 sm:col-span-2">
             Seats: {billing.seatQuantity} purchased · cap {billing.maxSeats}
@@ -651,6 +666,56 @@ export default async function PlatformOrgDetailPage({
             >
               Save research policy
             </button>
+          </ActionFeedbackForm>
+
+          <ActionFeedbackForm
+            action={updatePlatformMicrosoft365SendingAction}
+            className="max-w-md space-y-3"
+            testId="platform-microsoft-365-form"
+          >
+            <input type="hidden" name="organizationId" value={id} />
+            <h3 className="text-sm font-medium text-slate-900">
+              Microsoft 365 sending
+            </h3>
+            <p className="text-sm text-slate-600">
+              Connected mailbox sending for this organization. Off until you
+              turn it on. Team and Enterprise only. An existing mailbox
+              connection stays stored while this is off.
+            </p>
+            {planAllowsMicrosoft365Sending(billing.planCode) ? (
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="microsoft365SendingEnabled"
+                  defaultChecked={billing.microsoft365SendingEnabled}
+                  className="mt-1"
+                />
+                <span>
+                  Allow this organization to connect Microsoft 365 and send
+                  with it
+                </span>
+              </label>
+            ) : (
+              <p className="text-sm text-slate-700">
+                This plan cannot use Microsoft 365 sending. It can only be
+                turned on for Team and Enterprise.
+              </p>
+            )}
+            {planAllowsMicrosoft365Sending(billing.planCode) ? (
+              <button
+                type="submit"
+                className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
+              >
+                Save Microsoft 365 sending
+              </button>
+            ) : billing.microsoft365SendingEnabled ? (
+              <button
+                type="submit"
+                className={cn(PRIMARY_BUTTON_CLASS, "!px-3")}
+              >
+                Turn off Microsoft 365 sending
+              </button>
+            ) : null}
           </ActionFeedbackForm>
 
           {org.status === "SUSPENDED" ? (

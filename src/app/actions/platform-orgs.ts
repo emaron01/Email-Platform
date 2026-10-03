@@ -14,6 +14,7 @@ import {
   convertOrganizationToComped,
   updateOrganizationUsagePolicyAsPlatform,
   updateOrganizationResearchPolicyAsPlatform,
+  updateOrganizationMicrosoft365SendingAsPlatform,
   createPlatformOrganization,
 } from "@/lib/platform/orgs";
 import { CONTACT_OUTBOUND_PURGE_CONFIRM_PHRASE } from "@/lib/platform/purge-contact-outbound-shared";
@@ -258,6 +259,35 @@ export async function updatePlatformResearchPolicyAction(
       message: contactResearchEnabled
         ? "Contact research enabled for this organization."
         : "Contact research disabled for this organization.",
+    };
+  } catch (error) {
+    return { ok: false, message: toSafeError(error) };
+  }
+}
+
+export async function updatePlatformMicrosoft365SendingAction(
+  _prev: PlatformOrgActionResult | null,
+  formData: FormData,
+): Promise<PlatformOrgActionResult> {
+  try {
+    const user = await requirePlatformSuperAdmin();
+    const organizationId = requireOrgId(formData);
+    const enabled = formData.get("microsoft365SendingEnabled") === "on";
+    await updateOrganizationMicrosoft365SendingAsPlatform({
+      organizationId,
+      actorUserId: user.id,
+      enabled,
+    });
+    revalidatePath(`/platform/orgs/${organizationId}`);
+    revalidatePath("/");
+    revalidatePath("/settings");
+    revalidatePath("/settings/email");
+    revalidatePath("/campaigns");
+    return {
+      ok: true,
+      message: enabled
+        ? "Microsoft 365 sending is on for this organization."
+        : "Microsoft 365 sending is off for this organization.",
     };
   } catch (error) {
     return { ok: false, message: toSafeError(error) };

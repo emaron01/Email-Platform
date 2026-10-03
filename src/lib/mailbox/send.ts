@@ -16,6 +16,7 @@ import { getEmailSignatureForSend } from "@/lib/signature/signature";
 import { resolveActiveOrganization } from "@/lib/auth/session";
 import { assertAccountCapability } from "@/lib/auth/account-policy";
 import { TenantError } from "@/lib/tenant/errors";
+import { assertMicrosoft365SendingAvailable } from "@/lib/mailbox/availability-access";
 import { recordUsageEvent } from "@/lib/usage/events";
 import {
   releaseDailyEmailSendReservation,
@@ -68,6 +69,7 @@ export async function sendEmailDraftWithConnectedMailbox(input: {
     throw new TenantError("No active organization membership was found.");
   }
   const organizationId = membership.organization.id;
+  await assertMicrosoft365SendingAvailable(organizationId);
   const signature = await getEmailSignatureForSend({
     organizationId,
     userId: input.userId,

@@ -169,6 +169,26 @@ describe("buildSidebarNavItems", () => {
       ),
     ).toBe(true);
     expect(items.some((i) => i.href === "/platform")).toBe(false);
+    expect(items.some((i) => i.href === "/settings/email")).toBe(false);
+  });
+
+  it("shows Email Connection only when Microsoft 365 sending is available", () => {
+    const hidden = buildSidebarNavItems({
+      hasOrganization: true,
+      isPlatformOperator: false,
+      microsoft365SendingAvailable: false,
+    });
+    const shown = buildSidebarNavItems({
+      hasOrganization: true,
+      isPlatformOperator: false,
+      microsoft365SendingAvailable: true,
+    });
+    expect(hidden.some((i) => i.label === "Email Connection")).toBe(false);
+    expect(
+      shown.some(
+        (i) => i.href === "/settings/email" && i.label === "Email Connection",
+      ),
+    ).toBe(true);
   });
 
   it("SUPPORT sees Platform nav", () => {

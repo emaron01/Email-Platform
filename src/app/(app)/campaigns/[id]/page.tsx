@@ -40,6 +40,7 @@ import { claimConflictsFromJson } from "@/lib/email-generation/claim-conflicts";
 import { requireCurrentUser } from "@/lib/auth/session";
 import { getEffectiveUsagePolicy } from "@/lib/usage/policy";
 import { getMailboxConnectionView } from "@/lib/mailbox/data";
+import { getMicrosoft365SendingAccess } from "@/lib/mailbox/availability-access";
 import { getDailyEmailSendUsage } from "@/lib/usage/quota";
 import { getActiveEmailSignatureBody } from "@/lib/signature/signature";
 import { listVoiceSamplesForUser } from "@/lib/voice/samples";
@@ -123,6 +124,9 @@ export default async function CampaignDetailPage({
   let contactLists: Awaited<ReturnType<typeof listContactLists>>;
   let usagePolicy: Awaited<ReturnType<typeof getEffectiveUsagePolicy>>;
   let mailboxConnection: Awaited<ReturnType<typeof getMailboxConnectionView>>;
+  let microsoft365Sending: Awaited<
+    ReturnType<typeof getMicrosoft365SendingAccess>
+  >;
   let dailySendUsage: Awaited<ReturnType<typeof getDailyEmailSendUsage>>;
   let qualification: Awaited<ReturnType<typeof getCampaignQualificationView>>;
   let voiceSamples: Awaited<ReturnType<typeof listVoiceSamplesForUser>>;
@@ -134,6 +138,7 @@ export default async function CampaignDetailPage({
       contactLists,
       usagePolicy,
       mailboxConnection,
+      microsoft365Sending,
       dailySendUsage,
       qualification,
       voiceSamples,
@@ -150,6 +155,7 @@ export default async function CampaignDetailPage({
         organizationId: organization.id,
         userId: user.id,
       }),
+      getMicrosoft365SendingAccess(organization.id),
       getDailyEmailSendUsage({
         organizationId: organization.id,
         userId: user.id,
@@ -689,13 +695,14 @@ export default async function CampaignDetailPage({
               }
               emailSignature={emailSignature}
               mailboxConnection={
-                mailboxConnection
+                microsoft365Sending.available && mailboxConnection
                   ? {
                       status: mailboxConnection.status,
                       mailboxAddress: mailboxConnection.mailboxAddress,
                     }
                   : null
               }
+              microsoft365SendingAvailable={microsoft365Sending.available}
               dailySendUsage={{
                 used: dailySendUsage.used,
                 warningLimit: dailySendUsage.warningLimit,

@@ -18,8 +18,10 @@ const initial: SignatureActionResult | null = null;
 
 export function EmailSignatureForm({
   signature,
+  microsoft365SendingAvailable = false,
 }: {
   signature: EmailSignatureView | null;
+  microsoft365SendingAvailable?: boolean;
 }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(
@@ -44,9 +46,9 @@ export function EmailSignatureForm({
       <div>
         <h2 className="text-lg font-medium text-slate-900">Email signature</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Appended when you send with Microsoft 365 or open a draft in Outlook
-          or Gmail. The draft editor stays unsigned so you do not edit the
-          signature by accident.
+          {microsoft365SendingAvailable
+            ? "Appended when you send with Microsoft 365 or open a draft in Outlook or Gmail. The draft editor stays unsigned so you do not edit the signature by accident."
+            : "Appended when you open a draft in Outlook or Gmail. The draft editor stays unsigned so you do not edit the signature by accident."}
         </p>
       </div>
 
@@ -80,27 +82,31 @@ export function EmailSignatureForm({
             desktop compose cannot carry HTML.
           </span>
         </label>
-        <label className="block text-sm">
-          <span className="font-medium text-slate-700">
-            HTML (Connected Send only, optional)
-          </span>
-          <textarea
-            name="htmlBody"
-            value={htmlBody}
-            onChange={(event) => setHtmlBody(event.target.value)}
-            maxLength={EMAIL_SIGNATURE_HTML_MAX_CHARS}
-            rows={8}
-            placeholder={
-              '<p>Best,<br>Alex Rivera</p>\n<p><img src="https://example.com/logo.png" alt="Logo" width="120"></p>'
-            }
-            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs outline-none ring-slate-400 focus:ring-2"
-          />
-          <span className="mt-1 block text-xs text-slate-500">
-            {htmlBody.trim().length} / {EMAIL_SIGNATURE_HTML_MAX_CHARS} — logos
-            and styled blocks go here. Used only for Microsoft 365 Connected
-            Send.
-          </span>
-        </label>
+        {microsoft365SendingAvailable ? (
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">
+              HTML (Connected Send only, optional)
+            </span>
+            <textarea
+              name="htmlBody"
+              value={htmlBody}
+              onChange={(event) => setHtmlBody(event.target.value)}
+              maxLength={EMAIL_SIGNATURE_HTML_MAX_CHARS}
+              rows={8}
+              placeholder={
+                '<p>Best,<br>Alex Rivera</p>\n<p><img src="https://example.com/logo.png" alt="Logo" width="120"></p>'
+              }
+              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs outline-none ring-slate-400 focus:ring-2"
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              {htmlBody.trim().length} / {EMAIL_SIGNATURE_HTML_MAX_CHARS} — logos
+              and styled blocks go here. Used only for Microsoft 365 Connected
+              Send.
+            </span>
+          </label>
+        ) : (
+          <input type="hidden" name="htmlBody" value={htmlBody} />
+        )}
         <div>
           <p className="text-sm font-medium text-slate-700">Plain preview</p>
           <pre
@@ -111,7 +117,7 @@ export function EmailSignatureForm({
               "Nothing will be appended to Outlook/Gmail opens until you save plain text."}
           </pre>
         </div>
-        {htmlBody.trim() ? (
+        {microsoft365SendingAvailable && htmlBody.trim() ? (
           <div>
             <p className="text-sm font-medium text-slate-700">
               HTML preview (Connected Send)

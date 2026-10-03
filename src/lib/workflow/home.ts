@@ -8,6 +8,7 @@ import {
 } from "@/lib/criteria/evidence-class";
 import { getCampaignQualificationView } from "@/lib/campaign/contacts";
 import { getDueContactsForUser, type CampaignDueSummary } from "@/lib/cadence/dashboard";
+import { getMicrosoft365SendingAccess } from "@/lib/mailbox/availability-access";
 import { getMailboxConnectionView } from "@/lib/mailbox/data";
 import { normalizeSuggestedBuyerRoles } from "@/lib/setup/product-overview";
 import { voiceReadiness } from "@/lib/voice/types";
@@ -92,7 +93,15 @@ export async function getHomeWorkflow(
     canViewAllRepWork?: boolean;
   },
 ): Promise<HomeWorkflow> {
-  const [products, campaigns, dueByCampaign, listCount, contactCount, mailbox] =
+  const [
+    products,
+    campaigns,
+    dueByCampaign,
+    listCount,
+    contactCount,
+    mailbox,
+    microsoft365Sending,
+  ] =
     await Promise.all([
       prisma.product.findMany({
         where: { organizationId, archivedAt: null },
@@ -184,6 +193,7 @@ export async function getHomeWorkflow(
             userId: options.userId,
           })
         : Promise.resolve(null),
+      getMicrosoft365SendingAccess(organizationId),
     ]);
 
   const voiceSampleCount =
@@ -263,6 +273,7 @@ export async function getHomeWorkflow(
     contactCount,
     emailConnected: mailbox?.status === "CONNECTED",
     emailReconnectRequired: mailbox?.status === "RECONNECT_REQUIRED",
+    microsoft365SendingAvailable: microsoft365Sending.available,
   });
 
   return {

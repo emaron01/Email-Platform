@@ -44,6 +44,7 @@ describe("home setup rail", () => {
       contactCount: 40,
       emailConnected: false,
       emailReconnectRequired: false,
+      microsoft365SendingAvailable: true,
     });
     const products = steps.find((step) => step.key === "products");
     expect(products?.completed).toBe(true);
@@ -112,6 +113,7 @@ describe("home setup rail", () => {
       contactCount: 10,
       emailConnected: true,
       emailReconnectRequired: false,
+      microsoft365SendingAvailable: true,
     });
     expect(steps.every((step) => step.completed)).toBe(true);
     expect(resolveHomeSetupFocus(steps)).toBe("email");
@@ -122,5 +124,22 @@ describe("home setup rail", () => {
       "/contacts",
       "/settings/email",
     ]);
+  });
+
+  it("omits the mailbox step when Microsoft 365 sending is off", () => {
+    const steps = buildHomeSetupRail({
+      voice: voiceReadiness(3),
+      productTotal: 1,
+      productReadyCount: 1,
+      productIncomplete: [],
+      listCount: 1,
+      contactCount: 10,
+      emailConnected: true,
+      emailReconnectRequired: true,
+      microsoft365SendingAvailable: false,
+    });
+    expect(steps.some((step) => step.key === "email")).toBe(false);
+    expect(steps.map((step) => step.href)).not.toContain("/settings/email");
+    expect(resolveHomeSetupFocus(steps)).toBe("contacts");
   });
 });

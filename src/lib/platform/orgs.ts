@@ -22,7 +22,9 @@ import {
   BILLING_PLAN_ENTERPRISE,
   BILLING_PLAN_STANDARD,
   getPlanDefinition,
+  planAllowsMicrosoft365Sending,
 } from "@/lib/billing/plans";
+import { MICROSOFT_365_SENDING_PLAN_MESSAGE } from "@/lib/mailbox/availability";
 import { getStripe, stripeConfigured } from "@/lib/billing/stripe";
 import { createOrganizationInvitationAsPlatform } from "@/lib/org/signup";
 
@@ -242,6 +244,7 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
           cancelAtPeriodEnd: true,
           seatQuantity: true,
           maxSeats: true,
+          microsoft365SendingEnabled: true,
         },
       },
       usagePolicy: true,
@@ -413,6 +416,8 @@ export async function getOrganizationPlatformDetail(organizationId: string) {
       cancelAtPeriodEnd: org.billingProfile?.cancelAtPeriodEnd ?? false,
       seatQuantity: org.billingProfile?.seatQuantity ?? 1,
       maxSeats: org.billingProfile?.maxSeats ?? 1,
+      microsoft365SendingEnabled:
+        org.billingProfile?.microsoft365SendingEnabled ?? false,
     },
     billingEmail: org.billingProfile?.billingEmail ?? null,
     usagePolicy: org.usagePolicy,
@@ -802,6 +807,39 @@ export async function updateOrganizationResearchPolicyAsPlatform(input: {
     metadata: {
       contactResearchEnabled: input.contactResearchEnabled,
       scope: "research_policy",
+    },
+  });
+}
+
+export async function updateOrganizationMicrosoft365SendingAsPlatform(input: {
+  organizationId: string;
+  actorUserId: string;
+  enabled: boolean;
+}): Promise<void> {
+  const profile = await prisma.organizationBillingProfile.findUnique({
+    where: { organizationId: input.organizationId },
+    select: { planCode: true, microsoft365SendingEnabled: true },
+  });
+  if (!profile) {
+    throw new Error("This organization has no billing profile.");
+  }
+  if (input.enabled && !planAllowsMicrosoft365Sending(profile.planCode)) {
+    throw new Error(MICROSOFT_365_SENDING_PLAN_MESSAGE);
+  }
+  if (profile.microsoft365SendingEnabled === input.enabled) {
+    return;
+  }
+  await prisma.organizationBillingProfile.update({
+    where: { organizationId: input.organizationId },
+    data: { microsoft365SendingEnabled: input.enabled },
+  });
+  await recordAdminAuditEvent({
+    action: "PLATFORM_USAGE_POLICY_CHANGED",
+    actorUserId: input.actorUserId,
+    organizationId: input.organizationId,
+    metadata: {
+      microsoft365SendingEnabled: input.enabled,
+      scope: "microsoft_365_sending",
     },
   });
 }

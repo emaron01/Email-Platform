@@ -88,6 +88,7 @@ export function buildHomeSetupRail(input: {
   contactCount: number;
   emailConnected: boolean;
   emailReconnectRequired: boolean;
+  microsoft365SendingAvailable?: boolean;
 }): HomeSetupStep[] {
   const voiceDetail =
     input.voice.count === 0
@@ -102,7 +103,7 @@ export function buildHomeSetupRail(input: {
       ? "Reconnect required"
       : "Not connected";
 
-  return [
+  const steps: HomeSetupStep[] = [
     {
       number: 1,
       key: "voice",
@@ -145,15 +146,18 @@ export function buildHomeSetupRail(input: {
           ? "No contacts yet"
           : `${input.contactCount} ${plural(input.contactCount, "contact")}`,
     },
-    {
+  ];
+  if (input.microsoft365SendingAvailable) {
+    steps.push({
       number: 5,
       key: "email",
       label: "Email connection",
       href: "/settings/email",
       completed: input.emailConnected,
       detail: emailDetail,
-    },
-  ];
+    });
+  }
+  return steps;
 }
 
 /** First incomplete step, or the last step when everything is green. */

@@ -274,6 +274,15 @@ export function planAllowsReferrals(planCode: string | null | undefined): boolea
   return code === BILLING_PLAN_STANDARD || code === BILLING_PLAN_COMPED;
 }
 
+/** Connected Microsoft 365 send is a Team and Enterprise capability. PREMIUM canonicalizes to TEAM. */
+export function planAllowsMicrosoft365Sending(
+  planCode: string | null | undefined,
+): boolean {
+  if (!planCode?.trim()) return false;
+  const code = canonicalPlanCode(planCode);
+  return code === BILLING_PLAN_TEAM || code === BILLING_PLAN_ENTERPRISE;
+}
+
 /** True when product limits and allowances are expressed per seat. */
 export function planUsesSeatBilling(planCode: string): boolean {
   const seats = getPlanDefinition(canonicalPlanCode(planCode))?.seats;

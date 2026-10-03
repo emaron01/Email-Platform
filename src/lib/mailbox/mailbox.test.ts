@@ -120,6 +120,13 @@ describe.skipIf(!hasDatabase)(
       });
       organizationId = primary.organization.id;
       userAId = primary.user.id;
+      await prisma.organizationBillingProfile.update({
+        where: { organizationId },
+        data: {
+          planCode: "TEAM",
+          microsoft365SendingEnabled: true,
+        },
+      });
       await prisma.user.update({
         where: { id: userAId },
         data: { emailVerifiedAt: new Date() },

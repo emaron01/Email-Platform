@@ -23,6 +23,7 @@ import {
 } from "@/lib/auth/user-menu";
 import { billingPlanLabel } from "@/lib/billing/billing-state";
 import { planAllowsReferrals } from "@/lib/billing/plans";
+import { isMicrosoft365SendingAvailable } from "@/lib/mailbox/availability";
 import {
   listOwnedBilledOrganizationsAsideFrom,
   listWorkspacesForUser,
@@ -84,14 +85,17 @@ export async function AppShell({
   const membershipCtx =
     user && organization ? await resolveActiveOrganization(user) : null;
 
-  const billingPlanCode = organization
-    ? (
-        await prisma.organizationBillingProfile.findUnique({
-          where: { organizationId: organization.id },
-          select: { planCode: true },
-        })
-      )?.planCode
+  const billingProfile = organization
+    ? await prisma.organizationBillingProfile.findUnique({
+        where: { organizationId: organization.id },
+        select: { planCode: true, microsoft365SendingEnabled: true },
+      })
     : null;
+  const billingPlanCode = billingProfile?.planCode ?? null;
+  const microsoft365SendingAvailable = isMicrosoft365SendingAvailable({
+    planCode: billingPlanCode,
+    enabled: billingProfile?.microsoft365SendingEnabled ?? false,
+  });
 
   const workspaces = user
     ? await listWorkspacesForUser({
@@ -125,6 +129,7 @@ export async function AppShell({
     hasOrganization: Boolean(organization),
     isPlatformOperator: user ? isPlatformOperator(user.platformRole) : false,
     paymentLocked,
+    microsoft365SendingAvailable,
   });
   const campaignProgress = organization ? await campaignSidebarProgress() : null;
 

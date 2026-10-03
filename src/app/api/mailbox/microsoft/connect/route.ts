@@ -10,6 +10,7 @@ import {
 } from "@/lib/mailbox/microsoft-oauth";
 import { requireOrganization } from "@/lib/tenant/getCurrentOrganization";
 import { assertOrganizationNotPaymentLocked } from "@/lib/billing/payment-lock";
+import { getMicrosoft365SendingAccess } from "@/lib/mailbox/availability-access";
 
 export async function GET(request: Request) {
   try {
@@ -18,6 +19,10 @@ export async function GET(request: Request) {
       requireOrganization(),
     ]);
     await assertOrganizationNotPaymentLocked(organization.id);
+    const access = await getMicrosoft365SendingAccess(organization.id);
+    if (!access.available) {
+      return NextResponse.redirect(appAbsoluteUrl("/settings/email"));
+    }
     const returnPath = new URL(request.url).searchParams.get("returnTo");
     assertAccountCapability(user, "OUTBOUND_EMAIL");
     const authorizationUrl = await beginMicrosoftMailboxConnection({
