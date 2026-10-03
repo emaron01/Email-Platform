@@ -40,7 +40,8 @@ RULES:
     - TITLE_TESTABLE — decidable from the contact's title/department alone (e.g. "Sales representative focused primarily on individual quota").
     - EVIDENCE_TESTABLE — requires researched responsibilities or ownership (e.g. "CRM administrator … WITHOUT ownership of forecasting or revenue governance").
 14. When existingApprovedPersonas is non-empty, articulate what distinguishes this role's daily experience and accountability from those personas: scope, reporting line, what they are measured on, and what lands on their desk. Do not try to "make them different." painPoints and messagingNotes may overlap when the overlap is genuine — honest overlap is better than manufactured contrast. Use the supplied painPoints and messagingNotes from existing personas only as context; derive this role's distinctions from the selected buyer role, responsibilities, and product evidence.
-15. Return JSON matching the schema only (personaDraft).`;
+15. likelyTitles are formal job titles as they appear on a contact record. Write each title in full ("Vice President of Sales", "Chief Revenue Officer", "Head of Sales Enablement"). Every title names the function. A seniority level alone ("VP", "Director", "Head", "Manager") is invalid. Do not abbreviate, and do not cut a title off mid-word.
+16. Return JSON matching the schema only (personaDraft).`;
 
   const user = JSON.stringify({
     productName: input.productName,
@@ -70,7 +71,9 @@ RULES:
     responseSchema: {
       personaDraft: {
         name: "string (REQUIRED)",
-        likelyTitles: ["string"],
+        likelyTitles: [
+          "formal title naming the function (e.g. Vice President of Sales)",
+        ],
         departmentFunction: "string|null",
         seniority: "string|null",
         roleSummary: "string|null",

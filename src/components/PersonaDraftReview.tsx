@@ -255,7 +255,7 @@ function PersonaCriteriaEditor({
 function draftToFormState(draft: PersonaAiDraft) {
   return {
     name: draft.name,
-    likelyTitles: draft.likelyTitles.join(", "),
+    likelyTitles: draft.likelyTitles.join("\n"),
     department: draft.departmentFunction ?? "",
     seniority: draft.seniority ?? "",
     definition: draft.roleSummary ?? "",
@@ -360,7 +360,7 @@ export function PersonaDraftReview({
   const [criteriaJson, setCriteriaJson] = useState("[]");
   const [formState, setFormState] = useState({
     name: draft?.name ?? "",
-    likelyTitles: draft?.likelyTitles.join(", ") ?? "",
+    likelyTitles: draft?.likelyTitles.join("\n") ?? "",
     department: draft?.departmentFunction ?? "",
     seniority: draft?.seniority ?? "",
     definition: draft?.roleSummary ?? "",
@@ -530,6 +530,8 @@ export function PersonaDraftReview({
               label="Likely Titles"
               name="likelyTitles"
               value={formState.likelyTitles}
+              multiline
+              hint="One title per line. A title can contain a comma."
               onChange={(value) =>
                 setFormState((prev) => ({ ...prev, likelyTitles: value }))
               }

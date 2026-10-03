@@ -219,7 +219,7 @@ describe("Persona field semantics", () => {
     fd.set("name", SALES_LEADER_FIXTURE.name);
     fd.set("definition", SALES_LEADER_FIXTURE.definition);
     fd.set("additionalContext", SALES_LEADER_FIXTURE.additionalContext);
-    fd.set("targetTitles", SALES_LEADER_FIXTURE.targetTitles.join(", "));
+    fd.set("targetTitles", SALES_LEADER_FIXTURE.targetTitles.join("\n"));
     fd.set("department", SALES_LEADER_FIXTURE.department);
     fd.set("seniority", SALES_LEADER_FIXTURE.seniority);
     fd.set("responsibilities", SALES_LEADER_FIXTURE.responsibilities);

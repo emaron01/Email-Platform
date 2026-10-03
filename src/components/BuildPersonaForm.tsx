@@ -50,8 +50,9 @@ export function BuildPersonaForm({
       <Field
         label="Likely Titles"
         name="likelyTitles"
-        defaultValue={(role?.likelyTitles ?? []).join(", ")}
-        hint="Titles are evidence, not the Persona definition."
+        as="textarea"
+        defaultValue={(role?.likelyTitles ?? []).join("\n")}
+        hint="One title per line. Titles are evidence, not the Persona definition."
       />
       <Field
         label="Department / Function"

@@ -16,6 +16,7 @@ import {
   mergeManualEditedFields,
   TARGET_TITLES_FIELD,
 } from "@/lib/persona/manual-target-titles";
+import { assertTargetTitles } from "@/lib/persona/target-title-rules";
 import { prisma } from "@/lib/prisma";
 import { snapshotCriterionRow, snapshotPersona } from "@/lib/scoring/snapshots";
 import type { TitleSuggestionAiResult } from "@/lib/scoring/title-suggestion-contract";
@@ -420,6 +421,8 @@ async function persistManualTargetTitle(input: {
   if (!persona) {
     throw new TenantError("Persona not found in the active organization.");
   }
+
+  assertTargetTitles([input.title]);
 
   const targetTitles = appendTargetTitle(
     persona.targetTitles,

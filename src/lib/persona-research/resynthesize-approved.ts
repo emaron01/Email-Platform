@@ -15,6 +15,7 @@ import {
   TARGET_TITLES_FIELD,
 } from "@/lib/persona/manual-target-titles";
 import { parsePersonaListField } from "@/lib/persona/persona-differentiation";
+import { assertTargetTitles } from "@/lib/persona/target-title-rules";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import { PERSONA_SYNTHESIS_PROMPT_VERSION } from "@/lib/persona-research/contract";
 import {
@@ -293,6 +294,9 @@ export async function applyApprovedPersonaResynthesis(input: {
 
   const draft = run.personaDraftJson as PersonaAiDraft;
   const protectTitles = targetTitlesProtected(persona.manuallyEditedFields);
+  if (!protectTitles) {
+    assertTargetTitles(draft.likelyTitles ?? []);
+  }
 
   const policy = await getResearchPolicy(input.organizationId);
   const built = buildPersonaCriteriaForReview(draft, {

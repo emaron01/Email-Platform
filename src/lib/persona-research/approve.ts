@@ -13,6 +13,7 @@ import {
   collectUnmappedCriterionTypesFromDraft,
   type PersonaCriterionFormRow,
 } from "@/lib/persona-research/project-signals";
+import { assertTargetTitles } from "@/lib/persona/target-title-rules";
 import { getResearchPolicy } from "@/lib/usage/policy";
 import { recordUsageEvent } from "@/lib/usage/events";
 
@@ -67,6 +68,7 @@ export async function approvePersonaFromSetupRun(input: {
     throw new TenantError("Persona setup run draft not found.");
   }
 
+  assertTargetTitles(input.fields.likelyTitles);
   const draft = run.personaDraftJson as PersonaAiDraft;
   const protectedPaths = mergeProtectedFields([], input.editedFields ?? []);
 

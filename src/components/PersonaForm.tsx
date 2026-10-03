@@ -34,7 +34,8 @@ import {
   type PersonaReviewSource,
 } from "@/lib/persona-research/persona-briefing";
 import { NEEDS_REVIEW_CLASSIFY_TARGETS } from "@/lib/persona-research/project-signals";
-import { cn, listToCommaString } from "@/lib/utils";
+import { targetTitlesFieldValue } from "@/lib/persona/target-title-rules";
+import { cn } from "@/lib/utils";
 
 type CriterionRow = {
   id?: string;
@@ -304,7 +305,11 @@ function PersonaHiddenFields({ persona }: { persona: Persona }) {
       <input
         type="hidden"
         name="targetTitles"
-        value={listToCommaString(persona.targetTitles)}
+        value={targetTitlesFieldValue(
+          Array.isArray(persona.targetTitles)
+            ? persona.targetTitles.map(String)
+            : [],
+        )}
       />
       <input
         type="hidden"
@@ -386,8 +391,9 @@ function NewPersonaForm({
         <Field
           label="Likely Titles (evidence)"
           name="targetTitles"
-          placeholder="CRO, VP Sales, Director of Sales"
-          hint="Literal job titles only — not generic labels like “Sales Leader”."
+          as="textarea"
+          placeholder={"Vice President of Sales\nChief Revenue Officer"}
+          hint="One title per line. Each title names a function, and a title can contain a comma."
         />
         <div className="md:col-span-2">
           <Field
@@ -612,9 +618,13 @@ export function PersonaForm({
             <Field
               label="Likely Titles (evidence)"
               name="targetTitles"
-              defaultValue={listToCommaString(persona.targetTitles)}
-              placeholder="CRO, VP Sales, Director of Sales"
-              hint="Literal job titles only — not generic labels like “Sales Leader”."
+              as="textarea"
+              defaultValue={(Array.isArray(persona.targetTitles)
+                ? persona.targetTitles.map(String)
+                : []
+              ).join("\n")}
+              placeholder={"Vice President of Sales\nChief Revenue Officer"}
+              hint="One title per line. Each title names a function, and a title can contain a comma."
             />
             <div className="md:col-span-2">
               <Field

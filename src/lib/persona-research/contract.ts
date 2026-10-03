@@ -11,8 +11,21 @@ import {
 } from "@/lib/ai/contract-normalize";
 import type { StructuredParseResult } from "@/lib/ai/types";
 
+import { targetTitleProblem } from "@/lib/persona/target-title-rules";
+
 const optionalString = z.string().nullable().optional();
 const stringList = z.array(z.string()).optional().default([]);
+const likelyTitleList = z
+  .array(z.string())
+  .optional()
+  .default([])
+  .superRefine((titles, ctx) => {
+    titles.forEach((title, index) => {
+      const problem = targetTitleProblem(title);
+      if (!problem) return;
+      ctx.addIssue({ code: "custom", message: problem, path: [index] });
+    });
+  });
 
 export const EXCLUSION_TESTABILITY_VALUES = [
   "TITLE_TESTABLE",
@@ -65,7 +78,7 @@ const negativeRoleSignalEntrySchema = z.union([
 
 export const personaAiDraftSchema = z.object({
   name: z.string().trim().min(1),
-  likelyTitles: stringList,
+  likelyTitles: likelyTitleList,
   departmentFunction: optionalString,
   seniority: optionalString,
   roleSummary: optionalString,
@@ -144,6 +157,12 @@ function dropWebEvidenceFromRows(
 function normalizePersonaDraft(value: unknown, coercedFields: Set<string>): unknown {
   if (!value || typeof value !== "object") return value ?? {};
   const draft = { ...(value as Record<string, unknown>) };
+  if (Array.isArray(draft.likelyTitles)) {
+    draft.likelyTitles = draft.likelyTitles
+      .map(String)
+      .map((title) => title.trim())
+      .filter(Boolean);
+  }
   draft.confidence = normalizeConfidenceValue(
     draft.confidence,
     coercedFields,
@@ -190,4 +209,4 @@ export function parsePersonaAiResponse(
   };
 }
 
-export const PERSONA_SYNTHESIS_PROMPT_VERSION = "9";
+export const PERSONA_SYNTHESIS_PROMPT_VERSION = "10";

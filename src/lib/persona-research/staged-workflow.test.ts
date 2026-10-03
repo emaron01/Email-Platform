@@ -92,6 +92,8 @@ describe("persona synthesis differentiation prompt", () => {
         },
       ],
     });
+    expect(messages[0]!.content).toContain("Vice President of Sales");
+    expect(messages[0]!.content).toContain("seniority level alone");
     expect(messages[0]!.content).toContain("existingApprovedPersonas");
     expect(messages[0]!.content).toContain("daily experience and accountability");
     expect(messages[0]!.content).toContain("manufactured contrast");
@@ -148,8 +150,8 @@ describe("persona synthesis differentiation prompt", () => {
 });
 
 describe("persona synthesis from the product profile", () => {
-  it("keeps prompt version 9 and does not configure persona web search", () => {
-    expect(PERSONA_SYNTHESIS_PROMPT_VERSION).toBe("9");
+  it("keeps prompt version 10 and does not configure persona web search", () => {
+    expect(PERSONA_SYNTHESIS_PROMPT_VERSION).toBe("10");
     expect(DEFAULT_RESEARCH_POLICY_VALUES).not.toHaveProperty(
       "maxSearchQueriesPerPersona",
     );

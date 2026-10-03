@@ -2,7 +2,10 @@
  * Persona form parsing and safe action results (Node-safe, no server-only).
  */
 
-import { parseCommaList } from "@/lib/utils";
+import {
+  assertTargetTitles,
+  parseTargetTitleField,
+} from "@/lib/persona/target-title-rules";
 import { TenantError } from "@/lib/tenant/errors";
 
 export type PersonaActionResult = {
@@ -47,7 +50,13 @@ export function parsePersonaFormData(formData: FormData): {
       name,
       definition: requiredString(formData, "definition") || null,
       additionalContext: requiredString(formData, "additionalContext") || null,
-      targetTitles: parseCommaList(requiredString(formData, "targetTitles")),
+      targetTitles: (() => {
+        const titles = parseTargetTitleField(
+          requiredString(formData, "targetTitles"),
+        );
+        assertTargetTitles(titles);
+        return titles;
+      })(),
       department: requiredString(formData, "department") || null,
       seniority: requiredString(formData, "seniority") || null,
       responsibilities: requiredString(formData, "responsibilities") || null,

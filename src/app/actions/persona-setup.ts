@@ -17,6 +17,10 @@ import { projectPersonaSignalsFromProfile } from "@/lib/persona-research/apply-p
 import { parsePersonaCriteriaFormJson } from "@/lib/persona-research/project-signals";
 import type { SuggestedBuyerRole } from "@/lib/product-research/contract";
 import { createCorrelationId } from "@/lib/product-research/url";
+import {
+  assertTargetTitles,
+  parseTargetTitleField,
+} from "@/lib/persona/target-title-rules";
 import { prisma } from "@/lib/prisma";
 
 export type PersonaSetupActionResult = {
@@ -59,10 +63,9 @@ export async function buildPersonaFromBuyerRoleAction(
     const suggestionKey = String(formData.get("suggestionKey") || "").trim();
     const name = String(formData.get("name") || "").trim();
     const why = String(formData.get("whyThisRoleMatters") || "").trim();
-    const titles = String(formData.get("likelyTitles") || "")
-      .split(/[,;\n]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const titles = parseTargetTitleField(
+      String(formData.get("likelyTitles") || ""),
+    );
     const notes = String(formData.get("notes") || "").trim();
 
     if (!productId || !name) {
@@ -174,10 +177,13 @@ export async function saveApprovedPersonaFromRunAction(
         department: String(formData.get("department") || "").trim() || null,
         seniority: String(formData.get("seniority") || "").trim() || null,
         definition: String(formData.get("definition") || "").trim() || null,
-        likelyTitles: String(formData.get("likelyTitles") || "")
-          .split(/[,;\n]+/)
-          .map((s) => s.trim())
-          .filter(Boolean),
+        likelyTitles: (() => {
+          const titles = parseTargetTitleField(
+            String(formData.get("likelyTitles") || ""),
+          );
+          assertTargetTitles(titles);
+          return titles;
+        })(),
         responsibilities: String(formData.get("responsibilities") || "")
           .split("\n")
           .map((s) => s.trim())
