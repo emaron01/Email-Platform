@@ -116,6 +116,83 @@ function CriterionActionForm({
   );
 }
 
+const EXCLUSION_REMOVE_BUTTON_CLASS =
+  "inline-flex cursor-pointer items-center justify-center rounded-md bg-red-700 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50";
+
+function ScoredCriterionRow({
+  productId,
+  personaId,
+  criterion,
+}: {
+  productId: string;
+  personaId: string;
+  criterion: CriterionRow;
+}) {
+  const role = criterion.isDisqualifier
+    ? "disqualifier"
+    : criterion.isRequired
+      ? "required"
+      : "supporting";
+  return (
+    <li className="rounded border border-slate-200 bg-white p-2">
+      <div>
+        {criterion.isDisqualifier ? "✗" : criterion.isRequired ? "✓" : "☆"}{" "}
+        {formatCriterionDisplay({
+          ...criterion,
+          dataType: criterion.dataType as never,
+          operator: criterion.operator as never,
+          importance: criterion.importance as never,
+        })}
+        {criterion.manuallyEdited ? (
+          <span className="ml-2 text-xs text-amber-700">(manual)</span>
+        ) : null}
+      </div>
+      {criterion.id ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <CriterionActionForm
+            action={updatePersonaCriterionAction}
+            className="flex flex-wrap items-center gap-2"
+          >
+            <input type="hidden" name="criterionId" value={criterion.id} />
+            <input type="hidden" name="personaId" value={personaId} />
+            <input type="hidden" name="productId" value={productId} />
+            <input type="hidden" name="name" value={criterion.name} />
+            <label className="text-xs text-slate-600">
+              Role
+              <select
+                name="role"
+                defaultValue={role}
+                className="ml-1 rounded border border-slate-300 px-1 py-0.5 text-xs"
+              >
+                <option value="required">Required / strong</option>
+                <option value="supporting">Supporting</option>
+                <option value="disqualifier">Disqualifier</option>
+              </select>
+            </label>
+            <SecondaryButton type="submit">Update</SecondaryButton>
+          </CriterionActionForm>
+          <CriterionActionForm action={deletePersonaCriterionAction}>
+            <input type="hidden" name="criterionId" value={criterion.id} />
+            <input type="hidden" name="personaId" value={personaId} />
+            <input type="hidden" name="productId" value={productId} />
+            {criterion.isDisqualifier ? (
+              <button
+                type="submit"
+                className={EXCLUSION_REMOVE_BUTTON_CLASS}
+                data-testid="remove-exclusion"
+              >
+                Remove
+              </button>
+            ) : (
+              <SecondaryButton type="submit">Remove</SecondaryButton>
+            )}
+          </CriterionActionForm>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
 function CriteriaReview({
   productId,
   personaId,
@@ -140,6 +217,8 @@ function CriteriaReview({
   const scored = criteria.filter(
     (c) => c.criterionType.trim().toLowerCase() !== "needs_review",
   );
+  const inclusions = scored.filter((c) => !c.isDisqualifier);
+  const exclusions = scored.filter((c) => c.isDisqualifier);
 
   return (
     <div className="mt-4 space-y-3">
@@ -180,67 +259,44 @@ function CriteriaReview({
         <p className="mt-3 text-sm text-slate-500">
           No scored criteria yet — classify items under Needs review.
         </p>
-      ) : null}
-      <ul className="mt-3 space-y-3 text-sm text-slate-700">
-        {scored.map((c, i) => {
-          const role = c.isDisqualifier
-            ? "disqualifier"
-            : c.isRequired
-              ? "required"
-              : "supporting";
-          return (
-            <li
-              key={c.id ?? `${c.name}-${i}`}
-              className="rounded border border-slate-200 bg-white p-2"
-            >
-              <div>
-                {c.isDisqualifier ? "✗" : c.isRequired ? "✓" : "☆"}{" "}
-                {formatCriterionDisplay({
-                  ...c,
-                  dataType: c.dataType as never,
-                  operator: c.operator as never,
-                  importance: c.importance as never,
-                })}
-                {c.manuallyEdited ? (
-                  <span className="ml-2 text-xs text-amber-700">(manual)</span>
-                ) : null}
-              </div>
-              {c.id ? (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <CriterionActionForm
-                    action={updatePersonaCriterionAction}
-                    className="flex flex-wrap items-center gap-2"
-                  >
-                    <input type="hidden" name="criterionId" value={c.id} />
-                    <input type="hidden" name="personaId" value={personaId} />
-                    <input type="hidden" name="productId" value={productId} />
-                    <input type="hidden" name="name" value={c.name} />
-                    <label className="text-xs text-slate-600">
-                      Role
-                      <select
-                        name="role"
-                        defaultValue={role}
-                        className="ml-1 rounded border border-slate-300 px-1 py-0.5 text-xs"
-                      >
-                        <option value="required">Required / strong</option>
-                        <option value="supporting">Supporting</option>
-                        <option value="disqualifier">Disqualifier</option>
-                      </select>
-                    </label>
-                    <SecondaryButton type="submit">Update</SecondaryButton>
-                  </CriterionActionForm>
-                  <CriterionActionForm action={deletePersonaCriterionAction}>
-                    <input type="hidden" name="criterionId" value={c.id} />
-                    <input type="hidden" name="personaId" value={personaId} />
-                    <input type="hidden" name="productId" value={productId} />
-                    <SecondaryButton type="submit">Remove</SecondaryButton>
-                  </CriterionActionForm>
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+      ) : (
+        <div className="mt-3 space-y-4">
+          <section data-testid="persona-criteria-inclusions">
+            <h6 className="text-sm font-semibold text-slate-900">Inclusions</h6>
+            {inclusions.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">None.</p>
+            ) : (
+              <ul className="mt-2 space-y-3 text-sm text-slate-700">
+                {inclusions.map((criterion, index) => (
+                  <ScoredCriterionRow
+                    key={criterion.id ?? `${criterion.name}-${index}`}
+                    productId={productId}
+                    personaId={personaId}
+                    criterion={criterion}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+          <section data-testid="persona-criteria-exclusions">
+            <h6 className="text-sm font-semibold text-slate-900">Exclusions</h6>
+            {exclusions.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">None.</p>
+            ) : (
+              <ul className="mt-2 space-y-3 text-sm text-slate-700">
+                {exclusions.map((criterion, index) => (
+                  <ScoredCriterionRow
+                    key={criterion.id ?? `${criterion.name}-${index}`}
+                    productId={productId}
+                    personaId={personaId}
+                    criterion={criterion}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
       </div>
     </div>
   );
@@ -621,6 +677,13 @@ export function PersonaForm({
           data-print-hide
           data-testid="persona-form"
         >
+          <p
+            data-testid="persona-edit-accuracy-notice"
+            className="mb-3 rounded-md border border-yellow-400 bg-yellow-200 px-3 py-2 text-sm font-bold text-black"
+          >
+            READ CAREFULLY AND APPROVE ALL INCLUSIONS AND EXCLUSIONS FOR
+            MAXIMUM ACCURACY
+          </p>
           <p className="mb-3 text-xs text-slate-500">
             Workflow: Persona definition → Save → AI Interpretation → Review
             criteria. AI is optional for saving.

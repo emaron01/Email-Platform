@@ -90,6 +90,43 @@ describe("Persona field semantics", () => {
     expect(src).not.toMatch(/label=\"Desired Outcomes\"/);
   });
 
+  it("groups inclusions and exclusions and warns at the top of edit", async () => {
+    const src = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/components/PersonaForm.tsx", "utf8"),
+    );
+    const inclusionsAt = src.indexOf('data-testid="persona-criteria-inclusions"');
+    const exclusionsAt = src.indexOf('data-testid="persona-criteria-exclusions"');
+    expect(inclusionsAt).toBeGreaterThan(-1);
+    expect(exclusionsAt).toBeGreaterThan(inclusionsAt);
+    expect(src.slice(inclusionsAt, exclusionsAt)).toContain(">Inclusions<");
+    expect(src.slice(exclusionsAt, exclusionsAt + 800)).toContain(">Exclusions<");
+    expect(src).toContain(
+      "const inclusions = scored.filter((c) => !c.isDisqualifier)",
+    );
+    expect(src).toContain(
+      "const exclusions = scored.filter((c) => c.isDisqualifier)",
+    );
+    expect(src).toMatch(
+      /criterion\.isDisqualifier \? \([\s\S]{0,300}data-testid="remove-exclusion"/,
+    );
+    expect(src).toMatch(
+      /EXCLUSION_REMOVE_BUTTON_CLASS =\s*"[\s\S]*bg-red-700[\s\S]*text-white/,
+    );
+    const editView = src.slice(src.lastIndexOf('data-testid="persona-form"'));
+    const noticeAt = editView.indexOf('data-testid="persona-edit-accuracy-notice"');
+    const formAt = editView.indexOf("<form");
+    expect(noticeAt).toBeGreaterThan(-1);
+    expect(noticeAt).toBeLessThan(formAt);
+    const notice = editView.slice(noticeAt, formAt);
+    expect(notice).toContain("bg-yellow-200");
+    expect(notice).toContain("font-bold");
+    expect(notice).toContain("text-black");
+    expect(notice).toContain(
+      "READ CAREFULLY AND APPROVE ALL INCLUSIONS AND EXCLUSIONS FOR",
+    );
+    expect(notice).toContain("MAXIMUM ACCURACY");
+  });
+
   it("filters generic role labels from literal title evidence", () => {
     expect(
       filterLiteralTitleEvidence([
