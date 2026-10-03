@@ -47,8 +47,8 @@ const TITLE_CATEGORY_MATCHERS: Array<{
   criterion: RegExp;
 }> = [
   {
-    title: /\b(account executive|sales representative|sales rep)\b/,
-    criterion: /\b(account executive|individual sell|sales representative)\b/,
+    title: /\b(account executives?|sales representatives?|sales reps?)\b/,
+    criterion: /\b(account executives?|individual sell|sales representatives?)\b/,
   },
   {
     title: /\b(sdr|sales development representative)\b/,
@@ -88,14 +88,6 @@ function titleConfirmsExclusion(
   if (!normalizedTitle) return false;
   const text = criterionText(criterion);
   if (text.includes(normalizedTitle)) return true;
-
-  const roleCore = normalizedTitle
-    .replace(
-      /^(chief|senior|sr|executive|evp|svp|vp|vice president|head of|director of)\s+/,
-      "",
-    )
-    .trim();
-  if (roleCore.length >= 5 && text.includes(roleCore)) return true;
 
   return TITLE_CATEGORY_MATCHERS.some(
     (matcher) =>

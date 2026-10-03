@@ -26,7 +26,6 @@ import type { SuggestedBuyerRole } from "@/lib/product-research/contract";
 import { createCorrelationId } from "@/lib/product-research/url";
 import type { EvidenceExcerpt } from "@/lib/product-research/prompt";
 import { selectProductEvidenceForPersona } from "@/lib/persona-research/compact";
-import { runProgressivePersonaWebSearch } from "@/lib/persona-research/progressive-search";
 import { synthesizePersonaFromEvidence } from "@/lib/persona-research/synthesize";
 import { getResearchPolicy } from "@/lib/usage/policy";
 import { recordUsageEvent } from "@/lib/usage/events";
@@ -174,11 +173,6 @@ export async function startApprovedPersonaResynthesis(input: {
   const correlationId = createCorrelationId();
 
   let productEvidence: EvidenceExcerpt[] = [];
-  let personaEvidence: Awaited<
-    ReturnType<typeof runProgressivePersonaWebSearch>
-  >["excerpts"] = [];
-
-  type PersonaEvidenceExcerpt = (typeof personaEvidence)[number];
 
   if (approvedRun?.personaEvidenceBundleId) {
     const personaBundle = await prisma.personaEvidenceBundle.findFirst({
@@ -189,10 +183,8 @@ export async function startApprovedPersonaResynthesis(input: {
     });
     const raw = personaBundle?.normalizedEvidenceJson as {
       productEvidence?: EvidenceExcerpt[];
-      personaEvidence?: PersonaEvidenceExcerpt[];
     } | null;
     productEvidence = raw?.productEvidence ?? [];
-    personaEvidence = raw?.personaEvidence ?? [];
   }
 
   if (productEvidence.length === 0) {
@@ -239,7 +231,6 @@ export async function startApprovedPersonaResynthesis(input: {
       notes: null,
     },
     productEvidence,
-    personaEvidence,
     excludePersonaIdFromPeers: persona.id,
   });
 

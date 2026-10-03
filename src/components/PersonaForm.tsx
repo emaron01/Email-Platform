@@ -27,7 +27,6 @@ import { Field, SECONDARY_BUTTON_CLASS, SecondaryButton, SubmitButton } from "@/
 import { formatCriterionDisplay } from "@/lib/criteria/types";
 import type { PersonaActionResult } from "@/lib/persona/save";
 import {
-  describePersonaSourceLead,
   formatPersonaBriefingMeta,
   groupPersonaCriteriaForBriefing,
   readProvenanceFromProfile,
@@ -476,13 +475,11 @@ export function PersonaForm({
   persona,
   criteria,
   sources = [],
-  includesProductEvidence = false,
 }: {
   productId: string;
   persona?: Persona;
   criteria: CriterionRow[];
   sources?: PersonaReviewSource[];
-  includesProductEvidence?: boolean;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -533,16 +530,6 @@ export function PersonaForm({
     () => groupPersonaCriteriaForBriefing(criteria),
     [criteria],
   );
-  const sourceLead = useMemo(
-    () =>
-      describePersonaSourceLead({
-        personaSources: sources,
-        includesProductEvidence,
-        manualOnly:
-          !persona?.approvedPersonaSetupRunId && sources.length === 0,
-      }),
-    [sources, includesProductEvidence, persona?.approvedPersonaSetupRunId],
-  );
   const metaLine = briefing ? formatPersonaBriefingMeta(briefing) : "";
 
   useEffect(() => {
@@ -591,8 +578,6 @@ export function PersonaForm({
       {!editing && briefing ? (
         <PersonaBriefingDocument
           briefing={briefing}
-          sourceLead={sourceLead.sentence}
-          sourceNames={sourceLead.names}
           metaLine={metaLine}
           evidenceRefs={evidenceRefs}
           provenanceAssessments={provenanceAssessments}

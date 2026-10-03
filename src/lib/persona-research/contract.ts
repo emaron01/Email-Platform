@@ -29,7 +29,7 @@ const evidenceRefSchema = z.object({
   sourceIds: z.array(z.string()).optional().default([]),
   note: optionalString,
   provenanceClasses: z
-    .array(z.enum(["CUSTOMER_EVIDENCE", "WEB_EVIDENCE", "MODEL_INFERENCE"]))
+    .array(z.enum(["CUSTOMER_EVIDENCE", "MODEL_INFERENCE"]))
     .optional()
     .default([]),
 });
@@ -96,7 +96,7 @@ export const personaAiDraftSchema = z.object({
       z.object({
         claim: z.string(),
         provenanceClasses: z.array(
-          z.enum(["CUSTOMER_EVIDENCE", "WEB_EVIDENCE", "MODEL_INFERENCE"]),
+          z.enum(["CUSTOMER_EVIDENCE", "MODEL_INFERENCE"]),
         ),
         note: optionalString,
       }),
@@ -112,6 +112,35 @@ export const personaAiResponseSchema = z.object({
 export type PersonaAiDraft = z.infer<typeof personaAiDraftSchema>;
 export type PersonaAiResponse = z.infer<typeof personaAiResponseSchema>;
 
+function dropWebEvidenceClasses(
+  value: unknown,
+  coercedFields: Set<string>,
+  path: string,
+): unknown {
+  if (!Array.isArray(value)) return value;
+  const next = value.filter((item) => item !== "WEB_EVIDENCE");
+  if (next.length !== value.length) coercedFields.add(path);
+  return next;
+}
+
+function dropWebEvidenceFromRows(
+  value: unknown,
+  coercedFields: Set<string>,
+  path: string,
+): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map((item, index) => {
+    if (!item || typeof item !== "object") return item;
+    const row = { ...(item as Record<string, unknown>) };
+    row.provenanceClasses = dropWebEvidenceClasses(
+      row.provenanceClasses,
+      coercedFields,
+      `${path}[${index}].provenanceClasses`,
+    );
+    return row;
+  });
+}
+
 function normalizePersonaDraft(value: unknown, coercedFields: Set<string>): unknown {
   if (!value || typeof value !== "object") return value ?? {};
   const draft = { ...(value as Record<string, unknown>) };
@@ -120,11 +149,20 @@ function normalizePersonaDraft(value: unknown, coercedFields: Set<string>): unkn
     coercedFields,
     "personaDraft.confidence",
   );
-  draft.evidenceRefs = normalizeEvidenceRefs(
-    draft.evidenceRefs,
+  draft.evidenceRefs = dropWebEvidenceFromRows(
+    normalizeEvidenceRefs(
+      draft.evidenceRefs,
+      coercedFields,
+      "personaDraft.evidenceRefs",
+      { provenanceClasses: true },
+    ),
     coercedFields,
     "personaDraft.evidenceRefs",
-    { provenanceClasses: true },
+  );
+  draft.provenanceAssessments = dropWebEvidenceFromRows(
+    draft.provenanceAssessments,
+    coercedFields,
+    "personaDraft.provenanceAssessments",
   );
   return draft;
 }
@@ -152,4 +190,4 @@ export function parsePersonaAiResponse(
   };
 }
 
-export const PERSONA_SYNTHESIS_PROMPT_VERSION = "8";
+export const PERSONA_SYNTHESIS_PROMPT_VERSION = "9";

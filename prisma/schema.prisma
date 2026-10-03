@@ -1041,9 +1041,6 @@ model ResearchPolicy {
   productSourceResearchFreshnessDays Int      @default(120)
   maxSearchQueriesPerProduct         Int      @default(3)
   maxSourcesPerProduct               Int      @default(12)
-  maxSearchQueriesPerPersona         Int      @default(2)
-  maxSourcesPerPersona               Int      @default(8)
-  personaResearchFreshnessDays       Int      @default(90)
   /// Max criteria projected from Persona AI signal arrays before review cap.
   maxProjectedPersonaCriteria        Int      @default(15)
   /// Max TARGETED_SEARCH ICP criteria per ICP (enforce at save — never silently drop).

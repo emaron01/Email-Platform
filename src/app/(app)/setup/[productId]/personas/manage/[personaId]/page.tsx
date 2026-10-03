@@ -64,18 +64,6 @@ export default async function ManagePersonaPage({ params }: PageProps) {
     orderBy: { createdAt: "asc" },
   });
 
-  let includesProductEvidence = false;
-  if (persona.approvedPersonaSetupRunId) {
-    const run = await prisma.personaSetupRun.findFirst({
-      where: {
-        id: persona.approvedPersonaSetupRunId,
-        organizationId: organization.id,
-      },
-      select: { productEvidenceBundleId: true },
-    });
-    includesProductEvidence = Boolean(run?.productEvidenceBundleId);
-  }
-
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader
@@ -95,7 +83,6 @@ export default async function ManagePersonaPage({ params }: PageProps) {
         persona={persona}
         criteria={criteria}
         sources={sources}
-        includesProductEvidence={includesProductEvidence}
       />
     </div>
   );

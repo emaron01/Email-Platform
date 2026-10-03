@@ -78,8 +78,6 @@ function CriteriaGroup({
 
 export function PersonaBriefingDocument({
   briefing,
-  sourceLead,
-  sourceNames,
   metaLine,
   evidenceRefs,
   provenanceAssessments,
@@ -87,8 +85,6 @@ export function PersonaBriefingDocument({
   criteriaGroups,
 }: {
   briefing: PersonaBriefingView;
-  sourceLead: string;
-  sourceNames: string[];
   metaLine: string;
   evidenceRefs: PersonaEvidenceRef[];
   provenanceAssessments: PersonaProvenanceAssessment[];
@@ -102,15 +98,6 @@ export function PersonaBriefingDocument({
 
   return (
     <article className="space-y-8">
-      <div>
-        <p className="text-base text-slate-800" data-testid="persona-source-lead">
-          {sourceLead}
-        </p>
-        {sourceNames.length > 0 ? (
-          <p className="mt-1 text-sm text-slate-500">{sourceNames.join(" · ")}</p>
-        ) : null}
-      </div>
-
       <header className="space-y-1 border-b border-slate-200 pb-4">
         <h2 className="text-xl font-semibold text-slate-900">{briefing.name}</h2>
         {metaLine ? (
@@ -382,38 +369,6 @@ export function PersonaBriefingDocument({
           />
         </div>
       </ResearchReadSection>
-
-      {sources.length > 0 ? (
-        <section className="research-sources-appendix mt-8 border-t border-slate-200 pt-6">
-          <h3 className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
-            Sources
-          </h3>
-          <ul className="mt-3 space-y-3 text-sm text-slate-700">
-            {sources.map((source) => {
-              const number = sourceIndex.get(source.id) ?? 0;
-              return (
-              <li key={source.id}>
-                <p className="font-medium text-slate-900">
-                  {number > 0 ? (
-                    <span className="text-slate-500">[{number}] </span>
-                  ) : null}
-                  {source.displayName}
-                </p>
-                <p className="text-xs text-slate-500">{source.sourceType}</p>
-                {source.originalUrl ? (
-                  <p className="break-all text-xs text-slate-600">
-                    {source.originalUrl}
-                  </p>
-                ) : null}
-                {source.filename ? (
-                  <p className="text-xs text-slate-600">{source.filename}</p>
-                ) : null}
-              </li>
-              );
-            })}
-          </ul>
-        </section>
-      ) : null}
     </article>
   );
 }

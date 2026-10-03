@@ -103,62 +103,6 @@ export function provenanceLabelForClasses(
   return `${first} +${classes.length - 1}`;
 }
 
-export function describePersonaSourceLead(input: {
-  personaSources: PersonaReviewSource[];
-  includesProductEvidence?: boolean;
-  manualOnly?: boolean;
-}): { sentence: string; names: string[] } {
-  if (input.manualOnly && input.personaSources.length === 0) {
-    return {
-      sentence:
-        "This persona was entered manually — no synthesis sources are recorded.",
-      names: [],
-    };
-  }
-
-  const names = input.personaSources.map((source) => {
-    if (source.filename?.trim()) return source.filename.trim();
-    if (source.displayName?.trim()) return source.displayName.trim();
-    return source.sourceType;
-  });
-
-  const uploadCount = input.personaSources.filter(
-    (s) => s.sourceType === "UPLOADED_DOCUMENT",
-  ).length;
-  const urlCount = input.personaSources.filter((s) => s.sourceType === "URL").length;
-  const otherCount = input.personaSources.length - uploadCount - urlCount;
-
-  const parts: string[] = [];
-  if (input.includesProductEvidence) {
-    parts.push("your approved product profile");
-  }
-  if (uploadCount > 0) {
-    parts.push(
-      `${uploadCount} uploaded document${uploadCount === 1 ? "" : "s"}`,
-    );
-  }
-  if (urlCount > 0) {
-    parts.push(`${urlCount} web source${urlCount === 1 ? "" : "s"}`);
-  }
-  if (otherCount > 0) {
-    parts.push(`${otherCount} other source${otherCount === 1 ? "" : "s"}`);
-  }
-
-  if (parts.length === 0) {
-    return {
-      sentence: input.includesProductEvidence
-        ? "Built from your approved product profile."
-        : "No persona research sources are recorded yet.",
-      names,
-    };
-  }
-
-  return {
-    sentence: `Built from ${parts.join(", ").replace(/, ([^,]*)$/, ", and $1")}.`,
-    names,
-  };
-}
-
 export function provenanceForClaim(input: {
   claim: string;
   evidenceRefs: PersonaEvidenceRef[];

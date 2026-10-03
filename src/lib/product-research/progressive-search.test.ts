@@ -1,11 +1,11 @@
 /**
  * Product URL safety — progressive product web search was removed.
- * Company/persona research keep their own progressive search paths.
+ * Company research keeps its own web search. Persona synthesis does not search.
  */
 import { describe, expect, it } from "vitest";
 import { assertSafeExternalHttpUrl } from "@/lib/research/url-safety";
 import { DEFAULT_RESEARCH_POLICY_VALUES } from "@/lib/usage/defaults";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 describe("URL safety (SSRF)", () => {
   it("allows public https URLs", () => {
@@ -47,12 +47,22 @@ describe("product path does not web-search for customer products", () => {
     expect(workflow).not.toContain("runProgressiveProductWebSearch");
   });
 
-  it("persona progressive search remains wired to shared discovery", () => {
-    const persona = readFileSync(
-      "src/lib/persona-research/progressive-search.ts",
-      "utf8",
-    );
-    expect(persona).toContain("discoverSourcesViaWebSearch");
-    expect(persona).toContain("maxSearchQueries");
+  it("persona synthesis does not search or fetch pages", () => {
+    expect(
+      existsSync("src/lib/persona-research/progressive-search.ts"),
+    ).toBe(false);
+    expect(existsSync("src/lib/persona-research/sufficiency.ts")).toBe(false);
+    expect(existsSync("src/lib/research/web-search-retriever.ts")).toBe(false);
+    const synth = readFileSync("src/lib/persona-research/synthesize.ts", "utf8");
+    const prompt = readFileSync("src/lib/persona-research/prompt.ts", "utf8");
+    expect(synth).not.toContain("discoverSourcesViaWebSearch");
+    expect(synth).not.toContain("fetchProductPageUrl");
+    expect(synth).not.toContain("PERSONA_WEB_SEARCH");
+    expect(prompt).not.toContain("personaWebEvidence");
+    expect(prompt).not.toContain("WEB_EVIDENCE");
+    const company = readFileSync("src/lib/research/provider.ts", "utf8");
+    expect(company).toContain("webSearchEnabled: true");
+    const acquire = readFileSync("src/lib/product-research/acquire.ts", "utf8");
+    expect(acquire).toContain("fetchProductPageUrl");
   });
 });

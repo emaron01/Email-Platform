@@ -127,7 +127,6 @@ async function synthesizePersona(input: {
     buyerRole: input.buyerRole,
     userContext: null,
     productEvidence: input.productEvidence,
-    personaEvidence: [],
     icpContext: null,
     existingApprovedPersonas: input.existingApprovedPersonas,
   });

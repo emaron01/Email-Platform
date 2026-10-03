@@ -16,7 +16,6 @@ import { AiValidationError } from "@/lib/ai/errors";
 import { prisma } from "@/lib/prisma";
 import { TenantError } from "@/lib/tenant/errors";
 import { recordUsageEvent } from "@/lib/usage/events";
-import { getResearchPolicy } from "@/lib/usage/policy";
 import { createCorrelationId } from "@/lib/product-research/url";
 import type { SuggestedBuyerRole } from "@/lib/product-research/contract";
 import type { EvidenceExcerpt } from "@/lib/product-research/prompt";
@@ -27,7 +26,6 @@ import {
   type PersonaAiDraft,
 } from "@/lib/persona-research/contract";
 import { buildPersonaSynthesisMessages } from "@/lib/persona-research/prompt";
-import { runProgressivePersonaWebSearch } from "@/lib/persona-research/progressive-search";
 import { parsePersonaListField } from "@/lib/persona/persona-differentiation";
 import {
   classifyProductSynthesisError,
@@ -108,7 +106,6 @@ export async function researchAndSynthesizePersona(
   }
 
   const correlationId = createCorrelationId();
-  const policy = await getResearchPolicy(input.organizationId);
 
   const run = await prisma.personaSetupRun.create({
     data: {
@@ -116,7 +113,7 @@ export async function researchAndSynthesizePersona(
       productId: input.productId,
       productEvidenceBundleId: productBundle.id,
       correlationId,
-      status: "RESEARCHING",
+      status: "SYNTHESIZING",
       selectedBuyerRoleJson:
         input.buyerRole as unknown as Prisma.InputJsonValue,
       suggestionKey: input.buyerRole.suggestionKey,
@@ -134,29 +131,6 @@ export async function researchAndSynthesizePersona(
     roleName: input.buyerRole.name,
     excerpts: allProductExcerpts,
   });
-  const productEvidenceText = relevantProduct.map((e) => e.text).join("\n");
-  const personaMaterialText = [
-    input.userContext?.notes,
-    ...(input.userContext?.responsibilities ?? []),
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const progressive = await runProgressivePersonaWebSearch({
-    organizationId: input.organizationId,
-    productId: input.productId,
-    userId: input.userId,
-    correlationId,
-    personaSetupRunId: run.id,
-    roleName: input.buyerRole.name,
-    productName: product.name,
-    industryHint: null,
-    productEvidenceText,
-    personaMaterialText,
-    maxSearchQueries: policy.maxSearchQueriesPerPersona,
-    maxSources: policy.maxSourcesPerPersona,
-    freshnessDays: policy.personaResearchFreshnessDays,
-  });
 
   const personaBundle = await prisma.personaEvidenceBundle.create({
     data: {
@@ -168,12 +142,11 @@ export async function researchAndSynthesizePersona(
       status: "SYNTHESIZING",
       createdByUserId: input.userId,
       productEvidenceBundleId: productBundle.id,
-      webSearchQueriesUsed: progressive.webSearchQueriesUsed,
-      sourceIdsJson: progressive.sourceIds as unknown as Prisma.InputJsonValue,
+      webSearchQueriesUsed: 0,
+      sourceIdsJson: [] as unknown as Prisma.InputJsonValue,
       normalizedEvidenceJson: {
         productEvidence: relevantProduct,
-        personaEvidence: progressive.excerpts,
-        stoppedReason: progressive.stoppedReason,
+        personaEvidence: [],
       } as unknown as Prisma.InputJsonValue,
     },
   });
@@ -196,7 +169,6 @@ export async function researchAndSynthesizePersona(
     buyerRole: input.buyerRole,
     userContext: input.userContext ?? null,
     productEvidence: relevantProduct,
-    personaEvidence: progressive.excerpts,
   });
 }
 
@@ -218,9 +190,6 @@ export async function synthesizePersonaFromEvidence(input: {
   buyerRole: SuggestedBuyerRole;
   userContext: BuildPersonaInput["userContext"];
   productEvidence: EvidenceExcerpt[];
-  personaEvidence: Awaited<
-    ReturnType<typeof runProgressivePersonaWebSearch>
-  >["excerpts"];
   /** When re-synthesizing an approved persona, omit it from peer differentiation context. */
   excludePersonaIdFromPeers?: string;
 }): Promise<{
@@ -376,7 +345,6 @@ export async function synthesizePersonaFromEvidence(input: {
         },
         userContext: input.userContext ?? null,
         productEvidence: input.productEvidence,
-        personaEvidence: input.personaEvidence,
         icpContext: approvedIcp
           ? {
               name: approvedIcp.name,
@@ -466,9 +434,6 @@ export async function resynthesizePersonaFromRun(input: {
   }
 
   let productEvidence: EvidenceExcerpt[] = [];
-  let personaEvidence: Awaited<
-    ReturnType<typeof runProgressivePersonaWebSearch>
-  >["excerpts"] = [];
 
   if (prior.personaEvidenceBundleId) {
     const bundle = await prisma.personaEvidenceBundle.findFirst({
@@ -479,10 +444,8 @@ export async function resynthesizePersonaFromRun(input: {
     });
     const raw = bundle?.normalizedEvidenceJson as {
       productEvidence?: EvidenceExcerpt[];
-      personaEvidence?: typeof personaEvidence;
     } | null;
     productEvidence = raw?.productEvidence ?? [];
-    personaEvidence = raw?.personaEvidence ?? [];
   }
 
   if (productEvidence.length === 0) {
@@ -527,7 +490,6 @@ export async function resynthesizePersonaFromRun(input: {
     userContext:
       (prior.userContextJson as BuildPersonaInput["userContext"]) ?? null,
     productEvidence,
-    personaEvidence,
     excludePersonaIdFromPeers: prior.personaId ?? undefined,
   });
 }

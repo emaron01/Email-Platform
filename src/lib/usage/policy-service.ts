@@ -37,9 +37,6 @@ export type ResearchPolicyResolved = {
   contactResearchFreshnessDays: number;
   productSourceResearchFreshnessDays: number;
   maxSourcesPerProduct: number;
-  maxSearchQueriesPerPersona: number;
-  maxSourcesPerPersona: number;
-  personaResearchFreshnessDays: number;
   maxProjectedPersonaCriteria: number;
   maxTargetedSearchCriteriaPerIcp: number;
 };
@@ -65,12 +62,6 @@ async function ensureResearchPolicyOnly(organizationId: string): Promise<void> {
         DEFAULT_RESEARCH_POLICY_VALUES.productSourceResearchFreshnessDays,
       maxSourcesPerProduct:
         DEFAULT_RESEARCH_POLICY_VALUES.maxSourcesPerProduct,
-      maxSearchQueriesPerPersona:
-        DEFAULT_RESEARCH_POLICY_VALUES.maxSearchQueriesPerPersona,
-      maxSourcesPerPersona:
-        DEFAULT_RESEARCH_POLICY_VALUES.maxSourcesPerPersona,
-      personaResearchFreshnessDays:
-        DEFAULT_RESEARCH_POLICY_VALUES.personaResearchFreshnessDays,
       maxProjectedPersonaCriteria:
         DEFAULT_RESEARCH_POLICY_VALUES.maxProjectedPersonaCriteria,
       maxTargetedSearchCriteriaPerIcp:
@@ -184,9 +175,6 @@ export async function getResearchPolicy(
     productSourceResearchFreshnessDays:
       policy.productSourceResearchFreshnessDays,
     maxSourcesPerProduct: policy.maxSourcesPerProduct,
-    maxSearchQueriesPerPersona: policy.maxSearchQueriesPerPersona,
-    maxSourcesPerPersona: policy.maxSourcesPerPersona,
-    personaResearchFreshnessDays: policy.personaResearchFreshnessDays,
     maxProjectedPersonaCriteria: policy.maxProjectedPersonaCriteria,
     maxTargetedSearchCriteriaPerIcp: policy.maxTargetedSearchCriteriaPerIcp,
   };

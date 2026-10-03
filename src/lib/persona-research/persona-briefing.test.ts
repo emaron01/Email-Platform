@@ -1,6 +1,8 @@
+import { createElement } from "react";
 import { describe, expect, it } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PersonaBriefingDocument } from "@/components/PersonaBriefingDocument";
 import {
-  describePersonaSourceLead,
   formatPersonaBriefingMeta,
   groupPersonaCriteriaForBriefing,
   provenanceForClaim,
@@ -8,27 +10,57 @@ import {
 } from "@/lib/persona-research/persona-briefing";
 
 describe("persona briefing helpers", () => {
-  it("describes product evidence and persona sources", () => {
-    const lead = describePersonaSourceLead({
-      includesProductEvidence: true,
-      personaSources: [
-        {
-          id: "s1",
-          sourceType: "UPLOADED_DOCUMENT",
-          displayName: "Win notes",
-          filename: "win-notes.pdf",
+  it("renders an existing persona without the web sources line or source list", () => {
+    const html = renderToStaticMarkup(
+      createElement(PersonaBriefingDocument, {
+        briefing: {
+          name: "VP of Sales",
+          likelyTitles: ["VP Sales"],
+          department: "Sales",
+          seniority: "VP",
+          whoTheyAre: "Owns the weekly forecast.",
+          ownershipAreas: ["Forecast"],
+          responsibilities: ["Inspect the commit"],
+          organizationalPressures: [],
+          painPoints: ["Forecast commits rely on optimism"],
+          kpisAndAccountabilities: [],
+          desiredOutcomes: [],
+          messagingNotes: [],
+          terminology: [],
+          personaSpecificPositioning: [],
+          proofPointsToEmphasize: [],
+          buyingRole: null,
+          likelyObjections: [],
         },
-        {
-          id: "s2",
-          sourceType: "URL",
-          displayName: "LinkedIn profile",
-          originalUrl: "https://example.com",
-        },
-      ],
-    });
-    expect(lead.sentence).toMatch(/approved product profile/i);
-    expect(lead.sentence).toMatch(/uploaded document/i);
-    expect(lead.names).toEqual(["win-notes.pdf", "LinkedIn profile"]);
+        metaLine: "VP Sales · Sales · VP",
+        evidenceRefs: [
+          {
+            claim: "Owns the weekly forecast.",
+            sourceIds: ["s1"],
+            provenanceClasses: ["WEB_EVIDENCE"],
+          },
+        ],
+        provenanceAssessments: [],
+        sources: [
+          {
+            id: "s1",
+            sourceType: "URL",
+            displayName: "Salesforce Jobs | Salesforce",
+            originalUrl:
+              "https://www.salesforce.com/company/careers/jobs/jr285704/regional-vice-president/",
+            provenanceClass: "WEB_EVIDENCE",
+          },
+        ],
+        criteriaGroups: { qualifies: [], excludes: [], needsReview: [] },
+      }),
+    );
+    expect(html).toContain("VP of Sales");
+    expect(html).toContain("Forecast commits rely on optimism");
+    expect(html).toContain("Web research");
+    expect(html).not.toContain("persona-source-lead");
+    expect(html).not.toContain("web source");
+    expect(html).not.toContain("research-sources-appendix");
+    expect(html).not.toContain("Salesforce Jobs");
   });
 
   it("resolves saved persona fields with profile json", () => {

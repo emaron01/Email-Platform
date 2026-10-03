@@ -12,7 +12,6 @@ import {
 import { personaAiResponseSchema } from "@/lib/persona-research/contract";
 import { productAiResponseSchema } from "@/lib/product-research/contract";
 import { companyResearchAiResultSchema } from "@/lib/research/assessment";
-import { productSourceDiscoverySchema } from "@/lib/research/source-discovery-contract";
 import { aiScoringAssessmentSchema } from "@/lib/scoring/assessment";
 import { titleSuggestionAiResultSchema } from "@/lib/scoring/title-suggestion-contract";
 
@@ -32,7 +31,6 @@ export type StructuredOutputSchemaEntry = {
     | "EMAIL_COMPANY_FACT_SELECTION"
     | "CAMPAIGN_OFFER_VALIDATED"
     | "EMAIL_REPLY_CLASSIFIED"
-    | "PERSONA_WEB_SEARCH"
     | "TITLE_SUGGESTION")[];
 };
 
@@ -81,11 +79,6 @@ export const STRUCTURED_OUTPUT_SCHEMAS = {
     schemaName: "CompanyResearchAiResult",
     schema: companyResearchAiResultSchema,
     usageOperations: ["RESEARCH_SYNTHESIS"],
-  },
-  productSourceDiscovery: {
-    schemaName: "product_source_discovery",
-    schema: productSourceDiscoverySchema,
-    usageOperations: ["PRODUCT_WEB_SEARCH", "PERSONA_WEB_SEARCH"],
   },
   emailDraftGeneration: {
     schemaName: "email_draft_generation",

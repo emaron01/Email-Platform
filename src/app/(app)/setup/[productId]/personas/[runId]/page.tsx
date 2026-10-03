@@ -89,7 +89,6 @@ export default async function PersonaSetupRunPage({ params }: PageProps) {
           errorSafe={run.errorSafe}
           maxProjectedPersonaCriteria={researchPolicy.maxProjectedPersonaCriteria}
           sources={sources}
-          includesProductEvidence={Boolean(run.productEvidenceBundleId)}
         />
       </section>
     </div>

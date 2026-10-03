@@ -14,7 +14,6 @@ import { SECONDARY_BUTTON_CLASS, SecondaryButton, SubmitButton } from "@/compone
 import { cn } from "@/lib/utils";
 import type { PersonaAiDraft } from "@/lib/persona-research/contract";
 import {
-  describePersonaSourceLead,
   formatPersonaBriefingMeta,
   groupPersonaCriteriaForBriefing,
   readProvenanceFromProfile,
@@ -324,7 +323,6 @@ export function PersonaDraftReview({
   errorSafe,
   maxProjectedPersonaCriteria = 15,
   sources = [],
-  includesProductEvidence = false,
 }: {
   productId: string;
   personaSetupRunId: string;
@@ -333,7 +331,6 @@ export function PersonaDraftReview({
   errorSafe?: string | null;
   maxProjectedPersonaCriteria?: number;
   sources?: PersonaReviewSource[];
-  includesProductEvidence?: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -430,14 +427,6 @@ export function PersonaDraftReview({
       ),
     [criteriaJson],
   );
-  const sourceLead = useMemo(
-    () =>
-      describePersonaSourceLead({
-        personaSources: sources,
-        includesProductEvidence,
-      }),
-    [sources, includesProductEvidence],
-  );
   const metaLine = briefing ? formatPersonaBriefingMeta(briefing) : "";
 
   if (failed || !draft) {
@@ -518,8 +507,6 @@ export function PersonaDraftReview({
         {!editing && briefing ? (
           <PersonaBriefingDocument
             briefing={briefing}
-            sourceLead={sourceLead.sentence}
-            sourceNames={sourceLead.names}
             metaLine={metaLine}
             evidenceRefs={evidenceRefs}
             provenanceAssessments={provenanceAssessments}

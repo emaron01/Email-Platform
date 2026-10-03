@@ -1,5 +1,5 @@
 /**
- * Staged Product → Persona workflow contracts & sufficiency.
+ * Staged Product → Persona workflow contracts.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -8,12 +8,11 @@ import {
 } from "@/lib/product-research/contract";
 import { transformProductAiResponse } from "@/lib/product-research/transform";
 import { buildProductSynthesisMessages } from "@/lib/product-research/prompt";
-import {
-  evaluatePersonaEvidenceSufficiency,
-  buildPersonaSearchFocus,
-} from "@/lib/persona-research/sufficiency";
 import { selectProductEvidenceForPersona } from "@/lib/persona-research/compact";
-import { PERSONA_SYNTHESIS_PROMPT_VERSION } from "@/lib/persona-research/contract";
+import {
+  PERSONA_SYNTHESIS_PROMPT_VERSION,
+  parsePersonaAiResponse,
+} from "@/lib/persona-research/contract";
 import { buildPersonaSynthesisMessages } from "@/lib/persona-research/prompt";
 import { DEFAULT_RESEARCH_POLICY_VALUES } from "@/lib/usage/defaults";
 
@@ -75,8 +74,14 @@ describe("persona synthesis differentiation prompt", () => {
         evidenceRefs: [],
       },
       userContext: null,
-      productEvidence: [],
-      personaEvidence: [],
+      productEvidence: [
+        {
+          sourceId: "product-1",
+          sourceType: "URL",
+          displayName: "Approved product profile",
+          text: "Forecast software that inspects deal evidence before commit.",
+        },
+      ],
       icpContext: null,
       existingApprovedPersonas: [
         {
@@ -92,51 +97,111 @@ describe("persona synthesis differentiation prompt", () => {
     expect(messages[0]!.content).toContain("manufactured contrast");
     expect(messages[1]!.content).toContain("Role A");
     expect(messages[1]!.content).toContain("Shared operational delay pain");
+    expect(messages[1]!.content).toContain("Approved product profile");
+    expect(messages[1]!.content).toContain(
+      "Forecast software that inspects deal evidence before commit.",
+    );
+    expect(messages[1]!.content).not.toContain("personaWebEvidence");
+    expect(messages[0]!.content).not.toContain("WEB_EVIDENCE");
+    expect(messages[1]!.content).not.toContain("WEB_EVIDENCE");
+  });
+
+  it("asks a second persona to stay distinct from an approved peer's pains", () => {
+    const messages = buildPersonaSynthesisMessages({
+      productName: "Mathew Sales Forecaster",
+      productSnapshot: {
+        name: "Mathew Sales Forecaster",
+        description: "Inspects deal evidence before a forecast commit.",
+      },
+      productMessaging: null,
+      buyerRole: {
+        name: "Revenue Operations Leader",
+        likelyTitles: ["VP Revenue Operations"],
+        departmentFunction: "Sales",
+        whyThisRoleMatters: "Owns forecast process",
+        suggestionKey: "revops",
+        confidence: "HIGH",
+        evidenceRefs: [],
+      },
+      userContext: null,
+      productEvidence: [],
+      icpContext: null,
+      existingApprovedPersonas: [
+        {
+          id: "vp-sales",
+          name: "VP of Sales",
+          painPoints: ["Weekly forecast calls depend on rep optimism"],
+          messagingNotes: ["Lead with commit inspection"],
+        },
+      ],
+    });
+    const user = messages[1]!.content;
+    expect(user).toContain("Mathew Sales Forecaster");
+    expect(user).toContain("Inspects deal evidence before a forecast commit.");
+    expect(user).toContain("VP of Sales");
+    expect(user).toContain("Weekly forecast calls depend on rep optimism");
+    expect(messages[0]!.content).toContain(
+      "what distinguishes this role's daily experience and accountability",
+    );
+    expect(user).not.toContain("personaWebEvidence");
   });
 });
 
-describe("Persona evidence sufficiency + progressive search triggers", () => {
-  it("CRO with rich product evidence may skip web search", () => {
-    const rich = `
-      Forecast software helps sales leaders improve forecast confidence.
-      Problems include manual forecast calls and unreliable CRM data.
-      Capabilities: pipeline inspection, risk scoring, coaching workflows.
-      Outcomes: reduce admin time, increase forecast accuracy.
-    `.repeat(3);
-    const result = evaluatePersonaEvidenceSufficiency({
-      roleName: "Chief Revenue Officer",
-      productName: "Forecast App",
-      productEvidenceText: rich,
-      personaMaterialText: "",
-      webEvidenceText: "",
-    });
-    expect(result.sufficient).toBe(true);
+describe("persona synthesis from the product profile", () => {
+  it("keeps prompt version 9 and does not configure persona web search", () => {
+    expect(PERSONA_SYNTHESIS_PROMPT_VERSION).toBe("9");
+    expect(DEFAULT_RESEARCH_POLICY_VALUES).not.toHaveProperty(
+      "maxSearchQueriesPerPersona",
+    );
+    expect(DEFAULT_RESEARCH_POLICY_VALUES).not.toHaveProperty(
+      "maxSourcesPerPersona",
+    );
+    expect(DEFAULT_RESEARCH_POLICY_VALUES).not.toHaveProperty(
+      "personaResearchFreshnessDays",
+    );
+    expect(DEFAULT_RESEARCH_POLICY_VALUES.maxSourcesPerProduct).toBe(12);
   });
 
-  it("ambiguous infrastructure role with thin evidence is not sufficient", () => {
-    const result = evaluatePersonaEvidenceSufficiency({
-      roleName: "VP Infrastructure",
-      productName: "Cloud Ops",
-      productEvidenceText: "We sell cloud software.",
-      personaMaterialText: "",
-      webEvidenceText: "",
+  it("parses a complete persona drafted from the product profile alone", () => {
+    const { data, coercedFields } = parsePersonaAiResponse({
+      personaDraft: {
+        name: "VP of Sales",
+        likelyTitles: ["VP Sales"],
+        departmentFunction: "Sales",
+        seniority: "VP",
+        roleSummary: "Owns the weekly forecast commit.",
+        primaryResponsibilities: ["Inspect deal evidence before commit"],
+        ownershipAreas: ["Team forecast"],
+        kpisAndAccountabilities: ["Forecast accuracy"],
+        painPoints: ["Commits depend on rep optimism"],
+        desiredOutcomesFromSolution: ["A commit backed by deal evidence"],
+        negativeRoleSignals: [
+          {
+            text: "Individual-contributor seller",
+            exclusionTestability: "TITLE_TESTABLE",
+          },
+        ],
+        confidence: "HIGH",
+        evidenceRefs: [
+          {
+            claim: "Owns the weekly forecast commit.",
+            sourceIds: [],
+            provenanceClasses: ["CUSTOMER_EVIDENCE", "WEB_EVIDENCE"],
+          },
+        ],
+      },
     });
-    expect(result.sufficient).toBe(false);
-    expect(result.ambiguityLevel).not.toBe("LOW");
-    expect(result.missingDimensions.length).toBeGreaterThan(0);
-    const focus = buildPersonaSearchFocus({
-      roleName: "VP Infrastructure",
-      productName: "Cloud Ops",
-      industryHint: "enterprise bank",
-      missing: result.missingDimensions,
-    });
-    expect(focus).toContain("VP Infrastructure");
-  });
-
-  it("persona policy defaults exist separately from product", () => {
-    expect(DEFAULT_RESEARCH_POLICY_VALUES.maxSearchQueriesPerPersona).toBe(2);
-    expect(DEFAULT_RESEARCH_POLICY_VALUES.maxSourcesPerPersona).toBe(8);
-    expect(PERSONA_SYNTHESIS_PROMPT_VERSION).toBe("8");
+    const draft = data.personaDraft;
+    expect(draft.name).toBe("VP of Sales");
+    expect(draft.primaryResponsibilities).toEqual([
+      "Inspect deal evidence before commit",
+    ]);
+    expect(draft.painPoints).toEqual(["Commits depend on rep optimism"]);
+    expect(draft.negativeRoleSignals).toHaveLength(1);
+    expect(draft.evidenceRefs[0]?.provenanceClasses).toEqual([
+      "CUSTOMER_EVIDENCE",
+    ]);
+    expect(coercedFields.length).toBeGreaterThan(0);
   });
 
   it("selects role-relevant product evidence without Product re-fetch", () => {
@@ -174,6 +239,11 @@ describe("architecture boundaries", () => {
     expect(synth).toContain("existingApprovedPersonas");
     expect(synth).not.toContain("acquireProductEvidence");
     expect(synth).not.toContain("runProgressiveProductWebSearch");
+    expect(synth).not.toContain("runProgressivePersonaWebSearch");
+    expect(synth).not.toContain("discoverSourcesViaWebSearch");
+    expect(synth).not.toContain("fetchProductPageUrl");
+    expect(synth).not.toContain("PERSONA_WEB_SEARCH");
+    expect(synth).not.toContain("personaWebEvidence");
     expect(synth).not.toContain("scoreContact");
     expect(synth).not.toContain("researchContact");
     expect(synth).not.toContain("generateEmail");

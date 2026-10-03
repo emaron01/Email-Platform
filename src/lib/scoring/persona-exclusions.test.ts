@@ -10,6 +10,7 @@ import {
   SCORING_PROMPT_VERSION,
 } from "@/lib/scoring/config";
 import { evaluatePersonaExclusions } from "@/lib/scoring/persona-exclusions";
+import { evaluatePersonaTitleGate } from "@/lib/scoring/title-fit";
 import { snapshotCriterionRow } from "@/lib/scoring/snapshots";
 import type {
   IcpSnapshot,
@@ -50,6 +51,87 @@ describe("persona exclusion evaluation", () => {
       confidence: "HIGH",
       excludeFromScore: true,
     });
+  });
+
+  it("does not exclude a vice president of sales as an individual contributor", () => {
+    const result = evaluatePersonaExclusions({
+      criteria: [
+        exclusion("TITLE_TESTABLE", {
+          name: "Individual-contributor-only role",
+          description: "Negative role signal — evidence against this buyer role.",
+          researchGuidance:
+            "Exclude a person whose work is personal sales quota rather than team forecast ownership.",
+        }),
+      ],
+      title: "Vice President - Sales",
+      contactResearch: null,
+    });
+
+    expect(result[0]?.outcome).toBe("NOT_CONFIRMED");
+  });
+
+  it("does not let the CRO exclusion confirm a vice president of sales", () => {
+    const result = evaluatePersonaExclusions({
+      criteria: [
+        exclusion("TITLE_TESTABLE", {
+          name: "Chief Revenue Officer or broader revenue executive whose primary accountability is company-wide revenue strategy, executive rollups, and cross-functional ownership rather than weekly sales-team forecast and deal inspection.",
+          description: "Negative role signal — evidence against this buyer role.",
+          researchGuidance:
+            "Use this when the contact owns company-wide revenue rather than the scope of sales team inspection.",
+        }),
+      ],
+      title: "Vice President of Sales",
+      contactResearch: null,
+    });
+
+    expect(result[0]?.outcome).toBe("NOT_CONFIRMED");
+  });
+
+  it("still excludes a sales representative as an individual contributor", () => {
+    const result = evaluatePersonaExclusions({
+      criteria: [exclusion("TITLE_TESTABLE")],
+      title: "Sales Representative",
+      contactResearch: null,
+    });
+
+    expect(result[0]?.outcome).toBe("CONFIRMED");
+  });
+
+  it("still excludes a senior account executive as an individual contributor", () => {
+    const result = evaluatePersonaExclusions({
+      criteria: [exclusion("TITLE_TESTABLE")],
+      title: "Senior Account Executive",
+      contactResearch: null,
+    });
+
+    expect(result[0]?.outcome).toBe("CONFIRMED");
+  });
+
+  it("matches Chris Albery's title to VP of Sales and does not exclude it", () => {
+    const gate = evaluatePersonaTitleGate({
+      persona: {
+        id: "persona_vp",
+        name: "VP of Sales",
+        targetTitles: ["VP Sales", "Vice President of Sales"],
+        criteria: [
+          exclusion("TITLE_TESTABLE", {
+            id: "ic_only",
+            name: "Individual-contributor-only role",
+            researchGuidance:
+              "Exclude a person whose work is personal sales quota rather than team forecast ownership.",
+          }),
+          exclusion("TITLE_TESTABLE", {
+            id: "cro_scope",
+            name: "Chief Revenue Officer or broader revenue executive whose primary accountability is company-wide revenue strategy, executive rollups, and cross-functional ownership rather than weekly sales-team forecast and deal inspection.",
+          }),
+        ],
+      },
+      contactTitle: "Vice President - Sales",
+      applyPositiveFit: true,
+    });
+
+    expect(gate.status).toBe("CANDIDATE");
+    expect(gate.matchedTitle).toBe("VP Sales");
   });
 
   it("does not penalize a TITLE_TESTABLE exclusion that title does not confirm", () => {
