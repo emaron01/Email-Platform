@@ -290,7 +290,7 @@ export async function loadQualificationScoreDetailAction(input: {
 
 /**
  * Score-report return: attach Ready to include (GOOD) contacts from this run,
- * then land on Companies (or List if the campaign still has no contacts).
+ * then land on Emails (or List if the campaign still has no contacts).
  * Scoring engine behavior is unchanged — attach + navigation only.
  */
 export async function saveScoringRunAndReturnToCampaignAction(

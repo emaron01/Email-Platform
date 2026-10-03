@@ -71,6 +71,20 @@ function asPersonalizationTier(
   return null;
 }
 
+function contactPersonaOptions(
+  inPlay: Array<{ id: string; name: string }>,
+  productPersonas: Array<{ id: string; name: string }>,
+  resolved: Array<{ id: string | null; name: string | null }>,
+): Array<{ id: string; name: string }> {
+  const options = inPlay.length > 0 ? [...inPlay] : [...productPersonas];
+  for (const persona of resolved) {
+    if (!persona.id || !persona.name) continue;
+    if (options.some((option) => option.id === persona.id)) continue;
+    options.unshift({ id: persona.id, name: persona.name });
+  }
+  return options;
+}
+
 function Meta({ label, value }: { label: string; value: string | null }) {
   return (
     <div>
@@ -870,6 +884,33 @@ export default async function CampaignDetailPage({
               emptyActionHref={`/campaigns/${campaign.id}?stage=companies`}
               emptyActionLabel="Review companies"
               readOnly={!canEditTemplate}
+              personaSelection={{
+                options: contactPersonaOptions(
+                  campaign.personasInPlay.map((row) => ({
+                    id: row.personaId,
+                    name: row.persona.name,
+                  })),
+                  campaign.product.personas.map((persona) => ({
+                    id: persona.id,
+                    name: persona.name,
+                  })),
+                  campaign.contacts.map((entry) => ({
+                    id: draftScreens[entry.id]?.resolvedPersonaId ?? null,
+                    name: draftScreens[entry.id]?.resolvedPersonaName ?? null,
+                  })),
+                ),
+                byContactId: Object.fromEntries(
+                  campaign.contacts.map((entry) => [
+                    entry.contact.id,
+                    {
+                      campaignContactId: entry.id,
+                      personaId:
+                        draftScreens[entry.id]?.resolvedPersonaId ??
+                        entry.chosenPersonaId,
+                    },
+                  ]),
+                ),
+              }}
             />
           </Panel>
         </CampaignStageShell>

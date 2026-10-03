@@ -223,7 +223,7 @@ describe("home workflow", () => {
 });
 
 describe("campaign stage rail", () => {
-  it("marks completed stages, permits backward stages, and explains a blocked Emails stage", () => {
+  it("marks Companies and Contacts complete once the list is on the campaign, and still opens them", () => {
     const stages = buildCampaignStages({
       setupComplete: true,
       hasListData: true,
@@ -235,21 +235,24 @@ describe("campaign stage rail", () => {
       dueContactCount: 0,
     });
     expect(stages.find((stage) => stage.key === "setup")?.completed).toBe(true);
-    expect(stages.find((stage) => stage.key === "companies")?.available).toBe(
-      true,
-    );
-    expect(stages.find((stage) => stage.key === "contacts")?.available).toBe(
-      true,
-    );
-    expect(stages.find((stage) => stage.key === "emails")).toMatchObject({
-      available: false,
-      unavailableReason: "At least one qualified contact is required.",
+    expect(stages.find((stage) => stage.key === "companies")).toMatchObject({
+      completed: true,
+      available: true,
     });
+    expect(stages.find((stage) => stage.key === "contacts")).toMatchObject({
+      completed: true,
+      available: true,
+    });
+    expect(stages.find((stage) => stage.key === "emails")?.available).toBe(
+      true,
+    );
     expect(resolveCampaignStage("companies", stages)).toBe("companies");
-    expect(resolveCampaignStage("emails", stages)).toBe("contacts");
+    expect(resolveCampaignStage("contacts", stages)).toBe("contacts");
+    expect(resolveCampaignStage("emails", stages)).toBe("emails");
+    expect(resolveCampaignStage(undefined, stages)).toBe("emails");
   });
 
-  it("blocks Contacts when company results have no surviving Good company", () => {
+  it("keeps Companies and Contacts reachable after the list is approved", () => {
     const stages = buildCampaignStages({
       setupComplete: true,
       hasListData: true,
@@ -260,11 +263,14 @@ describe("campaign stage rail", () => {
       sentEmailCount: 0,
       dueContactCount: 0,
     });
-    expect(stages.find((stage) => stage.key === "contacts")).toMatchObject({
-      available: false,
-      unavailableReason:
-        "At least one company must be in Good before reviewing contacts.",
-    });
+    expect(stages.find((stage) => stage.key === "companies")?.available).toBe(
+      true,
+    );
+    expect(stages.find((stage) => stage.key === "contacts")?.available).toBe(
+      true,
+    );
+    expect(resolveCampaignStage("companies", stages)).toBe("companies");
+    expect(resolveCampaignStage("contacts", stages)).toBe("contacts");
   });
   it("maps legacy send stage deep links onto emails", () => {
     const stages = buildCampaignStages({

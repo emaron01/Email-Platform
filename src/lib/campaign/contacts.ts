@@ -8,6 +8,7 @@ import { readIcpQualification } from "@/lib/scoring/icp-qualification";
 import {
   firstUnresolvedCriterion,
   firstUnresolvedDimension,
+  readQualificationReason,
   scoreLabelToBucket,
 } from "@/lib/workflow/qualification";
 import type { QualificationBucketRow } from "@/components/QualificationBuckets";
@@ -267,6 +268,7 @@ function buildQualificationView<
           : null,
       researchHref: `/scoring/${run.id}#contact-${score.contactId}`,
       canOverride: !suppressed,
+      scoreReason: readQualificationReason(score.assessmentData),
       secondaryFlags:
         readIcpQualification(score.assessmentData)?.secondaryFlags.map(
           (flag) => flag.text,

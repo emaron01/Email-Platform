@@ -363,7 +363,7 @@ describe("stage 5 seams", () => {
     expect(manager).toContain("scoreContactsAction");
     expect(manager).toContain("retryFailedResearchRunAction");
     expect(manager).toContain("List preparation is underway.");
-    expect(manager).toContain("Companies that did not match");
+    expect(manager).not.toContain("Companies that did not match");
     expect(manager).toContain("Contacts that did not match");
     expect(manager).toContain("QualificationBuckets");
     expect(manager).toContain('label="Approve"');

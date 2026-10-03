@@ -55,7 +55,7 @@ export function buildCampaignStages(input: {
       number: 6,
       key: "companies",
       label: "Companies",
-      completed: input.companyResultCount > 0,
+      completed: input.hasListData,
       available: input.hasListData,
       unavailableReason: input.hasListData
         ? null
@@ -65,12 +65,11 @@ export function buildCampaignStages(input: {
       number: 7,
       key: "contacts",
       label: "Contacts",
-      completed: input.qualifiedContactCount > 0,
-      available: input.survivingCompanyCount > 0,
-      unavailableReason:
-        input.survivingCompanyCount > 0
-          ? null
-          : "At least one company must be in Good before reviewing contacts.",
+      completed: input.hasListData,
+      available: input.hasListData,
+      unavailableReason: input.hasListData
+        ? null
+        : "Attach or score a list first.",
     },
     {
       number: 8,
@@ -78,12 +77,11 @@ export function buildCampaignStages(input: {
       label: "Emails",
       completed:
         input.generatedEmailCount > 0 && input.dueContactCount === 0,
-      available:
-        input.qualifiedContactCount > 0 || input.generatedEmailCount > 0,
+      available: input.hasListData || input.generatedEmailCount > 0,
       unavailableReason:
-        input.qualifiedContactCount > 0 || input.generatedEmailCount > 0
+        input.hasListData || input.generatedEmailCount > 0
           ? null
-          : "At least one qualified contact is required.",
+          : "Attach or score a list first.",
     },
     {
       number: 9,

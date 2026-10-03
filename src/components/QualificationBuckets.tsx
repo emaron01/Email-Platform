@@ -3,12 +3,14 @@ import { PRIMARY_BUTTON_CLASS, SECONDARY_BUTTON_CLASS } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import type {
   QualificationBucket,
   QualificationOverrideTarget,
 } from "@prisma/client";
 import { loadQualificationScoreDetailAction } from "@/app/actions/campaign-contacts";
+import { setCampaignContactPersonaAction } from "@/app/actions/email";
 import {
   bulkRestoreQualificationAction,
   overrideQualificationBucketAction,
@@ -41,6 +43,16 @@ export type QualificationBucketRow = {
   canOverride: boolean;
   secondaryFlags?: string[];
   exclusionDetails?: ExclusionDetail[];
+  /** Stored qualification reason from the contact score. */
+  scoreReason?: string | null;
+};
+
+export type ContactPersonaSelection = {
+  options: Array<{ id: string; name: string }>;
+  byContactId: Record<
+    string,
+    { campaignContactId: string; personaId: string | null }
+  >;
 };
 
 const CARD_STYLES: Record<QualificationBucket, string> = {
@@ -60,6 +72,8 @@ export function QualificationBuckets({
   readOnly = false,
   showSummary = true,
   inlineScoreDetail = false,
+  showScoreReason = false,
+  personaSelection = null,
 }: {
   campaignId: string;
   scoringRunId: string | null;
@@ -71,7 +85,12 @@ export function QualificationBuckets({
   showSummary?: boolean;
   /** Stage 5: expand score detail in place. Other stages keep the outbound link. */
   inlineScoreDetail?: boolean;
+  /** Stage 5 contacts: show the stored score reason instead of the generic line. */
+  showScoreReason?: boolean;
+  /** Stage 7: persona used for email generation. Does not rescore. */
+  personaSelection?: ContactPersonaSelection | null;
 }) {
+  const router = useRouter();
   const [rows, setRows] = useState(initialRows);
   const [message, setMessage] = useState<string | null>(null);
   const [openDetailKey, setOpenDetailKey] = useState<string | null>(null);
@@ -82,6 +101,18 @@ export function QualificationBuckets({
     Record<string, string>
   >({});
   const [detailPendingKey, setDetailPendingKey] = useState<string | null>(null);
+  const [personaByContactId, setPersonaByContactId] = useState<
+    Record<string, string | null>
+  >(() => {
+    const initial: Record<string, string | null> = {};
+    for (const [contactId, choice] of Object.entries(
+      personaSelection?.byContactId ?? {},
+    )) {
+      initial[contactId] = choice.personaId;
+    }
+    return initial;
+  });
+  const [personaError, setPersonaError] = useState<string | null>(null);
   const [keptExcludedIds, setKeptExcludedIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -132,6 +163,29 @@ export function QualificationBuckets({
       return;
     }
     setDetailByKey((current) => ({ ...current, [key]: result.rows }));
+  }
+
+  async function choosePersona(row: QualificationBucketRow, personaId: string) {
+    const choice = personaSelection?.byContactId[row.id];
+    if (!choice) {
+      setPersonaError("This contact is not on the campaign.");
+      return;
+    }
+    setPersonaByContactId((current) => ({ ...current, [row.id]: personaId }));
+    setPersonaError(null);
+    const result = await setCampaignContactPersonaAction({
+      campaignContactId: choice.campaignContactId,
+      personaId,
+    });
+    if (!result.ok) {
+      setPersonaByContactId((current) => ({
+        ...current,
+        [row.id]: choice.personaId,
+      }));
+      setPersonaError(result.message);
+      return;
+    }
+    router.refresh();
   }
 
   function canActOnRows(targetRows: QualificationBucketRow[]): boolean {
@@ -381,6 +435,11 @@ export function QualificationBuckets({
         </section>
       ) : (
         <div className="space-y-3">
+          {personaError ? (
+            <p className="text-sm text-red-700" role="alert">
+              {personaError}
+            </p>
+          ) : null}
           {rows.map((row) => (
             <article
               key={`${row.targetType}:${row.id}`}
@@ -389,9 +448,43 @@ export function QualificationBuckets({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="font-medium text-slate-900">{row.name}</h3>
+                  {row.title ? (
+                    <p className="mt-0.5 text-sm text-slate-600">{row.title}</p>
+                  ) : null}
                   <p className="mt-1 text-sm text-slate-600">
                     {QUALIFICATION_BUCKET_LABELS[row.bucket]}
                   </p>
+                  {showScoreReason && row.scoreReason ? (
+                    <p
+                      className="mt-1 text-sm text-slate-800"
+                      data-testid={`score-reason-${row.targetType}-${row.id}`}
+                    >
+                      {row.scoreReason}
+                    </p>
+                  ) : null}
+                  {personaSelection && row.targetType === "CONTACT" ? (
+                    <label className="mt-2 block text-xs font-medium text-slate-700">
+                      Persona for email
+                      <select
+                        className="mt-1 block w-full max-w-xs rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900"
+                        data-testid={`contact-persona-${row.id}`}
+                        disabled={pending || readOnly}
+                        value={personaByContactId[row.id] ?? ""}
+                        onChange={(event) => {
+                          const personaId = event.target.value;
+                          if (!personaId) return;
+                          void choosePersona(row, personaId);
+                        }}
+                      >
+                        <option value="">Choose a persona</option>
+                        {personaSelection.options.map((persona) => (
+                          <option key={persona.id} value={persona.id}>
+                            {persona.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                   {row.secondaryFlags && row.secondaryFlags.length > 0 ? (
                     <p className="mt-1 text-xs font-medium text-emerald-800">
                       {row.secondaryFlags.join(" · ")}
@@ -409,6 +502,15 @@ export function QualificationBuckets({
                     >
                       {EXCLUSION_REVIEW_COPY.addBack}
                     </button>
+                  ) : null}
+                  {row.targetType === "COMPANY" && row.canOverride ? (
+                    <Link
+                      href={`/companies/${row.id}`}
+                      data-testid={`open-company-research-${row.id}`}
+                      className={cn(SECONDARY_BUTTON_CLASS, "py-1", "!px-2", "!py-1", "!text-xs")}
+                    >
+                      Open company research
+                    </Link>
                   ) : null}
                   {row.bucket !== "EXCLUDED" && row.canOverride
                     ? QUALIFICATION_BUCKETS.filter(
@@ -432,7 +534,13 @@ export function QualificationBuckets({
                   <ExclusionDetailList details={row.exclusionDetails} />
                 </div>
               ) : null}
-              {row.bucket === "NEEDS_REVIEW" && row.unresolvedCriterion ? (
+              {row.bucket === "NEEDS_REVIEW" &&
+              row.unresolvedCriterion &&
+              !(
+                showScoreReason &&
+                row.scoreReason &&
+                row.unresolvedCriterion.startsWith("Qualification is incomplete")
+              ) ? (
                 <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
                   <p>{row.unresolvedCriterion}</p>
                   {row.researchGuidance ? (

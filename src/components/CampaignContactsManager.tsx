@@ -85,7 +85,6 @@ export function CampaignContactsManager({
   );
   const [researchRunId, setResearchRunId] = useState<string | null>(null);
   const [scoringRunId, setScoringRunId] = useState<string | null>(null);
-  const [companyRows, setCompanyRows] = useState<QualificationBucketRow[]>([]);
   const [contactRows, setContactRows] = useState<QualificationBucketRow[]>([]);
 
   useEffect(() => {
@@ -137,7 +136,6 @@ export function CampaignContactsManager({
       setErrorMessage(outcome.message);
       setNotice(null);
       setScoringRunId(null);
-      setCompanyRows([]);
       setContactRows([]);
       setPhase("error");
       return;
@@ -149,7 +147,6 @@ export function CampaignContactsManager({
       setErrorMessage(loaded.message);
       setNotice(null);
       setScoringRunId(null);
-      setCompanyRows([]);
       setContactRows([]);
       setPhase("error");
       return;
@@ -159,7 +156,6 @@ export function CampaignContactsManager({
     setErrorMessage(null);
     setNotice(outcome.message);
     setScoringRunId(outcome.scoringRunId);
-    setCompanyRows(loaded.companyRows.filter((row) => isQualificationException(row.bucket)));
     setContactRows(loaded.contactRows.filter((row) => isQualificationException(row.bucket)));
     setPhase("done");
   }
@@ -173,7 +169,6 @@ export function CampaignContactsManager({
     setFailureKind(null);
     setResearchRunId(null);
     setScoringRunId(null);
-    setCompanyRows([]);
     setContactRows([]);
     const outcome = await runListPreparation(depsFor(listId, ticket));
     await applyOutcome(ticket, outcome);
@@ -293,25 +288,6 @@ export function CampaignContactsManager({
           ) : null}
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-slate-900">
-              Companies that did not match
-            </h3>
-            {companyRows.length > 0 ? (
-              <QualificationBuckets
-                campaignId={campaignId}
-                scoringRunId={scoringRunId}
-                rows={companyRows}
-                showSummary={false}
-                inlineScoreDetail
-                emptyTitle="No companies were left out"
-                emptyActionHref={`/campaigns/${campaignId}?stage=list`}
-                emptyActionLabel="Back to list"
-              />
-            ) : (
-              <p className="text-sm text-slate-600">None.</p>
-            )}
-          </section>
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-900">
               Contacts that did not match
             </h3>
             {contactRows.length > 0 ? (
@@ -321,6 +297,7 @@ export function CampaignContactsManager({
                 rows={contactRows}
                 showSummary={false}
                 inlineScoreDetail
+                showScoreReason
                 emptyTitle="No contacts were left out"
                 emptyActionHref={`/campaigns/${campaignId}?stage=list`}
                 emptyActionLabel="Back to list"

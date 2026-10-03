@@ -47,8 +47,8 @@ export function scoringRunHref(
 }
 
 /**
- * After save-and-return attaches Ready contacts: Companies when the campaign
- * has contacts; otherwise List (nothing ready to carry forward yet).
+ * After Approve attaches Ready contacts: Emails, because List already did
+ * the company and contact review. Otherwise stay on List.
  */
 export function campaignAfterScoringAttachHref(
   campaignId: string,
@@ -56,7 +56,7 @@ export function campaignAfterScoringAttachHref(
 ): string {
   const params = new URLSearchParams();
   if (input.hasContacts) {
-    params.set("stage", "companies");
+    params.set("stage", "emails");
   } else {
     params.set("stage", "list");
   }

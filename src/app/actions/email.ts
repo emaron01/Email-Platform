@@ -138,6 +138,42 @@ async function persistChosenPersonaForGeneration(
   });
 }
 
+/** Stage 7: remember which persona this contact's email uses. Does not rescore. */
+export async function setCampaignContactPersonaAction(input: {
+  campaignContactId: string;
+  personaId: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const campaignContactId = input.campaignContactId.trim();
+  const personaId = input.personaId.trim();
+  if (!campaignContactId || !personaId) {
+    return { ok: false, message: "Contact and persona are required." };
+  }
+  try {
+    const user = await requireCurrentUser();
+    const organizationId = await requireOrganizationId();
+    await persistChosenPersonaForGeneration(
+      campaignContactId,
+      organizationId,
+      user.id,
+      personaId,
+    );
+    const campaign = await prisma.campaignContact.findFirst({
+      where: { id: campaignContactId, organizationId },
+      select: { campaignId: true },
+    });
+    if (campaign) revalidateCampaign(campaign.campaignId);
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof TenantError
+          ? error.message
+          : "Unable to set the persona for this contact.",
+    };
+  }
+}
+
 function generationOptionsFromPrepared(
   prepared: PreparedEmailGeneration,
   extra: Parameters<typeof generateEmailDraft>[2] = {},

@@ -122,8 +122,9 @@ describe("inline score detail", () => {
     const exceptions = manager.slice(
       manager.indexOf('data-testid="list-preparation-exceptions"'),
     );
-    expect(exceptions.match(/<QualificationBuckets/g)).toHaveLength(2);
-    expect(exceptions.match(/inlineScoreDetail/g)).toHaveLength(2);
+    expect(exceptions.match(/<QualificationBuckets/g)).toHaveLength(1);
+    expect(exceptions.match(/inlineScoreDetail/g)).toHaveLength(1);
+    expect(exceptions).not.toContain("Companies that did not match");
     expect(exceptions).not.toContain("Open score detail");
     expect(exceptions).not.toContain("researchHref");
 

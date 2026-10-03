@@ -135,7 +135,15 @@ describe("emails stage follows who is due", () => {
       sentEmailCount: 0,
       dueContactCount: 0,
     });
-    expect(resolveCampaignStage(undefined, stages)).toBe("companies");
+    expect(stages.find((stage) => stage.key === "companies")?.completed).toBe(
+      true,
+    );
+    expect(stages.find((stage) => stage.key === "contacts")?.completed).toBe(
+      true,
+    );
+    expect(resolveCampaignStage(undefined, stages)).toBe("emails");
+    expect(resolveCampaignStage("companies", stages)).toBe("companies");
+    expect(resolveCampaignStage("contacts", stages)).toBe("contacts");
     expect(resolveCampaignStage("setup", stages)).toBe("setup");
   });
 });
