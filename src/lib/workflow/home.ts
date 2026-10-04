@@ -3,6 +3,11 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { campaignPersonasDisplayName } from "@/lib/campaign/personas";
 import {
+  CAMPAIGN_LIST_VIEW_MY,
+  CAMPAIGN_LIST_VIEW_SHARED_ALL,
+  type CampaignListViewMode,
+} from "@/lib/campaign/visibility";
+import {
   countsTowardTargetedSearchCap,
   normalizeEvidenceClass,
 } from "@/lib/criteria/evidence-class";
@@ -25,6 +30,7 @@ import {
   type CampaignStage,
   type CampaignStageKey,
 } from "@/lib/workflow/campaign-stages";
+import { TenantError } from "@/lib/tenant/errors";
 import { getProductCampaignReadiness } from "@/lib/workflow/product-campaign-readiness";
 
 export type SetupCardState = {
@@ -68,6 +74,11 @@ export type HomeWorkflow = {
     emailsToWrite: number;
     stages: CampaignStage[];
     currentStage: CampaignStageKey;
+    productName: string;
+    createdAt: string;
+    visibility: "PERSONAL" | "SHARED";
+    ownerUserId: string;
+    ownerLabel: string;
   }>;
   dueByCampaign: CampaignDueSummary[];
 };
@@ -91,8 +102,28 @@ export async function getHomeWorkflow(
     includeArchived?: boolean;
     userId?: string;
     canViewAllRepWork?: boolean;
+    /** Campaigns page tabs. Home omits this and keeps its own owner filter. */
+    listView?: CampaignListViewMode;
   },
 ): Promise<HomeWorkflow> {
+  if (options?.listView && !options.userId) {
+    throw new TenantError("Sign in required to list campaigns.");
+  }
+  const archivedFilter = options?.includeArchived ? {} : { archivedAt: null };
+  const campaignWhere =
+    options?.listView === CAMPAIGN_LIST_VIEW_MY
+      ? { ...archivedFilter, ownerUserId: options.userId }
+      : options?.listView === CAMPAIGN_LIST_VIEW_SHARED_ALL
+        ? options.canViewAllRepWork
+          ? archivedFilter
+          : { ...archivedFilter, visibility: "SHARED" as const }
+        : {
+            ...archivedFilter,
+            ...(options?.userId && !options.canViewAllRepWork
+              ? { ownerUserId: options.userId }
+              : {}),
+          };
+
   const [
     products,
     campaigns,
@@ -136,14 +167,13 @@ export async function getHomeWorkflow(
       prisma.campaign.findMany({
         where: {
           organizationId,
-          ...(options?.userId && !options.canViewAllRepWork
-            ? { ownerUserId: options.userId }
-            : {}),
-          ...(options?.includeArchived ? {} : { archivedAt: null }),
+          ...campaignWhere,
         },
         orderBy: { updatedAt: "desc" },
         include: {
           icp: { select: { name: true } },
+          product: { select: { name: true } },
+          owner: { select: { name: true, email: true } },
           persona: { select: { name: true } },
           personasInPlay: {
             include: { persona: { select: { name: true } } },
@@ -395,6 +425,12 @@ export async function getHomeWorkflow(
         emailsToWrite,
         stages: progress.stages,
         currentStage: resolveCampaignStage(undefined, progress.stages),
+        productName: campaign.product.name,
+        createdAt: campaign.createdAt.toISOString(),
+        visibility: campaign.visibility,
+        ownerUserId: campaign.ownerUserId,
+        ownerLabel:
+          campaign.owner?.name || campaign.owner?.email || "Legacy campaign",
       };
     }),
     dueByCampaign,

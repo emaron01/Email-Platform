@@ -8,7 +8,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { getHomeWorkflow } from "@/lib/workflow/home";
 import { DueContactsPanel } from "@/components/DueContactsPanel";
-import { HomeCampaignStages } from "@/components/HomeCampaignStages";
+import { CampaignSummaryCard } from "@/components/CampaignSummaryCard";
 import { getMembershipForCurrentUser } from "@/lib/auth/authz";
 import { canViewAllRepWork } from "@/lib/work/ownership";
 
@@ -145,59 +145,7 @@ export default async function DashboardPage({
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {workflow.campaigns.map((campaign) => (
-            <article
-              key={campaign.id}
-              className="rounded-xl border border-slate-200 bg-white p-5"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="font-semibold text-slate-900">
-                    <Link
-                      href={`/campaigns/${campaign.id}`}
-                      className="hover:underline"
-                    >
-                      {campaign.name}
-                    </Link>
-                    {campaign.archived ? (
-                      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                        Archived
-                      </span>
-                    ) : null}
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {campaign.context || "Campaign setup"}
-                  </p>
-                </div>
-                {campaign.emailsToWrite > 0 ? (
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-sm font-semibold text-amber-800">
-                    {campaign.emailsToWrite} to write
-                  </span>
-                ) : null}
-              </div>
-              <dl className="mt-5 grid grid-cols-4 gap-3 text-sm">
-                <div>
-                  <dt className="text-slate-500">Companies</dt>
-                  <dd className="font-semibold">{campaign.companies}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">Qualified</dt>
-                  <dd className="font-semibold">{campaign.qualified}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">Contacts</dt>
-                  <dd className="font-semibold">{campaign.contacts}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">Emails to write</dt>
-                  <dd className="font-semibold">{campaign.emailsToWrite}</dd>
-                </div>
-              </dl>
-              <HomeCampaignStages
-                campaignId={campaign.id}
-                stages={campaign.stages}
-                currentStage={campaign.currentStage}
-              />
-            </article>
+            <CampaignSummaryCard key={campaign.id} campaign={campaign} />
           ))}
         </div>
       )}

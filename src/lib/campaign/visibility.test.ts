@@ -97,7 +97,10 @@ describe("campaign visibility", () => {
       "visibilityWhere = canViewEveryCampaign ? {} : { visibility: \"SHARED\" }",
     );
     expect(page).toContain("All org campaigns");
-    expect(page).toContain("<th className=\"px-4 py-3 font-medium\">Owner</th>");
+    expect(page).toContain("ownerLabel");
+    expect(readFileSync("src/components/CampaignSummaryCard.tsx", "utf8")).toContain(
+      "Owner:",
+    );
   });
 
   it("uses shared campaigns only by making a PERSONAL config copy", () => {

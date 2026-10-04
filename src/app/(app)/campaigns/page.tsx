@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CampaignSummaryCard } from "@/components/CampaignSummaryCard";
 import { DeleteSuccessNotice } from "@/components/DeleteSuccessNotice";
 import { SharedCampaignActions } from "@/components/SharedCampaignActions";
 import { EmptyState, PageHeader, PRIMARY_BUTTON_CLASS, TenantMissing } from "@/components/ui";
@@ -12,9 +13,8 @@ import {
   parseCampaignListViewMode,
   shouldUseSharedCampaign,
 } from "@/lib/campaign/visibility";
-import { listCampaigns } from "@/lib/tenant/data";
 import { getCurrentOrganization } from "@/lib/tenant/getCurrentOrganization";
-import { cn, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { getHomeWorkflow } from "@/lib/workflow/home";
 
 function viewHref(
@@ -59,17 +59,13 @@ export default async function CampaignsPage({
   );
   const effectiveView = view;
 
-  const [campaigns, workflow] = await Promise.all([
-    listCampaigns({
-      includeArchived,
-      view: effectiveView,
-      userId: user.id,
-    }),
-    getHomeWorkflow(organization.id, {
-      userId: user.id,
-      canViewAllRepWork: canManageCampaigns,
-    }),
-  ]);
+  const workflow = await getHomeWorkflow(organization.id, {
+    includeArchived,
+    userId: user.id,
+    canViewAllRepWork: canManageCampaigns,
+    listView: effectiveView,
+  });
+  const campaigns = workflow.campaigns;
 
   const canCreate = workflow.campaignProducts.length > 0;
 
@@ -171,102 +167,45 @@ export default async function CampaignsPage({
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
-              <tr>
-                <th className="px-4 py-3 font-medium">Campaign</th>
-                {effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL &&
-                canManageCampaigns ? (
-                  <th className="px-4 py-3 font-medium">Owner</th>
-                ) : null}
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Product</th>
-                <th className="px-4 py-3 font-medium">ICP</th>
-                <th className="px-4 py-3 font-medium">Offer</th>
-                <th className="px-4 py-3 font-medium">Contacts</th>
-                <th className="px-4 py-3 font-medium">Created</th>
-                <th className="px-4 py-3 font-medium"> </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {campaigns.map((campaign) => {
-                const useShared =
-                  !canManageCampaigns &&
-                  shouldUseSharedCampaign({
-                    userId: user.id,
-                    campaign,
-                  });
-                return (
-                  <tr key={campaign.id}>
-                    <td className="px-4 py-3 font-medium text-slate-900">
-                      {useShared &&
-                      effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL ? (
-                        <span>{campaign.name}</span>
-                      ) : (
-                        <Link
-                          href={`/campaigns/${campaign.id}`}
-                          className="underline-offset-2 hover:underline"
-                        >
-                          {campaign.name}
-                        </Link>
-                      )}
-                      {campaign.visibility === "SHARED" ? (
-                        <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-800">
-                          Shared
-                        </span>
-                      ) : null}
-                      {campaign.archivedAt ? (
-                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                          Archived
-                        </span>
-                      ) : null}
-                    </td>
-                    {effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL &&
-                    canManageCampaigns ? (
-                      <td className="px-4 py-3 text-slate-600">
-                        {campaign.owner?.name ||
-                          campaign.owner?.email ||
-                          "Legacy campaign"}
-                      </td>
-                    ) : null}
-                    <td className="px-4 py-3 text-slate-600">
-                      {campaign.status}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {campaign.product.name}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {campaign.icp.name}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {campaign.offerName ?? campaign.offer?.name ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {campaign._count.contacts}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {formatDate(campaign.createdAt)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {useShared &&
-                      effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL &&
-                      !campaign.archivedAt ? (
-                        <SharedCampaignActions campaignId={campaign.id} />
-                      ) : useShared ? null : (
-                        <Link
-                          href={`/campaigns/${campaign.id}`}
-                          className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
-                        >
-                          Edit
-                        </Link>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {campaigns.map((campaign) => {
+            const useShared =
+              !canManageCampaigns &&
+              shouldUseSharedCampaign({
+                userId: user.id,
+                campaign,
+              });
+            const showOwner =
+              effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL &&
+              canManageCampaigns;
+            return (
+              <CampaignSummaryCard
+                key={campaign.id}
+                campaign={campaign}
+                linkName={
+                  !(
+                    useShared &&
+                    effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL
+                  )
+                }
+                ownerLabel={showOwner ? campaign.ownerLabel : null}
+                actions={
+                  useShared &&
+                  effectiveView === CAMPAIGN_LIST_VIEW_SHARED_ALL &&
+                  !campaign.archived ? (
+                    <SharedCampaignActions campaignId={campaign.id} />
+                  ) : useShared ? null : (
+                    <Link
+                      href={`/campaigns/${campaign.id}`}
+                      className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+                    >
+                      Edit
+                    </Link>
+                  )
+                }
+              />
+            );
+          })}
         </div>
       )}
     </div>
