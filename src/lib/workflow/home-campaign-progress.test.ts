@@ -32,7 +32,9 @@ describe("home campaign progress", () => {
       }),
     );
 
-    expect(html).toContain("click where you left off to continue.");
+    expect(html).toContain(
+      "Click the campaign name, or red stage, to pick-up where you left off to continue.",
+    );
     expect(html).toContain('data-testid="home-campaign-stages-camp_1"');
     for (const stage of stages) {
       const marker = campaignStageMarker(stage, currentStage);

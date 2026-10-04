@@ -15,8 +15,9 @@ describe("campaign summary cards", () => {
     expect(campaigns).toContain("<CampaignSummaryCard");
     expect(home).not.toContain("<table");
     expect(campaigns).not.toContain("<table");
-    expect(card).toContain(">Product<");
-    expect(card).toContain(">Created<");
+    expect(card).toContain("Product {campaign.productName}");
+    expect(card).toContain("Created {formatDate(campaign.createdAt)}");
+    expect(card).not.toContain(">Product<");
 
     const stages = buildCampaignStages({
       setupComplete: true,
@@ -49,13 +50,17 @@ describe("campaign summary cards", () => {
         },
       }),
     );
+    const created = formatDate("2026-03-01T15:00:00.000Z");
     expect(html).toContain("Spring Push");
-    expect(html).toContain("Forecast");
-    expect(html).toContain(formatDate("2026-03-01T15:00:00.000Z"));
+    expect(html).toContain(`Product Forecast<span class="px-2">·</span>Created ${created}`);
+    expect(html).not.toContain("font-semibold\">Forecast");
     expect(html).toContain('data-testid="home-campaign-stages-camp_1"');
-    expect(html).toContain("click where you left off to continue.");
-    expect(html.indexOf("Product")).toBeGreaterThan(-1);
-    expect(html.indexOf("Created")).toBeGreaterThan(html.indexOf("Product"));
+    expect(html).toContain(
+      "Click the campaign name, or red stage, to pick-up where you left off to continue.",
+    );
+    expect(html.indexOf("Mid-market")).toBeLessThan(html.indexOf("Product Forecast"));
+    expect(html.indexOf("Product Forecast")).toBeLessThan(html.indexOf("Created"));
+    expect(html.indexOf(`Created ${created}`)).toBeLessThan(html.indexOf("Companies"));
   });
 
   it("keeps campaign list controls and the Edit action", () => {

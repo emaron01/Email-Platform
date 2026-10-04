@@ -60,7 +60,7 @@ export function HomeCampaignStages({
         })}
       </ol>
       <p className="mt-2 text-xs text-slate-500">
-        click where you left off to continue.
+        Click the campaign name, or red stage, to pick-up where you left off to continue.
       </p>
     </div>
   );

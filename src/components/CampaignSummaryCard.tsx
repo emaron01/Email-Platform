@@ -68,6 +68,11 @@ export function CampaignSummaryCard({
           <p className="mt-1 text-sm text-slate-600">
             {campaign.context || "Campaign setup"}
           </p>
+          <p className="mt-1 text-sm text-slate-600">
+            Product {campaign.productName}
+            <span className="px-2">·</span>
+            Created {formatDate(campaign.createdAt)}
+          </p>
           {ownerLabel ? (
             <p className="mt-1 text-sm text-slate-600">Owner: {ownerLabel}</p>
           ) : null}
@@ -94,14 +99,6 @@ export function CampaignSummaryCard({
         <div>
           <dt className="text-slate-500">Emails to write</dt>
           <dd className="font-semibold">{campaign.emailsToWrite}</dd>
-        </div>
-        <div>
-          <dt className="text-slate-500">Product</dt>
-          <dd className="font-semibold">{campaign.productName}</dd>
-        </div>
-        <div>
-          <dt className="text-slate-500">Created</dt>
-          <dd className="font-semibold">{formatDate(campaign.createdAt)}</dd>
         </div>
       </dl>
       <HomeCampaignStages
