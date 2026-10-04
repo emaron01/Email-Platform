@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   campaignStageMarker,
+  resolveCampaignStage,
   type CampaignStage,
   type CampaignStageKey,
 } from "@/lib/workflow/campaign-stages";
@@ -14,6 +15,7 @@ export function HomeCampaignStages({
   stages: CampaignStage[];
   currentStage: CampaignStageKey;
 }) {
+  const progressStage = resolveCampaignStage(undefined, stages);
   return (
     <div className="mt-4">
       <ol
@@ -21,7 +23,7 @@ export function HomeCampaignStages({
         data-testid={`home-campaign-stages-${campaignId}`}
       >
         {stages.map((stage) => {
-          const marker = campaignStageMarker(stage, currentStage);
+          const marker = campaignStageMarker(stage, progressStage);
           const circle = (
             <span
               className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${marker.className}`}

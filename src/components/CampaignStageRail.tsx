@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   campaignStageMarker,
+  resolveCampaignStage,
   type CampaignStage,
   type CampaignStageKey,
 } from "@/lib/workflow/campaign-stages";
@@ -14,8 +15,9 @@ export function CampaignStageRail({
   stages: CampaignStage[];
   currentStage: CampaignStageKey;
 }) {
-  const currentNumber =
-    stages.find((stage) => stage.key === currentStage)?.number ?? 4;
+  const progressStage = resolveCampaignStage(undefined, stages);
+  const progressNumber =
+    stages.find((stage) => stage.key === progressStage)?.number ?? 4;
   return (
     <nav
       aria-label="Campaign workflow"
@@ -23,7 +25,7 @@ export function CampaignStageRail({
     >
       <ol className="flex min-w-max items-center gap-1">
         {stages.map((stage) => {
-          const marker = campaignStageMarker(stage, currentStage);
+          const marker = campaignStageMarker(stage, progressStage);
           const content = (
             <>
               <span
@@ -43,7 +45,7 @@ export function CampaignStageRail({
                   className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
                     currentStage === stage.key
                       ? "bg-slate-100 text-slate-950"
-                      : stage.number > currentNumber
+                      : stage.number > progressNumber
                         ? "text-slate-400 hover:bg-slate-50 hover:text-slate-600"
                         : "text-slate-700 hover:bg-slate-50"
                   }`}

@@ -1,9 +1,15 @@
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { CampaignStageRail } from "@/components/CampaignStageRail";
 import { DueContactsPanel } from "@/components/DueContactsPanel";
 import { HomeCampaignStages } from "@/components/HomeCampaignStages";
+import { Sidebar } from "@/components/Sidebar";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/campaigns/camp_1",
+}));
 import type { CampaignDueSummary } from "@/lib/cadence/dashboard";
 import {
   buildCampaignStages,
@@ -57,8 +63,11 @@ describe("home campaign progress", () => {
     );
     expect(home).toContain("deriveCampaignProgress");
     expect(rail).toContain("campaignStageMarker");
+    expect(rail).toContain("resolveCampaignStage(undefined, stages)");
     expect(sidebar).toContain("campaignStageMarker");
+    expect(sidebar).toContain("resolveCampaignStage(");
     expect(markers).toContain("campaignStageMarker");
+    expect(markers).toContain("resolveCampaignStage(undefined, stages)");
 
     const page = readFileSync("src/app/(app)/page.tsx", "utf8");
     const setupAt = page.indexOf("<HomeSetupRail");
@@ -67,6 +76,57 @@ describe("home campaign progress", () => {
     expect(setupAt).toBeGreaterThan(-1);
     expect(dueAt).toBeGreaterThan(setupAt);
     expect(campaignsAt).toBeGreaterThan(dueAt);
+  });
+
+  it("keeps Emails red on the setup tracker when nothing has been sent", () => {
+    const stages = buildCampaignStages({
+      setupComplete: true,
+      hasListData: true,
+      companyResultCount: 1,
+      survivingCompanyCount: 1,
+      qualifiedContactCount: 1,
+      generatedEmailCount: 2,
+      sentEmailCount: 0,
+      dueContactCount: 0,
+    });
+    const surfaces = [
+      renderToStaticMarkup(
+        createElement(HomeCampaignStages, {
+          campaignId: "camp_1",
+          stages,
+          currentStage: "setup",
+        }),
+      ),
+      renderToStaticMarkup(
+        createElement(CampaignStageRail, {
+          campaignId: "camp_1",
+          stages,
+          currentStage: "setup",
+        }),
+      ),
+      renderToStaticMarkup(
+        createElement(Sidebar, {
+          items: [],
+          campaign: {
+            campaignId: "camp_1",
+            stages,
+            currentStage: "setup",
+          },
+        }),
+      ),
+    ];
+    for (const html of surfaces) {
+      expect(html).toContain('bg-red-600 text-white">8');
+      expect(html).toContain('bg-emerald-600 text-white">✓');
+      expect(html).toContain('bg-slate-200 text-slate-600">9');
+    }
+    const rail = surfaces[1];
+    const setupAt = rail.indexOf("stage=setup");
+    const emailsAt = rail.indexOf("stage=emails");
+    expect(rail.slice(setupAt - 200, setupAt)).toContain('aria-current="step"');
+    expect(rail.slice(emailsAt - 200, emailsAt)).not.toContain(
+      'aria-current="step"',
+    );
   });
 
   it("renders overdue emails as one collapsed section per campaign", () => {

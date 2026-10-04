@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { SidebarNavItem } from "@/lib/auth/user-menu";
 import {
   campaignStageMarker,
+  resolveCampaignStage,
   type CampaignStage,
   type CampaignStageKey,
 } from "@/lib/workflow/campaign-stages";
@@ -35,6 +36,10 @@ export function Sidebar({
   campaign?: CampaignSidebarProgress | null;
 }) {
   const pathname = usePathname();
+  const progressStage = resolveCampaignStage(
+    undefined,
+    campaign?.stages ?? [],
+  );
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-slate-50 print:hidden">
@@ -53,7 +58,7 @@ export function Sidebar({
             data-testid="campaign-sidebar-stages"
           >
             {campaign.stages.map((stage) => {
-              const marker = campaignStageMarker(stage, campaign.currentStage);
+              const marker = campaignStageMarker(stage, progressStage);
               const body = (
                 <>
                   <span
