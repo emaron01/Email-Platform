@@ -66,16 +66,19 @@ export function EmailSignatureForm({
         ) : null}
         <div
           data-testid="signature-client-notice"
-          className="space-y-2 rounded-md bg-yellow-200 px-3 py-2 text-sm font-bold text-black"
+          className="space-y-2 rounded-md bg-yellow-200 px-3 py-2 text-sm text-black"
         >
           <p>
-            Outlook users — Outlook adds your signature automatically if you
-            have one set there. You do not need to enter one below.
+            Outlook users: If you already have a signature saved in Outlook,
+            Outlook will add it automatically. You do not need to enter a
+            signature below.
           </p>
           <p>
-            Gmail users — Gmail does not add your signature automatically. Save
-            one below, or add it in the Gmail window after clicking Open in
-            Gmail on each message.
+            Gmail users: Gmail will <strong className="font-bold">NOT</strong>{" "}
+            add your signature automatically. Add your signature in the Gmail
+            window after clicking Open in Gmail for each message. If you
+            prefer, you can also save your signature below to have it included
+            when composing messages in this app.
           </p>
         </div>
         <label className="block text-sm">

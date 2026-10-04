@@ -54,13 +54,13 @@ describe("email signature seams", () => {
     expect(noticeAt).toBeGreaterThan(-1);
     expect(fieldAt).toBeGreaterThan(noticeAt);
     expect(html).toContain("bg-yellow-200");
-    expect(html).toContain("font-bold");
     expect(html).toContain("text-black");
+    expect(html).toContain('<strong class="font-bold">NOT</strong>');
     expect(html).toContain(
-      "Outlook users — Outlook adds your signature automatically if you have one set there. You do not need to enter one below.",
+      "Outlook users: If you already have a signature saved in Outlook, Outlook will add it automatically. You do not need to enter a signature below.",
     );
     expect(html).toContain(
-      "Gmail users — Gmail does not add your signature automatically. Save one below, or add it in the Gmail window after clicking Open in Gmail on each message.",
+      "Gmail users: Gmail will <strong class=\"font-bold\">NOT</strong> add your signature automatically. Add your signature in the Gmail window after clicking Open in Gmail for each message. If you prefer, you can also save your signature below to have it included when composing messages in this app.",
     );
     expect(html.indexOf("Outlook users")).toBeLessThan(
       html.indexOf("Gmail users"),
