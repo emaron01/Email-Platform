@@ -64,6 +64,20 @@ export function EmailSignatureForm({
             {state.message}
           </p>
         ) : null}
+        <div
+          data-testid="signature-client-notice"
+          className="space-y-2 rounded-md bg-yellow-200 px-3 py-2 text-sm font-bold text-black"
+        >
+          <p>
+            Outlook users — Outlook adds your signature automatically if you
+            have one set there. You do not need to enter one below.
+          </p>
+          <p>
+            Gmail users — Gmail does not add your signature automatically. Save
+            one below, or add it in the Gmail window after clicking Open in
+            Gmail on each message.
+          </p>
+        </div>
         <label className="block text-sm">
           <span className="font-medium text-slate-700">
             Plain text (required for Outlook / Gmail open)

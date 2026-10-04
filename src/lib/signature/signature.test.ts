@@ -1,7 +1,13 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { TenantError } from "@/lib/tenant/errors";
 import { EMAIL_SIGNATURE_MAX_CHARS } from "@/lib/signature/types";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => undefined }),
+}));
 
 describe("email signature seams", () => {
   it("lives on Email connection settings (not Voice)", () => {
@@ -28,6 +34,37 @@ describe("email signature seams", () => {
     expect(form).toContain("EMAIL_SIGNATURE_HTML_MAX_CHARS");
     expect(form).toContain('name="htmlBody"');
     expect(form).not.toMatch(/generate|openai|getAiConfig/i);
+  });
+
+  it("renders the Outlook and Gmail notice above the signature field", async () => {
+    const emailPage = readFileSync(
+      "src/app/(app)/settings/email/page.tsx",
+      "utf8",
+    );
+    expect(emailPage).toContain("EmailSignatureForm");
+
+    const { EmailSignatureForm } = await import(
+      "@/components/EmailSignatureForm"
+    );
+    const html = renderToStaticMarkup(
+      createElement(EmailSignatureForm, { signature: null }),
+    );
+    const noticeAt = html.indexOf('data-testid="signature-client-notice"');
+    const fieldAt = html.indexOf('name="body"');
+    expect(noticeAt).toBeGreaterThan(-1);
+    expect(fieldAt).toBeGreaterThan(noticeAt);
+    expect(html).toContain("bg-yellow-200");
+    expect(html).toContain("font-bold");
+    expect(html).toContain("text-black");
+    expect(html).toContain(
+      "Outlook users — Outlook adds your signature automatically if you have one set there. You do not need to enter one below.",
+    );
+    expect(html).toContain(
+      "Gmail users — Gmail does not add your signature automatically. Save one below, or add it in the Gmail window after clicking Open in Gmail on each message.",
+    );
+    expect(html.indexOf("Outlook users")).toBeLessThan(
+      html.indexOf("Gmail users"),
+    );
   });
 
   it("client handoff and connected send both append signature via appendEmailSignature", async () => {
