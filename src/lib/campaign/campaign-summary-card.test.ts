@@ -69,9 +69,21 @@ describe("campaign summary cards", () => {
     expect(campaigns).toContain("All org campaigns");
     expect(campaigns).toContain("ShowArchivedToggle");
     expect(campaigns).toContain("New campaign");
-    expect(campaigns).toContain("Edit");
+    expect(campaigns).toContain("Edit campaign / offer details");
+    expect(campaigns).toContain(
+      "href={`/campaigns/${campaign.id}?stage=setup`}",
+    );
+    expect(campaigns).toContain("planShowsAllOrgCampaigns");
+    expect(campaigns).toContain(
+      "showAllOrgCampaigns ? view : CAMPAIGN_LIST_VIEW_MY",
+    );
+    expect(campaigns).toContain(
+      "showAllOrgCampaigns || tab.id === CAMPAIGN_LIST_VIEW_MY",
+    );
     expect(campaigns).toContain("SharedCampaignActions");
     expect(campaigns).toContain("listView: effectiveView");
-    expect(campaigns).toContain('href={`/campaigns/${campaign.id}`}');
+    const card = readFileSync("src/components/CampaignSummaryCard.tsx", "utf8");
+    expect(card).toContain("href={`/campaigns/${campaign.id}`}");
+    expect(card).not.toContain("?stage=setup");
   });
 });

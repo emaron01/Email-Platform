@@ -19,7 +19,12 @@ describe("campaign contact management seams", () => {
       "utf8",
     );
 
-    expect(listPage).toContain("href={`/campaigns/${campaign.id}`}");
+    expect(
+      readFileSync("src/components/CampaignSummaryCard.tsx", "utf8"),
+    ).toContain("href={`/campaigns/${campaign.id}`}");
+    expect(listPage).toContain(
+      "href={`/campaigns/${campaign.id}?stage=setup`}",
+    );
     expect(listPage).not.toContain("GenerateEmailDraftForm");
     expect(detailPage).not.toContain("GenerateEmailDraftForm");
     expect(detailPage).toContain("EmailDraftsStage");

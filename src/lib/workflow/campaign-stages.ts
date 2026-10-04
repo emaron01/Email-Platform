@@ -28,7 +28,7 @@ export function buildCampaignStages(input: {
   sentEmailCount: number;
   /**
    * Contacts whose next email is due. Emails stays incomplete while this is
-   * above zero, and also while the campaign has no drafts yet.
+   * above zero, and also while nothing has been sent yet.
    */
   dueContactCount: number;
 }): CampaignStage[] {
@@ -75,8 +75,7 @@ export function buildCampaignStages(input: {
       number: 8,
       key: "emails",
       label: "Emails",
-      completed:
-        input.generatedEmailCount > 0 && input.dueContactCount === 0,
+      completed: input.sentEmailCount > 0 && input.dueContactCount === 0,
       available: input.hasListData || input.generatedEmailCount > 0,
       unavailableReason:
         input.hasListData || input.generatedEmailCount > 0

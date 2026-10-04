@@ -283,6 +283,18 @@ export function planAllowsMicrosoft365Sending(
   return code === BILLING_PLAN_TEAM || code === BILLING_PLAN_ENTERPRISE;
 }
 
+/**
+ * Org-wide campaign index. Standard is one seat, so there is nothing else to list.
+ * PREMIUM canonicalizes to TEAM. A missing plan does not show the index.
+ */
+export function planShowsAllOrgCampaigns(
+  planCode: string | null | undefined,
+): boolean {
+  if (!planCode?.trim()) return false;
+  const code = canonicalPlanCode(planCode);
+  return code === BILLING_PLAN_TEAM || code === BILLING_PLAN_ENTERPRISE;
+}
+
 /** True when product limits and allowances are expressed per seat. */
 export function planUsesSeatBilling(planCode: string): boolean {
   const seats = getPlanDefinition(canonicalPlanCode(planCode))?.seats;

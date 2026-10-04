@@ -8,6 +8,7 @@ import {
   creditExpiryDate,
   getPlanDefinition,
   planAllowsSelfServeSeatChanges,
+  planShowsAllOrgCampaigns,
   planUsesInvoicedBilling,
   planUsesPerUserCompanyAllowance,
   resolveEntitlementsForStatus,
@@ -58,6 +59,15 @@ describe("billing plans catalog", () => {
         billingStatus: "ACTIVE",
       })?.activeResearchedCompanyLimit,
     ).toBe(100);
+  });
+
+  it("shows All org campaigns only for Team and Enterprise", () => {
+    expect(planShowsAllOrgCampaigns(BILLING_PLAN_STANDARD)).toBe(false);
+    expect(planShowsAllOrgCampaigns(BILLING_PLAN_COMPED)).toBe(false);
+    expect(planShowsAllOrgCampaigns(null)).toBe(false);
+    expect(planShowsAllOrgCampaigns(BILLING_PLAN_TEAM)).toBe(true);
+    expect(planShowsAllOrgCampaigns("PREMIUM")).toBe(true);
+    expect(planShowsAllOrgCampaigns(BILLING_PLAN_ENTERPRISE)).toBe(true);
   });
 
   it("models Enterprise product capabilities separately from collection state", () => {

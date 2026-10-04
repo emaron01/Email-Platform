@@ -30,7 +30,21 @@ describe("emails stage follows who is due", () => {
     expect(resolveCampaignStage(undefined, stages)).toBe("emails");
   });
 
-  it("is green when drafts exist and no contact is due", () => {
+  it("is red when drafts exist and nothing has been sent", () => {
+    const stages = buildCampaignStages({
+      ...caughtUp,
+      sentEmailCount: 0,
+      dueContactCount: 0,
+    });
+    const emails = stages.find((stage) => stage.key === "emails");
+    expect(emails?.completed).toBe(false);
+    expect(resolveCampaignStage(undefined, stages)).toBe("emails");
+    expect(campaignStageMarker(emails!, "emails").className).toBe(
+      "bg-red-600 text-white",
+    );
+  });
+
+  it("is green when at least one email has been sent and no contact is due", () => {
     const stages = buildCampaignStages(caughtUp);
     const emails = stages.find((stage) => stage.key === "emails");
     expect(emails?.completed).toBe(true);
@@ -154,13 +168,30 @@ describe("campaign progress surfaces", () => {
     const sidebar = readFileSync("src/components/Sidebar.tsx", "utf8");
     const shell = readFileSync("src/components/AppShell.tsx", "utf8");
     const page = readFileSync("src/app/(app)/campaigns/[id]/page.tsx", "utf8");
+    const home = readFileSync("src/app/(app)/page.tsx", "utf8");
+    const campaigns = readFileSync("src/app/(app)/campaigns/page.tsx", "utf8");
+    const card = readFileSync("src/components/CampaignSummaryCard.tsx", "utf8");
+    const homeStages = readFileSync(
+      "src/components/HomeCampaignStages.tsx",
+      "utf8",
+    );
     expect(rail).toContain("campaignStageMarker");
     expect(sidebar).toContain("campaignStageMarker");
     expect(sidebar).toContain("campaign-sidebar-stages");
+    expect(homeStages).toContain("campaignStageMarker");
+    expect(card).toContain("HomeCampaignStages");
+    expect(home).toContain("<CampaignSummaryCard");
+    expect(campaigns).toContain("<CampaignSummaryCard");
     expect(shell).toContain("deriveCampaignProgress");
     expect(shell).toContain("resolveCampaignStage");
     expect(page).toContain("deriveCampaignProgress");
     expect(page).toContain("resolveCampaignStage");
+    expect(readFileSync("src/lib/workflow/home.ts", "utf8")).toContain(
+      "deriveCampaignProgress",
+    );
+    expect(readFileSync("src/lib/workflow/campaign-stages.ts", "utf8")).toContain(
+      "sentEmailCount > 0 && input.dueContactCount === 0",
+    );
     for (const key of [
       "setup",
       "list",
